@@ -15,10 +15,10 @@
 
 <table class="data-table">
   <thead>
-    <tr><th>Status</th><th>Entity Name</th><th>Needs</th><th>Action</th></tr>
+    <tr><th>Status</th><th>Date</th><th>Entity Name</th><th>Needs</th><th>Action</th></tr>
   </thead>
   <tbody id="leadTableBody">
-    <tr class="empty-row"><td colspan="4">Memuat data...</td></tr>
+    <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
   </tbody>
 </table>
 
@@ -107,7 +107,7 @@
     google.script.run.withSuccessHandler(function (res) {
       if (!res.ok) {
         document.getElementById('leadTableBody').innerHTML =
-          '<tr class="empty-row"><td colspan="4">' + res.error.message + '</td></tr>';
+          '<tr class="empty-row"><td colspan="5">' + res.error.message + '</td></tr>';
         return;
       }
       renderTable(res.data);
@@ -119,19 +119,35 @@
   function renderTable(result) {
     var tbody = document.getElementById('leadTableBody');
     if (!result.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Tidak ada data.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
       return;
     }
     tbody.innerHTML = result.items.map(function (lead) {
       var meta = STATUS_META[lead.Status] || { badgeClass: '' };
+      var needs = lead.Detail_Interest || '-';
+      var needsShort = truncateText(needs, 30);
       return '<tr>' +
         '<td><span class="badge ' + meta.badgeClass + '">' + lead.Status + '</span></td>' +
+        '<td>' + formatDate(lead.Timestamp) + '</td>' +
         '<td><div class="entity-name">' + lead.Entity_Name + '</div>' +
         '<div class="entity-pic">👤 ' + (lead.PIC_Name || '-') + '</div></td>' +
-        '<td>' + (lead.Detail_Interest || '-') + '</td>' +
+        '<td title="' + needs + '">' + needsShort + '</td>' +
         '<td><button class="btn-detail" onclick="openDetail(\'' + lead.Inbound_ID + '\')">◉ DETAIL</button></td>' +
         '</tr>';
     }).join('');
+  }
+
+  function truncateText(text, maxLen) {
+    var str = String(text || '-');
+    return str.length > maxLen ? str.slice(0, maxLen).trim() + '...' : str;
+  }
+
+  function formatDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   }
 
   function renderPagination(result) {
