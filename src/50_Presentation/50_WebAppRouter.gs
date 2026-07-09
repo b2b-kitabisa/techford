@@ -26,7 +26,18 @@ var ROUTES = {
     headerActions: '<button class="btn-sync" onclick="syncNewLeads()">☁️ SYNC NEW LEADS</button>',
     helpText: '<strong>Info Alur:</strong> Lead baru masuk sebagai <strong>New Leads</strong>. ' +
       'Setelah dihubungi, ubah ke <strong>Contacted</strong>. Kalau sudah siap kerja sama, gunakan status ' +
-      '<strong>Moved</strong> agar tercatat sebagai klien. Tandai <strong>Spam</strong> untuk lead yang tidak relevan.'
+      '<strong>Moved</strong> agar tercatat sebagai klien (aksi ini permanen, Lead akan terkunci). ' +
+      'Tandai <strong>Spam</strong> untuk lead yang tidak relevan.'
+  },
+  'client-monitoring': {
+    content: '50_Presentation/html/Client/ClientMonitoringContent',
+    title: 'Client Monitoring 🏢',
+    headerActions: '<button class="btn-sync" onclick="openAddClient()">➕ ADD NEW CLIENT</button>'
+  },
+  'user-management': {
+    content: '50_Presentation/html/Setting/UserManagementContent',
+    title: 'User Management',
+    headerActions: ''
   }
 };
 
@@ -48,7 +59,6 @@ function doGet(e) {
   shell.menu = NavigationConfig.MENU;
   shell.breadcrumbGroup = findBreadcrumbGroup(page);
   shell.helpText = route.helpText || '';
-  shell.userInitial = 'U';
 
   return shell.evaluate()
     .setTitle('Techford Platform - ' + route.title)

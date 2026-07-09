@@ -34,7 +34,7 @@
 
       <div class="sidebar-footer">
         <div class="nav-item nav-item-disabled">🔔 Notification</div>
-        <div class="nav-item nav-item-disabled">⚙️ Setting</div>
+        <a class="nav-item<?= activePage === 'user-management' ? ' nav-item-active' : '' ?>" href="?page=user-management">⚙️ Setting</a>
       </div>
     </aside>
 
@@ -56,16 +56,128 @@
             </div>
           <? } ?>
           <button class="icon-btn" title="Notifikasi">🔔</button>
-          <div class="avatar-circle"><?= userInitial ?></div>
+          <div class="user-menu-wrap">
+            <div class="avatar-circle" id="currentUserAvatar" onclick="toggleUserMenu()">U</div>
+            <div class="user-menu" id="userMenu">
+              <div class="user-menu-name" id="currentUserName">Belum login</div>
+              <div class="user-menu-item" onclick="TechfordAuth.logout()">Keluar</div>
+            </div>
+          </div>
         </div>
       </header>
       <main class="content-area"><?!= content ?></main>
     </div>
   </div>
 
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-box">
+      <div class="brand-title">Tech Ford</div>
+      <p>Masuk dengan akun yang sudah didaftarkan admin.</p>
+      <div id="loginError" class="error"></div>
+      <input id="loginEmail" type="email" placeholder="nama@kitabisa.com" onkeydown="if(event.key==='Enter')TechfordAuth.doLogin();">
+      <input id="loginPassword" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')TechfordAuth.doLogin();">
+      <button class="btn-save" onclick="TechfordAuth.doLogin()">Masuk</button>
+    </div>
+  </div>
+
   <script>
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+    }
+
+    function toggleUserMenu() {
+      document.getElementById('userMenu').classList.toggle('open');
+    }
+
+    document.addEventListener('click', function (e) {
+      var wrap = document.querySelector('.user-menu-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        document.getElementById('userMenu').classList.remove('open');
+      }
+    });
+
+    /**
+     * Gerbang identitas ringan (BUKAN keamanan sungguhan — lapisan keamanan
+     * nyata adalah pembatasan domain Web App). Tujuannya cuma supaya
+     * platform tahu "siapa yang sedang memakai ini" untuk Created_By/
+     * Updated_By, dan menyimpan pilihan itu di localStorage supaya tidak
+     * perlu login ulang tiap buka halaman.
+     */
+    var TechfordAuth = (function () {
+      var STORAGE_KEY = 'techford_user';
+
+      function getCurrentUser() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function setCurrentUser(user) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      }
+
+      function logout() {
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
+      }
+
+      function applyUserToChrome(user) {
+        var avatar = document.getElementById('currentUserAvatar');
+        var nameEl = document.getElementById('currentUserName');
+        if (avatar) avatar.innerText = (user.Name || 'U').charAt(0).toUpperCase();
+        if (nameEl) nameEl.innerText = user.Name + (user.Role ? ' (' + user.Role + ')' : '');
+      }
+
+      function checkLogin() {
+        var user = getCurrentUser();
+        if (user) {
+          applyUserToChrome(user);
+          return;
+        }
+        document.getElementById('loginOverlay').classList.add('open');
+      }
+
+      function doLogin() {
+        var email = document.getElementById('loginEmail').value.trim();
+        var password = document.getElementById('loginPassword').value;
+        var errEl = document.getElementById('loginError');
+        errEl.innerText = '';
+
+        var btn = document.querySelector('#loginOverlay .btn-save');
+        btn.disabled = true;
+        btn.innerText = 'Memeriksa...';
+
+        google.script.run
+          .withSuccessHandler(function (res) {
+            btn.disabled = false;
+            btn.innerText = 'Masuk';
+            if (!res || !res.ok) {
+              errEl.innerText = (res && res.error && res.error.message) || 'Tidak ada respons, silakan coba lagi.';
+              return;
+            }
+            var user = res.data[0];
+            setCurrentUser(user);
+            document.getElementById('loginOverlay').classList.remove('open');
+            applyUserToChrome(user);
+          })
+          .withFailureHandler(function (err) {
+            btn.disabled = false;
+            btn.innerText = 'Masuk';
+            errEl.innerText = 'Gagal login: ' + (err && err.message ? err.message : err);
+          })
+          .employee_login(email, password);
+      }
+
+      return { getCurrentUser: getCurrentUser, logout: logout, checkLogin: checkLogin, doLogin: doLogin };
+    })();
+
+    if (document.readyState === 'complete') {
+      TechfordAuth.checkLogin();
+    } else {
+      window.addEventListener('load', TechfordAuth.checkLogin);
     }
   </script>
 </body>

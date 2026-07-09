@@ -34,5 +34,20 @@ var Utils = (function (module) {
     });
   };
 
+  /**
+   * Hash satu arah (SHA-256) untuk password Employee. Bukan pengganti
+   * autentikasi sungguhan (Sheets bukan credential store yang aman) — ini
+   * gerbang formalitas identitas internal, dengan lapisan keamanan nyata
+   * tetap di pembatasan domain Web App (lihat Config.ALLOWED_EMAIL_DOMAIN
+   * dan setting "Who has access: domain" saat deploy).
+   */
+  module.hashPassword = function (plainText) {
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(plainText));
+    return digest.map(function (byte) {
+      var v = (byte < 0 ? byte + 256 : byte).toString(16);
+      return v.length === 1 ? '0' + v : v;
+    }).join('');
+  };
+
   return module;
 })(Utils || {});

@@ -18,3 +18,23 @@ function employee_listActive() {
 function employee_onboard(formInput) {
   return EmployeeController.onboard(formInput);
 }
+
+function employee_login(email, password) {
+  return EmployeeController.login(email, password);
+}
+
+function employee_listAdmins() {
+  return EmployeeController.listAdmins();
+}
+
+function employee_createAdmin(input) {
+  return EmployeeController.createAdmin(input);
+}
+
+function employee_setStatus(employeeId, status) {
+  return EmployeeController.setEmployeeStatus(employeeId, status);
+}
+
+function employee_resetPassword(employeeId, newPassword) {
+  return EmployeeController.resetPassword(employeeId, newPassword);
+}

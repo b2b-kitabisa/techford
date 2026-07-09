@@ -19,6 +19,9 @@ var Config = (function (module) {
   module.SHEETS = {
     EMPLOYEE: 'Employee',
     LEAD: 'Lead',
+    INBOUND_RAW: 'Inbound_Raw',
+    CLIENT: 'Client',
+    PIC_CLIENT: 'PIC_Client',
     AUDIT_LOG: 'AuditLog'
   };
 
@@ -31,6 +34,19 @@ var Config = (function (module) {
     OTHER: 'Other',
     SPAM: 'Spam'
   };
+
+  // Asal client di sheet Client. "Inbound" hanya boleh diset otomatis oleh
+  // proses Move dari Lead — penambahan manual lewat Client Monitoring wajib
+  // memilih salah satu dari ketiganya.
+  module.CLIENT_SOURCE = {
+    INBOUND: 'Inbound',
+    OUTBOUND: 'Outbound',
+    REFERRAL: 'Referral'
+  };
+
+  // Semua login admin diasumsikan pakai domain perusahaan ini — dicek di
+  // AuthService supaya email di luar domain langsung ditolak.
+  module.ALLOWED_EMAIL_DOMAIN = 'kitabisa.com';
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'

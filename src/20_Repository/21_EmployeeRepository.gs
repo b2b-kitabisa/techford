@@ -1,10 +1,7 @@
 /**
  * Repository.EmployeeRepository
  *
- * Contoh Repository konkret. Ini template yang Anda copy setiap kali
- * menambah entitas data baru (misal InventoryRepository, InvoiceRepository).
- *
- * Perhatikan: tidak ada satu pun query/logic bisnis di sini, hanya akses data.
+ * Header sheet Employee: Id | Name | Email | Role | PasswordHash | Status | CreatedAt
  */
 var EmployeeRepository = (function (module) {
 
@@ -22,17 +19,28 @@ var EmployeeRepository = (function (module) {
     })[0] || null;
   };
 
+  module.findByEmail = function (email) {
+    var target = String(email || '').trim().toLowerCase();
+    return module.findAll().filter(function (emp) {
+      return String(emp.Email || '').trim().toLowerCase() === target;
+    })[0] || null;
+  };
+
   module.create = function (employee) {
     base.insert(employee);
     CacheHelper.invalidate('employee:all');
   };
 
-  module.updateStatus = function (employeeId, status) {
+  module.update = function (employeeId, patch) {
     var updated = base.updateWhere(function (row) {
       return row.Id === employeeId;
-    }, { Status: status });
+    }, patch);
     CacheHelper.invalidate('employee:all');
     return updated;
+  };
+
+  module.updateStatus = function (employeeId, status) {
+    return module.update(employeeId, { Status: status });
   };
 
   return module;

@@ -97,6 +97,10 @@
       <label>Other Notes<textarea id="editNotes" placeholder="Type your message here."></textarea></label>
     </div>
 
+    <div class="drawer-section" id="lockedNotice" style="display:none; background:#fef7e0;">
+      <div class="drawer-field-value">🔒 Lead ini sudah menjadi Client dan tidak bisa diedit lagi dari Lead Capturing.</div>
+    </div>
+
     <div class="drawer-section">
       <h3>Interest Detail</h3>
       <div class="drawer-field-label">Kebutuhan :</div>
@@ -127,6 +131,20 @@
     <div class="confirm-actions">
       <button class="btn-outline" onclick="cancelSaveConfirm()">Cancel</button>
       <button class="btn-save" onclick="confirmSaveDetail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="moveConfirm">
+  <div class="confirm-box" style="border-top: 4px solid #c5221f;">
+    <h3>⚠️ Pindahkan Lead menjadi Client?</h3>
+    <p>
+      <strong>Tindakan ini tidak dapat dibatalkan.</strong> Lead akan berpindah ke Client Monitoring
+      dan tidak bisa diedit lagi dari Lead Capturing setelah ini.
+    </p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelMoveConfirm()">Cancel</button>
+      <button class="btn-save" style="background:#c5221f;" onclick="confirmMoveToClient()">Ya, Pindahkan</button>
     </div>
   </div>
 </div>
@@ -521,6 +539,14 @@
     document.getElementById('drawerEditForm').classList.remove('open');
     document.getElementById('statusDropdown').classList.remove('open');
     document.getElementById('saveHint').innerText = '';
+
+    // Lead yang sudah Moved terkunci permanen — sudah jadi Client, hanya
+    // bisa dikelola lewat Client Monitoring. Ditegakkan juga di server
+    // (LeadService.updateLead), ini cuma kenyamanan tampilan.
+    var isLocked = normalizeStatusKey(lead.Status) === 'Moved';
+    document.querySelector('.drawer-action-row').style.display = isLocked ? 'none' : 'flex';
+    document.getElementById('lockedNotice').style.display = isLocked ? 'block' : 'none';
+    document.querySelector('.drawer-footer .btn-save').style.display = isLocked ? 'none' : 'inline-block';
   }
 
   function setStatusBadge(status) {
@@ -558,11 +584,55 @@
 
   function openSaveConfirm() {
     if (!currentDrawerLead) return;
-    document.getElementById('saveConfirm').classList.add('open');
+    if (pendingStatus === 'Moved') {
+      document.getElementById('moveConfirm').classList.add('open');
+    } else {
+      document.getElementById('saveConfirm').classList.add('open');
+    }
   }
 
   function cancelSaveConfirm() {
     document.getElementById('saveConfirm').classList.remove('open');
+  }
+
+  function cancelMoveConfirm() {
+    document.getElementById('moveConfirm').classList.remove('open');
+  }
+
+  function confirmMoveToClient() {
+    document.getElementById('moveConfirm').classList.remove('open');
+    if (!currentDrawerLead) return;
+
+    var inboundId = currentDrawerLead.Inbound_ID;
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.querySelector('.drawer-footer .btn-save');
+    btn.disabled = true;
+    btn.innerText = 'Memproses...';
+
+    google.script.run
+      .withSuccessHandler(function () {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+
+        var idx = -1;
+        for (var i = 0; i < allLeads.length; i++) {
+          if (sameId(allLeads[i].Inbound_ID, inboundId)) { idx = i; break; }
+        }
+        if (idx !== -1) {
+          allLeads[idx].Status = 'Moved';
+          allLeads[idx].Last_Updated = new Date().toISOString();
+        }
+
+        closeDetail();
+        render();
+        showSuccessModal('Lead berhasil dipindahkan menjadi Client.');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        alert('Gagal memindahkan: ' + (err && err.message ? err.message : err));
+      })
+      .lead_moveToClient(inboundId, createdBy);
   }
 
   function confirmSaveDetail() {

@@ -24,5 +24,11 @@ var LeadController = (function (module) {
     });
   };
 
+  module.moveToClient = function (inboundId, createdBy) {
+    return ErrorHandler.handle('LeadController.moveToClient', function () {
+      return LeadService.moveToClient(inboundId, createdBy);
+    });
+  };
+
   return module;
 })(LeadController || {});

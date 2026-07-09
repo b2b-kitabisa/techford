@@ -1,0 +1,502 @@
+<div id="clientStats" class="stat-cards"></div>
+
+<div class="filter-bar">
+  <input id="clientSearch" placeholder="Search Entity Name...." oninput="onClientFilterChange()">
+  <select id="clientSourceFilter" onchange="onClientFilterChange()">
+    <option value="">All Source</option>
+    <option value="Inbound">Inbound</option>
+    <option value="Outbound">Outbound</option>
+    <option value="Referral">Referral</option>
+  </select>
+  <button class="filter-reset" onclick="resetClientFilter()">↺ Reset Filter</button>
+</div>
+
+<div id="clientTableError" class="error"></div>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th class="sortable" onclick="setClientSort('Brand_Name')">Brand &amp; Entity <span class="sort-icon" data-field="Brand_Name">⇕</span></th>
+        <th class="sortable" onclick="setClientSort('Client_Source')">Source <span class="sort-icon" data-field="Client_Source">⇕</span></th>
+        <th>PIC Utama</th>
+        <th class="sortable" onclick="setClientSort('Created_Date')">Dibuat <span class="sort-icon" data-field="Created_Date">⇕</span></th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="clientTableBody">
+      <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="clientPageSize" onchange="onClientFilterChange()">
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="clientPageButtons"></div>
+</div>
+
+<!-- Modal: Add New Client -->
+<div class="confirm-overlay" id="addClientModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3>Tambah Client Baru</h3>
+    <div class="drawer-edit-form open" style="padding:0; border:none;">
+      <label>Brand Name *<input id="newBrandName"></label>
+      <label>Entity Name (badan hukum)<input id="newEntityName"></label>
+      <label>Entity Type<input id="newEntityType"></label>
+      <label>Source *
+        <select id="newClientSource">
+          <option value="Inbound">Inbound</option>
+          <option value="Outbound">Outbound</option>
+          <option value="Referral">Referral</option>
+        </select>
+      </label>
+      <label>Head Office<input id="newHeadOffice"></label>
+      <label>Website<input id="newWebsite"></label>
+      <label>Industry<input id="newIndustry"></label>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAddClient()">Cancel</button>
+      <button class="btn-save" onclick="submitAddClient()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drawer: Client Detail -->
+<div class="drawer-overlay" id="clientDrawer" onclick="if (event.target === this) closeClientDetail();">
+  <div class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <span class="badge badge-moved" id="clientSourceBadge"></span>
+        <button class="drawer-close" onclick="closeClientDetail()">&times;</button>
+      </div>
+      <h2 id="clientBrandName"></h2>
+      <div class="drawer-entity-type" id="clientEntityTypeDisplay"></div>
+    </div>
+
+    <div class="drawer-action-row">
+      <button class="btn-outline" onclick="toggleClientEditInfo()">✏️ EDIT INFO</button>
+    </div>
+
+    <div class="drawer-edit-form" id="clientEditForm">
+      <label>Brand Name<input id="editBrandName"></label>
+      <label>Entity Name<input id="editEntityNameField"></label>
+      <label>Entity Type<input id="editEntityTypeField"></label>
+      <label>Head Office<input id="editHeadOffice"></label>
+      <label>Website<input id="editWebsite"></label>
+      <label>Industry<input id="editIndustry"></label>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-field-label">Head Office :</div>
+      <div class="drawer-field-value" id="viewHeadOffice">-</div>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-field-label">Website :</div>
+      <div class="drawer-field-value" id="viewWebsite">-</div>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-field-label">Industry :</div>
+      <div class="drawer-field-value" id="viewIndustry">-</div>
+    </div>
+
+    <div class="drawer-section">
+      <h3>PIC</h3>
+      <div id="picList"></div>
+      <div class="drawer-edit-form open" style="padding:12px 0 0;">
+        <label>Nama PIC baru<input id="newPicName"></label>
+        <label>Title<input id="newPicTitle"></label>
+        <label>Email<input id="newPicEmail"></label>
+        <label>Phone<input id="newPicPhone"></label>
+      </div>
+      <button class="btn-outline" onclick="submitAddPic()" style="margin-top:8px;">+ Tambah PIC</button>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-field-label">Dibuat oleh :</div>
+      <div class="drawer-field-value" id="viewCreatedBy">-</div>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint" id="clientSaveHint"></span>
+      <button class="btn-save" onclick="saveClientInfo()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="success-overlay" id="clientSuccessModal" onclick="if (event.target === this) closeClientSuccessModal();">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3 id="clientSuccessMessage">Berhasil.</h3>
+    <button class="btn-save" onclick="closeClientSuccessModal()">OK</button>
+  </div>
+</div>
+
+<script>
+  var SOURCE_BADGE = { Inbound: 'badge-moved', Outbound: 'badge-contacted', Referral: 'badge-other' };
+
+  var allClients = [];
+  var allPics = [];
+  var clientPage = 1;
+  var currentClientDrawerId = null;
+  var clientSort = { field: 'Created_Date', dir: 'desc' };
+
+  function bootstrapClients() {
+    fetchClients();
+  }
+  if (document.readyState === 'complete') {
+    bootstrapClients();
+  } else {
+    window.addEventListener('load', bootstrapClients);
+  }
+
+  function fetchClients() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          showClientTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+          return;
+        }
+        allClients = res.data;
+        fetchPics();
+      })
+      .withFailureHandler(function (err) {
+        showClientTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .client_getAll();
+  }
+
+  function fetchPics() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) allPics = res.data;
+        renderClients();
+      })
+      .withFailureHandler(function () { renderClients(); })
+      .client_getAllPics();
+  }
+
+  function showClientTableError(message) {
+    document.getElementById('clientTableError').innerText = message;
+    document.getElementById('clientTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+  }
+
+  function getPrimaryPic(clientId) {
+    return allPics.filter(function (p) { return p.Client_ID === clientId; })[0] || null;
+  }
+
+  function renderClients() {
+    document.getElementById('clientTableError').innerText = '';
+    var filtered = getFilteredClients();
+    renderClientStats(allClients);
+    var paged = paginateClients(filtered);
+    renderClientTable(paged);
+    renderClientPagination(paged);
+  }
+
+  function renderClientStats(clients) {
+    var total = clients.length;
+    var counts = { Inbound: 0, Outbound: 0, Referral: 0 };
+    clients.forEach(function (c) {
+      if (counts.hasOwnProperty(c.Client_Source)) counts[c.Client_Source]++;
+    });
+
+    function pct(n) { return total ? Math.round((n / total) * 100) : 0; }
+
+    document.getElementById('clientStats').innerHTML =
+      '<div class="stat-card stat-moved"><div class="stat-label">Outbound</div><div class="stat-desc">Outbound Client</div>' +
+      '<div class="stat-value">' + counts.Outbound + '</div><div class="stat-desc">' + pct(counts.Outbound) + '%</div></div>' +
+      '<div class="stat-card stat-contacted"><div class="stat-label">Inbound</div><div class="stat-desc">Inbound Client</div>' +
+      '<div class="stat-value">' + counts.Inbound + '</div><div class="stat-desc">' + pct(counts.Inbound) + '%</div></div>' +
+      '<div class="stat-card stat-other"><div class="stat-label">Referral</div><div class="stat-desc">Referral Client</div>' +
+      '<div class="stat-value">' + counts.Referral + '</div><div class="stat-desc">' + pct(counts.Referral) + '%</div></div>';
+  }
+
+  function getFilteredClients() {
+    var search = document.getElementById('clientSearch').value.toLowerCase().trim();
+    var source = document.getElementById('clientSourceFilter').value;
+
+    return allClients.filter(function (c) {
+      var matchesSearch = !search ||
+        String(c.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(c.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
+      var matchesSource = !source || c.Client_Source === source;
+      return matchesSearch && matchesSource;
+    }).sort(function (a, b) {
+      var va = a[clientSort.field], vb = b[clientSort.field];
+      if (clientSort.field === 'Created_Date') {
+        va = new Date(va).getTime() || 0;
+        vb = new Date(vb).getTime() || 0;
+      } else {
+        va = String(va || '').toLowerCase();
+        vb = String(vb || '').toLowerCase();
+      }
+      var cmp = va < vb ? -1 : (va > vb ? 1 : 0);
+      return clientSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  function setClientSort(field) {
+    if (clientSort.field === field) {
+      clientSort.dir = clientSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      clientSort.field = field;
+      clientSort.dir = 'asc';
+    }
+    renderClients();
+  }
+
+  function onClientFilterChange() {
+    clientPage = 1;
+    renderClients();
+  }
+
+  function resetClientFilter() {
+    document.getElementById('clientSearch').value = '';
+    document.getElementById('clientSourceFilter').value = '';
+    clientPage = 1;
+    renderClients();
+  }
+
+  function paginateClients(list) {
+    var pageSize = Number(document.getElementById('clientPageSize').value);
+    var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    clientPage = Math.min(Math.max(1, clientPage), totalPages);
+    var start = (clientPage - 1) * pageSize;
+    return { items: list.slice(start, start + pageSize), page: clientPage, totalPages: totalPages };
+  }
+
+  function formatDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function renderClientTable(paged) {
+    var tbody = document.getElementById('clientTableBody');
+    if (!paged.items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = paged.items.map(function (c) {
+      var pic = getPrimaryPic(c.Client_ID);
+      var badgeClass = SOURCE_BADGE[c.Client_Source] || '';
+      return '<tr>' +
+        '<td><div class="entity-name">' + (c.Brand_Name || '-') + '</div>' +
+        '<div class="entity-pic">' + (c.Entity_Name || '-') + '</div></td>' +
+        '<td class="nowrap-cell"><span class="badge ' + badgeClass + '">' + (c.Client_Source || '').toUpperCase() + '</span></td>' +
+        '<td>' + (pic ? pic.PIC_Name : '-') + '</td>' +
+        '<td class="nowrap-cell">' + formatDate(c.Created_Date) + '</td>' +
+        '<td><button class="btn-icon-round" onclick="openClientDetail(\'' + c.Client_ID + '\')" title="Lihat Detail">›</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderClientPagination(paged) {
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToClientPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
+    for (var p = 1; p <= paged.totalPages; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToClientPage(' + p + ')">' + p + '</button>';
+    }
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToClientPage(' + (paged.page + 1) + ')">Next &gt;</button>';
+    document.getElementById('clientPageButtons').innerHTML = buttons;
+  }
+
+  function goToClientPage(page) {
+    clientPage = page;
+    renderClients();
+  }
+
+  // ---- Add New Client ----
+  function openAddClient() {
+    document.getElementById('addClientModal').classList.add('open');
+  }
+  function closeAddClient() {
+    document.getElementById('addClientModal').classList.remove('open');
+  }
+
+  function submitAddClient() {
+    var brandName = document.getElementById('newBrandName').value.trim();
+    if (!brandName) { alert('Brand Name wajib diisi.'); return; }
+
+    var input = {
+      brandName: brandName,
+      entityName: document.getElementById('newEntityName').value,
+      entityType: document.getElementById('newEntityType').value,
+      source: document.getElementById('newClientSource').value,
+      headOffice: document.getElementById('newHeadOffice').value,
+      website: document.getElementById('newWebsite').value,
+      industry: document.getElementById('newIndustry').value
+    };
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menyimpan.');
+        allClients = res.data;
+        closeAddClient();
+        renderClients();
+        showClientSuccess('Client baru berhasil ditambahkan.');
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .client_create(input, createdBy);
+  }
+
+  // ---- Client Detail Drawer ----
+  function openClientDetail(clientId) {
+    var client = allClients.filter(function (c) { return c.Client_ID === clientId; })[0];
+    if (!client) return;
+    currentClientDrawerId = clientId;
+    renderClientDrawer(client);
+    document.getElementById('clientDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+
+  function closeClientDetail() {
+    document.getElementById('clientDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    currentClientDrawerId = null;
+  }
+
+  function renderClientDrawer(client) {
+    document.getElementById('clientBrandName').innerText = client.Brand_Name || '-';
+    document.getElementById('clientEntityTypeDisplay').innerText = (client.Entity_Type || '-').toUpperCase();
+    var badge = document.getElementById('clientSourceBadge');
+    badge.className = 'badge ' + (SOURCE_BADGE[client.Client_Source] || '');
+    badge.innerText = (client.Client_Source || '').toUpperCase();
+
+    document.getElementById('viewHeadOffice').innerText = client.Head_Office || '-';
+    document.getElementById('viewWebsite').innerText = client.Website || '-';
+    document.getElementById('viewIndustry').innerText = client.Industry || '-';
+    document.getElementById('viewCreatedBy').innerText =
+      (client.Created_By || '-') + ' · ' + formatDate(client.Created_Date);
+
+    document.getElementById('editBrandName').value = client.Brand_Name || '';
+    document.getElementById('editEntityNameField').value = client.Entity_Name || '';
+    document.getElementById('editEntityTypeField').value = client.Entity_Type || '';
+    document.getElementById('editHeadOffice').value = client.Head_Office || '';
+    document.getElementById('editWebsite').value = client.Website || '';
+    document.getElementById('editIndustry').value = client.Industry || '';
+
+    document.getElementById('clientEditForm').classList.remove('open');
+    document.getElementById('clientSaveHint').innerText = '';
+    renderPicList(client.Client_ID);
+
+    document.getElementById('newPicName').value = '';
+    document.getElementById('newPicTitle').value = '';
+    document.getElementById('newPicEmail').value = '';
+    document.getElementById('newPicPhone').value = '';
+  }
+
+  function renderPicList(clientId) {
+    var pics = allPics.filter(function (p) { return p.Client_ID === clientId; });
+    var el = document.getElementById('picList');
+    if (!pics.length) {
+      el.innerHTML = '<div class="drawer-field-value">Belum ada PIC.</div>';
+      return;
+    }
+    el.innerHTML = pics.map(function (p) {
+      return '<div style="padding:8px 0; border-bottom:1px solid #eee;">' +
+        '<div style="font-weight:bold;">' + p.PIC_Name + (p.Title ? ' — ' + p.Title : '') + '</div>' +
+        '<div style="font-size:12px; color:#5f6368;">' + (p.Email || '-') + ' · ' + (p.Phone || '-') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function toggleClientEditInfo() {
+    document.getElementById('clientEditForm').classList.toggle('open');
+  }
+
+  function submitAddPic() {
+    var name = document.getElementById('newPicName').value.trim();
+    if (!name) { alert('Nama PIC wajib diisi.'); return; }
+    if (!currentClientDrawerId) return;
+
+    var picInput = {
+      name: name,
+      title: document.getElementById('newPicTitle').value,
+      email: document.getElementById('newPicEmail').value,
+      phone: document.getElementById('newPicPhone').value
+    };
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menambah PIC.');
+        allPics = res.data;
+        renderPicList(currentClientDrawerId);
+        document.getElementById('newPicName').value = '';
+        document.getElementById('newPicTitle').value = '';
+        document.getElementById('newPicEmail').value = '';
+        document.getElementById('newPicPhone').value = '';
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menambah PIC: ' + (err && err.message ? err.message : err));
+      })
+      .client_addPic(currentClientDrawerId, picInput);
+  }
+
+  function saveClientInfo() {
+    if (!currentClientDrawerId) return;
+
+    var patch = {
+      Brand_Name: document.getElementById('editBrandName').value,
+      Entity_Name: document.getElementById('editEntityNameField').value,
+      Entity_Type: document.getElementById('editEntityTypeField').value,
+      Head_Office: document.getElementById('editHeadOffice').value,
+      Website: document.getElementById('editWebsite').value,
+      Industry: document.getElementById('editIndustry').value
+    };
+
+    var clientId = currentClientDrawerId;
+    var btn = document.querySelector('#clientDrawer .btn-save');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+
+    google.script.run
+      .withSuccessHandler(function () {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+
+        var idx = -1;
+        for (var i = 0; i < allClients.length; i++) {
+          if (allClients[i].Client_ID === clientId) { idx = i; break; }
+        }
+        if (idx !== -1) {
+          var updated = {};
+          for (var key in allClients[idx]) updated[key] = allClients[idx][key];
+          for (var field in patch) updated[field] = patch[field];
+          updated.Last_Updated = new Date().toISOString();
+          allClients[idx] = updated;
+        }
+
+        closeClientDetail();
+        renderClients();
+        showClientSuccess('Data client berhasil disimpan.');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .client_update(clientId, patch);
+  }
+
+  function showClientSuccess(message) {
+    document.getElementById('clientSuccessMessage').innerText = message;
+    document.getElementById('clientSuccessModal').classList.add('open');
+  }
+  function closeClientSuccessModal() {
+    document.getElementById('clientSuccessModal').classList.remove('open');
+  }
+</script>

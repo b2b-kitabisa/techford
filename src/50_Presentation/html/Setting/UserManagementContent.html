@@ -1,0 +1,185 @@
+<div class="container" style="max-width: 900px;">
+  <p style="color:#5f6368; font-size:13px;">
+    Kelola admin/user yang bisa "login" ke Techford Platform. Login ini adalah gerbang identitas
+    (bukan keamanan utama) — akses sesungguhnya sudah dibatasi ke domain <strong>@kitabisa.com</strong>.
+  </p>
+
+  <button class="btn-sync" onclick="openAddAdmin()">➕ Tambah Admin</button>
+
+  <div id="adminTableError" class="error" style="margin-top:12px;"></div>
+
+  <table class="data-table" style="margin-top:16px;">
+    <thead>
+      <tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Action</th></tr>
+    </thead>
+    <tbody id="adminTableBody">
+      <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="confirm-overlay" id="addAdminModal">
+  <div class="confirm-box" style="width:360px; text-align:left;">
+    <h3>Tambah Admin</h3>
+    <div class="drawer-edit-form open" style="padding:0; border:none;">
+      <label>Nama *<input id="newAdminName"></label>
+      <label>Email (@kitabisa.com) *<input id="newAdminEmail" type="email"></label>
+      <label>Role<input id="newAdminRole" placeholder="misal: Master Admin, Sales"></label>
+      <label>Password *<input id="newAdminPassword" type="password"></label>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAddAdmin()">Cancel</button>
+      <button class="btn-save" onclick="submitAddAdmin()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="resetPasswordModal">
+  <div class="confirm-box" style="width:320px; text-align:left;">
+    <h3>Reset Password</h3>
+    <div class="drawer-edit-form open" style="padding:0; border:none;">
+      <label>Password baru *<input id="resetPasswordValue" type="password"></label>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeResetPassword()">Cancel</button>
+      <button class="btn-save" onclick="submitResetPassword()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var allAdmins = [];
+  var resetPasswordTargetId = null;
+
+  function bootstrapAdmins() { fetchAdmins(); }
+  if (document.readyState === 'complete') {
+    bootstrapAdmins();
+  } else {
+    window.addEventListener('load', bootstrapAdmins);
+  }
+
+  function fetchAdmins() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          showAdminError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+          return;
+        }
+        allAdmins = res.data;
+        renderAdmins();
+      })
+      .withFailureHandler(function (err) {
+        showAdminError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .employee_listAdmins();
+  }
+
+  function showAdminError(message) {
+    document.getElementById('adminTableError').innerText = message;
+    document.getElementById('adminTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+  }
+
+  function renderAdmins() {
+    document.getElementById('adminTableError').innerText = '';
+    var tbody = document.getElementById('adminTableBody');
+    if (!allAdmins.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada admin terdaftar.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = allAdmins.map(function (emp) {
+      var isActive = emp.Status === 'Active';
+      return '<tr>' +
+        '<td><div class="entity-name">' + emp.Name + '</div></td>' +
+        '<td>' + emp.Email + '</td>' +
+        '<td>' + (emp.Role || '-') + '</td>' +
+        '<td><span class="badge ' + (isActive ? 'badge-contacted' : 'badge-spam') + '">' + emp.Status + '</span></td>' +
+        '<td>' +
+          '<button class="btn-outline" onclick="openResetPassword(\'' + emp.Id + '\')">Reset Password</button> ' +
+          '<button class="btn-outline" onclick="toggleAdminStatus(\'' + emp.Id + '\', \'' + emp.Status + '\')">' +
+            (isActive ? 'Nonaktifkan' : 'Aktifkan') +
+          '</button>' +
+        '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function openAddAdmin() {
+    document.getElementById('newAdminName').value = '';
+    document.getElementById('newAdminEmail').value = '';
+    document.getElementById('newAdminRole').value = '';
+    document.getElementById('newAdminPassword').value = '';
+    document.getElementById('addAdminModal').classList.add('open');
+  }
+  function closeAddAdmin() {
+    document.getElementById('addAdminModal').classList.remove('open');
+  }
+
+  function submitAddAdmin() {
+    var input = {
+      name: document.getElementById('newAdminName').value.trim(),
+      email: document.getElementById('newAdminEmail').value.trim(),
+      role: document.getElementById('newAdminRole').value.trim(),
+      password: document.getElementById('newAdminPassword').value
+    };
+    if (!input.name || !input.email || !input.password) {
+      alert('Nama, email, dan password wajib diisi.');
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menambah admin.');
+        allAdmins = res.data;
+        closeAddAdmin();
+        renderAdmins();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menambah admin: ' + (err && err.message ? err.message : err));
+      })
+      .employee_createAdmin(input);
+  }
+
+  function toggleAdminStatus(employeeId, currentStatus) {
+    var nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    if (!confirm('Ubah status admin ini jadi ' + nextStatus + '?')) return;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal mengubah status.');
+        allAdmins = res.data;
+        renderAdmins();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal mengubah status: ' + (err && err.message ? err.message : err));
+      })
+      .employee_setStatus(employeeId, nextStatus);
+  }
+
+  function openResetPassword(employeeId) {
+    resetPasswordTargetId = employeeId;
+    document.getElementById('resetPasswordValue').value = '';
+    document.getElementById('resetPasswordModal').classList.add('open');
+  }
+  function closeResetPassword() {
+    document.getElementById('resetPasswordModal').classList.remove('open');
+    resetPasswordTargetId = null;
+  }
+
+  function submitResetPassword() {
+    var newPassword = document.getElementById('resetPasswordValue').value;
+    if (!newPassword) { alert('Password baru wajib diisi.'); return; }
+    if (!resetPasswordTargetId) return;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal reset password.');
+        allAdmins = res.data;
+        closeResetPassword();
+        renderAdmins();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal reset password: ' + (err && err.message ? err.message : err));
+      })
+      .employee_resetPassword(resetPasswordTargetId, newPassword);
+  }
+</script>

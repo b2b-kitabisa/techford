@@ -65,6 +65,16 @@ GAS menggabungkan semua file server-side ke **satu global scope** saat eksekusi.
 | Quota baca/tulis Spreadsheet | `CacheHelper` untuk data referensi yang jarang berubah |
 | Tidak ada module system native | Namespace/IIFE pattern + `*_Exposed.gs` sebagai satu-satunya titik ekspos ke client |
 
+## Aturan Wajib: Endpoint RPC Selalu Kembalikan Array, Jangan Objek Tunggal
+
+Ditemukan lewat debugging panjang (lihat histori Lead Capturing): `google.script.run` **berkali-kali gagal** mengirim balik respons yang berbentuk **objek tunggal** ke client — `withSuccessHandler` menerima `null` walau operasi di server (termasuk tulis ke Spreadsheet) selalu berhasil. Respons berbentuk **array** (bahkan array berisi 1 elemen) **selalu berhasil sampai**.
+
+**Aturan**: setiap fungsi `*_Exposed.gs` yang perlu mengembalikan data ke client HARUS mengembalikan array, walau cuma satu item (`[item]`, atau lebih baik lagi kembalikan seluruh dataset terkait — konsisten dengan pola "Load Once, Filter Local" di bawah). Jangan pernah `return someObject` langsung dari Controller yang dipanggil `*_Exposed.gs`.
+
+## Pengecualian Terkontrol: Cross-Module Service Call
+
+Modul umumnya tidak boleh saling panggil langsung (lihat prinsip di atas). Satu pengecualian yang disengaja: **transaksi yang secara alami melibatkan 2 entitas** (misal Lead → Client saat status diubah ke Moved) — `LeadService.moveToClient()` memanggil `ClientService.createFromLead()` langsung. Ini diperbolehkan SELAMA yang dipanggil adalah API publik Service module lain (bukan Repository-nya), dan alasannya didokumentasikan di kode. Jangan jadikan ini kebiasaan untuk interaksi yang sebetulnya bisa dipisah lewat kontrak yang lebih jelas.
+
 ## Pola Performa: "Load Once, Filter Local"
 
 `google.script.run` (jembatan client ↔ server GAS) punya overhead tetap yang cukup besar per panggilan (ratusan ms - beberapa detik) karena harus keluar dari browser, masuk ke infrastruktur eksekusi Apps Script, lalu balik lagi — **terlepas seberapa ringan logic-nya**. Kalau setiap ketikan di search box atau setiap ganti halaman memanggil server, aplikasi akan terasa berat walau logic-nya sendiri cepat.

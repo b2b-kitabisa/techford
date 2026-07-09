@@ -15,3 +15,7 @@ function lead_update(inboundId, patch) {
 function lead_sync() {
   return LeadController.sync();
 }
+
+function lead_moveToClient(inboundId, createdBy) {
+  return LeadController.moveToClient(inboundId, createdBy);
+}

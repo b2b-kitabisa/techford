@@ -26,6 +26,11 @@ var LeadRepository = (function (module) {
     CacheHelper.invalidate('lead:all');
   };
 
+  module.insertNew = function (lead) {
+    base.insert(lead);
+    module.invalidateCache();
+  };
+
   /**
    * @returns {boolean} true kalau ada baris yang cocok & terupdate.
    */
