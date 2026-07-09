@@ -24,7 +24,7 @@
                var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
           ?>
             <? if (item.enabled) { ?>
-              <a class="<?= classes ?>" href="?page=<?= item.page ?>"><?= item.label ?></a>
+              <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>"><?= item.label ?></a>
             <? } else { ?>
               <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
             <? } ?>
@@ -34,7 +34,7 @@
 
       <div class="sidebar-footer">
         <div class="nav-item nav-item-disabled">🔔 Notification</div>
-        <a class="nav-item<?= activePage === 'user-management' ? ' nav-item-active' : '' ?>" href="?page=user-management">⚙️ Setting</a>
+        <a class="nav-item<?= activePage === 'user-management' ? ' nav-item-active' : '' ?>" href="<?= webAppUrl ?>?page=user-management">⚙️ Setting</a>
       </div>
     </aside>
 

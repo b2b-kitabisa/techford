@@ -60,6 +60,13 @@ function doGet(e) {
   shell.breadcrumbGroup = findBreadcrumbGroup(page);
   shell.helpText = route.helpText || '';
 
+  // Link navigasi WAJIB pakai URL absolut, bukan relatif ("?page=...").
+  // Apps Script merender halaman di dalam iframe sandbox — href relatif
+  // kadang salah resolve ke alamat internal iframe itu sendiri
+  // (googleusercontent.com/userCodeAppPanel), bukan ke URL Web App yang
+  // benar, sehingga navigasi ke halaman lain gagal/blank.
+  shell.webAppUrl = ScriptApp.getService().getUrl();
+
   return shell.evaluate()
     .setTitle('Techford Platform - ' + route.title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
