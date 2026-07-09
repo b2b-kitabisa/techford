@@ -35,11 +35,61 @@
   <div class="page-buttons" id="pageButtons"></div>
 </div>
 
-<div class="modal-overlay" id="detailModal">
-  <div class="modal-box">
-    <button class="modal-close" onclick="closeDetail()">&times;</button>
-    <h2>Detail Lead</h2>
-    <dl class="detail-grid" id="detailGrid"></dl>
+<div class="drawer-overlay" id="detailDrawer" onclick="if (event.target === this) closeDetail();">
+  <div class="drawer-panel">
+    <div class="drawer-header">
+      <span class="badge" id="drawerStatusBadge"></span>
+      <button class="drawer-close" onclick="closeDetail()">&times;</button>
+    </div>
+
+    <div class="drawer-title-block">
+      <h2 id="drawerEntityName"></h2>
+      <div class="drawer-entity-type" id="drawerEntityType"></div>
+    </div>
+
+    <div class="drawer-contact-row">
+      <div class="drawer-avatar">👤</div>
+      <div class="drawer-contact-info">
+        <div class="drawer-pic-name" id="drawerPicName"></div>
+        <div class="drawer-contact-line" id="drawerPhone"></div>
+        <div class="drawer-contact-line" id="drawerEmail"></div>
+      </div>
+      <div class="drawer-actions">
+        <button class="btn-outline" onclick="toggleEditInfo()">✏️ EDIT INFO</button>
+        <div class="status-dropdown-wrap">
+          <button class="btn-outline" onclick="toggleStatusDropdown()">▾ STATUS</button>
+          <div class="status-dropdown" id="statusDropdown">
+            <div class="status-option status-option-contacted" onclick="selectStatus('Contacted')">🟢 CONTACTED</div>
+            <div class="status-option status-option-other" onclick="selectStatus('Other')">🟡 OTHER</div>
+            <div class="status-option status-option-spam" onclick="selectStatus('Spam')">⚠️ SPAM</div>
+            <div class="status-option status-option-moved" onclick="selectStatus('Moved')">➡️ MOVE CLIENT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-edit-form" id="drawerEditForm">
+      <label>Entity Name<input id="editEntityName"></label>
+      <label>Entity Type<input id="editEntityType"></label>
+      <label>PIC Name<input id="editPicName"></label>
+      <label>Phone<input id="editPhone"></label>
+      <label>Email<input id="editEmail"></label>
+    </div>
+
+    <div class="drawer-section">
+      <h3>Interest Detail</h3>
+      <div class="drawer-field-label">Kebutuhan :</div>
+      <div class="drawer-field-value" id="drawerNeeds"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-field-label">Other Notes :</div>
+      <textarea id="drawerNotes" placeholder="Type your message here."></textarea>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-save" onclick="saveDetail()">💾 SAVE</button>
+    </div>
   </div>
 </div>
 
@@ -53,14 +103,71 @@
   };
   var STATUS_ORDER = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam'];
 
+  // ---- Client-side cache: seluruh data diambil sekali, semua interaksi baca
+  // (search/filter/sort/pagination/detail) beroperasi di array ini, tidak
+  // ada round-trip ke server lagi. Lihat ARCHITECTURE.md - "Load Once, Filter Local".
+  var allLeads = [];
   var currentPage = 1;
-  var searchDebounce = null;
+  var currentDrawerLead = null;
+  var pendingStatus = null;
 
-  function loadStats() {
+  function bootstrap() {
+    document.getElementById('leadTableBody').innerHTML =
+      '<tr class="empty-row"><td colspan="5">Memuat data...</td></tr>';
+
     google.script.run.withSuccessHandler(function (res) {
-      if (!res.ok) return;
-      renderStats(res.data);
-    }).lead_getStats();
+      if (!res.ok) {
+        document.getElementById('leadTableBody').innerHTML =
+          '<tr class="empty-row"><td colspan="5">' + res.error.message + '</td></tr>';
+        return;
+      }
+      allLeads = res.data;
+      currentPage = 1;
+      render();
+    }).lead_getAll();
+  }
+
+  function render() {
+    var filtered = getFilteredSorted();
+    var paged = paginate(filtered);
+    renderStats(computeStats(allLeads));
+    renderTable(paged);
+    renderPagination(paged);
+  }
+
+  function computeStats(leads) {
+    var stats = {};
+    STATUS_ORDER.forEach(function (status) { stats[status] = 0; });
+    leads.forEach(function (lead) {
+      if (stats.hasOwnProperty(lead.Status)) stats[lead.Status]++;
+    });
+    return stats;
+  }
+
+  function getFilteredSorted() {
+    var search = document.getElementById('leadSearch').value.toLowerCase().trim();
+    var status = document.getElementById('leadStatusFilter').value;
+
+    return allLeads.filter(function (lead) {
+      var matchesSearch = !search || String(lead.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
+      var matchesStatus = !status || lead.Status === status;
+      return matchesSearch && matchesStatus;
+    }).sort(function (a, b) {
+      return new Date(b.Timestamp) - new Date(a.Timestamp);
+    });
+  }
+
+  function paginate(list) {
+    var pageSize = Number(document.getElementById('pageSize').value);
+    var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    currentPage = Math.min(Math.max(1, currentPage), totalPages);
+    var start = (currentPage - 1) * pageSize;
+    return {
+      items: list.slice(start, start + pageSize),
+      totalCount: list.length,
+      page: currentPage,
+      totalPages: totalPages
+    };
   }
 
   function renderStats(stats) {
@@ -85,44 +192,23 @@
 
   function onFilterChange() {
     currentPage = 1;
-    clearTimeout(searchDebounce);
-    searchDebounce = setTimeout(loadList, 250);
+    render();
   }
 
   function resetFilter() {
     document.getElementById('leadSearch').value = '';
     document.getElementById('leadStatusFilter').value = '';
     currentPage = 1;
-    loadList();
+    render();
   }
 
-  function loadList() {
-    var params = {
-      search: document.getElementById('leadSearch').value,
-      status: document.getElementById('leadStatusFilter').value,
-      page: currentPage,
-      pageSize: Number(document.getElementById('pageSize').value)
-    };
-
-    google.script.run.withSuccessHandler(function (res) {
-      if (!res.ok) {
-        document.getElementById('leadTableBody').innerHTML =
-          '<tr class="empty-row"><td colspan="5">' + res.error.message + '</td></tr>';
-        return;
-      }
-      renderTable(res.data);
-      renderPagination(res.data);
-      loadStats();
-    }).lead_list(params);
-  }
-
-  function renderTable(result) {
+  function renderTable(paged) {
     var tbody = document.getElementById('leadTableBody');
-    if (!result.items.length) {
+    if (!paged.items.length) {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
       return;
     }
-    tbody.innerHTML = result.items.map(function (lead) {
+    tbody.innerHTML = paged.items.map(function (lead) {
       var meta = STATUS_META[lead.Status] || { badgeClass: '' };
       var needs = lead.Detail_Interest || '-';
       var needsShort = truncateText(needs, 30);
@@ -150,58 +236,126 @@
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   }
 
-  function renderPagination(result) {
-    currentPage = result.page;
-    var buttons = '<button ' + (result.page <= 1 ? 'disabled' : '') +
-      ' onclick="goToPage(' + (result.page - 1) + ')">&lt; Previous</button>';
+  function renderPagination(paged) {
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') +
+      ' onclick="goToPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
 
-    for (var p = 1; p <= result.totalPages; p++) {
-      buttons += '<button class="' + (p === result.page ? 'active' : '') +
+    for (var p = 1; p <= paged.totalPages; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') +
         '" onclick="goToPage(' + p + ')">' + p + '</button>';
     }
 
-    buttons += '<button ' + (result.page >= result.totalPages ? 'disabled' : '') +
-      ' onclick="goToPage(' + (result.page + 1) + ')">Next &gt;</button>';
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') +
+      ' onclick="goToPage(' + (paged.page + 1) + ')">Next &gt;</button>';
 
     document.getElementById('pageButtons').innerHTML = buttons;
   }
 
   function goToPage(page) {
     currentPage = page;
-    loadList();
+    render();
   }
 
+  // ---- Detail drawer: data sudah ada di cache (allLeads), jadi terbuka
+  // instan tanpa panggil server sama sekali.
   function openDetail(inboundId) {
-    google.script.run.withSuccessHandler(function (res) {
-      if (!res.ok) return alert(res.error.message);
-      renderDetail(res.data);
-      document.getElementById('detailModal').classList.add('open');
-    }).lead_getDetail(inboundId);
+    var lead = allLeads.filter(function (l) { return l.Inbound_ID === inboundId; })[0];
+    if (!lead) return;
+    currentDrawerLead = lead;
+    renderDrawer(lead);
+    document.getElementById('detailDrawer').classList.add('open');
+  }
+
+  function renderDrawer(lead) {
+    setStatusBadge(lead.Status);
+    document.getElementById('drawerEntityName').innerText = lead.Entity_Name || '-';
+    document.getElementById('drawerEntityType').innerText = (lead.Entity_Type || '-').toUpperCase();
+    document.getElementById('drawerPicName').innerText = lead.PIC_Name || '-';
+
+    document.getElementById('drawerPhone').innerHTML = lead.Phone
+      ? '<a href="https://wa.me/' + normalizePhone(lead.Phone) + '" target="_blank">' + lead.Phone + '</a>'
+      : '-';
+    document.getElementById('drawerEmail').innerHTML = lead.Email
+      ? '<a href="mailto:' + lead.Email + '">' + lead.Email + '</a>'
+      : '-';
+
+    document.getElementById('drawerNeeds').innerText = lead.Detail_Interest || '-';
+    document.getElementById('drawerNotes').value = lead.Other_Notes || '';
+
+    document.getElementById('editEntityName').value = lead.Entity_Name || '';
+    document.getElementById('editEntityType').value = lead.Entity_Type || '';
+    document.getElementById('editPicName').value = lead.PIC_Name || '';
+    document.getElementById('editPhone').value = lead.Phone || '';
+    document.getElementById('editEmail').value = lead.Email || '';
+
+    document.getElementById('drawerEditForm').classList.remove('open');
+    document.getElementById('statusDropdown').classList.remove('open');
+  }
+
+  function setStatusBadge(status) {
+    var meta = STATUS_META[status] || { badgeClass: '' };
+    pendingStatus = status;
+    var badge = document.getElementById('drawerStatusBadge');
+    badge.className = 'badge ' + meta.badgeClass;
+    badge.innerText = status;
+  }
+
+  function toggleEditInfo() {
+    document.getElementById('drawerEditForm').classList.toggle('open');
+  }
+
+  function toggleStatusDropdown() {
+    document.getElementById('statusDropdown').classList.toggle('open');
+  }
+
+  function selectStatus(status) {
+    setStatusBadge(status);
+    document.getElementById('statusDropdown').classList.remove('open');
+  }
+
+  function normalizePhone(phone) {
+    var digits = String(phone).replace(/[^0-9]/g, '');
+    if (digits.indexOf('0') === 0) digits = '62' + digits.slice(1);
+    return digits;
   }
 
   function closeDetail() {
-    document.getElementById('detailModal').classList.remove('open');
+    document.getElementById('detailDrawer').classList.remove('open');
+    currentDrawerLead = null;
   }
 
-  function renderDetail(lead) {
-    var fields = [
-      ['Entity Name', lead.Entity_Name],
-      ['Entity Type', lead.Entity_Type],
-      ['PIC Name', lead.PIC_Name],
-      ['Email', lead.Email],
-      ['Phone', lead.Phone],
-      ['Needs', lead.Detail_Interest],
-      ['Status', lead.Status],
-      ['UTM Source', lead.UTM_Source],
-      ['UTM Medium', lead.UTM_Medium],
-      ['UTM Campaign', lead.UTM_Campaign],
-      ['Timestamp', lead.Timestamp],
-      ['Last Updated', lead.Last_Updated],
-      ['Notes', lead.Other_Notes]
-    ];
-    document.getElementById('detailGrid').innerHTML = fields.map(function (f) {
-      return '<dt>' + f[0] + '</dt><dd>' + (f[1] || '-') + '</dd>';
-    }).join('');
+  function saveDetail() {
+    if (!currentDrawerLead) return;
+
+    var patch = {
+      Status: pendingStatus,
+      Entity_Name: document.getElementById('editEntityName').value,
+      Entity_Type: document.getElementById('editEntityType').value,
+      PIC_Name: document.getElementById('editPicName').value,
+      Phone: document.getElementById('editPhone').value,
+      Email: document.getElementById('editEmail').value,
+      Other_Notes: document.getElementById('drawerNotes').value
+    };
+
+    var btn = document.querySelector('.btn-save');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+
+    google.script.run.withSuccessHandler(function (res) {
+      btn.disabled = false;
+      btn.innerText = '💾 SAVE';
+
+      if (!res.ok) return alert(res.error.message);
+
+      var idx = -1;
+      for (var i = 0; i < allLeads.length; i++) {
+        if (allLeads[i].Inbound_ID === res.data.Inbound_ID) { idx = i; break; }
+      }
+      if (idx !== -1) allLeads[idx] = res.data;
+
+      closeDetail();
+      render();
+    }).lead_update(currentDrawerLead.Inbound_ID, patch);
   }
 
   function syncNewLeads() {
@@ -209,12 +363,19 @@
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
 
     google.script.run.withSuccessHandler(function (res) {
-      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-      if (!res.ok) return alert(res.error.message);
-      loadList();
+      if (!res.ok) {
+        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+        return alert(res.error.message);
+      }
+      // Sync juga jadi kesempatan menyegarkan cache dari server.
+      google.script.run.withSuccessHandler(function (allRes) {
+        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+        if (!allRes.ok) return alert(allRes.error.message);
+        allLeads = allRes.data;
+        render();
+      }).lead_getAll();
     }).lead_sync();
   }
 
-  loadStats();
-  loadList();
+  bootstrap();
 </script>

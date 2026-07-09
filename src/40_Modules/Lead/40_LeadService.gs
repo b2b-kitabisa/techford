@@ -1,73 +1,46 @@
 /**
  * Module.Lead.LeadService
  *
- * Business logic modul Lead Capturing: statistik per status, pencarian +
- * filter + pagination, detail, dan sinkronisasi leads baru.
+ * Business logic modul Lead Capturing.
+ *
+ * Catatan arsitektur: statistik, pencarian, filter, dan pagination TIDAK
+ * dilakukan di server. Client mengambil seluruh dataset sekali lewat
+ * getAllLeads() lalu mengolahnya sendiri di browser (lihat pola "Load Once,
+ * Filter Local" di ARCHITECTURE.md) — ini yang membuat interaksi baca
+ * (search/filter/pindah halaman) terasa instan karena tidak ada
+ * round-trip ke server tiap ketikan. Server hanya dipanggil untuk
+ * ambil data awal, sinkronisasi manual, dan operasi tulis (update).
  */
 var LeadService = (function (module) {
 
-  var STATUS_LIST = [
-    Config.LEAD_STATUS.NEW,
-    Config.LEAD_STATUS.CONTACTED,
-    Config.LEAD_STATUS.MOVED,
-    Config.LEAD_STATUS.OTHER,
-    Config.LEAD_STATUS.SPAM
-  ];
+  // Field yang boleh diubah lewat updateLead. Whitelist ini mencegah
+  // client menimpa kolom yang seharusnya immutable (Inbound_ID, Timestamp).
+  var EDITABLE_FIELDS = ['Status', 'Entity_Name', 'Entity_Type', 'PIC_Name', 'Email', 'Phone', 'Other_Notes'];
 
-  module.getStats = function () {
-    var leads = LeadRepository.findAll();
-    var stats = {};
-    STATUS_LIST.forEach(function (status) { stats[status] = 0; });
+  module.getAllLeads = function () {
+    return LeadRepository.findAll();
+  };
 
-    leads.forEach(function (lead) {
-      if (stats.hasOwnProperty(lead.Status)) {
-        stats[lead.Status]++;
+  module.updateLead = function (inboundId, patch) {
+    if (Utils.isBlank(inboundId)) {
+      throw new AppError('VALIDATION_ERROR', 'Inbound ID wajib diisi.');
+    }
+
+    var safePatch = {};
+    EDITABLE_FIELDS.forEach(function (field) {
+      if (patch.hasOwnProperty(field)) {
+        safePatch[field] = patch[field];
       }
     });
+    safePatch.Last_Updated = new Date();
 
-    return stats;
-  };
-
-  /**
-   * @param {Object} params - { search, status, page, pageSize }
-   */
-  module.listLeads = function (params) {
-    params = params || {};
-    var page = Math.max(1, params.page || 1);
-    var pageSize = params.pageSize || 100;
-    var search = String(params.search || '').toLowerCase().trim();
-    var status = params.status || '';
-
-    var filtered = LeadRepository.findAll().filter(function (lead) {
-      var matchesSearch = !search || String(lead.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
-      var matchesStatus = !status || lead.Status === status;
-      return matchesSearch && matchesStatus;
-    });
-
-    filtered.sort(function (a, b) {
-      return new Date(b.Timestamp) - new Date(a.Timestamp);
-    });
-
-    var totalCount = filtered.length;
-    var totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-    var safePage = Math.min(page, totalPages);
-    var start = (safePage - 1) * pageSize;
-
-    return {
-      items: filtered.slice(start, start + pageSize),
-      totalCount: totalCount,
-      page: safePage,
-      pageSize: pageSize,
-      totalPages: totalPages
-    };
-  };
-
-  module.getDetail = function (inboundId) {
-    var lead = LeadRepository.findById(inboundId);
-    if (!lead) {
+    var updated = LeadRepository.update(inboundId, safePatch);
+    if (!updated) {
       throw new AppError('LEAD_NOT_FOUND', 'Lead tidak ditemukan.');
     }
-    return lead;
+
+    Log.info('LeadService', 'Lead updated: ' + inboundId);
+    return LeadRepository.findById(inboundId);
   };
 
   /**

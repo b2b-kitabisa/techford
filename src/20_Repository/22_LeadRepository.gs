@@ -26,5 +26,16 @@ var LeadRepository = (function (module) {
     CacheHelper.invalidate('lead:all');
   };
 
+  /**
+   * @returns {boolean} true kalau ada baris yang cocok & terupdate.
+   */
+  module.update = function (inboundId, patch) {
+    var updated = base.updateWhere(function (row) {
+      return row.Inbound_ID === inboundId;
+    }, patch);
+    module.invalidateCache();
+    return updated;
+  };
+
   return module;
 })(LeadRepository || {});

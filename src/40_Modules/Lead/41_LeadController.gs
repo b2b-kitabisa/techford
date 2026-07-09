@@ -6,21 +6,15 @@
  */
 var LeadController = (function (module) {
 
-  module.getStats = function () {
-    return ErrorHandler.handle('LeadController.getStats', function () {
-      return LeadService.getStats();
+  module.getAll = function () {
+    return ErrorHandler.handle('LeadController.getAll', function () {
+      return LeadService.getAllLeads();
     });
   };
 
-  module.list = function (params) {
-    return ErrorHandler.handle('LeadController.list', function () {
-      return LeadService.listLeads(params);
-    });
-  };
-
-  module.getDetail = function (inboundId) {
-    return ErrorHandler.handle('LeadController.getDetail', function () {
-      return LeadService.getDetail(inboundId);
+  module.update = function (inboundId, patch) {
+    return ErrorHandler.handle('LeadController.update', function () {
+      return LeadService.updateLead(inboundId, patch);
     });
   };
 

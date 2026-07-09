@@ -65,6 +65,20 @@ GAS menggabungkan semua file server-side ke **satu global scope** saat eksekusi.
 | Quota baca/tulis Spreadsheet | `CacheHelper` untuk data referensi yang jarang berubah |
 | Tidak ada module system native | Namespace/IIFE pattern + `*_Exposed.gs` sebagai satu-satunya titik ekspos ke client |
 
+## Pola Performa: "Load Once, Filter Local"
+
+`google.script.run` (jembatan client ↔ server GAS) punya overhead tetap yang cukup besar per panggilan (ratusan ms - beberapa detik) karena harus keluar dari browser, masuk ke infrastruktur eksekusi Apps Script, lalu balik lagi — **terlepas seberapa ringan logic-nya**. Kalau setiap ketikan di search box atau setiap ganti halaman memanggil server, aplikasi akan terasa berat walau logic-nya sendiri cepat.
+
+Solusinya, dipakai di modul Lead (`LeadCapturingContent.html`):
+1. **Ambil seluruh dataset SEKALI** saat modul dibuka (`lead_getAll()`), simpan di variabel JS di browser (`allLeads`).
+2. **Search, filter, sort, pagination, dan buka detail — semuanya beroperasi di array tersebut, murni JavaScript, tanpa panggil server lagi.** Karena itu terasa instan.
+3. Server hanya dipanggil untuk: load awal, tombol **Sync** (refresh cache dari sumber terbaru), dan **operasi tulis** (`lead_update`) — yang memang wajar lebih lambat karena harus benar-benar menyentuh Spreadsheet.
+4. Setelah tulis berhasil, patch objek yang berubah langsung di `allLeads` (bukan fetch ulang semua data) supaya UI tetap instan.
+
+**Trade-off yang harus disadari:** data di browser bisa "basi" kalau ada perubahan dari sumber lain di antara load awal dan klik Sync berikutnya — ini yang membuat tombol Sync itu penting secara fungsional, bukan sekadar dekorasi. Pola ini juga hanya masuk akal untuk dataset yang wajar disimpan di memori browser (ratusan-ribuan baris); kalau nanti ada modul dengan puluhan ribu+ baris, pertimbangkan pagination di server untuk modul tersebut secara khusus.
+
+**Terapkan pola yang sama untuk modul baru** yang punya UI list + search/filter, kecuali datanya memang sangat besar atau perlu selalu real-time per detik.
+
 ## Kapan Harus Bermigrasi ke Arsitektur Lain
 
 Struktur ini (Single Project Modular) cocok sampai platform punya sekitar 10-15 modul aktif dengan trafik internal (puluhan-ratusan user). Kalau nanti:
