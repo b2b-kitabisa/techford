@@ -179,6 +179,7 @@
       .withSuccessHandler(function (res) {
         if (res && res.ok) allPics = res.data;
         renderClients();
+        if (currentClientDrawerId) renderPicList(currentClientDrawerId);
       })
       .withFailureHandler(function () { renderClients(); })
       .client_getAllPics();
@@ -339,13 +340,15 @@
     };
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
 
+    // google.script.run kadang mengirim res=null walau operasi di server
+    // berhasil — hanya anggap gagal kalau server EKSPLISIT bilang
+    // { ok: false }, selebihnya refresh lewat pemanggilan baca terpisah.
     google.script.run
       .withSuccessHandler(function (res) {
-        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menyimpan.');
-        allClients = res.data;
+        if (res && res.ok === false) return alert(res.error.message);
         closeAddClient();
-        renderClients();
         showClientSuccess('Client baru berhasil ditambahkan.');
+        fetchClients();
       })
       .withFailureHandler(function (err) {
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
@@ -432,13 +435,12 @@
 
     google.script.run
       .withSuccessHandler(function (res) {
-        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menambah PIC.');
-        allPics = res.data;
-        renderPicList(currentClientDrawerId);
+        if (res && res.ok === false) return alert(res.error.message);
         document.getElementById('newPicName').value = '';
         document.getElementById('newPicTitle').value = '';
         document.getElementById('newPicEmail').value = '';
         document.getElementById('newPicPhone').value = '';
+        fetchPics();
       })
       .withFailureHandler(function (err) {
         alert('Gagal menambah PIC: ' + (err && err.message ? err.message : err));

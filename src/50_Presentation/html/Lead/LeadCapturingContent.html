@@ -697,14 +697,19 @@
     var btn = document.querySelector('.btn-sync');
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
 
-    runServer('lead_sync', [], function (res) {
-      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-      if (!res.ok) return alert(res.error.message);
-      allLeads = res.data;
-      render();
-    }, function (err) {
-      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-      alert('Gagal sync: ' + (err && err.message ? err.message : err));
-    });
+    // google.script.run kadang mengirim res=null walau sync di server
+    // berhasil — hanya anggap gagal kalau server EKSPLISIT bilang
+    // { ok: false }, selebihnya refresh lewat pemanggilan baca terpisah.
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchLeads();
+      })
+      .withFailureHandler(function (err) {
+        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+        alert('Gagal sync: ' + (err && err.message ? err.message : err));
+      })
+      .lead_sync();
   }
 </script>

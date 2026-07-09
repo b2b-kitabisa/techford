@@ -65,11 +65,18 @@ GAS menggabungkan semua file server-side ke **satu global scope** saat eksekusi.
 | Quota baca/tulis Spreadsheet | `CacheHelper` untuk data referensi yang jarang berubah |
 | Tidak ada module system native | Namespace/IIFE pattern + `*_Exposed.gs` sebagai satu-satunya titik ekspos ke client |
 
-## Aturan Wajib: Endpoint RPC Selalu Kembalikan Array, Jangan Objek Tunggal
+## Aturan Wajib: Jangan Percaya Isi Respons `google.script.run` untuk Operasi Tulis
 
-Ditemukan lewat debugging panjang (lihat histori Lead Capturing): `google.script.run` **berkali-kali gagal** mengirim balik respons yang berbentuk **objek tunggal** ke client — `withSuccessHandler` menerima `null` walau operasi di server (termasuk tulis ke Spreadsheet) selalu berhasil. Respons berbentuk **array** (bahkan array berisi 1 elemen) **selalu berhasil sampai**.
+Ditemukan lewat debugging panjang (lihat histori Lead Capturing & User Management): `google.script.run` **berkali-kali mengirim `res = null`** ke `withSuccessHandler` walau operasi di server (termasuk tulis ke Spreadsheet) **selalu berhasil**. Ini terjadi baik untuk respons berbentuk objek tunggal MAUPUN array — jadi bentuk data BUKAN penyebabnya (dugaan awal soal "array vs objek tunggal" sudah terbukti salah, jangan diulang).
 
-**Aturan**: setiap fungsi `*_Exposed.gs` yang perlu mengembalikan data ke client HARUS mengembalikan array, walau cuma satu item (`[item]`, atau lebih baik lagi kembalikan seluruh dataset terkait — konsisten dengan pola "Load Once, Filter Local" di bawah). Jangan pernah `return someObject` langsung dari Controller yang dipanggil `*_Exposed.gs`.
+**Aturan untuk setiap operasi TULIS** (create/update/delete) yang dipanggil dari client:
+1. **Jangan** anggap `!res` atau `!res.ok` sebagai kegagalan. Hanya tampilkan error kalau server **eksplisit** mengembalikan `{ ok: false, error: {...} }`.
+2. Kalau `res` kosong/null, **anggap operasinya berhasil** (karena terbukti berkali-kali begitu) dan **jangan** bergantung pada isi `res.data` untuk update tampilan. Dua cara yang sudah dipakai:
+   - **Optimistic update**: bangun sendiri objek hasil dari data yang baru saja dikirim (client sudah tahu apa yang diketik), tempel ke cache lokal. Cocok untuk *edit* (lihat `LeadCapturingContent.confirmSaveDetail`).
+   - **Refetch terpisah**: panggil ulang endpoint BACA (`xxx_getAll`) secara independen setelah `withSuccessHandler` terpanggil. Cocok untuk *create* di mana ID baru digenerate server (lihat `UserManagementContent.submitAddAdmin`, `ClientMonitoringContent.submitAddClient`).
+3. `withFailureHandler` terbukti selalu berfungsi benar untuk kegagalan sungguhan (exception tak tertangani, dsb) — tetap pakai itu untuk menampilkan error asli.
+
+Endpoint tetap disarankan mengembalikan dataset penuh (array) supaya konsisten dengan pola "Load Once, Filter Local" di bawah — tapi ini soal desain API yang bersih, BUKAN solusi untuk masalah `res=null` di atas.
 
 ## Pengecualian Terkontrol: Cross-Module Service Call
 

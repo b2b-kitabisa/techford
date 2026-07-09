@@ -126,12 +126,17 @@
       return;
     }
 
+    // google.script.run terbukti kadang mengirim res=null ke browser walau
+    // operasi di server berhasil (independen dari bentuk respons array/
+    // objek). Karena itu kita HANYA anggap gagal kalau server SECARA
+    // EKSPLISIT bilang { ok: false } — kalau res kosong/null, anggap
+    // berhasil dan sinkronkan tampilan lewat pemanggilan baca terpisah
+    // (fetchAdmins), bukan bergantung pada isi respons tulis ini.
     google.script.run
       .withSuccessHandler(function (res) {
-        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal menambah admin.');
-        allAdmins = res.data;
+        if (res && res.ok === false) return alert(res.error.message);
         closeAddAdmin();
-        renderAdmins();
+        fetchAdmins();
       })
       .withFailureHandler(function (err) {
         alert('Gagal menambah admin: ' + (err && err.message ? err.message : err));
@@ -145,9 +150,8 @@
 
     google.script.run
       .withSuccessHandler(function (res) {
-        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal mengubah status.');
-        allAdmins = res.data;
-        renderAdmins();
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchAdmins();
       })
       .withFailureHandler(function (err) {
         alert('Gagal mengubah status: ' + (err && err.message ? err.message : err));
@@ -172,10 +176,9 @@
 
     google.script.run
       .withSuccessHandler(function (res) {
-        if (!res || !res.ok) return alert(res && res.error ? res.error.message : 'Gagal reset password.');
-        allAdmins = res.data;
+        if (res && res.ok === false) return alert(res.error.message);
         closeResetPassword();
-        renderAdmins();
+        fetchAdmins();
       })
       .withFailureHandler(function (err) {
         alert('Gagal reset password: ' + (err && err.message ? err.message : err));
