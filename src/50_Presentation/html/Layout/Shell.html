@@ -46,6 +46,12 @@
         </div>
         <div class="topbar-right">
           <div class="topbar-actions"><?!= headerActions ?></div>
+          <? if (helpText) { ?>
+            <div class="help-tooltip-wrap">
+              <button class="icon-btn">?</button>
+              <div class="help-tooltip"><?!= helpText ?></div>
+            </div>
+          <? } ?>
           <button class="icon-btn" title="Notifikasi">🔔</button>
           <div class="avatar-circle"><?= userInitial ?></div>
         </div>

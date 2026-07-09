@@ -1,13 +1,5 @@
 <div id="leadStats" class="stat-cards"></div>
 
-<div class="tip-box">
-  <div class="tip-icon">💡</div>
-  <div class="tip-text">
-    <strong>Info Alur:</strong> Lead baru masuk sebagai <strong>New Leads</strong>. Setelah dihubungi, ubah ke <strong>Contacted</strong>.
-    Kalau sudah siap kerja sama, gunakan status <strong>Moved</strong> agar tercatat sebagai klien. Tandai <strong>Spam</strong> untuk lead yang tidak relevan.
-  </div>
-</div>
-
 <div class="filter-bar">
   <input id="leadSearch" placeholder="Search Entity Name...." oninput="onFilterChange()">
 
@@ -472,6 +464,7 @@
     currentDrawerLead = lead;
     renderDrawer(lead);
     document.getElementById('detailDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
   }
 
   function renderDrawer(lead) {
@@ -536,6 +529,7 @@
 
   function closeDetail() {
     document.getElementById('detailDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
     currentDrawerLead = null;
   }
 
