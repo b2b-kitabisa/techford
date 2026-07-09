@@ -180,6 +180,32 @@
     return String(a) === String(b);
   }
 
+  /**
+   * Pembungkus google.script.run yang tahan terhadap glitch sandbox Apps
+   * Script: kadang jembatan RPC memanggil success handler dengan `res`
+   * bernilai null (bukan objek {ok,...} yang kita harapkan) — kalau tidak
+   * dijaga, itu langsung crash dan membatalkan sisa logic (termasuk tutup
+   * drawer/tampilkan notifikasi sukses). Di sini kita retry sekali secara
+   * otomatis kalau itu terjadi, baru anggap gagal kalau retry-nya juga null.
+   */
+  function runServer(functionName, args, onSuccess, onError, retriesLeft) {
+    if (retriesLeft === undefined) retriesLeft = 1;
+    var runner = google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res) {
+          if (retriesLeft > 0) {
+            runServer(functionName, args, onSuccess, onError, retriesLeft - 1);
+          } else {
+            onError({ message: 'Tidak ada respons dari server, silakan coba lagi.' });
+          }
+          return;
+        }
+        onSuccess(res);
+      })
+      .withFailureHandler(onError);
+    runner[functionName].apply(runner, args || []);
+  }
+
   function showSuccessModal(message) {
     document.getElementById('successMessage').innerText = message;
     document.getElementById('successModal').classList.add('open');
@@ -207,21 +233,18 @@
   }
 
   function fetchLeads() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res.ok) {
-          showTableError(res.error.message);
-          return;
-        }
-        bootstrapRetried = true;
-        allLeads = res.data;
-        currentPage = 1;
-        render();
-      })
-      .withFailureHandler(function (err) {
-        showTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .lead_getAll();
+    runServer('lead_getAll', [], function (res) {
+      if (!res.ok) {
+        showTableError(res.error.message);
+        return;
+      }
+      bootstrapRetried = true;
+      allLeads = res.data;
+      currentPage = 1;
+      render();
+    }, function (err) {
+      showTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+    });
   }
 
   function showTableError(message) {
@@ -561,54 +584,48 @@
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        btn.disabled = false;
-        btn.innerText = '💾 SAVE';
+    runServer('lead_update', [inboundId, patch], function (res) {
+      btn.disabled = false;
+      btn.innerText = '💾 SAVE';
 
-        if (!res.ok) return alert(res.error.message);
+      if (!res.ok) return alert(res.error.message);
 
-        var idx = -1;
-        for (var i = 0; i < allLeads.length; i++) {
-          if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
-        }
-        if (idx !== -1) allLeads[idx] = res.data;
-        else allLeads.push(res.data);
+      var idx = -1;
+      for (var i = 0; i < allLeads.length; i++) {
+        if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
+      }
+      if (idx !== -1) allLeads[idx] = res.data;
+      else allLeads.push(res.data);
 
-        closeDetail();
-        render();
-        showSuccessModal('Data berhasil disimpan.');
+      closeDetail();
+      render();
+      showSuccessModal('Data berhasil disimpan.');
 
-        // Jaring pengaman: tarik ulang data dari server sesaat setelah
-        // save, supaya tampilan pasti sinkron dengan sheet walau ada
-        // state yang tidak terduga di sisi client.
-        setTimeout(fetchLeads, 700);
-      })
-      .withFailureHandler(function (err) {
-        btn.disabled = false;
-        btn.innerText = '💾 SAVE';
-        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
-      })
-      .lead_update(inboundId, patch);
+      // Jaring pengaman: tarik ulang data dari server sesaat setelah
+      // save, supaya tampilan pasti sinkron dengan sheet walau ada
+      // state yang tidak terduga di sisi client.
+      setTimeout(fetchLeads, 700);
+    }, function (err) {
+      btn.disabled = false;
+      btn.innerText = '💾 SAVE';
+      alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+    });
   }
 
   function syncNewLeads() {
     var btn = document.querySelector('.btn-sync');
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res.ok) {
-          if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-          return alert(res.error.message);
-        }
-        fetchLeads();
+    runServer('lead_sync', [], function (res) {
+      if (!res.ok) {
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-      })
-      .withFailureHandler(function (err) {
-        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-        alert('Gagal sync: ' + (err && err.message ? err.message : err));
-      })
-      .lead_sync();
+        return alert(res.error.message);
+      }
+      fetchLeads();
+      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+    }, function (err) {
+      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+      alert('Gagal sync: ' + (err && err.message ? err.message : err));
+    });
   }
 </script>

@@ -22,7 +22,10 @@
     border-right: 1px solid #e0e0e0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    transition: width 0.2s ease, opacity 0.15s ease;
   }
+  .app-shell.sidebar-collapsed .sidebar { width: 0; opacity: 0; border-right: none; }
   .sidebar-brand { padding: 20px 16px; border-bottom: 1px solid #e0e0e0; }
   .brand-title { font-size: 22px; font-weight: bold; }
   .brand-subtitle { font-size: 12px; color: #5f6368; }
@@ -57,7 +60,8 @@
     background: #ffffff;
     border-bottom: 1px solid #e0e0e0;
   }
-  .breadcrumb { font-size: 20px; }
+  .topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .breadcrumb { font-size: 20px; white-space: nowrap; }
   .breadcrumb-muted { color: #9aa0a6; font-weight: normal; }
   .breadcrumb-sep { color: #c4c7c5; margin: 0 8px; }
   .breadcrumb-current { font-weight: bold; }

@@ -40,9 +40,12 @@
 
     <div class="main">
       <header class="topbar">
-        <div class="breadcrumb">
-          <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
-          <span class="breadcrumb-current"><?= pageTitle ?></span>
+        <div class="topbar-left">
+          <button class="icon-btn" onclick="toggleSidebar()" title="Tampilkan/sembunyikan menu">☰</button>
+          <div class="breadcrumb">
+            <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
+            <span class="breadcrumb-current"><?= pageTitle ?></span>
+          </div>
         </div>
         <div class="topbar-right">
           <div class="topbar-actions"><?!= headerActions ?></div>
@@ -59,5 +62,11 @@
       <main class="content-area"><?!= content ?></main>
     </div>
   </div>
+
+  <script>
+    function toggleSidebar() {
+      document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+    }
+  </script>
 </body>
 </html>
