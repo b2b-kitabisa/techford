@@ -18,7 +18,18 @@ var Config = (function (module) {
   // cukup ubah di sini, tidak perlu grep semua modul.
   module.SHEETS = {
     EMPLOYEE: 'Employee',
+    LEAD: 'Lead',
     AUDIT_LOG: 'AuditLog'
+  };
+
+  // Nilai kolom Status pada sheet Lead. Dipusatkan di sini supaya Service/UI
+  // tidak ada yang hardcode string status secara terpisah-pisah.
+  module.LEAD_STATUS = {
+    NEW: 'New Leads',
+    CONTACTED: 'Contacted',
+    MOVED: 'Moved',
+    OTHER: 'Other',
+    SPAM: 'Spam'
   };
 
   module.MAIL = {

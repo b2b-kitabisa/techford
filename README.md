@@ -11,5 +11,6 @@ Platform internal perusahaan berbasis Google Apps Script & Google Workspace (Spr
 | Modul | Deskripsi | Status |
 |---|---|---|
 | Employee | Contoh referensi struktur modul (Repository, Service, Controller, Exposed, UI) | Referensi |
+| Lead Capturing | Sales Module — stat per status, search & filter, pagination, detail lead | Aktif |
 
-Gunakan modul `Employee` sebagai template saat menambah modul bisnis baru.
+Gunakan modul `Employee` sebagai template saat menambah modul bisnis baru. Sidebar navigasi global (termasuk modul yang belum aktif) diatur di `src/00_Core/04_NavigationConfig.gs`.

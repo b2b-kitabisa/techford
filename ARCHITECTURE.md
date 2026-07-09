@@ -24,23 +24,29 @@ src/
 │       ├── <Modul>Controller.gs   Jembatan ke Presentation, dibungkus ErrorHandler
 │       └── <Modul>Exposed.gs      Fungsi global untuk google.script.run (client HTML)
 └── 50_Presentation/
-    ├── 50_WebAppRouter.gs   doGet/doPost, routing "page" ke template HTML
+    ├── 50_WebAppRouter.gs   doGet/doPost, ROUTES: page -> {content, title, headerActions}
     ├── 51_Menu.gs           Custom menu di Spreadsheet (opsional)
-    └── html/                Template HTML per modul
+    └── html/
+        ├── Style.html       CSS bersama (Shell, tabel, stat card, modal, dst)
+        ├── Layout/Shell.html  Layout global: sidebar (dari NavigationConfig) + topbar + slot konten
+        └── <Modul>/<Modul>Content.html  Konten per halaman (fragment, tanpa <html>/<head>)
 ```
+
+Setiap halaman dirender dengan cara: `ROUTES[page].content` di-evaluate jadi HTML string, lalu disisipkan ke `Layout/Shell.html` sebagai variabel `content`. Ini memastikan sidebar & topbar konsisten di semua modul tanpa duplikasi markup, dan menu sidebar cukup diatur di satu file (`00_Core/04_NavigationConfig.gs`), bukan di-hardcode di tiap halaman.
 
 Kenapa urutan angka di depan nama file (`00_`, `10_`, `20_`, ...)? Google Apps Script menampilkan daftar file **berurutan alfabetis** di editor — prefix angka memastikan urutan tampil sesuai layer arsitektur (Core paling atas, Presentation paling bawah), walaupun urutan ini **tidak memengaruhi eksekusi** (semua file GAS digabung ke satu scope global saat runtime).
 
 ## Cara Menambah Modul Baru
 
-Ambil `40_Modules/Employee/` sebagai template:
+Ambil `40_Modules/Lead/` sebagai template (contoh dengan search, filter, pagination, modal detail):
 
 1. Buat folder `40_Modules/<NamaModul>/`.
 2. Buat `<Modul>Service.gs` — logic bisnis, panggil Repository & Service Layer yang sudah ada. **Jangan** panggil `SpreadsheetApp` langsung di sini.
-3. Kalau butuh data baru, buat Repository baru di `20_Repository/`, meng-extend `BaseRepository` (lihat `EmployeeRepository.gs`).
+3. Kalau butuh data baru, buat Repository baru di `20_Repository/`, meng-extend `BaseRepository` (lihat `LeadRepository.gs`).
 4. Buat `<Modul>Controller.gs` — dibungkus `ErrorHandler.handle(...)`.
 5. Buat `<Modul>Exposed.gs` — fungsi global prefix nama modul (misal `payroll_getSummary`), hanya delegasi 1 baris ke Controller. Ini wajib karena `google.script.run` tidak bisa memanggil method di dalam namespace.
-6. Tambah halaman HTML di `50_Presentation/html/<Modul>/`, daftarkan di `pageMap` pada `50_WebAppRouter.gs`.
+6. Buat file konten HTML (fragment, tanpa `<html>/<head>`) di `50_Presentation/html/<Modul>/<Modul>Content.html`, daftarkan di `ROUTES` pada `50_WebAppRouter.gs`.
+7. Aktifkan menu-nya: ubah `enabled: false` -> `true` (atau tambah entri baru) di `00_Core/04_NavigationConfig.gs`, dengan `page` yang sama persis dengan key di `ROUTES`.
 
 Modul lama tidak perlu disentuh sama sekali.
 

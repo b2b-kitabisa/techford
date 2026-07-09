@@ -6,15 +6,17 @@ Anda memilih develop langsung di Apps Script Editor (tanpa clasp/build tool). Re
 
 1. Buat Google Spreadsheet baru untuk database platform ini.
 2. Di Spreadsheet tersebut, buka **Extensions > Apps Script**. Ini akan jadi *container-bound script* project kita.
-3. Buat sheet `Employee` dengan header baris pertama: `Id | Name | Email | Status | CreatedAt`.
+3. Buat sheet berikut di Spreadsheet tersebut:
+   - `Employee` dengan header baris pertama: `Id | Name | Email | Status | CreatedAt`.
+   - `Lead` dengan header baris pertama: `Inbound_ID | Timestamp | Status | Entity_Name | Entity_Type | PIC_Name | Email | Phone | Detail_Interest | UTM_Source | UTM_Medium | UTM_Campaign | Last_Updated | Other_Notes`. Kolom `Status` harus berisi salah satu dari: `New Leads`, `Contacted`, `Moved`, `Other`, `Spam` (lihat `Config.LEAD_STATUS`).
 4. Di Apps Script Editor:
    - Hapus file `Code.gs` default.
-   - Buat file baru untuk setiap file di folder `src/` pada repo ini, **gunakan nama yang sama** (termasuk prefix angka) agar mudah dicocokkan saat sinkronisasi manual. GAS mendukung nama file berisi `/` sebagai pseudo-folder di daftar file (misal `Employee/EmployeeApp`).
+   - Buat file baru untuk setiap file di folder `src/` pada repo ini, **gunakan nama yang sama** (termasuk prefix angka) agar mudah dicocokkan saat sinkronisasi manual. GAS mendukung nama file berisi `/` sebagai pseudo-folder di daftar file (misal `Lead/LeadCapturingContent`).
    - Untuk file `.gs`, pilih tipe "Script". Untuk file di folder `html/`, pilih tipe "HTML".
    - Salin isi setiap file dari `src/` ke file yang sesuai di editor.
 5. Buka `00_Core/00_Config.gs` di editor, isi `SPREADSHEET_ID` dengan ID Spreadsheet Anda (bagian di URL antara `/d/` dan `/edit`).
 6. Deploy sebagai Web App: **Deploy > New deployment > Web app**. Set "Execute as: User accessing the web app" atau "Me" sesuai kebutuhan izin akses, dan "Who has access" sesuai domain organisasi Anda.
-7. Coba akses URL Web App yang muncul — Anda akan melihat halaman Home, lalu bisa masuk ke modul Employee.
+7. Coba akses URL Web App yang muncul — Anda akan melihat halaman Lead Capturing (halaman default).
 
 ## Alur Kerja Selanjutnya
 

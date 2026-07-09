@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('html/Style'); ?>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-title">Tech Ford</div>
+        <div class="brand-subtitle">Kitabisa B2B OS 2026</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <? for (var g = 0; g < menu.length; g++) { ?>
+          <div class="nav-group-label"><?= menu[g].group ?></div>
+          <? for (var i = 0; i < menu[g].items.length; i++) {
+               var item = menu[g].items[i];
+               var isActive = item.page === activePage;
+               var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
+          ?>
+            <? if (item.enabled) { ?>
+              <a class="<?= classes ?>" href="?page=<?= item.page ?>"><?= item.label ?></a>
+            <? } else { ?>
+              <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
+            <? } ?>
+          <? } ?>
+        <? } ?>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="nav-item nav-item-disabled">🔔 Notification</div>
+        <div class="nav-item nav-item-disabled">⚙️ Setting</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h1 class="page-title"><?= pageTitle ?></h1>
+        <div class="topbar-actions"><?!= headerActions ?></div>
+      </header>
+      <main class="content-area"><?!= content ?></main>
+    </div>
+  </div>
+</body>
+</html>

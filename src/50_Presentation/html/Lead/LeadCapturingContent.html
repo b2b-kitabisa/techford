@@ -1,0 +1,204 @@
+<div id="leadStats" class="stat-cards"></div>
+
+<div class="filter-bar">
+  <input id="leadSearch" placeholder="Search Entity Name...." oninput="onFilterChange()">
+  <select id="leadStatusFilter" onchange="onFilterChange()">
+    <option value="">All Status</option>
+    <option value="New Leads">New Leads</option>
+    <option value="Contacted">Contacted</option>
+    <option value="Moved">Moved</option>
+    <option value="Other">Other</option>
+    <option value="Spam">Spam</option>
+  </select>
+  <button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr><th>Status</th><th>Entity Name</th><th>Needs</th><th>Action</th></tr>
+  </thead>
+  <tbody id="leadTableBody">
+    <tr class="empty-row"><td colspan="4">Memuat data...</td></tr>
+  </tbody>
+</table>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="pageSize" onchange="onFilterChange()">
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="pageButtons"></div>
+</div>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeDetail()">&times;</button>
+    <h2>Detail Lead</h2>
+    <dl class="detail-grid" id="detailGrid"></dl>
+  </div>
+</div>
+
+<script>
+  var STATUS_META = {
+    'New Leads': { cardClass: 'stat-new', badgeClass: 'badge-new', desc: 'Client Inbound Leads' },
+    'Contacted': { cardClass: 'stat-contacted', badgeClass: 'badge-contacted', desc: 'Client has been contacted' },
+    'Moved': { cardClass: 'stat-moved', badgeClass: 'badge-moved', desc: 'Client has been Moved to Client Monitoring' },
+    'Other': { cardClass: 'stat-other', badgeClass: 'badge-other', desc: 'Other relevant potential clients' },
+    'Spam': { cardClass: 'stat-spam', badgeClass: 'badge-spam', desc: 'Spamming Leads' }
+  };
+  var STATUS_ORDER = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam'];
+
+  var currentPage = 1;
+  var searchDebounce = null;
+
+  function loadStats() {
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res.ok) return;
+      renderStats(res.data);
+    }).lead_getStats();
+  }
+
+  function renderStats(stats) {
+    var activeStatus = document.getElementById('leadStatusFilter').value;
+    var html = STATUS_ORDER.map(function (status) {
+      var meta = STATUS_META[status];
+      var isActive = activeStatus === status ? ' active' : '';
+      return '<div class="stat-card clickable ' + meta.cardClass + isActive + '" onclick="filterByStatus(\'' + status + '\')">' +
+        '<div class="stat-label">' + status + '</div>' +
+        '<div class="stat-desc">' + meta.desc + '</div>' +
+        '<div class="stat-value">' + (stats[status] || 0) + '</div>' +
+        '</div>';
+    }).join('');
+    document.getElementById('leadStats').innerHTML = html;
+  }
+
+  function filterByStatus(status) {
+    var current = document.getElementById('leadStatusFilter').value;
+    document.getElementById('leadStatusFilter').value = current === status ? '' : status;
+    onFilterChange();
+  }
+
+  function onFilterChange() {
+    currentPage = 1;
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(loadList, 250);
+  }
+
+  function resetFilter() {
+    document.getElementById('leadSearch').value = '';
+    document.getElementById('leadStatusFilter').value = '';
+    currentPage = 1;
+    loadList();
+  }
+
+  function loadList() {
+    var params = {
+      search: document.getElementById('leadSearch').value,
+      status: document.getElementById('leadStatusFilter').value,
+      page: currentPage,
+      pageSize: Number(document.getElementById('pageSize').value)
+    };
+
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res.ok) {
+        document.getElementById('leadTableBody').innerHTML =
+          '<tr class="empty-row"><td colspan="4">' + res.error.message + '</td></tr>';
+        return;
+      }
+      renderTable(res.data);
+      renderPagination(res.data);
+      loadStats();
+    }).lead_list(params);
+  }
+
+  function renderTable(result) {
+    var tbody = document.getElementById('leadTableBody');
+    if (!result.items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Tidak ada data.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = result.items.map(function (lead) {
+      var meta = STATUS_META[lead.Status] || { badgeClass: '' };
+      return '<tr>' +
+        '<td><span class="badge ' + meta.badgeClass + '">' + lead.Status + '</span></td>' +
+        '<td><div class="entity-name">' + lead.Entity_Name + '</div>' +
+        '<div class="entity-pic">👤 ' + (lead.PIC_Name || '-') + '</div></td>' +
+        '<td>' + (lead.Detail_Interest || '-') + '</td>' +
+        '<td><button class="btn-detail" onclick="openDetail(\'' + lead.Inbound_ID + '\')">◉ DETAIL</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderPagination(result) {
+    currentPage = result.page;
+    var buttons = '<button ' + (result.page <= 1 ? 'disabled' : '') +
+      ' onclick="goToPage(' + (result.page - 1) + ')">&lt; Previous</button>';
+
+    for (var p = 1; p <= result.totalPages; p++) {
+      buttons += '<button class="' + (p === result.page ? 'active' : '') +
+        '" onclick="goToPage(' + p + ')">' + p + '</button>';
+    }
+
+    buttons += '<button ' + (result.page >= result.totalPages ? 'disabled' : '') +
+      ' onclick="goToPage(' + (result.page + 1) + ')">Next &gt;</button>';
+
+    document.getElementById('pageButtons').innerHTML = buttons;
+  }
+
+  function goToPage(page) {
+    currentPage = page;
+    loadList();
+  }
+
+  function openDetail(inboundId) {
+    google.script.run.withSuccessHandler(function (res) {
+      if (!res.ok) return alert(res.error.message);
+      renderDetail(res.data);
+      document.getElementById('detailModal').classList.add('open');
+    }).lead_getDetail(inboundId);
+  }
+
+  function closeDetail() {
+    document.getElementById('detailModal').classList.remove('open');
+  }
+
+  function renderDetail(lead) {
+    var fields = [
+      ['Entity Name', lead.Entity_Name],
+      ['Entity Type', lead.Entity_Type],
+      ['PIC Name', lead.PIC_Name],
+      ['Email', lead.Email],
+      ['Phone', lead.Phone],
+      ['Needs', lead.Detail_Interest],
+      ['Status', lead.Status],
+      ['UTM Source', lead.UTM_Source],
+      ['UTM Medium', lead.UTM_Medium],
+      ['UTM Campaign', lead.UTM_Campaign],
+      ['Timestamp', lead.Timestamp],
+      ['Last Updated', lead.Last_Updated],
+      ['Notes', lead.Other_Notes]
+    ];
+    document.getElementById('detailGrid').innerHTML = fields.map(function (f) {
+      return '<dt>' + f[0] + '</dt><dd>' + (f[1] || '-') + '</dd>';
+    }).join('');
+  }
+
+  function syncNewLeads() {
+    var btn = document.querySelector('.btn-sync');
+    if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
+
+    google.script.run.withSuccessHandler(function (res) {
+      if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+      if (!res.ok) return alert(res.error.message);
+      loadList();
+    }).lead_sync();
+  }
+
+  loadStats();
+  loadList();
+</script>
