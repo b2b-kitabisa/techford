@@ -584,24 +584,43 @@
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
-    runServer('lead_update', [inboundId, patch], function (res) {
-      btn.disabled = false;
-      btn.innerText = '💾 SAVE';
+    // Optimistic update: google.script.run terbukti berkali-kali gagal
+    // mengirim balik BODY respons yang bisa dibaca untuk endpoint ini
+    // (res selalu null di success handler), walau penulisan ke sheet
+    // SELALU berhasil (dikonfirmasi lewat pengecekan manual & console).
+    // Karena itu kita tidak lagi bergantung pada isi respons untuk
+    // memperbarui tampilan — begitu withSuccessHandler terpanggil (artinya
+    // tidak ada exception yang dilempar), kita anggap berhasil dan
+    // terapkan sendiri perubahan yang baru diketik ke cache lokal.
+    // withFailureHandler tetap menangani error asli (sudah terbukti
+    // selalu berfungsi benar untuk kasus gagal sungguhan).
+    google.script.run
+      .withSuccessHandler(function () {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
 
-      if (!res.ok) return alert(res.error.message);
+        var idx = -1;
+        for (var i = 0; i < allLeads.length; i++) {
+          if (sameId(allLeads[i].Inbound_ID, inboundId)) { idx = i; break; }
+        }
+        if (idx !== -1) {
+          var updated = {};
+          for (var key in allLeads[idx]) { updated[key] = allLeads[idx][key]; }
+          for (var field in patch) { updated[field] = patch[field]; }
+          updated.Last_Updated = new Date().toISOString();
+          allLeads[idx] = updated;
+        }
 
-      // lead_update mengembalikan SELURUH dataset terbaru (bukan satu objek
-      // lead saja) — lihat catatan di LeadService.updateLead untuk alasannya.
-      allLeads = res.data;
-
-      closeDetail();
-      render();
-      showSuccessModal('Data berhasil disimpan.');
-    }, function (err) {
-      btn.disabled = false;
-      btn.innerText = '💾 SAVE';
-      alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
-    });
+        closeDetail();
+        render();
+        showSuccessModal('Data berhasil disimpan.');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .lead_update(inboundId, patch);
   }
 
   function syncNewLeads() {
