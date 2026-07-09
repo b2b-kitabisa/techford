@@ -17,7 +17,13 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th>Status</th><th>Date</th><th>Entity Name</th><th>WhatsApp</th><th>Email</th><th>Needs</th><th>Action</th>
+        <th class="sortable" onclick="setSort('Status')">Status <span class="sort-icon" data-field="Status">⇕</span></th>
+        <th class="sortable" onclick="setSort('Timestamp')">Date <span class="sort-icon" data-field="Timestamp">⇕</span></th>
+        <th class="sortable" onclick="setSort('Entity_Name')">Entity Name <span class="sort-icon" data-field="Entity_Name">⇕</span></th>
+        <th class="sortable" onclick="setSort('Phone')">WhatsApp <span class="sort-icon" data-field="Phone">⇕</span></th>
+        <th class="sortable" onclick="setSort('Email')">Email <span class="sort-icon" data-field="Email">⇕</span></th>
+        <th class="sortable" onclick="setSort('Detail_Interest')">Needs <span class="sort-icon" data-field="Detail_Interest">⇕</span></th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody id="leadTableBody">
@@ -82,6 +88,7 @@
       <label>PIC Name<input id="editPicName"></label>
       <label>Phone<input id="editPhone"></label>
       <label>Email<input id="editEmail"></label>
+      <label>Other Notes<textarea id="editNotes" placeholder="Type your message here."></textarea></label>
     </div>
 
     <div class="drawer-section">
@@ -97,12 +104,23 @@
 
     <div class="drawer-section">
       <div class="drawer-field-label">Other Notes :</div>
-      <textarea id="drawerNotes" placeholder="Type your message here."></textarea>
+      <div class="drawer-field-value" id="drawerNotesDisplay">Belum ada catatan.</div>
     </div>
 
     <div class="drawer-footer">
       <span class="save-hint" id="saveHint"></span>
-      <button class="btn-save" onclick="saveDetail()">💾 SAVE</button>
+      <button class="btn-save" onclick="openSaveConfirm()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="saveConfirm">
+  <div class="confirm-box">
+    <h3>Konfirmasi Perubahan</h3>
+    <p>Pastikan perubahan yang Anda buat sudah sesuai sebelum disimpan.</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelSaveConfirm()">Cancel</button>
+      <button class="btn-save" onclick="confirmSaveDetail()">Save</button>
     </div>
   </div>
 </div>
@@ -124,9 +142,8 @@
   var currentPage = 1;
   var currentDrawerLead = null;
   var pendingStatus = null;
+  var currentSort = { field: 'Timestamp', dir: 'desc' };
 
-  // Status di sheet bisa saja berbeda spasi/huruf besar-kecil dari yang kita
-  // harapkan — normalisasi ini mencegah badge jatuh ke warna default (hitam).
   function normalizeStatusKey(status) {
     var s = String(status || '').trim().toLowerCase();
     for (var i = 0; i < STATUS_ORDER.length; i++) {
@@ -142,6 +159,10 @@
 
   function toProperCase(str) {
     return String(str || '').toLowerCase().replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function sameId(a, b) {
+    return String(a) === String(b);
   }
 
   function bootstrap() {
@@ -160,22 +181,74 @@
     }).lead_getAll();
   }
 
+  // Menunggu window "load" (bukan langsung dieksekusi saat parse) supaya
+  // jembatan google.script.run milik sandbox Apps Script sudah benar-benar
+  // siap sebelum RPC pertama dipanggil — mencegah "data kosong di load
+  // pertama, baru muncul setelah ada interaksi lain".
+  if (document.readyState === 'complete') {
+    bootstrap();
+  } else {
+    window.addEventListener('load', bootstrap);
+  }
+
   function render() {
     var filtered = getFilteredSorted();
     var paged = paginate(filtered);
     renderStats(computeStats(allLeads));
     renderTable(paged);
     renderPagination(paged);
+    updateSortIndicators();
   }
 
   function computeStats(leads) {
     var stats = {};
     STATUS_ORDER.forEach(function (status) { stats[status] = 0; });
+    var nonSpamTotal = 0;
     leads.forEach(function (lead) {
       var key = normalizeStatusKey(lead.Status);
       if (key) stats[key]++;
+      if (key !== 'Spam') nonSpamTotal++;
     });
+    stats.movedPercentage = nonSpamTotal ? Math.round((stats['Moved'] / nonSpamTotal) * 100) : 0;
     return stats;
+  }
+
+  function compareValues(a, b, field) {
+    var va = a[field], vb = b[field];
+    if (field === 'Timestamp') {
+      va = new Date(va).getTime() || 0;
+      vb = new Date(vb).getTime() || 0;
+    } else {
+      va = String(va || '').toLowerCase();
+      vb = String(vb || '').toLowerCase();
+    }
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+  }
+
+  function setSort(field) {
+    if (currentSort.field === field) {
+      currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort.field = field;
+      currentSort.dir = 'asc';
+    }
+    render();
+  }
+
+  function updateSortIndicators() {
+    var icons = document.querySelectorAll('.sort-icon');
+    for (var i = 0; i < icons.length; i++) {
+      var field = icons[i].getAttribute('data-field');
+      if (field === currentSort.field) {
+        icons[i].innerText = currentSort.dir === 'asc' ? '▲' : '▼';
+        icons[i].style.opacity = '1';
+      } else {
+        icons[i].innerText = '⇕';
+        icons[i].style.opacity = '0.5';
+      }
+    }
   }
 
   function getFilteredSorted() {
@@ -187,7 +260,8 @@
       var matchesStatus = !status || normalizeStatusKey(lead.Status) === status;
       return matchesSearch && matchesStatus;
     }).sort(function (a, b) {
-      return new Date(b.Timestamp) - new Date(a.Timestamp);
+      var cmp = compareValues(a, b, currentSort.field);
+      return currentSort.dir === 'asc' ? cmp : -cmp;
     });
   }
 
@@ -215,6 +289,13 @@
         '<div class="stat-value">' + (stats[status] || 0) + '</div>' +
         '</div>';
     }).join('');
+
+    html += '<div class="stat-card stat-moved-pct">' +
+      '<div class="stat-label">% Moved</div>' +
+      '<div class="stat-desc">Dari total leads (tanpa Spam)</div>' +
+      '<div class="stat-value">' + stats.movedPercentage + '%</div>' +
+      '</div>';
+
     document.getElementById('leadStats').innerHTML = html;
   }
 
@@ -303,7 +384,7 @@
   // ---- Detail drawer: data sudah ada di cache (allLeads), jadi terbuka
   // instan tanpa panggil server sama sekali.
   function openDetail(inboundId) {
-    var lead = allLeads.filter(function (l) { return l.Inbound_ID === inboundId; })[0];
+    var lead = allLeads.filter(function (l) { return sameId(l.Inbound_ID, inboundId); })[0];
     if (!lead) return;
     currentDrawerLead = lead;
     renderDrawer(lead);
@@ -329,7 +410,11 @@
     document.getElementById('drawerPrioritySection').style.display = priority ? '' : 'none';
     document.getElementById('drawerPriority').innerText = priority;
 
-    document.getElementById('drawerNotes').value = lead.Other_Notes || '';
+    // Other Notes: tampilan awal read-only (di drawer-section), bagian yang
+    // bisa diketik hanya ada di dalam Edit Info form. Setelah Save, form
+    // ditutup lagi dan yang tampil adalah versi read-only ini.
+    document.getElementById('drawerNotesDisplay').innerText = lead.Other_Notes || 'Belum ada catatan.';
+    document.getElementById('editNotes').value = lead.Other_Notes || '';
 
     document.getElementById('editEntityName').value = lead.Entity_Name || '';
     document.getElementById('editEntityType').value = (lead.Entity_Type || '').toUpperCase();
@@ -374,7 +459,17 @@
     currentDrawerLead = null;
   }
 
-  function saveDetail() {
+  function openSaveConfirm() {
+    if (!currentDrawerLead) return;
+    document.getElementById('saveConfirm').classList.add('open');
+  }
+
+  function cancelSaveConfirm() {
+    document.getElementById('saveConfirm').classList.remove('open');
+  }
+
+  function confirmSaveDetail() {
+    document.getElementById('saveConfirm').classList.remove('open');
     if (!currentDrawerLead) return;
 
     var patch = {
@@ -384,11 +479,11 @@
       PIC_Name: toProperCase(document.getElementById('editPicName').value),
       Phone: document.getElementById('editPhone').value,
       Email: document.getElementById('editEmail').value.toLowerCase(),
-      Other_Notes: document.getElementById('drawerNotes').value
+      Other_Notes: document.getElementById('editNotes').value
     };
 
     var inboundId = currentDrawerLead.Inbound_ID;
-    var btn = document.querySelector('.btn-save');
+    var btn = document.querySelector('.drawer-footer .btn-save');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
@@ -400,12 +495,14 @@
 
       var idx = -1;
       for (var i = 0; i < allLeads.length; i++) {
-        if (allLeads[i].Inbound_ID === res.data.Inbound_ID) { idx = i; break; }
+        if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
       }
       if (idx !== -1) allLeads[idx] = res.data;
+      else allLeads.push(res.data);
 
-      // Drawer tetap terbuka, tampilkan ulang dengan data terbaru supaya
-      // perubahan langsung terlihat di UI (bukan cuma tersimpan di sheet).
+      // Drawer tetap terbuka, tampilkan ulang dengan data terbaru (form edit
+      // ikut ditutup) supaya perubahan langsung terlihat di UI, bukan cuma
+      // tersimpan di sheet.
       currentDrawerLead = res.data;
       renderDrawer(res.data);
       document.getElementById('saveHint').innerText = '✓ Tersimpan';
@@ -432,6 +529,4 @@
       }).lead_getAll();
     }).lead_sync();
   }
-
-  bootstrap();
 </script>
