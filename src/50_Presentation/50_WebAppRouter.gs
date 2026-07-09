@@ -11,17 +11,17 @@
  */
 var ROUTES = {
   'home': {
-    content: 'Home/HomeContent',
+    content: '50_Presentation/html/Home/HomeContent',
     title: 'Home',
     headerActions: ''
   },
   'employee': {
-    content: 'Employee/EmployeeContent',
+    content: '50_Presentation/html/Employee/EmployeeContent',
     title: 'Employee',
     headerActions: ''
   },
   'lead-capturing': {
-    content: 'Lead/LeadCapturingContent',
+    content: '50_Presentation/html/Lead/LeadCapturingContent',
     title: 'Lead Capturing 🔥',
     headerActions: '<button class="btn-sync" onclick="syncNewLeads()">☁️ SYNC NEW LEADS</button>'
   }
@@ -37,7 +37,7 @@ function doGet(e) {
 
   var contentHtml = HtmlService.createTemplateFromFile(route.content).evaluate().getContent();
 
-  var shell = HtmlService.createTemplateFromFile('Layout/Shell');
+  var shell = HtmlService.createTemplateFromFile('50_Presentation/html/Layout/Shell');
   shell.content = contentHtml;
   shell.headerActions = route.headerActions;
   shell.pageTitle = route.title;

@@ -13,9 +13,9 @@ function onOpen() {
 }
 
 function openDashboardSidebar() {
-  var content = HtmlService.createTemplateFromFile('Employee/EmployeeContent').evaluate().getContent();
+  var content = HtmlService.createTemplateFromFile('50_Presentation/html/Employee/EmployeeContent').evaluate().getContent();
   var html = HtmlService.createHtmlOutput(
-    '<html><head><base target="_top">' + include('html/Style') + '</head><body>' + content + '</body></html>'
+    '<html><head><base target="_top">' + include('50_Presentation/html/Style') + '</head><body>' + content + '</body></html>'
   ).setTitle('Techford Platform');
   SpreadsheetApp.getUi().showSidebar(html);
 }
