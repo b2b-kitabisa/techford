@@ -13,14 +13,18 @@
   <button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>
 </div>
 
-<table class="data-table">
-  <thead>
-    <tr><th>Status</th><th>Date</th><th>Entity Name</th><th>Needs</th><th>Action</th></tr>
-  </thead>
-  <tbody id="leadTableBody">
-    <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
-  </tbody>
-</table>
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Status</th><th>Date</th><th>Entity Name</th><th>WhatsApp</th><th>Email</th><th>Needs</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="leadTableBody">
+      <tr class="empty-row"><td colspan="7">Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
 
 <div class="pagination-bar">
   <div>
@@ -54,16 +58,20 @@
         <div class="drawer-contact-line" id="drawerPhone"></div>
         <div class="drawer-contact-line" id="drawerEmail"></div>
       </div>
-      <div class="drawer-actions">
-        <button class="btn-outline" onclick="toggleEditInfo()">✏️ EDIT INFO</button>
-        <div class="status-dropdown-wrap">
-          <button class="btn-outline" onclick="toggleStatusDropdown()">▾ STATUS</button>
-          <div class="status-dropdown" id="statusDropdown">
-            <div class="status-option status-option-contacted" onclick="selectStatus('Contacted')">🟢 CONTACTED</div>
-            <div class="status-option status-option-other" onclick="selectStatus('Other')">🟡 OTHER</div>
-            <div class="status-option status-option-spam" onclick="selectStatus('Spam')">⚠️ SPAM</div>
-            <div class="status-option status-option-moved" onclick="selectStatus('Moved')">➡️ MOVE CLIENT</div>
+    </div>
+
+    <div class="drawer-action-row">
+      <button class="btn-outline" onclick="toggleEditInfo()">✏️ EDIT INFO</button>
+      <div class="status-dropdown-wrap">
+        <button class="btn-outline" onclick="toggleStatusDropdown()">▾ STATUS</button>
+        <div class="status-dropdown" id="statusDropdown">
+          <div class="status-option status-option-contacted" onclick="selectStatus('Contacted')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.06L2 22l5.11-1.34A9.94 9.94 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.3 1.2-1.8 1.27-.46.07-1.04.1-1.68-.1-.39-.12-.89-.29-1.53-.57-2.7-1.17-4.45-3.9-4.58-4.08-.13-.18-1.1-1.46-1.1-2.79 0-1.32.7-1.97.94-2.24.24-.27.53-.34.71-.34h.5c.16 0 .38-.03.59.45.22.5.74 1.8.8 1.93.07.13.11.28.02.45-.09.17-.14.28-.27.43-.13.15-.28.34-.4.46-.13.13-.27.27-.12.53.16.27.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.13.44.11.6-.07.16-.18.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.27.13.44.2.5.31.07.11.07.62-.15 1.24z"/></svg>
+            CONTACTED
           </div>
+          <div class="status-option status-option-other" onclick="selectStatus('Other')">⋯ OTHER</div>
+          <div class="status-option status-option-spam" onclick="selectStatus('Spam')">⚠ SPAM</div>
+          <div class="status-option status-option-moved" onclick="selectStatus('Moved')">» MOVE CLIENT</div>
         </div>
       </div>
     </div>
@@ -82,12 +90,18 @@
       <div class="drawer-field-value" id="drawerNeeds"></div>
     </div>
 
+    <div class="drawer-section" id="drawerPrioritySection">
+      <div class="drawer-field-label">Prioritas :</div>
+      <div class="drawer-field-value" id="drawerPriority"></div>
+    </div>
+
     <div class="drawer-section">
       <div class="drawer-field-label">Other Notes :</div>
       <textarea id="drawerNotes" placeholder="Type your message here."></textarea>
     </div>
 
     <div class="drawer-footer">
+      <span class="save-hint" id="saveHint"></span>
       <button class="btn-save" onclick="saveDetail()">💾 SAVE</button>
     </div>
   </div>
@@ -111,14 +125,33 @@
   var currentDrawerLead = null;
   var pendingStatus = null;
 
+  // Status di sheet bisa saja berbeda spasi/huruf besar-kecil dari yang kita
+  // harapkan — normalisasi ini mencegah badge jatuh ke warna default (hitam).
+  function normalizeStatusKey(status) {
+    var s = String(status || '').trim().toLowerCase();
+    for (var i = 0; i < STATUS_ORDER.length; i++) {
+      if (STATUS_ORDER[i].toLowerCase() === s) return STATUS_ORDER[i];
+    }
+    return null;
+  }
+
+  function getStatusMeta(status) {
+    var key = normalizeStatusKey(status);
+    return key ? STATUS_META[key] : { cardClass: '', badgeClass: '', desc: '' };
+  }
+
+  function toProperCase(str) {
+    return String(str || '').toLowerCase().replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function bootstrap() {
     document.getElementById('leadTableBody').innerHTML =
-      '<tr class="empty-row"><td colspan="5">Memuat data...</td></tr>';
+      '<tr class="empty-row"><td colspan="7">Memuat data...</td></tr>';
 
     google.script.run.withSuccessHandler(function (res) {
       if (!res.ok) {
         document.getElementById('leadTableBody').innerHTML =
-          '<tr class="empty-row"><td colspan="5">' + res.error.message + '</td></tr>';
+          '<tr class="empty-row"><td colspan="7">' + res.error.message + '</td></tr>';
         return;
       }
       allLeads = res.data;
@@ -139,7 +172,8 @@
     var stats = {};
     STATUS_ORDER.forEach(function (status) { stats[status] = 0; });
     leads.forEach(function (lead) {
-      if (stats.hasOwnProperty(lead.Status)) stats[lead.Status]++;
+      var key = normalizeStatusKey(lead.Status);
+      if (key) stats[key]++;
     });
     return stats;
   }
@@ -150,7 +184,7 @@
 
     return allLeads.filter(function (lead) {
       var matchesSearch = !search || String(lead.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
-      var matchesStatus = !status || lead.Status === status;
+      var matchesStatus = !status || normalizeStatusKey(lead.Status) === status;
       return matchesSearch && matchesStatus;
     }).sort(function (a, b) {
       return new Date(b.Timestamp) - new Date(a.Timestamp);
@@ -205,18 +239,28 @@
   function renderTable(paged) {
     var tbody = document.getElementById('leadTableBody');
     if (!paged.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada data.</td></tr>';
       return;
     }
     tbody.innerHTML = paged.items.map(function (lead) {
-      var meta = STATUS_META[lead.Status] || { badgeClass: '' };
+      var meta = getStatusMeta(lead.Status);
       var needs = lead.Detail_Interest || '-';
       var needsShort = truncateText(needs, 30);
+      var picName = toProperCase(lead.PIC_Name) || '-';
+      var email = (lead.Email || '').toLowerCase();
+      var phone = lead.Phone || '';
+
       return '<tr>' +
-        '<td><span class="badge ' + meta.badgeClass + '">' + lead.Status + '</span></td>' +
-        '<td>' + formatDate(lead.Timestamp) + '</td>' +
+        '<td class="nowrap-cell"><span class="badge ' + meta.badgeClass + '">' + lead.Status + '</span></td>' +
+        '<td class="nowrap-cell">' + formatDate(lead.Timestamp) + '</td>' +
         '<td><div class="entity-name">' + lead.Entity_Name + '</div>' +
-        '<div class="entity-pic">👤 ' + (lead.PIC_Name || '-') + '</div></td>' +
+        '<div class="entity-pic">👤 ' + picName + '</div></td>' +
+        '<td class="nowrap-cell">' + (phone
+          ? '<a href="https://wa.me/' + normalizePhone(phone) + '" target="_blank">' + phone + '</a>'
+          : '-') + '</td>' +
+        '<td class="ellipsis-cell" title="' + email + '">' + (email
+          ? '<a href="mailto:' + email + '">' + email + '</a>'
+          : '-') + '</td>' +
         '<td title="' + needs + '">' + needsShort + '</td>' +
         '<td><button class="btn-detail" onclick="openDetail(\'' + lead.Inbound_ID + '\')">◉ DETAIL</button></td>' +
         '</tr>';
@@ -270,34 +314,40 @@
     setStatusBadge(lead.Status);
     document.getElementById('drawerEntityName').innerText = lead.Entity_Name || '-';
     document.getElementById('drawerEntityType').innerText = (lead.Entity_Type || '-').toUpperCase();
-    document.getElementById('drawerPicName').innerText = lead.PIC_Name || '-';
+    document.getElementById('drawerPicName').innerText = toProperCase(lead.PIC_Name) || '-';
 
     document.getElementById('drawerPhone').innerHTML = lead.Phone
       ? '<a href="https://wa.me/' + normalizePhone(lead.Phone) + '" target="_blank">' + lead.Phone + '</a>'
       : '-';
     document.getElementById('drawerEmail').innerHTML = lead.Email
-      ? '<a href="mailto:' + lead.Email + '">' + lead.Email + '</a>'
+      ? '<a href="mailto:' + lead.Email.toLowerCase() + '">' + lead.Email.toLowerCase() + '</a>'
       : '-';
 
     document.getElementById('drawerNeeds').innerText = lead.Detail_Interest || '-';
+
+    var priority = lead.Priority_Notes || '';
+    document.getElementById('drawerPrioritySection').style.display = priority ? '' : 'none';
+    document.getElementById('drawerPriority').innerText = priority;
+
     document.getElementById('drawerNotes').value = lead.Other_Notes || '';
 
     document.getElementById('editEntityName').value = lead.Entity_Name || '';
-    document.getElementById('editEntityType').value = lead.Entity_Type || '';
-    document.getElementById('editPicName').value = lead.PIC_Name || '';
+    document.getElementById('editEntityType').value = (lead.Entity_Type || '').toUpperCase();
+    document.getElementById('editPicName').value = toProperCase(lead.PIC_Name) || '';
     document.getElementById('editPhone').value = lead.Phone || '';
-    document.getElementById('editEmail').value = lead.Email || '';
+    document.getElementById('editEmail').value = (lead.Email || '').toLowerCase();
 
     document.getElementById('drawerEditForm').classList.remove('open');
     document.getElementById('statusDropdown').classList.remove('open');
+    document.getElementById('saveHint').innerText = '';
   }
 
   function setStatusBadge(status) {
-    var meta = STATUS_META[status] || { badgeClass: '' };
-    pendingStatus = status;
+    var meta = getStatusMeta(status);
+    pendingStatus = normalizeStatusKey(status) || status;
     var badge = document.getElementById('drawerStatusBadge');
     badge.className = 'badge ' + meta.badgeClass;
-    badge.innerText = status;
+    badge.innerText = pendingStatus;
   }
 
   function toggleEditInfo() {
@@ -330,13 +380,14 @@
     var patch = {
       Status: pendingStatus,
       Entity_Name: document.getElementById('editEntityName').value,
-      Entity_Type: document.getElementById('editEntityType').value,
-      PIC_Name: document.getElementById('editPicName').value,
+      Entity_Type: document.getElementById('editEntityType').value.toUpperCase(),
+      PIC_Name: toProperCase(document.getElementById('editPicName').value),
       Phone: document.getElementById('editPhone').value,
-      Email: document.getElementById('editEmail').value,
+      Email: document.getElementById('editEmail').value.toLowerCase(),
       Other_Notes: document.getElementById('drawerNotes').value
     };
 
+    var inboundId = currentDrawerLead.Inbound_ID;
     var btn = document.querySelector('.btn-save');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
@@ -353,9 +404,14 @@
       }
       if (idx !== -1) allLeads[idx] = res.data;
 
-      closeDetail();
+      // Drawer tetap terbuka, tampilkan ulang dengan data terbaru supaya
+      // perubahan langsung terlihat di UI (bukan cuma tersimpan di sheet).
+      currentDrawerLead = res.data;
+      renderDrawer(res.data);
+      document.getElementById('saveHint').innerText = '✓ Tersimpan';
+
       render();
-    }).lead_update(currentDrawerLead.Inbound_ID, patch);
+    }).lead_update(inboundId, patch);
   }
 
   function syncNewLeads() {
