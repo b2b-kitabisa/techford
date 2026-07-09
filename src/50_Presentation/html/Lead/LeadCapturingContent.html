@@ -590,21 +590,13 @@
 
       if (!res.ok) return alert(res.error.message);
 
-      var idx = -1;
-      for (var i = 0; i < allLeads.length; i++) {
-        if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
-      }
-      if (idx !== -1) allLeads[idx] = res.data;
-      else allLeads.push(res.data);
+      // lead_update mengembalikan SELURUH dataset terbaru (bukan satu objek
+      // lead saja) — lihat catatan di LeadService.updateLead untuk alasannya.
+      allLeads = res.data;
 
       closeDetail();
       render();
       showSuccessModal('Data berhasil disimpan.');
-
-      // Jaring pengaman: tarik ulang data dari server sesaat setelah
-      // save, supaya tampilan pasti sinkron dengan sheet walau ada
-      // state yang tidak terduga di sisi client.
-      setTimeout(fetchLeads, 700);
     }, function (err) {
       btn.disabled = false;
       btn.innerText = '💾 SAVE';
@@ -617,12 +609,10 @@
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
 
     runServer('lead_sync', [], function (res) {
-      if (!res.ok) {
-        if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-        return alert(res.error.message);
-      }
-      fetchLeads();
       if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+      if (!res.ok) return alert(res.error.message);
+      allLeads = res.data;
+      render();
     }, function (err) {
       if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
       alert('Gagal sync: ' + (err && err.message ? err.message : err));

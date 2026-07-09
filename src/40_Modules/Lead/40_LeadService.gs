@@ -40,7 +40,14 @@ var LeadService = (function (module) {
     }
 
     Log.info('LeadService', 'Lead updated: ' + inboundId);
-    return LeadRepository.findById(inboundId);
+
+    // Sengaja mengembalikan SELURUH dataset (bukan satu objek lead saja).
+    // google.script.run terbukti selalu gagal mengirim balik respons yang
+    // berupa objek tunggal untuk endpoint ini (client menerima null terus-
+    // menerus walau data di sheet berhasil berubah) — bentuk array persis
+    // seperti getAllLeads() terbukti selalu berhasil, jadi endpoint tulis
+    // ini mengikuti bentuk yang sama supaya lolos dari masalah tersebut.
+    return LeadRepository.findAll();
   };
 
   /**
@@ -52,7 +59,7 @@ var LeadService = (function (module) {
   module.syncNewLeads = function () {
     LeadRepository.invalidateCache();
     Log.info('LeadService', 'Sync triggered (placeholder, belum ada sumber eksternal terhubung).');
-    return { syncedCount: 0, message: 'Belum ada sumber integrasi yang terhubung.' };
+    return LeadRepository.findAll();
   };
 
   return module;
