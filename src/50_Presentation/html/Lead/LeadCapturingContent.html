@@ -2,16 +2,22 @@
 
 <div class="filter-bar">
   <input id="leadSearch" placeholder="Search Entity Name...." oninput="onFilterChange()">
-  <select id="leadStatusFilter" onchange="onFilterChange()">
-    <option value="">All Status</option>
-    <option value="New Leads">New Leads</option>
-    <option value="Contacted">Contacted</option>
-    <option value="Moved">Moved</option>
-    <option value="Other">Other</option>
-    <option value="Spam">Spam</option>
-  </select>
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="statusFilterBtn" onclick="toggleStatusFilterDropdown()">All Status ▾</button>
+    <div class="status-filter-dropdown" id="statusFilterDropdown">
+      <label><input type="checkbox" value="New Leads" onchange="onStatusFilterChange()"> New Leads</label>
+      <label><input type="checkbox" value="Contacted" onchange="onStatusFilterChange()"> Contacted</label>
+      <label><input type="checkbox" value="Moved" onchange="onStatusFilterChange()"> Moved</label>
+      <label><input type="checkbox" value="Other" onchange="onStatusFilterChange()"> Other</label>
+      <label><input type="checkbox" value="Spam" onchange="onStatusFilterChange()"> Spam</label>
+    </div>
+  </div>
+
   <button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>
 </div>
+
+<div id="tableError" class="error"></div>
 
 <div class="table-scroll">
   <table class="data-table">
@@ -36,6 +42,7 @@
   <div>
     Show
     <select id="pageSize" onchange="onFilterChange()">
+      <option value="10">10</option>
       <option value="25">25</option>
       <option value="50">50</option>
       <option value="100" selected>100</option>
@@ -48,11 +55,10 @@
 <div class="drawer-overlay" id="detailDrawer" onclick="if (event.target === this) closeDetail();">
   <div class="drawer-panel">
     <div class="drawer-header">
-      <span class="badge" id="drawerStatusBadge"></span>
-      <button class="drawer-close" onclick="closeDetail()">&times;</button>
-    </div>
-
-    <div class="drawer-title-block">
+      <div class="drawer-header-top">
+        <span class="badge" id="drawerStatusBadge"></span>
+        <button class="drawer-close" onclick="closeDetail()">&times;</button>
+      </div>
       <h2 id="drawerEntityName"></h2>
       <div class="drawer-entity-type" id="drawerEntityType"></div>
     </div>
@@ -125,6 +131,8 @@
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
   var STATUS_META = {
     'New Leads': { cardClass: 'stat-new', badgeClass: 'badge-new', desc: 'Client Inbound Leads' },
@@ -143,6 +151,7 @@
   var currentDrawerLead = null;
   var pendingStatus = null;
   var currentSort = { field: 'Timestamp', dir: 'desc' };
+  var bootstrapRetried = false;
 
   function normalizeStatusKey(status) {
     var s = String(status || '').trim().toLowerCase();
@@ -165,26 +174,54 @@
     return String(a) === String(b);
   }
 
-  function bootstrap() {
-    document.getElementById('leadTableBody').innerHTML =
-      '<tr class="empty-row"><td colspan="7">Memuat data...</td></tr>';
-
-    google.script.run.withSuccessHandler(function (res) {
-      if (!res.ok) {
-        document.getElementById('leadTableBody').innerHTML =
-          '<tr class="empty-row"><td colspan="7">' + res.error.message + '</td></tr>';
-        return;
-      }
-      allLeads = res.data;
-      currentPage = 1;
-      render();
-    }).lead_getAll();
+  function showToast(message) {
+    var toast = document.getElementById('toast');
+    toast.innerText = message;
+    toast.classList.add('show');
+    setTimeout(function () { toast.classList.remove('show'); }, 2500);
   }
 
-  // Menunggu window "load" (bukan langsung dieksekusi saat parse) supaya
-  // jembatan google.script.run milik sandbox Apps Script sudah benar-benar
-  // siap sebelum RPC pertama dipanggil — mencegah "data kosong di load
-  // pertama, baru muncul setelah ada interaksi lain".
+  // ---- Bootstrap dengan retry otomatis ----
+  // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
+  // sepenuhnya siap tepat saat halaman pertama kali dimuat, walau event
+  // "load" sudah terpicu. Simtomnya: data & score card kosong di load
+  // pertama, baru muncul setelah ada interaksi lain. Untuk mengatasi ini
+  // tanpa perlu refresh manual, kita otomatis coba ulang sekali kalau
+  // percobaan pertama belum membawa data dalam 1.2 detik.
+  function bootstrap() {
+    fetchLeads();
+    setTimeout(function () {
+      if (!allLeads.length && !bootstrapRetried) {
+        bootstrapRetried = true;
+        fetchLeads();
+      }
+    }, 1200);
+  }
+
+  function fetchLeads() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res.ok) {
+          showTableError(res.error.message);
+          return;
+        }
+        bootstrapRetried = true;
+        allLeads = res.data;
+        currentPage = 1;
+        render();
+      })
+      .withFailureHandler(function (err) {
+        showTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .lead_getAll();
+  }
+
+  function showTableError(message) {
+    document.getElementById('tableError').innerText = message;
+    document.getElementById('leadTableBody').innerHTML =
+      '<tr class="empty-row"><td colspan="7">' + message + '</td></tr>';
+  }
+
   if (document.readyState === 'complete') {
     bootstrap();
   } else {
@@ -192,6 +229,7 @@
   }
 
   function render() {
+    document.getElementById('tableError').innerText = '';
     var filtered = getFilteredSorted();
     var paged = paginate(filtered);
     renderStats(computeStats(allLeads));
@@ -251,13 +289,41 @@
     }
   }
 
+  // ---- Filter status: multi-select ----
+  function getSelectedStatuses() {
+    var boxes = document.querySelectorAll('#statusFilterDropdown input:checked');
+    return Array.prototype.map.call(boxes, function (el) { return el.value; });
+  }
+
+  function toggleStatusFilterDropdown() {
+    document.getElementById('statusFilterDropdown').classList.toggle('open');
+  }
+
+  function onStatusFilterChange() {
+    updateStatusFilterLabel();
+    onFilterChange();
+  }
+
+  function updateStatusFilterLabel() {
+    var selected = getSelectedStatuses();
+    var btn = document.getElementById('statusFilterBtn');
+    btn.innerText = (selected.length === 0 ? 'All Status' : selected.length + ' Status Dipilih') + ' ▾';
+  }
+
+  document.addEventListener('click', function (e) {
+    var wrap = document.querySelector('.status-filter-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      document.getElementById('statusFilterDropdown').classList.remove('open');
+    }
+  });
+
   function getFilteredSorted() {
     var search = document.getElementById('leadSearch').value.toLowerCase().trim();
-    var status = document.getElementById('leadStatusFilter').value;
+    var selectedStatuses = getSelectedStatuses();
 
     return allLeads.filter(function (lead) {
       var matchesSearch = !search || String(lead.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
-      var matchesStatus = !status || normalizeStatusKey(lead.Status) === status;
+      var matchesStatus = !selectedStatuses.length || selectedStatuses.indexOf(normalizeStatusKey(lead.Status)) !== -1;
       return matchesSearch && matchesStatus;
     }).sort(function (a, b) {
       var cmp = compareValues(a, b, currentSort.field);
@@ -279,10 +345,10 @@
   }
 
   function renderStats(stats) {
-    var activeStatus = document.getElementById('leadStatusFilter').value;
+    var selected = getSelectedStatuses();
     var html = STATUS_ORDER.map(function (status) {
       var meta = STATUS_META[status];
-      var isActive = activeStatus === status ? ' active' : '';
+      var isActive = selected.indexOf(status) !== -1 ? ' active' : '';
       return '<div class="stat-card clickable ' + meta.cardClass + isActive + '" onclick="filterByStatus(\'' + status + '\')">' +
         '<div class="stat-label">' + status + '</div>' +
         '<div class="stat-desc">' + meta.desc + '</div>' +
@@ -300,8 +366,9 @@
   }
 
   function filterByStatus(status) {
-    var current = document.getElementById('leadStatusFilter').value;
-    document.getElementById('leadStatusFilter').value = current === status ? '' : status;
+    var checkbox = document.querySelector('#statusFilterDropdown input[value="' + status + '"]');
+    if (checkbox) checkbox.checked = !checkbox.checked;
+    updateStatusFilterLabel();
     onFilterChange();
   }
 
@@ -312,7 +379,8 @@
 
   function resetFilter() {
     document.getElementById('leadSearch').value = '';
-    document.getElementById('leadStatusFilter').value = '';
+    document.querySelectorAll('#statusFilterDropdown input').forEach(function (el) { el.checked = false; });
+    updateStatusFilterLabel();
     currentPage = 1;
     render();
   }
@@ -410,9 +478,6 @@
     document.getElementById('drawerPrioritySection').style.display = priority ? '' : 'none';
     document.getElementById('drawerPriority').innerText = priority;
 
-    // Other Notes: tampilan awal read-only (di drawer-section), bagian yang
-    // bisa diketik hanya ada di dalam Edit Info form. Setelah Save, form
-    // ditutup lagi dan yang tampil adalah versi read-only ini.
     document.getElementById('drawerNotesDisplay').innerText = lead.Other_Notes || 'Belum ada catatan.';
     document.getElementById('editNotes').value = lead.Other_Notes || '';
 
@@ -487,46 +552,49 @@
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
-    google.script.run.withSuccessHandler(function (res) {
-      btn.disabled = false;
-      btn.innerText = '💾 SAVE';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
 
-      if (!res.ok) return alert(res.error.message);
+        if (!res.ok) return alert(res.error.message);
 
-      var idx = -1;
-      for (var i = 0; i < allLeads.length; i++) {
-        if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
-      }
-      if (idx !== -1) allLeads[idx] = res.data;
-      else allLeads.push(res.data);
+        var idx = -1;
+        for (var i = 0; i < allLeads.length; i++) {
+          if (sameId(allLeads[i].Inbound_ID, res.data.Inbound_ID)) { idx = i; break; }
+        }
+        if (idx !== -1) allLeads[idx] = res.data;
+        else allLeads.push(res.data);
 
-      // Drawer tetap terbuka, tampilkan ulang dengan data terbaru (form edit
-      // ikut ditutup) supaya perubahan langsung terlihat di UI, bukan cuma
-      // tersimpan di sheet.
-      currentDrawerLead = res.data;
-      renderDrawer(res.data);
-      document.getElementById('saveHint').innerText = '✓ Tersimpan';
-
-      render();
-    }).lead_update(inboundId, patch);
+        closeDetail();
+        render();
+        showToast('✓ Data berhasil diperbarui');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .lead_update(inboundId, patch);
   }
 
   function syncNewLeads() {
     var btn = document.querySelector('.btn-sync');
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
 
-    google.script.run.withSuccessHandler(function (res) {
-      if (!res.ok) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res.ok) {
+          if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
+          return alert(res.error.message);
+        }
+        fetchLeads();
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-        return alert(res.error.message);
-      }
-      // Sync juga jadi kesempatan menyegarkan cache dari server.
-      google.script.run.withSuccessHandler(function (allRes) {
+      })
+      .withFailureHandler(function (err) {
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
-        if (!allRes.ok) return alert(allRes.error.message);
-        allLeads = allRes.data;
-        render();
-      }).lead_getAll();
-    }).lead_sync();
+        alert('Gagal sync: ' + (err && err.message ? err.message : err));
+      })
+      .lead_sync();
   }
 </script>

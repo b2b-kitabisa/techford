@@ -94,12 +94,30 @@
   .filter-bar input { flex: 1; }
   .filter-reset { background: none; border: none; color: #5f6368; cursor: pointer; }
 
+  .status-filter-wrap { position: relative; }
+  .filter-select-btn {
+    padding: 10px 14px; border: 1px solid #dadce0; border-radius: 6px; font-size: 14px;
+    background: #fff; cursor: pointer; white-space: nowrap;
+  }
+  .status-filter-dropdown {
+    display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff;
+    border: 1px solid #dadce0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 180px; z-index: 20; padding: 6px 0;
+  }
+  .status-filter-dropdown.open { display: block; }
+  .status-filter-dropdown label {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  .status-filter-dropdown label:hover { background: #f1f3f4; }
+
   /* ---- Data table ---- */
-  .table-scroll { overflow-x: auto; border-radius: 8px; }
+  .table-scroll {
+    overflow: auto; max-height: 560px; border-radius: 8px; border: 1px solid #e5e5e5;
+  }
   .data-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; }
   .data-table thead th {
     background: #3c4043; color: #fff; text-align: left; padding: 9px 12px; font-weight: normal;
-    font-size: 11.5px; white-space: nowrap;
+    font-size: 11.5px; white-space: nowrap; position: sticky; top: 0; z-index: 5;
   }
   .data-table thead th.sortable { cursor: pointer; user-select: none; }
   .data-table thead th.sortable:hover { background: #4a4d50; }
@@ -141,18 +159,15 @@
   }
   .drawer-overlay.open { display: block; }
   .drawer-panel {
-    position: absolute; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw;
+    position: absolute; top: 0; right: 0; height: 100%; width: 620px; max-width: 95vw;
     background: #fff; box-shadow: -4px 0 16px rgba(0,0,0,0.15);
     display: flex; flex-direction: column; overflow-y: auto;
   }
-  .drawer-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 24px; background: #3c4043; flex-shrink: 0;
-  }
+  .drawer-header { padding: 16px 24px 18px; background: #3c4043; flex-shrink: 0; }
+  .drawer-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .drawer-close { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1; }
-  .drawer-title-block { padding: 16px 24px 8px; }
-  .drawer-title-block h2 { margin: 4px 0 0; font-size: 20px; }
-  .drawer-entity-type { font-size: 12px; color: #5f6368; letter-spacing: 0.5px; }
+  .drawer-header h2 { margin: 0; font-size: 20px; color: #fff; }
+  .drawer-header .drawer-entity-type { font-size: 12px; color: #bdc1c6; letter-spacing: 0.5px; margin-top: 2px; }
 
   .drawer-contact-row {
     display: flex; align-items: flex-start; gap: 12px; padding: 16px 24px;
@@ -235,4 +250,12 @@
   .confirm-box h3 { margin: 0 0 8px; }
   .confirm-box p { margin: 0 0 20px; font-size: 13px; color: #5f6368; }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; background: #202124; color: #fff;
+    padding: 12px 20px; border-radius: 6px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity 0.3s; z-index: 400;
+  }
+  .toast.show { opacity: 1; }
 </style>
