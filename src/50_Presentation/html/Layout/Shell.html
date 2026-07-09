@@ -40,8 +40,15 @@
 
     <div class="main">
       <header class="topbar">
-        <h1 class="page-title"><?= pageTitle ?></h1>
-        <div class="topbar-actions"><?!= headerActions ?></div>
+        <div class="breadcrumb">
+          <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
+          <span class="breadcrumb-current"><?= pageTitle ?></span>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-actions"><?!= headerActions ?></div>
+          <button class="icon-btn" title="Notifikasi">🔔</button>
+          <div class="avatar-circle"><?= userInitial ?></div>
+        </div>
       </header>
       <main class="content-area"><?!= content ?></main>
     </div>

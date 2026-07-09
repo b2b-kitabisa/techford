@@ -1,5 +1,13 @@
 <div id="leadStats" class="stat-cards"></div>
 
+<div class="tip-box">
+  <div class="tip-icon">💡</div>
+  <div class="tip-text">
+    <strong>Info Alur:</strong> Lead baru masuk sebagai <strong>New Leads</strong>. Setelah dihubungi, ubah ke <strong>Contacted</strong>.
+    Kalau sudah siap kerja sama, gunakan status <strong>Moved</strong> agar tercatat sebagai klien. Tandai <strong>Spam</strong> untuk lead yang tidak relevan.
+  </div>
+</div>
+
 <div class="filter-bar">
   <input id="leadSearch" placeholder="Search Entity Name...." oninput="onFilterChange()">
 
@@ -15,6 +23,7 @@
   </div>
 
   <button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" onclick="fetchLeads()" title="Ambil ulang data dari server">🔄 Refresh</button>
 </div>
 
 <div id="tableError" class="error"></div>
@@ -26,14 +35,13 @@
         <th class="sortable" onclick="setSort('Status')">Status <span class="sort-icon" data-field="Status">⇕</span></th>
         <th class="sortable" onclick="setSort('Timestamp')">Date <span class="sort-icon" data-field="Timestamp">⇕</span></th>
         <th class="sortable" onclick="setSort('Entity_Name')">Entity Name <span class="sort-icon" data-field="Entity_Name">⇕</span></th>
-        <th class="sortable" onclick="setSort('Phone')">WhatsApp <span class="sort-icon" data-field="Phone">⇕</span></th>
-        <th class="sortable" onclick="setSort('Email')">Email <span class="sort-icon" data-field="Email">⇕</span></th>
+        <th>Kontak</th>
         <th class="sortable" onclick="setSort('Detail_Interest')">Needs <span class="sort-icon" data-field="Detail_Interest">⇕</span></th>
         <th>Action</th>
       </tr>
     </thead>
     <tbody id="leadTableBody">
-      <tr class="empty-row"><td colspan="7">Memuat data...</td></tr>
+      <tr class="empty-row"><td colspan="6">Memuat data...</td></tr>
     </tbody>
   </table>
 </div>
@@ -131,7 +139,13 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="success-overlay" id="successModal" onclick="if (event.target === this) closeSuccessModal();">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3 id="successMessage">Data berhasil disimpan.</h3>
+    <button class="btn-save" onclick="closeSuccessModal()">OK</button>
+  </div>
+</div>
 
 <script>
   var STATUS_META = {
@@ -174,11 +188,13 @@
     return String(a) === String(b);
   }
 
-  function showToast(message) {
-    var toast = document.getElementById('toast');
-    toast.innerText = message;
-    toast.classList.add('show');
-    setTimeout(function () { toast.classList.remove('show'); }, 2500);
+  function showSuccessModal(message) {
+    document.getElementById('successMessage').innerText = message;
+    document.getElementById('successModal').classList.add('open');
+  }
+
+  function closeSuccessModal() {
+    document.getElementById('successModal').classList.remove('open');
   }
 
   // ---- Bootstrap dengan retry otomatis ----
@@ -219,7 +235,7 @@
   function showTableError(message) {
     document.getElementById('tableError').innerText = message;
     document.getElementById('leadTableBody').innerHTML =
-      '<tr class="empty-row"><td colspan="7">' + message + '</td></tr>';
+      '<tr class="empty-row"><td colspan="6">' + message + '</td></tr>';
   }
 
   if (document.readyState === 'complete') {
@@ -388,7 +404,7 @@
   function renderTable(paged) {
     var tbody = document.getElementById('leadTableBody');
     if (!paged.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada data.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Tidak ada data.</td></tr>';
       return;
     }
     tbody.innerHTML = paged.items.map(function (lead) {
@@ -404,14 +420,13 @@
         '<td class="nowrap-cell">' + formatDate(lead.Timestamp) + '</td>' +
         '<td><div class="entity-name">' + lead.Entity_Name + '</div>' +
         '<div class="entity-pic">👤 ' + picName + '</div></td>' +
-        '<td class="nowrap-cell">' + (phone
-          ? '<a href="https://wa.me/' + normalizePhone(phone) + '" target="_blank">' + phone + '</a>'
-          : '-') + '</td>' +
-        '<td class="ellipsis-cell" title="' + email + '">' + (email
-          ? '<a href="mailto:' + email + '">' + email + '</a>'
-          : '-') + '</td>' +
+        '<td class="contact-cell">' +
+          (phone ? '<a href="https://wa.me/' + normalizePhone(phone) + '" target="_blank">📱 ' + phone + '</a>' : '') +
+          (email ? '<a class="contact-email" href="mailto:' + email + '">✉ ' + email + '</a>' : '') +
+          (!phone && !email ? '-' : '') +
+        '</td>' +
         '<td title="' + needs + '">' + needsShort + '</td>' +
-        '<td><button class="btn-detail" onclick="openDetail(\'' + lead.Inbound_ID + '\')">◉ DETAIL</button></td>' +
+        '<td><button class="btn-icon-round" onclick="openDetail(\'' + lead.Inbound_ID + '\')" title="Lihat Detail">›</button></td>' +
         '</tr>';
     }).join('');
   }
@@ -568,7 +583,12 @@
 
         closeDetail();
         render();
-        showToast('✓ Data berhasil diperbarui');
+        showSuccessModal('Data berhasil disimpan.');
+
+        // Jaring pengaman: tarik ulang data dari server sesaat setelah
+        // save, supaya tampilan pasti sinkron dengan sheet walau ada
+        // state yang tidak terduga di sisi client.
+        setTimeout(fetchLeads, 700);
       })
       .withFailureHandler(function (err) {
         btn.disabled = false;

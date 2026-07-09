@@ -43,11 +43,32 @@ function doGet(e) {
   shell.pageTitle = route.title;
   shell.activePage = page;
   shell.menu = NavigationConfig.MENU;
+  shell.breadcrumbGroup = findBreadcrumbGroup(page);
+  shell.userInitial = getCurrentUserInitial();
 
   return shell.evaluate()
     .setTitle('Techford Platform - ' + route.title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function findBreadcrumbGroup(page) {
+  var menu = NavigationConfig.MENU;
+  for (var g = 0; g < menu.length; g++) {
+    for (var i = 0; i < menu[g].items.length; i++) {
+      if (menu[g].items[i].page === page) return menu[g].group;
+    }
+  }
+  return '';
+}
+
+function getCurrentUserInitial() {
+  try {
+    var email = Session.getActiveUser().getEmail();
+    return email ? email.charAt(0).toUpperCase() : 'U';
+  } catch (e) {
+    return 'U';
+  }
 }
 
 /**

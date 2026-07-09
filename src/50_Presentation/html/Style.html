@@ -57,7 +57,20 @@
     background: #ffffff;
     border-bottom: 1px solid #e0e0e0;
   }
-  .page-title { margin: 0; font-size: 26px; }
+  .breadcrumb { font-size: 20px; }
+  .breadcrumb-muted { color: #9aa0a6; font-weight: normal; }
+  .breadcrumb-sep { color: #c4c7c5; margin: 0 8px; }
+  .breadcrumb-current { font-weight: bold; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .icon-btn {
+    background: none; border: none; font-size: 18px; cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: #f1f3f4; }
+  .avatar-circle {
+    width: 34px; height: 34px; border-radius: 50%; background: #1a73e8; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;
+  }
   .btn-sync {
     background: #eef7ff; color: #1a73e8; border: 1px solid #1a73e8;
     padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;
@@ -86,6 +99,14 @@
   .stat-moved-pct .stat-label, .stat-moved-pct .stat-value { color: #0d652d; }
   .stat-card.active { border-color: #202124; }
 
+  /* ---- Tip box ---- */
+  .tip-box {
+    background: #202124; color: #e8eaed; border-radius: 8px; padding: 14px 18px;
+    display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; font-size: 13px;
+  }
+  .tip-icon { font-size: 18px; flex-shrink: 0; }
+  .tip-text strong { color: #fdd663; }
+
   /* ---- Filter bar ---- */
   .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; }
   .filter-bar input, .filter-bar select {
@@ -112,7 +133,7 @@
 
   /* ---- Data table ---- */
   .table-scroll {
-    overflow: auto; max-height: 560px; border-radius: 8px; border: 1px solid #e5e5e5;
+    overflow: auto; max-height: 560px; border-radius: 8px;
   }
   .data-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; }
   .data-table thead th {
@@ -122,22 +143,26 @@
   .data-table thead th.sortable { cursor: pointer; user-select: none; }
   .data-table thead th.sortable:hover { background: #4a4d50; }
   .sort-icon { font-size: 9px; opacity: 0.5; margin-left: 3px; }
-  .data-table tbody td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .data-table tbody td { padding: 10px 12px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+  .data-table tbody tr:hover { background: #fafbfc; }
   .nowrap-cell { white-space: nowrap; }
   .ellipsis-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
   .entity-name { font-weight: bold; }
   .entity-pic { font-size: 10.5px; color: #5f6368; }
+  .contact-cell { font-size: 11.5px; white-space: nowrap; }
+  .contact-cell a { display: block; color: #1a73e8; text-decoration: none; }
+  .contact-cell .contact-email { color: #5f6368; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
   .badge-new { background: #f3e8fd; color: #6a1b9a; }
   .badge-contacted { background: #e6f4ea; color: #188038; }
   .badge-moved { background: #e8f0fe; color: #1a73e8; }
   .badge-other { background: #fef7e0; color: #b8860b; }
   .badge-spam { background: #fce8e6; color: #c5221f; }
-  .btn-detail {
-    background: #eee; border: 1px solid #ccc; border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  .btn-icon-round {
+    width: 30px; height: 30px; border-radius: 50%; border: 1px solid #e0e0e0; background: #fff;
+    cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; color: #5f6368;
   }
-  .btn-detail:hover { background: #ddd; }
+  .btn-icon-round:hover { background: #f1f3f4; color: #202124; }
   .empty-row td { text-align: center; color: #5f6368; padding: 32px; }
 
   /* ---- Pagination ---- */
@@ -251,11 +276,20 @@
   .confirm-box p { margin: 0 0 20px; font-size: 13px; color: #5f6368; }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
-  /* ---- Toast ---- */
-  .toast {
-    position: fixed; bottom: 24px; right: 24px; background: #202124; color: #fff;
-    padding: 12px 20px; border-radius: 6px; font-size: 13px; opacity: 0; pointer-events: none;
-    transition: opacity 0.3s; z-index: 400;
+  /* ---- Success Popup ---- */
+  .success-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    align-items: center; justify-content: center; z-index: 500;
   }
-  .toast.show { opacity: 1; }
+  .success-overlay.open { display: flex; }
+  .success-box {
+    background: #fff; border-radius: 8px; width: 320px; max-width: 90vw;
+    padding: 28px 24px; text-align: center;
+  }
+  .success-icon {
+    width: 48px; height: 48px; border-radius: 50%; background: #e6f4ea; color: #188038;
+    font-size: 24px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 14px;
+  }
+  .success-box h3 { margin: 0 0 20px; font-size: 15px; }
 </style>
