@@ -9,7 +9,7 @@
 var Config = (function (module) {
 
   // Ganti sesuai Spreadsheet database utama platform ini.
-  module.SPREADSHEET_ID = 'GANTI_DENGAN_SPREADSHEET_ID_ANDA';
+  module.SPREADSHEET_ID = '1DXjYDtL6QEqGvBDnQHGMiSqIXX9EHiBOiPmJsyz3tdM';
 
   // Folder Drive tempat dokumen hasil generate disimpan.
   module.ROOT_FOLDER_ID = 'GANTI_DENGAN_FOLDER_ID_ANDA';
