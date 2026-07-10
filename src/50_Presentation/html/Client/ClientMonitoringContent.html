@@ -67,10 +67,16 @@
         </div>
         <div>
           <label>Head Office
-            <select id="newHeadOffice"><option value="">Pilih Head Office...</option></select>
+            <div class="searchable-select" id="newHeadOfficeWrap">
+              <input id="newHeadOffice" placeholder="Cari Head Office..." autocomplete="off">
+              <div class="searchable-select-options" id="newHeadOfficeOptions"></div>
+            </div>
           </label>
           <label>Industry
-            <select id="newIndustry"><option value="">Pilih Industry...</option></select>
+            <div class="searchable-select" id="newIndustryWrap">
+              <input id="newIndustry" placeholder="Cari Industry..." autocomplete="off">
+              <div class="searchable-select-options" id="newIndustryOptions"></div>
+            </div>
           </label>
           <label>Entity Type
             <select id="newEntityType"><option value="">Pilih Entity Type...</option></select>
@@ -130,7 +136,7 @@
     <div class="drawer-section">
       <div class="section-title-row">
         <h3>Client Information</h3>
-        <button class="btn-outline" onclick="toggleClientEditInfo()">✏️ EDIT INFO</button>
+        <button class="btn-outline" id="clientEditInfoToggleBtn" onclick="toggleClientEditInfo()">✏️ EDIT INFO</button>
       </div>
 
       <div id="clientViewBlock">
@@ -171,10 +177,16 @@
         <label>Brand Name<input id="editBrandName"></label>
         <label>Entity Name<input id="editEntityNameField"></label>
         <label>Head Office
-          <select id="editHeadOffice"></select>
+          <div class="searchable-select" id="editHeadOfficeWrap">
+            <input id="editHeadOffice" placeholder="Cari Head Office..." autocomplete="off">
+            <div class="searchable-select-options" id="editHeadOfficeOptions"></div>
+          </div>
         </label>
         <label>Industry
-          <select id="editIndustry"></select>
+          <div class="searchable-select" id="editIndustryWrap">
+            <input id="editIndustry" placeholder="Cari Industry..." autocomplete="off">
+            <div class="searchable-select-options" id="editIndustryOptions"></div>
+          </div>
         </label>
         <label>Entity Type
           <select id="editEntityType"></select>
@@ -322,14 +334,17 @@
 
   function populateMasterDataDropdowns() {
     fillSelect('clientSourceFilter', optionsForCategory('Client_Source'), 'All Source', true);
-    fillSelect('newHeadOffice', optionsForCategory('Head_Office'), 'Pilih Head Office...');
-    fillSelect('newIndustry', optionsForCategory('Industry'), 'Pilih Industry...');
     fillSelect('newEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
     fillSelect('newClientSource', optionsForCategory('Client_Source'), 'Pilih Client Source...');
-    fillSelect('editHeadOffice', optionsForCategory('Head_Office'), 'Pilih Head Office...');
-    fillSelect('editIndustry', optionsForCategory('Industry'), 'Pilih Industry...');
     fillSelect('editEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
     fillSelect('editClientSource', optionsForCategory('Client_Source'), 'Pilih Client Source...');
+
+    var headOfficeValues = optionsForCategory('Head_Office').map(function (o) { return o.Value; });
+    var industryValues = optionsForCategory('Industry').map(function (o) { return o.Value; });
+    initSearchableSelect('newHeadOffice', headOfficeValues);
+    initSearchableSelect('newIndustry', industryValues);
+    initSearchableSelect('editHeadOffice', headOfficeValues);
+    initSearchableSelect('editIndustry', industryValues);
   }
 
   function fillSelect(selectId, options, placeholderLabel, isFilter) {
@@ -513,13 +528,19 @@
       el.innerHTML = '<div class="drawer-field-value">Belum ada PIC ditambahkan.</div>';
       return;
     }
-    el.innerHTML = pendingNewPics.map(function (p) {
+    el.innerHTML = pendingNewPics.map(function (p, idx) {
       return '<div class="pic-card">' +
+        '<button class="pic-card-remove" onclick="removePendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
         '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
         '<div style="font-size:12px; color:#5f6368;">' + (p.email || '-') + '</div>' +
         '<div style="font-size:12px; color:#5f6368;">' + (p.phone || '-') + '</div>' +
         '</div>';
     }).join('');
+  }
+
+  function removePendingPic(index) {
+    pendingNewPics.splice(index, 1);
+    renderPendingPics();
   }
 
   function openAddClientConfirm() {
@@ -568,6 +589,11 @@
     renderClientDrawer(client);
     document.getElementById('clientDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
+
+    // allPics bisa saja belum terisi PIC yang baru dibuat bersamaan dengan
+    // Client-nya (fetchPics dari fetchClients mungkin belum selesai saat
+    // user langsung klik detail) — tarik ulang supaya carousel selalu fresh.
+    fetchPics();
   }
 
   function closeClientDetail() {
@@ -592,8 +618,8 @@
 
     document.getElementById('editBrandName').value = client.Brand_Name || '';
     document.getElementById('editEntityNameField').value = client.Entity_Name || '';
-    document.getElementById('editHeadOffice').value = client.Head_Office || '';
-    document.getElementById('editIndustry').value = client.Industry || '';
+    setSearchableSelectValue('editHeadOffice', client.Head_Office || '');
+    setSearchableSelectValue('editIndustry', client.Industry || '');
     document.getElementById('editEntityType').value = client.Entity_Type || '';
     document.getElementById('editClientSource').value = client.Client_Source || '';
     document.getElementById('editWebsite').value = client.Website || '';
@@ -604,6 +630,7 @@
     document.getElementById('clientNotesViewSection').style.display = '';
     document.getElementById('clientSaveBtn').style.display = 'none';
     document.getElementById('clientSaveHint').innerText = '';
+    document.getElementById('clientEditInfoToggleBtn').innerHTML = '✏️ EDIT INFO';
 
     renderPicCarousel('detailPicCarousel', client.Client_ID);
   }
@@ -615,14 +642,29 @@
       el.innerHTML = '<div class="drawer-field-value">Belum ada PIC.</div>';
       return;
     }
+    var editing = document.getElementById('clientEditForm').classList.contains('open');
     el.innerHTML = pics.map(function (p) {
       return '<div class="pic-card">' +
+        (editing ? '<button class="pic-card-remove" onclick="removeExistingPic(\'' + p.PIC_ID + '\')" title="Hapus PIC">×</button>' : '') +
         '<div style="font-weight:bold;">' + p.PIC_Name + '</div>' +
         (p.Title ? '<div style="font-size:11px; color:#5f6368;">' + p.Title + '</div>' : '') +
         '<div style="font-size:12px; margin-top:6px;">Email : ' + (p.Email || '-') + '</div>' +
         '<div style="font-size:12px;">Phone : ' + (p.Phone || '-') + '</div>' +
         '</div>';
     }).join('');
+  }
+
+  function removeExistingPic(picId) {
+    if (!confirm('Hapus PIC ini?')) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchPics();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menghapus PIC: ' + (err && err.message ? err.message : err));
+      })
+      .client_removePic(picId);
   }
 
   function scrollPicCarousel(elementId, direction) {
@@ -636,6 +678,17 @@
     document.getElementById('clientViewBlock').style.display = isOpen ? 'none' : '';
     document.getElementById('clientNotesViewSection').style.display = isOpen ? 'none' : '';
     document.getElementById('clientSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
+    document.getElementById('clientEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT INFO';
+
+    if (!isOpen && currentClientDrawerId) {
+      // Batal edit — kembalikan form ke data asli supaya perubahan yang
+      // belum disimpan tidak nyangkut kalau user buka edit lagi.
+      var client = allClients.filter(function (c) { return c.Client_ID === currentClientDrawerId; })[0];
+      if (client) renderClientDrawer(client);
+      return;
+    }
+
+    if (currentClientDrawerId) renderPicCarousel('detailPicCarousel', currentClientDrawerId);
   }
 
   // ---- Add PIC popup (dipakai Add Client & Client Detail) ----

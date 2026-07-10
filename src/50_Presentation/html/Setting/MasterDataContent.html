@@ -1,0 +1,71 @@
+<div class="container" style="max-width: 900px;">
+  <p style="color:#5f6368; font-size:13px;">
+    Opsi dropdown Head Office, Industry, Entity Type, dan Client Source di Client Monitoring diambil dari daftar ini.
+  </p>
+  <div id="masterDataError" class="error"></div>
+  <div class="form-grid-2col" id="masterDataSections" style="margin-top:8px;"></div>
+</div>
+
+<script>
+  var MASTER_DATA_CATEGORIES = [
+    { key: 'Head_Office', label: 'Head Office' },
+    { key: 'Industry', label: 'Industry' },
+    { key: 'Entity_Type', label: 'Entity Type' },
+    { key: 'Client_Source', label: 'Client Source' }
+  ];
+  var allMasterData = [];
+
+  fetchMasterData();
+
+  function fetchMasterData() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          document.getElementById('masterDataError').innerText = 'Gagal memuat master data.';
+          return;
+        }
+        allMasterData = res.data;
+        renderMasterDataSections();
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('masterDataError').innerText = 'Gagal memuat master data: ' + (err && err.message ? err.message : err);
+      })
+      .masterdata_getAll();
+  }
+
+  function renderMasterDataSections() {
+    var container = document.getElementById('masterDataSections');
+    container.innerHTML = MASTER_DATA_CATEGORIES.map(function (cat) {
+      var values = allMasterData.filter(function (row) { return row.Category === cat.key; });
+      var listHtml = values.length
+        ? values.map(function (v) { return '<span class="badge badge-contacted" style="margin:2px;">' + v.Value + '</span>'; }).join(' ')
+        : '<span style="color:#9aa0a6; font-size:12px;">Belum ada opsi.</span>';
+
+      return '<div style="margin-bottom:20px;">' +
+        '<div class="drawer-field-label">' + cat.label + '</div>' +
+        '<div style="margin-bottom:8px;">' + listHtml + '</div>' +
+        '<div style="display:flex; gap:8px;">' +
+          '<input id="newValue_' + cat.key + '" placeholder="Tambah opsi ' + cat.label + '...">' +
+          '<button class="btn-outline" onclick="submitAddMasterData(\'' + cat.key + '\')">+ Tambah</button>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function submitAddMasterData(category) {
+    var input = document.getElementById('newValue_' + category);
+    var value = input.value.trim();
+    if (!value) return;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        input.value = '';
+        fetchMasterData();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menambah opsi: ' + (err && err.message ? err.message : err));
+      })
+      .masterdata_addOption(category, value);
+  }
+</script>

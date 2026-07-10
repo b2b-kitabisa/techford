@@ -155,5 +155,16 @@ var ClientService = (function (module) {
     return PicClientRepository.findAll();
   };
 
+  module.removePic = function (picId) {
+    if (Utils.isBlank(picId)) {
+      throw new AppError('VALIDATION_ERROR', 'PIC ID wajib diisi.');
+    }
+    var deleted = PicClientRepository.deleteById(picId);
+    if (!deleted) {
+      throw new AppError('PIC_NOT_FOUND', 'PIC tidak ditemukan.');
+    }
+    return PicClientRepository.findAll();
+  };
+
   return module;
 })(ClientService || {});

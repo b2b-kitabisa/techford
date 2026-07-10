@@ -29,5 +29,13 @@ var PicClientRepository = (function (module) {
     CacheHelper.invalidate('picClient:all');
   };
 
+  module.deleteById = function (picId) {
+    var deleted = base.deleteWhere(function (row) {
+      return row.PIC_ID === picId;
+    });
+    CacheHelper.invalidate('picClient:all');
+    return deleted;
+  };
+
   return module;
 })(PicClientRepository || {});

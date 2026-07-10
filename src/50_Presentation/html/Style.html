@@ -262,6 +262,30 @@
   }
   .pic-carousel-arrow.left { left: -14px; }
   .pic-carousel-arrow.right { right: -14px; }
+  .pic-card-remove {
+    position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
+    border: none; background: #fce8e6; color: #c5221f; font-size: 12px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pic-card-remove:hover { background: #f6c6c2; }
+  .pic-card { position: relative; }
+
+  /* ---- Searchable Select (ketik untuk filter opsi, dipakai untuk
+     dropdown dengan banyak opsi seperti Head Office & Industry) ---- */
+  .searchable-select { position: relative; }
+  .searchable-select input {
+    width: 100%; padding: 9px 10px; border: 1px solid #dadce0; border-radius: 6px;
+    font-size: 13px; font-family: inherit;
+  }
+  .searchable-select-options {
+    display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+    background: #fff; border: 1px solid #dadce0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-height: 220px; overflow-y: auto; z-index: 30;
+  }
+  .searchable-select-options.open { display: block; }
+  .searchable-select-option { padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .searchable-select-option:hover, .searchable-select-option.highlighted { background: #f1f3f4; }
+  .searchable-select-empty { padding: 8px 12px; font-size: 12px; color: #9aa0a6; }
   .drawer-header { padding: 16px 24px 18px; background: #3c4043; flex-shrink: 0; }
   .drawer-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .drawer-close { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1; }

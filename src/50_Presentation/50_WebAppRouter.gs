@@ -34,9 +34,14 @@ var ROUTES = {
     title: 'Client Monitoring 🏢',
     headerActions: '<button class="btn-sync" onclick="openAddClient()">➕ ADD NEW CLIENT</button>'
   },
-  'user-management': {
-    content: '50_Presentation/html/Setting/UserManagementContent',
-    title: 'User Management',
+  'configure-account': {
+    content: '50_Presentation/html/Setting/ConfigureAccountContent',
+    title: 'Configure Account',
+    headerActions: ''
+  },
+  'master-data': {
+    content: '50_Presentation/html/Setting/MasterDataContent',
+    title: 'Master Data',
     headerActions: ''
   }
 };

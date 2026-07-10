@@ -43,6 +43,13 @@ var NavigationConfig = (function (module) {
         { page: 'program-pipeline', label: 'Program Pipeline', enabled: false },
         { page: 'mitra-monitoring', label: 'Mitra Monitoring', enabled: false }
       ]
+    },
+    {
+      group: 'Setting',
+      items: [
+        { page: 'configure-account', label: 'Configure Account', enabled: true },
+        { page: 'master-data', label: 'Master Data', enabled: true }
+      ]
     }
   ];
 

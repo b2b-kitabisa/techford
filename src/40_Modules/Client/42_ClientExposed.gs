@@ -23,3 +23,7 @@ function client_update(clientId, patch) {
 function client_addPic(clientId, picInput) {
   return ClientController.addPic(clientId, picInput);
 }
+
+function client_removePic(picId) {
+  return ClientController.removePic(picId);
+}

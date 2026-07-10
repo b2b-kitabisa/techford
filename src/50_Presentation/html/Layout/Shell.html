@@ -34,7 +34,6 @@
 
       <div class="sidebar-footer">
         <div class="nav-item nav-item-disabled">🔔 Notification</div>
-        <a class="nav-item<?= activePage === 'user-management' ? ' nav-item-active' : '' ?>" href="<?= webAppUrl ?>?page=user-management">⚙️ Setting</a>
       </div>
     </aside>
 
@@ -97,6 +96,69 @@
       input.type = isHidden ? 'text' : 'password';
       btnEl.innerText = isHidden ? '🙈' : '👁';
     }
+
+    /**
+     * Komponen searchable-select global: dipakai untuk dropdown yang bisa
+     * berisi ratusan opsi (misal Head Office = kota/kabupaten se-Indonesia)
+     * supaya user bisa mengetik untuk memfilter, bukan scroll manual.
+     * Markup yang dibutuhkan per instance:
+     *   <div class="searchable-select" id="<id>Wrap">
+     *     <input id="<id>" autocomplete="off">
+     *     <div class="searchable-select-options" id="<id>Options"></div>
+     *   </div>
+     * initSearchableSelect(id, optionsArray) mengisi ulang daftar opsi
+     * (panggil lagi kalau master data berubah), sementara ketik & klik
+     * ditangani otomatis lewat delegasi event di sini.
+     */
+    var searchableSelectData = {};
+
+    function initSearchableSelect(id, options) {
+      searchableSelectData[id] = options || [];
+      var input = document.getElementById(id);
+      if (input && !input.dataset.searchableBound) {
+        input.dataset.searchableBound = '1';
+        input.addEventListener('focus', function () { renderSearchableOptions(id, input.value); });
+        input.addEventListener('input', function () { renderSearchableOptions(id, input.value); });
+      }
+    }
+
+    function setSearchableSelectValue(id, value) {
+      var input = document.getElementById(id);
+      if (input) input.value = value || '';
+    }
+
+    function renderSearchableOptions(id, query) {
+      var list = document.getElementById(id + 'Options');
+      if (!list) return;
+      var options = searchableSelectData[id] || [];
+      var q = (query || '').trim().toLowerCase();
+      var filtered = q ? options.filter(function (opt) { return opt.toLowerCase().indexOf(q) !== -1; }) : options;
+
+      if (!filtered.length) {
+        list.innerHTML = '<div class="searchable-select-empty">Tidak ada opsi cocok.</div>';
+      } else {
+        list.innerHTML = filtered.map(function (opt) {
+          return '<div class="searchable-select-option" onclick="chooseSearchableOption(\'' + id + '\', this)">' + opt + '</div>';
+        }).join('');
+      }
+      list.classList.add('open');
+    }
+
+    function chooseSearchableOption(id, el) {
+      var input = document.getElementById(id);
+      input.value = el.innerText;
+      document.getElementById(id + 'Options').classList.remove('open');
+    }
+
+    document.addEventListener('click', function (e) {
+      Object.keys(searchableSelectData).forEach(function (id) {
+        var wrap = document.getElementById(id + 'Wrap');
+        if (wrap && !wrap.contains(e.target)) {
+          var list = document.getElementById(id + 'Options');
+          if (list) list.classList.remove('open');
+        }
+      });
+    });
 
     function toggleUserMenu() {
       document.getElementById('userMenu').classList.toggle('open');

@@ -83,3 +83,27 @@ BaseRepository.prototype.updateWhere = function (predicateFn, patch) {
     return false;
   });
 };
+
+/**
+ * Hapus baris pertama yang cocok dengan predicateFn.
+ * @returns {boolean} true kalau ada baris yang ditemukan & dihapus.
+ */
+BaseRepository.prototype.deleteWhere = function (predicateFn) {
+  var self = this;
+  return LockHelper.withLock(function () {
+    var sheet = self._getSheet();
+    var rows = sheet.getDataRange().getValues();
+    var headers = rows[0];
+
+    for (var r = 1; r < rows.length; r++) {
+      var rowObj = {};
+      headers.forEach(function (h, i) { rowObj[h] = rows[r][i]; });
+
+      if (predicateFn(rowObj)) {
+        sheet.deleteRow(r + 1);
+        return true;
+      }
+    }
+    return false;
+  });
+};
