@@ -75,7 +75,10 @@
       <p>Masuk dengan akun yang sudah didaftarkan admin.</p>
       <div id="loginError" class="error"></div>
       <input id="loginEmail" type="email" placeholder="nama@kitabisa.com" onkeydown="if(event.key==='Enter')TechfordAuth.doLogin();">
-      <input id="loginPassword" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')TechfordAuth.doLogin();">
+      <div class="password-field-wrap">
+        <input id="loginPassword" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')TechfordAuth.doLogin();">
+        <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('loginPassword', this)">👁</button>
+      </div>
       <button class="btn-save" onclick="TechfordAuth.doLogin()">Masuk</button>
     </div>
   </div>
@@ -83,6 +86,16 @@
   <script>
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+    }
+
+    // Fungsi global (dipakai halaman manapun yang punya input password,
+    // termasuk form Tambah Admin di Setting) supaya user bisa cek ulang
+    // password yang diketik sebelum submit.
+    function togglePasswordVisibility(inputId, btnEl) {
+      var input = document.getElementById(inputId);
+      var isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      btnEl.innerText = isHidden ? '🙈' : '👁';
     }
 
     function toggleUserMenu() {

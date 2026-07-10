@@ -148,9 +148,20 @@
   var clientPage = 1;
   var currentClientDrawerId = null;
   var clientSort = { field: 'Created_Date', dir: 'desc' };
+  var clientBootstrapRetried = false;
 
+  // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
+  // sepenuhnya siap tepat saat halaman pertama kali dimuat — simtomnya
+  // "tidak ada respons dari server" di percobaan pertama, baru berhasil
+  // setelah refresh. Retry otomatis sekali supaya tidak perlu refresh manual.
   function bootstrapClients() {
     fetchClients();
+    setTimeout(function () {
+      if (!allClients.length && !clientBootstrapRetried) {
+        clientBootstrapRetried = true;
+        fetchClients();
+      }
+    }, 1200);
   }
   if (document.readyState === 'complete') {
     bootstrapClients();
@@ -162,9 +173,11 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) {
+          if (!clientBootstrapRetried) return; // biarkan retry di bootstrapClients yang coba lagi
           showClientTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
           return;
         }
+        clientBootstrapRetried = true;
         allClients = res.data;
         fetchPics();
       })

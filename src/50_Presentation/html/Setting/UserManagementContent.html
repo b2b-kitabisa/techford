@@ -25,7 +25,12 @@
       <label>Nama *<input id="newAdminName"></label>
       <label>Email (@kitabisa.com) *<input id="newAdminEmail" type="email"></label>
       <label>Role<input id="newAdminRole" placeholder="misal: Master Admin, Sales"></label>
-      <label>Password *<input id="newAdminPassword" type="password"></label>
+      <label>Password *
+        <div class="password-field-wrap">
+          <input id="newAdminPassword" type="password">
+          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('newAdminPassword', this)">👁</button>
+        </div>
+      </label>
     </div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeAddAdmin()">Cancel</button>
@@ -38,7 +43,12 @@
   <div class="confirm-box" style="width:320px; text-align:left;">
     <h3>Reset Password</h3>
     <div class="drawer-edit-form open" style="padding:0; border:none;">
-      <label>Password baru *<input id="resetPasswordValue" type="password"></label>
+      <label>Password baru *
+        <div class="password-field-wrap">
+          <input id="resetPasswordValue" type="password">
+          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('resetPasswordValue', this)">👁</button>
+        </div>
+      </label>
     </div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeResetPassword()">Cancel</button>
@@ -50,8 +60,21 @@
 <script>
   var allAdmins = [];
   var resetPasswordTargetId = null;
+  var adminBootstrapRetried = false;
 
-  function bootstrapAdmins() { fetchAdmins(); }
+  // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
+  // sepenuhnya siap tepat saat halaman pertama kali dimuat — simtomnya
+  // "tidak ada respons dari server" di percobaan pertama, baru berhasil
+  // setelah refresh. Retry otomatis sekali supaya tidak perlu refresh manual.
+  function bootstrapAdmins() {
+    fetchAdmins();
+    setTimeout(function () {
+      if (!allAdmins.length && !adminBootstrapRetried) {
+        adminBootstrapRetried = true;
+        fetchAdmins();
+      }
+    }, 1200);
+  }
   if (document.readyState === 'complete') {
     bootstrapAdmins();
   } else {
@@ -62,9 +85,11 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) {
+          if (!adminBootstrapRetried) return; // biarkan retry di bootstrapAdmins yang coba lagi
           showAdminError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
           return;
         }
+        adminBootstrapRetried = true;
         allAdmins = res.data;
         renderAdmins();
       })
