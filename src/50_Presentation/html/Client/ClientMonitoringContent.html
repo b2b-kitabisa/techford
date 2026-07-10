@@ -202,7 +202,7 @@
     <div class="drawer-section">
       <div class="section-title-row">
         <h3>PIC Client Information</h3>
-        <button class="btn-outline" onclick="openAddPicPopup('detail')">+ Add PIC</button>
+        <button class="btn-outline" id="detailAddPicBtn" style="display:none;" onclick="openAddPicPopup('detail')">+ Add PIC</button>
       </div>
       <div class="pic-carousel-wrap">
         <button class="pic-carousel-arrow left" onclick="scrollPicCarousel('detailPicCarousel', -1)">‹</button>
@@ -270,16 +270,31 @@
   var clientSort = { field: 'Created_Date', dir: 'desc' };
   var clientBootstrapRetried = false;
   var picPopupContext = null; // 'new' | 'detail'
+  var editModePendingNewPics = []; // PIC baru yang ditambahkan selagi edit info, belum di-save
+  var editModeRemovedPicIds = []; // PIC_ID yang ditandai hapus selagi edit info, belum di-save
+
+  // Jembatan google.script.run kadang belum sepenuhnya siap tepat saat
+  // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
+  // respons. Retry sekali kadang tidak cukup, jadi diulang berkali-kali
+  // sebelum benar-benar menyerah dan menampilkan pesan error.
+  var clientBootstrapAttempts = 0;
+  var CLIENT_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
 
   function bootstrapClients() {
+    clientBootstrapAttempts++;
     fetchClients();
     fetchMasterData();
     setTimeout(function () {
-      if (!allClients.length && !clientBootstrapRetried) {
+      if (allClients.length || clientBootstrapRetried) return;
+      if (clientBootstrapAttempts < CLIENT_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapClients();
+      } else {
         clientBootstrapRetried = true;
         fetchClients();
+        fetchMasterData();
       }
-    }, 1200);
+    }, CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
   if (document.readyState === 'complete') {
     bootstrapClients();
@@ -300,6 +315,7 @@
         fetchPics();
       })
       .withFailureHandler(function (err) {
+        if (!clientBootstrapRetried) return;
         showClientTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
       })
       .client_getAll();
@@ -631,40 +647,58 @@
     document.getElementById('clientSaveBtn').style.display = 'none';
     document.getElementById('clientSaveHint').innerText = '';
     document.getElementById('clientEditInfoToggleBtn').innerHTML = '✏️ EDIT INFO';
+    document.getElementById('detailAddPicBtn').style.display = 'none';
+
+    // Batalkan/reset staging PIC (penambahan & penghapusan) yang belum
+    // di-save — setiap kali drawer dibuka/ditutup dari mode edit, state
+    // harus kembali bersih supaya tidak "nyangkut" ke sesi edit berikutnya.
+    editModePendingNewPics = [];
+    editModeRemovedPicIds = [];
 
     renderPicCarousel('detailPicCarousel', client.Client_ID);
   }
 
   function renderPicCarousel(elementId, clientId) {
-    var pics = allPics.filter(function (p) { return p.Client_ID === clientId; });
-    var el = document.getElementById(elementId);
-    if (!pics.length) {
-      el.innerHTML = '<div class="drawer-field-value">Belum ada PIC.</div>';
-      return;
-    }
     var editing = document.getElementById('clientEditForm').classList.contains('open');
-    el.innerHTML = pics.map(function (p) {
+    var pics = allPics.filter(function (p) {
+      return p.Client_ID === clientId && editModeRemovedPicIds.indexOf(p.PIC_ID) === -1;
+    });
+    var el = document.getElementById(elementId);
+
+    var existingHtml = pics.map(function (p) {
       return '<div class="pic-card">' +
-        (editing ? '<button class="pic-card-remove" onclick="removeExistingPic(\'' + p.PIC_ID + '\')" title="Hapus PIC">×</button>' : '') +
+        (editing ? '<button class="pic-card-remove" onclick="stageExistingPicRemoval(\'' + p.PIC_ID + '\')" title="Hapus PIC">×</button>' : '') +
         '<div style="font-weight:bold;">' + p.PIC_Name + '</div>' +
         (p.Title ? '<div style="font-size:11px; color:#5f6368;">' + p.Title + '</div>' : '') +
         '<div style="font-size:12px; margin-top:6px;">Email : ' + (p.Email || '-') + '</div>' +
         '<div style="font-size:12px;">Phone : ' + (p.Phone || '-') + '</div>' +
         '</div>';
     }).join('');
+
+    var pendingHtml = editing ? editModePendingNewPics.map(function (p, idx) {
+      return '<div class="pic-card">' +
+        '<button class="pic-card-remove" onclick="removeEditPendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
+        '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
+        '<div style="font-size:12px; color:#5f6368;">' + (p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color:#5f6368;">' + (p.phone || '-') + '</div>' +
+        '</div>';
+    }).join('') : '';
+
+    var combined = existingHtml + pendingHtml;
+    el.innerHTML = combined || '<div class="drawer-field-value">Belum ada PIC.</div>';
   }
 
-  function removeExistingPic(picId) {
-    if (!confirm('Hapus PIC ini?')) return;
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
-        fetchPics();
-      })
-      .withFailureHandler(function (err) {
-        alert('Gagal menghapus PIC: ' + (err && err.message ? err.message : err));
-      })
-      .client_removePic(picId);
+  // PIC dihapus/ditambah di sini HANYA ditandai secara lokal (belum
+  // menyentuh server) — perubahan baru benar-benar diterapkan saat user
+  // klik SAVE di saveClientInfo(), konsisten dengan field lain di edit info.
+  function stageExistingPicRemoval(picId) {
+    if (editModeRemovedPicIds.indexOf(picId) === -1) editModeRemovedPicIds.push(picId);
+    renderPicCarousel('detailPicCarousel', currentClientDrawerId);
+  }
+
+  function removeEditPendingPic(index) {
+    editModePendingNewPics.splice(index, 1);
+    renderPicCarousel('detailPicCarousel', currentClientDrawerId);
   }
 
   function scrollPicCarousel(elementId, direction) {
@@ -679,10 +713,11 @@
     document.getElementById('clientNotesViewSection').style.display = isOpen ? 'none' : '';
     document.getElementById('clientSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
     document.getElementById('clientEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT INFO';
+    document.getElementById('detailAddPicBtn').style.display = isOpen ? 'inline-flex' : 'none';
 
     if (!isOpen && currentClientDrawerId) {
-      // Batal edit — kembalikan form ke data asli supaya perubahan yang
-      // belum disimpan tidak nyangkut kalau user buka edit lagi.
+      // Batal edit — kembalikan form (termasuk staging PIC) ke data asli
+      // supaya perubahan yang belum disimpan tidak nyangkut.
       var client = allClients.filter(function (c) { return c.Client_ID === currentClientDrawerId; })[0];
       if (client) renderClientDrawer(client);
       return;
@@ -725,16 +760,11 @@
 
     if (picPopupContext === 'detail') {
       if (!currentClientDrawerId) { closeAddPicPopup(); return; }
-      google.script.run
-        .withSuccessHandler(function (res) {
-          if (res && res.ok === false) return alert(res.error.message);
-          closeAddPicPopup();
-          fetchPics();
-        })
-        .withFailureHandler(function (err) {
-          alert('Gagal menambah PIC: ' + (err && err.message ? err.message : err));
-        })
-        .client_addPic(currentClientDrawerId, picInput);
+      // Hanya ditandai lokal dulu — baru dikirim ke server saat SAVE,
+      // sama seperti perubahan field lain di edit info.
+      editModePendingNewPics.push(picInput);
+      renderPicCarousel('detailPicCarousel', currentClientDrawerId);
+      closeAddPicPopup();
     }
   }
 
@@ -766,14 +796,14 @@
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
+    var removedPicIds = editModeRemovedPicIds.slice();
+    var newPics = editModePendingNewPics.slice();
+
     // google.script.run kadang mengirim res=null walau operasi di server
     // berhasil — kita terapkan langsung ke cache lokal (optimistic update)
     // tanpa bergantung pada isi respons, konsisten dengan pola di modul Lead.
     google.script.run
       .withSuccessHandler(function () {
-        btn.disabled = false;
-        btn.innerText = '💾 SAVE';
-
         var idx = -1;
         for (var i = 0; i < allClients.length; i++) {
           if (allClients[i].Client_ID === clientId) { idx = i; break; }
@@ -786,11 +816,22 @@
           if (updated.Entity_Name) updated.Entity_Name = updated.Entity_Name.toUpperCase();
           updated.Last_Updated = new Date().toISOString();
           allClients[idx] = updated;
-          renderClientDrawer(allClients[idx]);
         }
 
-        renderClients();
-        showClientSuccess('Data client berhasil disimpan.');
+        // Baru sekarang terapkan penghapusan & penambahan PIC yang di-stage,
+        // secara berurutan (bukan paralel) supaya sederhana untuk di-debug.
+        applyStagedPicRemovals(removedPicIds, 0, function () {
+          applyStagedPicAdditions(newPics, clientId, 0, function () {
+            editModeRemovedPicIds = [];
+            editModePendingNewPics = [];
+            btn.disabled = false;
+            btn.innerText = '💾 SAVE';
+            fetchPics();
+            if (idx !== -1) renderClientDrawer(allClients[idx]);
+            renderClients();
+            showClientSuccess('Data client berhasil disimpan.');
+          });
+        });
       })
       .withFailureHandler(function (err) {
         btn.disabled = false;
@@ -798,6 +839,22 @@
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .client_update(clientId, patch);
+  }
+
+  function applyStagedPicRemovals(picIds, index, done) {
+    if (index >= picIds.length) return done();
+    google.script.run
+      .withSuccessHandler(function () { applyStagedPicRemovals(picIds, index + 1, done); })
+      .withFailureHandler(function () { applyStagedPicRemovals(picIds, index + 1, done); })
+      .client_removePic(picIds[index]);
+  }
+
+  function applyStagedPicAdditions(pics, clientId, index, done) {
+    if (index >= pics.length) return done();
+    google.script.run
+      .withSuccessHandler(function () { applyStagedPicAdditions(pics, clientId, index + 1, done); })
+      .withFailureHandler(function () { applyStagedPicAdditions(pics, clientId, index + 1, done); })
+      .client_addPic(clientId, pics[index]);
   }
 
   function showClientSuccess(message) {

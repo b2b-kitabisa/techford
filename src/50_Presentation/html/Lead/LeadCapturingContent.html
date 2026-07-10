@@ -237,22 +237,32 @@
   // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
   // sepenuhnya siap tepat saat halaman pertama kali dimuat, walau event
   // "load" sudah terpicu. Simtomnya: data & score card kosong di load
-  // pertama, baru muncul setelah ada interaksi lain. Untuk mengatasi ini
-  // tanpa perlu refresh manual, kita otomatis coba ulang sekali kalau
-  // percobaan pertama belum membawa data dalam 1.2 detik.
+  // pertama, baru muncul setelah ada interaksi lain / refresh manual.
+  // Sekali retry ternyata kadang tidak cukup, jadi di sini kita ulang
+  // berkali-kali (bukan cuma sekali) sebelum benar-benar menyerah dan
+  // menampilkan pesan error.
+  var bootstrapAttempts = 0;
+  var BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
   function bootstrap() {
+    bootstrapAttempts++;
     fetchLeads();
     setTimeout(function () {
-      if (!allLeads.length && !bootstrapRetried) {
+      if (allLeads.length || bootstrapRetried) return;
+      if (bootstrapAttempts < BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrap();
+      } else {
         bootstrapRetried = true;
         fetchLeads();
       }
-    }, 1200);
+    }, BOOTSTRAP_RETRY_INTERVAL_MS);
   }
 
   function fetchLeads() {
     runServer('lead_getAll', [], function (res) {
       if (!res.ok) {
+        if (!bootstrapRetried) return; // masih ada percobaan retry lain yang berjalan
         showTableError(res.error.message);
         return;
       }
@@ -261,6 +271,7 @@
       currentPage = 1;
       render();
     }, function (err) {
+      if (!bootstrapRetried) return;
       showTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
     });
   }

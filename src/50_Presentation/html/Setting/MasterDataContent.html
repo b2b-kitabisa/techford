@@ -1,33 +1,66 @@
 <div class="container" style="max-width: 900px;">
   <p style="color:#5f6368; font-size:13px;">
     Opsi dropdown Head Office, Industry, Entity Type, dan Client Source di Client Monitoring diambil dari daftar ini.
+    Klik judul tiap kategori untuk membuka/menutup daftarnya.
   </p>
   <div id="masterDataError" class="error"></div>
-  <div class="form-grid-2col" id="masterDataSections" style="margin-top:8px;"></div>
+  <div id="masterDataSections" style="margin-top:8px;"></div>
 </div>
 
 <script>
   var MASTER_DATA_CATEGORIES = [
-    { key: 'Head_Office', label: 'Head Office' },
-    { key: 'Industry', label: 'Industry' },
     { key: 'Entity_Type', label: 'Entity Type' },
+    { key: 'Industry', label: 'Industry' },
+    { key: 'Head_Office', label: 'Head Office' },
     { key: 'Client_Source', label: 'Client Source' }
   ];
   var allMasterData = [];
+  var openMasterDataCategories = {}; // key -> bool, dipertahankan lintas render ulang
 
-  fetchMasterData();
+  // ---- Bootstrap dengan retry otomatis ----
+  // Jembatan google.script.run kadang belum sepenuhnya siap tepat saat
+  // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
+  // respons. Di sini kita ulang otomatis sampai beberapa kali (bukan
+  // cuma sekali) sebelum benar-benar menyerah dan menampilkan error.
+  var masterDataBootstrapAttempts = 0;
+  var masterDataBootstrapDone = false;
+  var MASTER_DATA_MAX_ATTEMPTS = 8;
+  var MASTER_DATA_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapMasterData() {
+    masterDataBootstrapAttempts++;
+    fetchMasterData();
+    setTimeout(function () {
+      if (allMasterData.length || masterDataBootstrapDone) return;
+      if (masterDataBootstrapAttempts < MASTER_DATA_MAX_ATTEMPTS) {
+        bootstrapMasterData();
+      } else {
+        masterDataBootstrapDone = true;
+        fetchMasterData();
+      }
+    }, MASTER_DATA_RETRY_INTERVAL_MS);
+  }
+  if (document.readyState === 'complete') {
+    bootstrapMasterData();
+  } else {
+    window.addEventListener('load', bootstrapMasterData);
+  }
 
   function fetchMasterData() {
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) {
-          document.getElementById('masterDataError').innerText = 'Gagal memuat master data.';
+          if (!masterDataBootstrapDone) return; // masih ada percobaan retry lain yang berjalan
+          document.getElementById('masterDataError').innerText = (res && res.error && res.error.message) || 'Gagal memuat master data.';
           return;
         }
+        masterDataBootstrapDone = true;
+        document.getElementById('masterDataError').innerText = '';
         allMasterData = res.data;
         renderMasterDataSections();
       })
       .withFailureHandler(function (err) {
+        if (!masterDataBootstrapDone) return;
         document.getElementById('masterDataError').innerText = 'Gagal memuat master data: ' + (err && err.message ? err.message : err);
       })
       .masterdata_getAll();
@@ -41,15 +74,23 @@
         ? values.map(function (v) { return '<span class="badge badge-contacted" style="margin:2px;">' + v.Value + '</span>'; }).join(' ')
         : '<span style="color:#9aa0a6; font-size:12px;">Belum ada opsi.</span>';
 
-      return '<div style="margin-bottom:20px;">' +
-        '<div class="drawer-field-label">' + cat.label + '</div>' +
-        '<div style="margin-bottom:8px;">' + listHtml + '</div>' +
+      return '<details class="master-data-section" data-category="' + cat.key + '">' +
+        '<summary>' + cat.label + ' <span style="color:#9aa0a6; font-weight:normal;">(' + values.length + ')</span></summary>' +
+        '<div style="margin:10px 0;">' + listHtml + '</div>' +
         '<div style="display:flex; gap:8px;">' +
           '<input id="newValue_' + cat.key + '" placeholder="Tambah opsi ' + cat.label + '...">' +
           '<button class="btn-outline" onclick="submitAddMasterData(\'' + cat.key + '\')">+ Tambah</button>' +
         '</div>' +
-        '</div>';
+        '</details>';
     }).join('');
+
+    Array.prototype.forEach.call(container.querySelectorAll('details.master-data-section'), function (details) {
+      var key = details.getAttribute('data-category');
+      if (openMasterDataCategories[key]) details.setAttribute('open', '');
+      details.addEventListener('toggle', function () {
+        openMasterDataCategories[key] = details.open;
+      });
+    });
   }
 
   function submitAddMasterData(category) {
@@ -60,7 +101,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);
-        input.value = '';
+        openMasterDataCategories[category] = true;
         fetchMasterData();
       })
       .withFailureHandler(function (err) {

@@ -65,15 +65,24 @@
   // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
   // sepenuhnya siap tepat saat halaman pertama kali dimuat — simtomnya
   // "tidak ada respons dari server" di percobaan pertama, baru berhasil
-  // setelah refresh. Retry otomatis sekali supaya tidak perlu refresh manual.
+  // setelah refresh. Sekali retry ternyata kadang tidak cukup, jadi diulang
+  // berkali-kali sebelum benar-benar menyerah dan menampilkan error.
+  var adminBootstrapAttempts = 0;
+  var ADMIN_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var ADMIN_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
   function bootstrapAdmins() {
+    adminBootstrapAttempts++;
     fetchAdmins();
     setTimeout(function () {
-      if (!allAdmins.length && !adminBootstrapRetried) {
+      if (allAdmins.length || adminBootstrapRetried) return;
+      if (adminBootstrapAttempts < ADMIN_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapAdmins();
+      } else {
         adminBootstrapRetried = true;
         fetchAdmins();
       }
-    }, 1200);
+    }, ADMIN_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
   if (document.readyState === 'complete') {
     bootstrapAdmins();
@@ -94,6 +103,7 @@
         renderAdmins();
       })
       .withFailureHandler(function (err) {
+        if (!adminBootstrapRetried) return;
         showAdminError('Gagal memuat data: ' + (err && err.message ? err.message : err));
       })
       .employee_listAdmins();
