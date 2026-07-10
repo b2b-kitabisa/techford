@@ -137,27 +137,25 @@
       <span class="taxonomy-label">Choose Service (Multiple Select)</span>
       <div class="toggle-btn-group" id="newServiceButtons"></div>
 
-      <span class="taxonomy-label" style="margin-top:16px;">Choose Service Category (Multiple Select)</span>
+      <span class="taxonomy-label" style="margin-top:14px;">Choose Service Category (Multiple Select)</span>
       <div class="service-category-grid" id="newCategoryGrid"></div>
     </div>
 
     <div class="drawer-section">
-      <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
-        <div>
-          <span class="taxonomy-label">Program Type</span>
-          <div class="toggle-btn-group" id="newProgramTypeButtons" style="margin-bottom:10px;"></div>
-          <div id="newProgramCategoryArea"></div>
-        </div>
-        <div>
-          <span class="taxonomy-label">Issue (Multiple Select)</span>
-          <div class="toggle-btn-group" id="newIssueButtons" style="margin-bottom:10px;"></div>
-          <input id="newIssueCustom" placeholder="Type specific issue...">
-        </div>
-        <div>
-          <span class="taxonomy-label">Other Notes</span>
-          <textarea id="newOtherNotes" placeholder="Type notes..." style="width:100%; min-height:120px;"></textarea>
-        </div>
-      </div>
+      <span class="taxonomy-label">Program Type</span>
+      <div class="toggle-btn-group" id="newProgramTypeButtons" style="margin-bottom:10px;"></div>
+      <div id="newProgramCategoryArea"></div>
+    </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Issue (Multiple Select)</span>
+      <div class="toggle-btn-group" id="newIssueButtons" style="margin-bottom:10px;"></div>
+      <input id="newIssueCustom" placeholder="Pilih Momentum untuk mengisi issue spesifik" disabled>
+    </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Other Notes</span>
+      <textarea id="newOtherNotes" placeholder="Type notes..." style="width:100%; min-height:90px;"></textarea>
     </div>
 
     <div class="drawer-footer">
@@ -227,6 +225,11 @@
             <div class="drawer-field-value" id="projectOtherNotesDisplay">Belum ada catatan.</div>
           </div>
         </div>
+
+        <div style="margin-top:14px;">
+          <div class="drawer-field-label">Other Document Related :</div>
+          <div class="drawer-field-value" id="otherDocsViewList">Belum ada dokumen terkait.</div>
+        </div>
       </div>
 
       <div class="drawer-edit-form" id="projectEditForm">
@@ -247,9 +250,13 @@
 
         <span class="taxonomy-label" style="margin-top:10px;">Issue (Multiple Select)</span>
         <div class="toggle-btn-group" id="editIssueButtons" style="margin-bottom:8px;"></div>
-        <input id="editIssueCustom" placeholder="Type specific issue...">
+        <input id="editIssueCustom" placeholder="Pilih Momentum untuk mengisi issue spesifik" disabled>
 
         <label style="margin-top:10px;">Other Notes<textarea id="editOtherNotes" placeholder="Type notes here."></textarea></label>
+
+        <span class="taxonomy-label" style="margin-top:10px;">Other Document Related</span>
+        <div id="otherDocLinksContainer"></div>
+        <button type="button" class="btn-outline" onclick="addOtherDocLinkRow()" style="align-self:flex-start;">+ Tambah Dokumen</button>
       </div>
     </div>
 
@@ -298,17 +305,6 @@
         <button class="btn-outline" disabled>✏️ EDIT</button>
       </div>
       <div class="placeholder-note">Breakdown detail per campaign/service menyusul — logikanya cukup kompleks, ditunda dulu.</div>
-    </div>
-
-    <div class="drawer-section">
-      <div class="section-title-row">
-        <h3>Other Document Related</h3>
-        <button class="btn-outline" onclick="addOtherDocLinkRow()">+</button>
-      </div>
-      <div id="otherDocLinksContainer"></div>
-      <div style="text-align:right; margin-top:8px;">
-        <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
-      </div>
     </div>
 
     <div class="confirm-overlay" id="projectEditConfirm">
@@ -594,8 +590,10 @@
         '<div class="entity-pic">' + (p.Project_Name || '-') + '</div></td>' +
         '<td><div>' + (p.Consultant || '-') + '</div>' +
         '<div class="entity-pic">' + (p.Stage || '-') + '</div></td>' +
-        '<td class="nowrap-cell"><div>GDV : ' + formatRupiah(p.Total_GDV) + '</div>' +
-        '<div class="entity-pic">REV : ' + formatRupiah(p.Total_Service_Revenue) + '</div></td>' +
+        '<td class="nowrap-cell">' +
+        '<div class="pipeline-value-line"><span class="pipeline-value-label">GDV</span>' + formatRupiah(p.Total_GDV) + '</div>' +
+        '<div class="pipeline-value-line"><span class="pipeline-value-label">REV</span>' + formatRupiah(p.Total_Service_Revenue) + '</div>' +
+        '</td>' +
         '<td><button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button></td>' +
         '</tr>';
     }).join('');
@@ -722,6 +720,17 @@
     }).join('');
   }
 
+  // "Type specific issue" hanya relevan/aktif kalau opsi 'Momentum' dipilih
+  // — di luar itu inputnya dikosongkan & dikunci supaya tidak menyimpan
+  // teks nyasar yang tidak terkait issue manapun.
+  function updateIssueCustomInputState(inputId, selectedIssues) {
+    var input = document.getElementById(inputId);
+    var enabled = selectedIssues.indexOf('Momentum') !== -1;
+    input.disabled = !enabled;
+    if (!enabled) input.value = '';
+    input.placeholder = enabled ? 'Type specific issue...' : 'Pilih Momentum untuk mengisi issue spesifik';
+  }
+
   // ---- Add Pipeline: Service/Category ----
   function toggleNewService(key) {
     var idx = newProjectServices.indexOf(key);
@@ -770,6 +779,7 @@
     var idx = newProjectIssues.indexOf(issue);
     if (idx === -1) newProjectIssues.push(issue); else newProjectIssues.splice(idx, 1);
     renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
+    updateIssueCustomInputState('newIssueCustom', newProjectIssues);
   }
 
   // ---- Add Pipeline: open/close/reset ----
@@ -792,6 +802,7 @@
     renderProgramTypeButtonsInto('newProgramTypeButtons', newProjectProgramType, 'selectNewProgramType');
     renderNewProgramCategoryArea();
     renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
+    updateIssueCustomInputState('newIssueCustom', newProjectIssues);
 
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
@@ -919,6 +930,7 @@
     renderProgramTypeButtonsInto('editProgramTypeButtons', editProjectProgramType, 'selectEditProgramType');
     renderEditProgramCategoryArea();
     renderIssueButtonsInto('editIssueButtons', editProjectIssues, 'toggleEditIssue');
+    updateIssueCustomInputState('editIssueCustom', editProjectIssues);
 
     document.getElementById('projectViewBlock').style.display = '';
     document.getElementById('projectEditForm').classList.remove('open');
@@ -926,8 +938,11 @@
     document.getElementById('projectSaveHint').innerText = '';
     document.getElementById('projectEditInfoToggleBtn').innerHTML = '✏️ EDIT PROJECT';
 
-    editOtherDocLinks = (project.Other_Document_Links || []).slice();
+    editOtherDocLinks = (project.Other_Document_Links || []).map(function (d) {
+      return { name: (d && d.name) || '', link: (d && d.link) || '' };
+    });
     renderOtherDocLinks();
+    renderOtherDocsView(project.Other_Document_Links || []);
   }
 
   function renderServiceListHtml(project) {
@@ -991,6 +1006,7 @@
     var idx = editProjectIssues.indexOf(issue);
     if (idx === -1) editProjectIssues.push(issue); else editProjectIssues.splice(idx, 1);
     renderIssueButtonsInto('editIssueButtons', editProjectIssues, 'toggleEditIssue');
+    updateIssueCustomInputState('editIssueCustom', editProjectIssues);
   }
 
   function toggleProjectEditInfo() {
@@ -1032,7 +1048,9 @@
       programCategory: editProjectProgramCategory,
       programName: manualNameEl ? manualNameEl.value.trim() : undefined,
       issues: issues,
-      otherNotes: document.getElementById('editOtherNotes').value
+      otherNotes: document.getElementById('editOtherNotes').value,
+      otherDocumentLinks: editOtherDocLinks.filter(function (d) { return d.name.trim() || d.link.trim(); })
+        .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; })
     };
 
     var projectId = currentPipelineDrawerId;
@@ -1073,32 +1091,44 @@
       .project_updateStage(currentPipelineDrawerId, stage);
   }
 
-  // ---- Other Document Related (fitur nyata, terpisah dari EDIT PROJECT) ----
+  // ---- Other Document Related ----
+  // Sekarang bagian dari EDIT PROJECT — hanya bisa ditambah/hapus saat mode
+  // edit aktif, dan ikut tersimpan lewat tombol SAVE utama (saveProjectInfo),
+  // BUKAN tombol save sendiri.
+  function escAttr(str) {
+    return String(str || '').replace(/"/g, '&quot;');
+  }
+
   function renderOtherDocLinks() {
     var container = document.getElementById('otherDocLinksContainer');
-    if (!editOtherDocLinks.length) editOtherDocLinks = [''];
-    container.innerHTML = editOtherDocLinks.map(function (link, idx) {
-      return '<input placeholder="Put related link in here....." style="width:100%; margin-bottom:8px;" ' +
-        'value="' + (link || '').replace(/"/g, '&quot;') + '" oninput="editOtherDocLinks[' + idx + ']=this.value">';
+    if (!editOtherDocLinks.length) editOtherDocLinks = [{ name: '', link: '' }];
+    container.innerHTML = editOtherDocLinks.map(function (doc, idx) {
+      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">' +
+        '<input placeholder="Nama dokumen..." style="flex:1;" value="' + escAttr(doc.name) + '" oninput="editOtherDocLinks[' + idx + '].name=this.value">' +
+        '<input placeholder="Put related link in here....." style="flex:2;" value="' + escAttr(doc.link) + '" oninput="editOtherDocLinks[' + idx + '].link=this.value">' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0;" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus">×</button>' +
+        '</div>';
     }).join('');
   }
   function addOtherDocLinkRow() {
-    editOtherDocLinks.push('');
+    editOtherDocLinks.push({ name: '', link: '' });
     renderOtherDocLinks();
   }
-  function submitOtherDocLinks() {
-    if (!currentPipelineDrawerId) return;
-    var links = editOtherDocLinks.filter(function (l) { return l && l.trim(); });
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
-        showPipelineSuccess('Link dokumen berhasil disimpan.');
-        fetchProjects();
-      })
-      .withFailureHandler(function (err) {
-        alert('Gagal menyimpan link: ' + (err && err.message ? err.message : err));
-      })
-      .project_updateOtherDocumentLinks(currentPipelineDrawerId, links);
+  function removeOtherDocLinkRow(index) {
+    editOtherDocLinks.splice(index, 1);
+    renderOtherDocLinks();
+  }
+  function renderOtherDocsView(docs) {
+    var el = document.getElementById('otherDocsViewList');
+    var withContent = (docs || []).filter(function (d) { return d && (d.name || d.link); });
+    if (!withContent.length) {
+      el.innerHTML = 'Belum ada dokumen terkait.';
+      return;
+    }
+    el.innerHTML = '<ul style="margin:0; padding-left:18px;">' + withContent.map(function (d) {
+      var name = d.name || 'Dokumen';
+      return '<li>' + name + (d.link ? ' — <a href="' + d.link + '" target="_blank" style="color:var(--color-cerulean);">' + d.link + '</a>' : '') + '</li>';
+    }).join('') + '</ul>';
   }
 
   function showPipelineSuccess(message) {

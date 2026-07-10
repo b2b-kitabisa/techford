@@ -465,6 +465,12 @@
   .pipeline-bucket-loss .pipeline-bucket-label { color: #c5221f; }
   .pipeline-bucket-loss .pipeline-bucket-value { background: #fce8e6; color: #c5221f; }
 
+  /* GDV & REV di tabel Sales Pipeline sengaja dibuat SAMA gaya visualnya —
+     supaya tidak terkesan REV adalah pecahan/untung dari GDV, padahal dua
+     angka independen. */
+  .pipeline-value-line { font-size: 12px; color: var(--color-mineshaft); margin-bottom: 2px; }
+  .pipeline-value-label { font-weight: 800; color: var(--text-muted); margin-right: 4px; }
+
   /* ---- Toggle button group (Service, Program Type, Issue, dsb) ---- */
   .toggle-btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
   .toggle-btn-list { display: flex; flex-direction: column; gap: 6px; }

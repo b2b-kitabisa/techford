@@ -145,9 +145,12 @@ var ProjectService = (function (module) {
   /**
    * @param {Object} patch - subset dari: projectName, consultant, services[],
    *   serviceCategories{}, programType, programCategory, programName, issues[],
-   *   otherNotes. Kalau salah satu field program disertakan, ketiganya
-   *   (programType/programCategory/programName) divalidasi ulang bersamaan
-   *   supaya tidak ada kombinasi program yang tidak konsisten tersimpan.
+   *   otherNotes, otherDocumentLinks[{name,link}]. Kalau salah satu field
+   *   program disertakan, ketiganya (programType/programCategory/programName)
+   *   divalidasi ulang bersamaan supaya tidak ada kombinasi program yang
+   *   tidak konsisten tersimpan. otherDocumentLinks HANYA bisa diubah lewat
+   *   sini (di dalam mode EDIT PROJECT) — bukan endpoint terpisah — sesuai
+   *   keputusan produk: semua perubahan detail project harus lewat 1 pintu.
    */
   module.updateProject = function (projectId, patch) {
     if (Utils.isBlank(projectId)) {
@@ -165,6 +168,12 @@ var ProjectService = (function (module) {
     if (patch.hasOwnProperty('services')) safePatch.Services = encodeJson(patch.services);
     if (patch.hasOwnProperty('serviceCategories')) safePatch.Service_Categories = encodeJson(patch.serviceCategories);
     if (patch.hasOwnProperty('issues')) safePatch.Issues = encodeJson(patch.issues);
+    if (patch.hasOwnProperty('otherDocumentLinks')) {
+      var cleanedLinks = (patch.otherDocumentLinks || [])
+        .map(function (doc) { return { name: String((doc && doc.name) || '').trim(), link: String((doc && doc.link) || '').trim() }; })
+        .filter(function (doc) { return doc.name || doc.link; });
+      safePatch.Other_Document_Links = encodeJson(cleanedLinks);
+    }
 
     if (patch.hasOwnProperty('programType') || patch.hasOwnProperty('programCategory') || patch.hasOwnProperty('programName')) {
       var programType = patch.hasOwnProperty('programType') ? patch.programType : existing.Program_Type;
@@ -187,18 +196,6 @@ var ProjectService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'Stage tidak valid.');
     }
     var updated = ProjectRepository.update(projectId, { Stage: stage, Last_Updated: new Date() });
-    if (!updated) {
-      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
-    }
-    return module.getAllProjects();
-  };
-
-  module.updateOtherDocumentLinks = function (projectId, links) {
-    if (Utils.isBlank(projectId)) {
-      throw new AppError('VALIDATION_ERROR', 'Project ID wajib diisi.');
-    }
-    var cleaned = (links || []).map(function (link) { return String(link || '').trim(); }).filter(Boolean);
-    var updated = ProjectRepository.update(projectId, { Other_Document_Links: encodeJson(cleaned), Last_Updated: new Date() });
     if (!updated) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }

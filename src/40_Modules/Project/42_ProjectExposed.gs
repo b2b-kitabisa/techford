@@ -23,7 +23,3 @@ function project_update(projectId, patch) {
 function project_updateStage(projectId, stage) {
   return ProjectController.updateStage(projectId, stage);
 }
-
-function project_updateOtherDocumentLinks(projectId, links) {
-  return ProjectController.updateOtherDocumentLinks(projectId, links);
-}

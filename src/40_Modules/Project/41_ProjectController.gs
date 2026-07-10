@@ -36,11 +36,5 @@ var ProjectController = (function (module) {
     });
   };
 
-  module.updateOtherDocumentLinks = function (projectId, links) {
-    return ErrorHandler.handle('ProjectController.updateOtherDocumentLinks', function () {
-      return ProjectService.updateOtherDocumentLinks(projectId, links);
-    });
-  };
-
   return module;
 })(ProjectController || {});
