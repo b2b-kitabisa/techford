@@ -7,20 +7,39 @@
  * yang secara alami melibatkan 2 entitas (Lead & Client), jadi LeadService
  * boleh memanggil API publik ClientService — TIDAK boleh menyentuh
  * ClientRepository langsung. (2) input manual admin lewat Client
- * Monitoring — createManualClient().
+ * Monitoring — createManualClient() (PIC boleh disertakan sekaligus,
+ * dibuat atomically di sini karena Client_ID barunya belum ada sampai
+ * baris Client selesai dibuat).
+ *
+ * Head Office / Industry / Entity Type / Client Source BUKAN enum
+ * hardcode — nilainya divalidasi terhadap Master_Data (dikelola admin
+ * lewat Setting), supaya opsi baru bisa ditambah tanpa ubah kode.
  *
  * Sama seperti modul Lead: statistik & filter dihitung di client dari
- * dataset penuh (Load Once, Filter Local), dan semua endpoint tulis yang
- * diekspos ke RPC mengembalikan ARRAY (bukan objek tunggal) mengikuti pola
- * yang sudah terbukti aman dari kuirk google.script.run.
+ * dataset penuh (Load Once, Filter Local).
  */
 var ClientService = (function (module) {
 
-  var VALID_SOURCES = [
-    Config.CLIENT_SOURCE.INBOUND,
-    Config.CLIENT_SOURCE.OUTBOUND,
-    Config.CLIENT_SOURCE.REFERRAL
-  ];
+  var CLIENT_ID_DIGITS = 5;
+
+  function isValidMasterDataValue(category, value) {
+    if (Utils.isBlank(value)) return false;
+    return MasterDataRepository.findByCategory(category).some(function (row) {
+      return String(row.Value || '').trim().toLowerCase() === String(value).trim().toLowerCase();
+    });
+  }
+
+  function createPicRow(clientId, pic, now) {
+    PicClientRepository.create({
+      PIC_ID: Utils.generateId('PIC'),
+      Client_ID: clientId,
+      PIC_Name: pic.name || '',
+      Title: pic.title || '',
+      Email: pic.email || '',
+      Phone: pic.phone || '',
+      Created_Date: now
+    });
+  }
 
   module.getAllClients = function () {
     return ClientRepository.findAll();
@@ -36,49 +55,53 @@ var ClientService = (function (module) {
   module.createFromLead = function (lead, createdBy) {
     var now = new Date();
     var client = {
-      Client_ID: 'CL' + SequenceService.next('CLIENT', 4),
-      Brand_Name: lead.Entity_Name || '',
+      Client_ID: 'CL' + SequenceService.next('CLIENT', CLIENT_ID_DIGITS),
+      Brand_Name: String(lead.Entity_Name || '').toUpperCase(),
       Entity_Name: '',
       Entity_Type: lead.Entity_Type || '',
       Head_Office: '',
       Website: '',
       Industry: '',
-      Client_Source: Config.CLIENT_SOURCE.INBOUND,
+      Client_Source: Config.CLIENT_SOURCE_INBOUND,
       Created_Date: now,
       Created_By: createdBy || '',
+      Other_Notes: '',
       Last_Updated: now
     };
     ClientRepository.create(client);
 
     if (!Utils.isBlank(lead.PIC_Name)) {
-      PicClientRepository.create({
-        PIC_ID: Utils.generateId('PIC'),
-        Client_ID: client.Client_ID,
-        PIC_Name: lead.PIC_Name,
-        Title: '',
-        Email: lead.Email || '',
-        Phone: lead.Phone || '',
-        Created_Date: now
-      });
+      createPicRow(client.Client_ID, {
+        name: lead.PIC_Name,
+        title: '',
+        email: lead.Email || '',
+        phone: lead.Phone || ''
+      }, now);
     }
 
     Log.info('ClientService', 'Client dibuat dari Lead: ' + client.Client_ID);
     return client;
   };
 
+  /**
+   * @param {Object} input - brandName, entityName, entityType, source,
+   *   headOffice, website, industry, otherNotes, pics: [{name,title,email,phone}]
+   */
   module.createManualClient = function (input, createdBy) {
     if (Utils.isBlank(input.brandName)) {
       throw new AppError('VALIDATION_ERROR', 'Brand Name wajib diisi.');
     }
-    if (VALID_SOURCES.indexOf(input.source) === -1) {
-      throw new AppError('VALIDATION_ERROR', 'Source harus salah satu dari Inbound, Outbound, atau Referral.');
+    if (!isValidMasterDataValue(Config.MASTER_DATA_CATEGORY.CLIENT_SOURCE, input.source)) {
+      throw new AppError('VALIDATION_ERROR', 'Client Source tidak valid — pilih dari daftar yang tersedia.');
     }
 
     var now = new Date();
+    var clientId = 'CL' + SequenceService.next('CLIENT', CLIENT_ID_DIGITS);
+
     ClientRepository.create({
-      Client_ID: 'CL' + SequenceService.next('CLIENT', 4),
-      Brand_Name: input.brandName,
-      Entity_Name: input.entityName || '',
+      Client_ID: clientId,
+      Brand_Name: String(input.brandName).toUpperCase(),
+      Entity_Name: String(input.entityName || '').toUpperCase(),
       Entity_Type: input.entityType || '',
       Head_Office: input.headOffice || '',
       Website: input.website || '',
@@ -86,10 +109,15 @@ var ClientService = (function (module) {
       Client_Source: input.source,
       Created_Date: now,
       Created_By: createdBy || '',
+      Other_Notes: input.otherNotes || '',
       Last_Updated: now
     });
 
-    Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy);
+    (input.pics || []).forEach(function (pic) {
+      if (!Utils.isBlank(pic.name)) createPicRow(clientId, pic, now);
+    });
+
+    Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy + ': ' + clientId);
     return ClientRepository.findAll();
   };
 
@@ -98,11 +126,13 @@ var ClientService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'Client ID wajib diisi.');
     }
 
-    var editableFields = ['Brand_Name', 'Entity_Name', 'Entity_Type', 'Head_Office', 'Website', 'Industry'];
     var safePatch = {};
-    editableFields.forEach(function (field) {
-      if (patch.hasOwnProperty(field)) safePatch[field] = patch[field];
-    });
+    ['Brand_Name', 'Entity_Name', 'Entity_Type', 'Head_Office', 'Website', 'Industry', 'Client_Source', 'Other_Notes']
+      .forEach(function (field) {
+        if (patch.hasOwnProperty(field)) safePatch[field] = patch[field];
+      });
+    if (safePatch.Brand_Name) safePatch.Brand_Name = String(safePatch.Brand_Name).toUpperCase();
+    if (safePatch.Entity_Name) safePatch.Entity_Name = String(safePatch.Entity_Name).toUpperCase();
     safePatch.Last_Updated = new Date();
 
     var updated = ClientRepository.update(clientId, safePatch);
@@ -121,16 +151,7 @@ var ClientService = (function (module) {
       throw new AppError('CLIENT_NOT_FOUND', 'Client tidak ditemukan.');
     }
 
-    PicClientRepository.create({
-      PIC_ID: Utils.generateId('PIC'),
-      Client_ID: clientId,
-      PIC_Name: picInput.name,
-      Title: picInput.title || '',
-      Email: picInput.email || '',
-      Phone: picInput.phone || '',
-      Created_Date: new Date()
-    });
-
+    createPicRow(clientId, picInput, new Date());
     return PicClientRepository.findAll();
   };
 

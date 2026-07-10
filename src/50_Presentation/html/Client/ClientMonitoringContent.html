@@ -4,9 +4,6 @@
   <input id="clientSearch" placeholder="Search Entity Name...." oninput="onClientFilterChange()">
   <select id="clientSourceFilter" onchange="onClientFilterChange()">
     <option value="">All Source</option>
-    <option value="Inbound">Inbound</option>
-    <option value="Outbound">Outbound</option>
-    <option value="Referral">Referral</option>
   </select>
   <button class="filter-reset" onclick="resetClientFilter()">↺ Reset Filter</button>
 </div>
@@ -44,90 +41,200 @@
   <div class="page-buttons" id="clientPageButtons"></div>
 </div>
 
-<!-- Modal: Add New Client -->
-<div class="confirm-overlay" id="addClientModal">
-  <div class="confirm-box" style="width:420px; text-align:left;">
-    <h3>Tambah Client Baru</h3>
-    <div class="drawer-edit-form open" style="padding:0; border:none;">
-      <label>Brand Name *<input id="newBrandName"></label>
-      <label>Entity Name (badan hukum)<input id="newEntityName"></label>
-      <label>Entity Type<input id="newEntityType"></label>
-      <label>Source *
-        <select id="newClientSource">
-          <option value="Inbound">Inbound</option>
-          <option value="Outbound">Outbound</option>
-          <option value="Referral">Referral</option>
-        </select>
-      </label>
-      <label>Head Office<input id="newHeadOffice"></label>
-      <label>Website<input id="newWebsite"></label>
-      <label>Industry<input id="newIndustry"></label>
+<!-- ================= Drawer: Add New Client ================= -->
+<div class="drawer-overlay" id="addClientDrawer" onclick="if (event.target === this) closeAddClient();">
+  <div class="drawer-panel drawer-panel-wide">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <h2 style="color:#fff; font-size:18px; margin:0;">ADD NEW CLIENT</h2>
+        <button class="drawer-close" onclick="closeAddClient()">&times;</button>
+      </div>
     </div>
-    <div class="confirm-actions" style="margin-top:14px;">
-      <button class="btn-outline" onclick="closeAddClient()">Cancel</button>
-      <button class="btn-save" onclick="submitAddClient()">Simpan</button>
+
+    <div class="drawer-section">
+      <h3>Client Information</h3>
+      <div class="form-grid-2col">
+        <div>
+          <label>Brand Name
+            <input id="newBrandName" placeholder="Enter your Client Brand Name.">
+          </label>
+          <label>Entity Name
+            <input id="newEntityName" placeholder="Enter your Client Entity Name.">
+          </label>
+          <label>Website
+            <input id="newWebsite" placeholder="Enter your Client Website.">
+          </label>
+        </div>
+        <div>
+          <label>Head Office
+            <select id="newHeadOffice"><option value="">Pilih Head Office...</option></select>
+          </label>
+          <label>Industry
+            <select id="newIndustry"><option value="">Pilih Industry...</option></select>
+          </label>
+          <label>Entity Type
+            <select id="newEntityType"><option value="">Pilih Entity Type...</option></select>
+          </label>
+          <label>Client Source
+            <select id="newClientSource"><option value="">Pilih Client Source...</option></select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row">
+        <h3>PIC Client Information</h3>
+        <button class="btn-outline" onclick="openAddPicPopup('new')">+ Add PIC</button>
+      </div>
+      <div class="pic-carousel-wrap">
+        <button class="pic-carousel-arrow left" onclick="scrollPicCarousel('newClientPicCarousel', -1)">‹</button>
+        <div class="pic-carousel" id="newClientPicCarousel"><div class="drawer-field-value">Belum ada PIC ditambahkan.</div></div>
+        <button class="pic-carousel-arrow right" onclick="scrollPicCarousel('newClientPicCarousel', 1)">›</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-field-label">Other Notes :</div>
+      <textarea id="newOtherNotes" placeholder="Type your message here." style="width:100%; min-height:70px;"></textarea>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-save" onclick="openAddClientConfirm()">💾 SAVE</button>
     </div>
   </div>
 </div>
 
-<!-- Drawer: Client Detail -->
+<div class="confirm-overlay" id="addClientConfirm">
+  <div class="confirm-box" style="width:420px;">
+    <h3>Konfirmasi Simpan Client</h3>
+    <p>Apakah Anda yakin untuk menyimpan informasi client ini? Tindakan ini dapat di edit nantinya pada menu edit client.
+      Mohon di cek kembali data yang di simpan untuk menghindari nama client yang sama sebelum klik Save.</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelAddClientConfirm()">Cancel</button>
+      <button class="btn-save" onclick="submitAddClient()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Drawer: Client Detail ================= -->
 <div class="drawer-overlay" id="clientDrawer" onclick="if (event.target === this) closeClientDetail();">
-  <div class="drawer-panel">
+  <div class="drawer-panel drawer-panel-wide">
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <span class="badge badge-moved" id="clientSourceBadge"></span>
+        <h2 style="color:#fff; font-size:18px; margin:0;">CLIENT DETAIL</h2>
         <button class="drawer-close" onclick="closeClientDetail()">&times;</button>
       </div>
-      <h2 id="clientBrandName"></h2>
-      <div class="drawer-entity-type" id="clientEntityTypeDisplay"></div>
-    </div>
-
-    <div class="drawer-action-row">
-      <button class="btn-outline" onclick="toggleClientEditInfo()">✏️ EDIT INFO</button>
-    </div>
-
-    <div class="drawer-edit-form" id="clientEditForm">
-      <label>Brand Name<input id="editBrandName"></label>
-      <label>Entity Name<input id="editEntityNameField"></label>
-      <label>Entity Type<input id="editEntityTypeField"></label>
-      <label>Head Office<input id="editHeadOffice"></label>
-      <label>Website<input id="editWebsite"></label>
-      <label>Industry<input id="editIndustry"></label>
     </div>
 
     <div class="drawer-section">
-      <div class="drawer-field-label">Head Office :</div>
-      <div class="drawer-field-value" id="viewHeadOffice">-</div>
-    </div>
-    <div class="drawer-section">
-      <div class="drawer-field-label">Website :</div>
-      <div class="drawer-field-value" id="viewWebsite">-</div>
-    </div>
-    <div class="drawer-section">
-      <div class="drawer-field-label">Industry :</div>
-      <div class="drawer-field-value" id="viewIndustry">-</div>
-    </div>
-
-    <div class="drawer-section">
-      <h3>PIC</h3>
-      <div id="picList"></div>
-      <div class="drawer-edit-form open" style="padding:12px 0 0;">
-        <label>Nama PIC baru<input id="newPicName"></label>
-        <label>Title<input id="newPicTitle"></label>
-        <label>Email<input id="newPicEmail"></label>
-        <label>Phone<input id="newPicPhone"></label>
+      <div class="section-title-row">
+        <h3>Client Information</h3>
+        <button class="btn-outline" onclick="toggleClientEditInfo()">✏️ EDIT INFO</button>
       </div>
-      <button class="btn-outline" onclick="submitAddPic()" style="margin-top:8px;">+ Tambah PIC</button>
+
+      <div id="clientViewBlock">
+        <div class="section-title-row" style="align-items:flex-start;">
+          <div>
+            <div class="entity-name" id="clientBrandName" style="font-size:18px;"></div>
+            <div class="entity-pic" id="clientEntityNameDisplay"></div>
+            <div class="entity-pic" id="clientIdDisplay" style="color:#9aa0a6;"></div>
+          </div>
+          <div style="font-size:11px; color:#9aa0a6; text-align:right;" id="clientCreatedDateDisplay"></div>
+        </div>
+
+        <div class="form-grid-2col" style="margin-top:12px;">
+          <div>
+            <div class="drawer-field-label">Head Office</div>
+            <div class="drawer-field-value" id="viewHeadOffice">-</div>
+            <div class="drawer-field-label" style="margin-top:10px;">Client Source</div>
+            <div class="drawer-field-value" id="viewClientSource">-</div>
+            <div class="drawer-field-label" style="margin-top:10px;">Total Project</div>
+            <div class="drawer-field-value">0</div>
+            <div class="drawer-field-label" style="margin-top:10px;">Website</div>
+            <div class="drawer-field-value" id="viewWebsite">-</div>
+          </div>
+          <div>
+            <div class="drawer-field-label">Industry</div>
+            <div class="drawer-field-value" id="viewIndustry">-</div>
+            <div class="drawer-field-label" style="margin-top:10px;">Entity Type</div>
+            <div class="drawer-field-value" id="viewEntityType">-</div>
+            <div class="drawer-field-label" style="margin-top:10px;">GDV Value</div>
+            <div class="drawer-field-value">-</div>
+            <div class="drawer-field-label" style="margin-top:10px;">Service Revenue</div>
+            <div class="drawer-field-value">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-edit-form" id="clientEditForm">
+        <label>Brand Name<input id="editBrandName"></label>
+        <label>Entity Name<input id="editEntityNameField"></label>
+        <label>Head Office
+          <select id="editHeadOffice"></select>
+        </label>
+        <label>Industry
+          <select id="editIndustry"></select>
+        </label>
+        <label>Entity Type
+          <select id="editEntityType"></select>
+        </label>
+        <label>Client Source
+          <select id="editClientSource"></select>
+        </label>
+        <label>Website<input id="editWebsite"></label>
+        <label>Other Notes<textarea id="editOtherNotes" placeholder="Type your message here."></textarea></label>
+      </div>
     </div>
 
     <div class="drawer-section">
-      <div class="drawer-field-label">Dibuat oleh :</div>
-      <div class="drawer-field-value" id="viewCreatedBy">-</div>
+      <div class="section-title-row">
+        <h3>PIC Client Information</h3>
+        <button class="btn-outline" onclick="openAddPicPopup('detail')">+ Add PIC</button>
+      </div>
+      <div class="pic-carousel-wrap">
+        <button class="pic-carousel-arrow left" onclick="scrollPicCarousel('detailPicCarousel', -1)">‹</button>
+        <div class="pic-carousel" id="detailPicCarousel"></div>
+        <button class="pic-carousel-arrow right" onclick="scrollPicCarousel('detailPicCarousel', 1)">›</button>
+      </div>
+    </div>
+
+    <div class="drawer-section" id="clientNotesViewSection">
+      <div class="drawer-field-label">Other Notes :</div>
+      <div class="drawer-field-value" id="drawerClientNotesDisplay">Belum ada catatan.</div>
     </div>
 
     <div class="drawer-footer">
       <span class="save-hint" id="clientSaveHint"></span>
-      <button class="btn-save" onclick="saveClientInfo()">💾 SAVE</button>
+      <button class="btn-save" id="clientSaveBtn" onclick="openClientEditConfirm()" style="display:none;">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="clientEditConfirm">
+  <div class="confirm-box">
+    <h3>Konfirmasi Perubahan</h3>
+    <p>Pastikan perubahan yang Anda buat sudah sesuai sebelum disimpan.</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelClientEditConfirm()">Cancel</button>
+      <button class="btn-save" onclick="saveClientInfo()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup: Add PIC (dipakai Add Client & Client Detail) ================= -->
+<div class="confirm-overlay" id="addPicPopup">
+  <div class="confirm-box" style="width:340px; text-align:left;">
+    <h3>Tambah PIC</h3>
+    <div class="drawer-edit-form open" style="padding:0; border:none;">
+      <label>Nama *<input id="picName"></label>
+      <label>Email<input id="picEmail" type="email"></label>
+      <label>Phone Number<input id="picPhone" value="62"></label>
+      <label>Title<input id="picTitle"></label>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAddPicPopup()">Cancel</button>
+      <button class="btn-save" onclick="submitAddPicPopup()">Tambah</button>
     </div>
   </div>
 </div>
@@ -141,21 +248,20 @@
 </div>
 
 <script>
-  var SOURCE_BADGE = { Inbound: 'badge-moved', Outbound: 'badge-contacted', Referral: 'badge-other' };
+  var SOURCE_BADGE_CYCLE = ['badge-moved', 'badge-contacted', 'badge-other', 'badge-new', 'badge-spam'];
 
   var allClients = [];
   var allPics = [];
+  var allMasterData = [];
   var clientPage = 1;
   var currentClientDrawerId = null;
   var clientSort = { field: 'Created_Date', dir: 'desc' };
   var clientBootstrapRetried = false;
+  var picPopupContext = null; // 'new' | 'detail'
 
-  // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
-  // sepenuhnya siap tepat saat halaman pertama kali dimuat — simtomnya
-  // "tidak ada respons dari server" di percobaan pertama, baru berhasil
-  // setelah refresh. Retry otomatis sekali supaya tidak perlu refresh manual.
   function bootstrapClients() {
     fetchClients();
+    fetchMasterData();
     setTimeout(function () {
       if (!allClients.length && !clientBootstrapRetried) {
         clientBootstrapRetried = true;
@@ -173,7 +279,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) {
-          if (!clientBootstrapRetried) return; // biarkan retry di bootstrapClients yang coba lagi
+          if (!clientBootstrapRetried) return;
           showClientTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
           return;
         }
@@ -192,10 +298,47 @@
       .withSuccessHandler(function (res) {
         if (res && res.ok) allPics = res.data;
         renderClients();
-        if (currentClientDrawerId) renderPicList(currentClientDrawerId);
+        if (currentClientDrawerId) renderPicCarousel('detailPicCarousel', currentClientDrawerId);
       })
       .withFailureHandler(function () { renderClients(); })
       .client_getAllPics();
+  }
+
+  function fetchMasterData() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) {
+          allMasterData = res.data;
+          populateMasterDataDropdowns();
+        }
+      })
+      .withFailureHandler(function () {})
+      .masterdata_getAll();
+  }
+
+  function optionsForCategory(category) {
+    return allMasterData.filter(function (row) { return row.Category === category; });
+  }
+
+  function populateMasterDataDropdowns() {
+    fillSelect('clientSourceFilter', optionsForCategory('Client_Source'), 'All Source', true);
+    fillSelect('newHeadOffice', optionsForCategory('Head_Office'), 'Pilih Head Office...');
+    fillSelect('newIndustry', optionsForCategory('Industry'), 'Pilih Industry...');
+    fillSelect('newEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
+    fillSelect('newClientSource', optionsForCategory('Client_Source'), 'Pilih Client Source...');
+    fillSelect('editHeadOffice', optionsForCategory('Head_Office'), 'Pilih Head Office...');
+    fillSelect('editIndustry', optionsForCategory('Industry'), 'Pilih Industry...');
+    fillSelect('editEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
+    fillSelect('editClientSource', optionsForCategory('Client_Source'), 'Pilih Client Source...');
+  }
+
+  function fillSelect(selectId, options, placeholderLabel, isFilter) {
+    var el = document.getElementById(selectId);
+    if (!el) return;
+    var currentValue = el.value;
+    el.innerHTML = '<option value="">' + placeholderLabel + '</option>' +
+      options.map(function (o) { return '<option value="' + o.Value + '">' + o.Value + '</option>'; }).join('');
+    if (!isFilter && currentValue) el.value = currentValue;
   }
 
   function showClientTableError(message) {
@@ -216,22 +359,30 @@
     renderClientPagination(paged);
   }
 
+  function badgeClassForSource(source) {
+    var sources = optionsForCategory('Client_Source').map(function (o) { return o.Value; });
+    var idx = sources.indexOf(source);
+    return SOURCE_BADGE_CYCLE[idx >= 0 ? idx % SOURCE_BADGE_CYCLE.length : 0];
+  }
+
   function renderClientStats(clients) {
     var total = clients.length;
-    var counts = { Inbound: 0, Outbound: 0, Referral: 0 };
+    var counts = {};
     clients.forEach(function (c) {
-      if (counts.hasOwnProperty(c.Client_Source)) counts[c.Client_Source]++;
+      counts[c.Client_Source] = (counts[c.Client_Source] || 0) + 1;
     });
 
     function pct(n) { return total ? Math.round((n / total) * 100) : 0; }
 
-    document.getElementById('clientStats').innerHTML =
-      '<div class="stat-card stat-moved"><div class="stat-label">Outbound</div><div class="stat-desc">Outbound Client</div>' +
-      '<div class="stat-value">' + counts.Outbound + '</div><div class="stat-desc">' + pct(counts.Outbound) + '%</div></div>' +
-      '<div class="stat-card stat-contacted"><div class="stat-label">Inbound</div><div class="stat-desc">Inbound Client</div>' +
-      '<div class="stat-value">' + counts.Inbound + '</div><div class="stat-desc">' + pct(counts.Inbound) + '%</div></div>' +
-      '<div class="stat-card stat-other"><div class="stat-label">Referral</div><div class="stat-desc">Referral Client</div>' +
-      '<div class="stat-value">' + counts.Referral + '</div><div class="stat-desc">' + pct(counts.Referral) + '%</div></div>';
+    var sources = optionsForCategory('Client_Source');
+    if (!sources.length) sources = Object.keys(counts).map(function (v) { return { Value: v }; });
+
+    document.getElementById('clientStats').innerHTML = sources.map(function (s) {
+      return '<div class="stat-card"><div class="stat-label">' + s.Value + '</div>' +
+        '<div class="stat-desc">' + s.Value + ' Client</div>' +
+        '<div class="stat-value">' + (counts[s.Value] || 0) + '</div>' +
+        '<div class="stat-desc">' + pct(counts[s.Value] || 0) + '%</div></div>';
+    }).join('');
   }
 
   function getFilteredClients() {
@@ -304,11 +455,10 @@
     }
     tbody.innerHTML = paged.items.map(function (c) {
       var pic = getPrimaryPic(c.Client_ID);
-      var badgeClass = SOURCE_BADGE[c.Client_Source] || '';
       return '<tr>' +
         '<td><div class="entity-name">' + (c.Brand_Name || '-') + '</div>' +
         '<div class="entity-pic">' + (c.Entity_Name || '-') + '</div></td>' +
-        '<td class="nowrap-cell"><span class="badge ' + badgeClass + '">' + (c.Client_Source || '').toUpperCase() + '</span></td>' +
+        '<td class="nowrap-cell"><span class="badge ' + badgeClassForSource(c.Client_Source) + '">' + (c.Client_Source || '').toUpperCase() + '</span></td>' +
         '<td>' + (pic ? pic.PIC_Name : '-') + '</td>' +
         '<td class="nowrap-cell">' + formatDate(c.Created_Date) + '</td>' +
         '<td><button class="btn-icon-round" onclick="openClientDetail(\'' + c.Client_ID + '\')" title="Lihat Detail">›</button></td>' +
@@ -330,32 +480,73 @@
     renderClients();
   }
 
+  // ---- Formatting helpers (konsisten dengan Lead Capturing) ----
+  function toProperCase(str) {
+    return String(str || '').toLowerCase().replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   // ---- Add New Client ----
+  var pendingNewPics = [];
+
   function openAddClient() {
-    document.getElementById('addClientModal').classList.add('open');
+    document.getElementById('newBrandName').value = '';
+    document.getElementById('newEntityName').value = '';
+    document.getElementById('newWebsite').value = '';
+    document.getElementById('newHeadOffice').value = '';
+    document.getElementById('newIndustry').value = '';
+    document.getElementById('newEntityType').value = '';
+    document.getElementById('newClientSource').value = '';
+    document.getElementById('newOtherNotes').value = '';
+    pendingNewPics = [];
+    renderPendingPics();
+    document.getElementById('addClientDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
   }
   function closeAddClient() {
-    document.getElementById('addClientModal').classList.remove('open');
+    document.getElementById('addClientDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+  }
+
+  function renderPendingPics() {
+    var el = document.getElementById('newClientPicCarousel');
+    if (!pendingNewPics.length) {
+      el.innerHTML = '<div class="drawer-field-value">Belum ada PIC ditambahkan.</div>';
+      return;
+    }
+    el.innerHTML = pendingNewPics.map(function (p) {
+      return '<div class="pic-card">' +
+        '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
+        '<div style="font-size:12px; color:#5f6368;">' + (p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color:#5f6368;">' + (p.phone || '-') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function openAddClientConfirm() {
+    if (!document.getElementById('newBrandName').value.trim()) { alert('Brand Name wajib diisi.'); return; }
+    if (!document.getElementById('newClientSource').value) { alert('Client Source wajib dipilih.'); return; }
+    document.getElementById('addClientConfirm').classList.add('open');
+  }
+  function cancelAddClientConfirm() {
+    document.getElementById('addClientConfirm').classList.remove('open');
   }
 
   function submitAddClient() {
-    var brandName = document.getElementById('newBrandName').value.trim();
-    if (!brandName) { alert('Brand Name wajib diisi.'); return; }
+    document.getElementById('addClientConfirm').classList.remove('open');
 
     var input = {
-      brandName: brandName,
+      brandName: document.getElementById('newBrandName').value.trim(),
       entityName: document.getElementById('newEntityName').value,
       entityType: document.getElementById('newEntityType').value,
       source: document.getElementById('newClientSource').value,
       headOffice: document.getElementById('newHeadOffice').value,
       website: document.getElementById('newWebsite').value,
-      industry: document.getElementById('newIndustry').value
+      industry: document.getElementById('newIndustry').value,
+      otherNotes: document.getElementById('newOtherNotes').value,
+      pics: pendingNewPics
     };
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
 
-    // google.script.run kadang mengirim res=null walau operasi di server
-    // berhasil — hanya anggap gagal kalau server EKSPLISIT bilang
-    // { ok: false }, selebihnya refresh lewat pemanggilan baca terpisah.
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);
@@ -387,97 +578,144 @@
 
   function renderClientDrawer(client) {
     document.getElementById('clientBrandName').innerText = client.Brand_Name || '-';
-    document.getElementById('clientEntityTypeDisplay').innerText = (client.Entity_Type || '-').toUpperCase();
-    var badge = document.getElementById('clientSourceBadge');
-    badge.className = 'badge ' + (SOURCE_BADGE[client.Client_Source] || '');
-    badge.innerText = (client.Client_Source || '').toUpperCase();
+    document.getElementById('clientEntityNameDisplay').innerText = client.Entity_Name || '-';
+    document.getElementById('clientIdDisplay').innerText = client.Client_ID;
+    document.getElementById('clientCreatedDateDisplay').innerText = 'Created date: ' + formatDate(client.Created_Date);
 
     document.getElementById('viewHeadOffice').innerText = client.Head_Office || '-';
+    document.getElementById('viewClientSource').innerText = client.Client_Source || '-';
     document.getElementById('viewWebsite').innerText = client.Website || '-';
     document.getElementById('viewIndustry').innerText = client.Industry || '-';
-    document.getElementById('viewCreatedBy').innerText =
-      (client.Created_By || '-') + ' · ' + formatDate(client.Created_Date);
+    document.getElementById('viewEntityType').innerText = client.Entity_Type || '-';
+
+    document.getElementById('drawerClientNotesDisplay').innerText = client.Other_Notes || 'Belum ada catatan.';
 
     document.getElementById('editBrandName').value = client.Brand_Name || '';
     document.getElementById('editEntityNameField').value = client.Entity_Name || '';
-    document.getElementById('editEntityTypeField').value = client.Entity_Type || '';
     document.getElementById('editHeadOffice').value = client.Head_Office || '';
-    document.getElementById('editWebsite').value = client.Website || '';
     document.getElementById('editIndustry').value = client.Industry || '';
+    document.getElementById('editEntityType').value = client.Entity_Type || '';
+    document.getElementById('editClientSource').value = client.Client_Source || '';
+    document.getElementById('editWebsite').value = client.Website || '';
+    document.getElementById('editOtherNotes').value = client.Other_Notes || '';
 
+    document.getElementById('clientViewBlock').style.display = '';
     document.getElementById('clientEditForm').classList.remove('open');
+    document.getElementById('clientNotesViewSection').style.display = '';
+    document.getElementById('clientSaveBtn').style.display = 'none';
     document.getElementById('clientSaveHint').innerText = '';
-    renderPicList(client.Client_ID);
 
-    document.getElementById('newPicName').value = '';
-    document.getElementById('newPicTitle').value = '';
-    document.getElementById('newPicEmail').value = '';
-    document.getElementById('newPicPhone').value = '';
+    renderPicCarousel('detailPicCarousel', client.Client_ID);
   }
 
-  function renderPicList(clientId) {
+  function renderPicCarousel(elementId, clientId) {
     var pics = allPics.filter(function (p) { return p.Client_ID === clientId; });
-    var el = document.getElementById('picList');
+    var el = document.getElementById(elementId);
     if (!pics.length) {
       el.innerHTML = '<div class="drawer-field-value">Belum ada PIC.</div>';
       return;
     }
     el.innerHTML = pics.map(function (p) {
-      return '<div style="padding:8px 0; border-bottom:1px solid #eee;">' +
-        '<div style="font-weight:bold;">' + p.PIC_Name + (p.Title ? ' — ' + p.Title : '') + '</div>' +
-        '<div style="font-size:12px; color:#5f6368;">' + (p.Email || '-') + ' · ' + (p.Phone || '-') + '</div>' +
+      return '<div class="pic-card">' +
+        '<div style="font-weight:bold;">' + p.PIC_Name + '</div>' +
+        (p.Title ? '<div style="font-size:11px; color:#5f6368;">' + p.Title + '</div>' : '') +
+        '<div style="font-size:12px; margin-top:6px;">Email : ' + (p.Email || '-') + '</div>' +
+        '<div style="font-size:12px;">Phone : ' + (p.Phone || '-') + '</div>' +
         '</div>';
     }).join('');
   }
 
-  function toggleClientEditInfo() {
-    document.getElementById('clientEditForm').classList.toggle('open');
+  function scrollPicCarousel(elementId, direction) {
+    var el = document.getElementById(elementId);
+    el.scrollBy({ left: direction * 260, behavior: 'smooth' });
   }
 
-  function submitAddPic() {
-    var name = document.getElementById('newPicName').value.trim();
+  function toggleClientEditInfo() {
+    var editForm = document.getElementById('clientEditForm');
+    var isOpen = editForm.classList.toggle('open');
+    document.getElementById('clientViewBlock').style.display = isOpen ? 'none' : '';
+    document.getElementById('clientNotesViewSection').style.display = isOpen ? 'none' : '';
+    document.getElementById('clientSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
+  }
+
+  // ---- Add PIC popup (dipakai Add Client & Client Detail) ----
+  function openAddPicPopup(context) {
+    picPopupContext = context;
+    document.getElementById('picName').value = '';
+    document.getElementById('picEmail').value = '';
+    document.getElementById('picPhone').value = '62';
+    document.getElementById('picTitle').value = '';
+    document.getElementById('addPicPopup').classList.add('open');
+  }
+  function closeAddPicPopup() {
+    document.getElementById('addPicPopup').classList.remove('open');
+    picPopupContext = null;
+  }
+
+  function submitAddPicPopup() {
+    var name = document.getElementById('picName').value.trim();
     if (!name) { alert('Nama PIC wajib diisi.'); return; }
-    if (!currentClientDrawerId) return;
 
     var picInput = {
-      name: name,
-      title: document.getElementById('newPicTitle').value,
-      email: document.getElementById('newPicEmail').value,
-      phone: document.getElementById('newPicPhone').value
+      name: toProperCase(name),
+      email: document.getElementById('picEmail').value,
+      phone: document.getElementById('picPhone').value,
+      title: document.getElementById('picTitle').value.toUpperCase()
     };
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
-        document.getElementById('newPicName').value = '';
-        document.getElementById('newPicTitle').value = '';
-        document.getElementById('newPicEmail').value = '';
-        document.getElementById('newPicPhone').value = '';
-        fetchPics();
-      })
-      .withFailureHandler(function (err) {
-        alert('Gagal menambah PIC: ' + (err && err.message ? err.message : err));
-      })
-      .client_addPic(currentClientDrawerId, picInput);
+    if (picPopupContext === 'new') {
+      pendingNewPics.push(picInput);
+      renderPendingPics();
+      closeAddPicPopup();
+      return;
+    }
+
+    if (picPopupContext === 'detail') {
+      if (!currentClientDrawerId) { closeAddPicPopup(); return; }
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok === false) return alert(res.error.message);
+          closeAddPicPopup();
+          fetchPics();
+        })
+        .withFailureHandler(function (err) {
+          alert('Gagal menambah PIC: ' + (err && err.message ? err.message : err));
+        })
+        .client_addPic(currentClientDrawerId, picInput);
+    }
+  }
+
+  function openClientEditConfirm() {
+    if (!currentClientDrawerId) return;
+    document.getElementById('clientEditConfirm').classList.add('open');
+  }
+  function cancelClientEditConfirm() {
+    document.getElementById('clientEditConfirm').classList.remove('open');
   }
 
   function saveClientInfo() {
+    document.getElementById('clientEditConfirm').classList.remove('open');
     if (!currentClientDrawerId) return;
 
     var patch = {
       Brand_Name: document.getElementById('editBrandName').value,
       Entity_Name: document.getElementById('editEntityNameField').value,
-      Entity_Type: document.getElementById('editEntityTypeField').value,
       Head_Office: document.getElementById('editHeadOffice').value,
+      Industry: document.getElementById('editIndustry').value,
+      Entity_Type: document.getElementById('editEntityType').value,
+      Client_Source: document.getElementById('editClientSource').value,
       Website: document.getElementById('editWebsite').value,
-      Industry: document.getElementById('editIndustry').value
+      Other_Notes: document.getElementById('editOtherNotes').value
     };
 
     var clientId = currentClientDrawerId;
-    var btn = document.querySelector('#clientDrawer .btn-save');
+    var btn = document.getElementById('clientSaveBtn');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
 
+    // google.script.run kadang mengirim res=null walau operasi di server
+    // berhasil — kita terapkan langsung ke cache lokal (optimistic update)
+    // tanpa bergantung pada isi respons, konsisten dengan pola di modul Lead.
     google.script.run
       .withSuccessHandler(function () {
         btn.disabled = false;
@@ -491,11 +729,13 @@
           var updated = {};
           for (var key in allClients[idx]) updated[key] = allClients[idx][key];
           for (var field in patch) updated[field] = patch[field];
+          if (updated.Brand_Name) updated.Brand_Name = updated.Brand_Name.toUpperCase();
+          if (updated.Entity_Name) updated.Entity_Name = updated.Entity_Name.toUpperCase();
           updated.Last_Updated = new Date().toISOString();
           allClients[idx] = updated;
+          renderClientDrawer(allClients[idx]);
         }
 
-        closeClientDetail();
         renderClients();
         showClientSuccess('Data client berhasil disimpan.');
       })

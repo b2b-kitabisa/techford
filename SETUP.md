@@ -10,8 +10,16 @@ Prasyarat: `clasp` terinstall (`npm install -g @google/clasp`) dan sudah login k
    - `Employee` dengan header baris pertama: `Id | Name | Email | Role | PasswordHash | Status | CreatedAt`. Ini juga tabel login (lihat `EmployeeService.login`) — isi minimal 1 baris admin pertama secara manual (jalankan `Utils.hashPassword('passwordAnda')` sekali dari Apps Script Editor untuk dapat hash-nya, jangan simpan password polos).
    - `Lead` dengan header baris pertama: `Inbound_ID | Timestamp | Status | Entity_Name | Entity_Type | PIC_Name | Email | Phone | Detail_Interest | Priority_Notes | UTM_Source | UTM_Medium | UTM_Campaign | Last_Updated | Other_Notes`. Kolom `Status` harus berisi salah satu dari: `New Leads`, `Contacted`, `Moved`, `Other`, `Spam` (lihat `Config.LEAD_STATUS`).
    - `Inbound_Raw` — hasil `IMPORTRANGE` dari Spreadsheet respons Typeform, header (persis nama pertanyaan Typeform): `First name | Last name | Jenis organisasi | nama perusahaan/organisasi | kebutuhan | prioritas | Phone number | Email | utm_source | utm_medium | utm_campaign | Submitted At | Token`. Sel-selnya dikontrol formula `IMPORTRANGE` — jangan diedit manual.
-   - `Client` dengan header baris pertama: `Client_ID | Brand_Name | Entity_Name | Entity_Type | Head_Office | Website | Industry | Client_Source | Created_Date | Created_By | Last_Updated`.
+   - `Client` dengan header baris pertama: `Client_ID | Brand_Name | Entity_Name | Entity_Type | Head_Office | Website | Industry | Client_Source | Created_Date | Created_By | Other_Notes | Last_Updated`.
    - `PIC_Client` dengan header baris pertama: `PIC_ID | Client_ID | PIC_Name | Title | Email | Phone | Created_Date`.
+   - `Master_Data` dengan header baris pertama: `Category | Value | CreatedAt`. Ini sumber opsi dropdown Head Office/Industry/Entity Type/Client Source di Client Monitoring — dikelola lewat Setting, tapi isi dulu beberapa baris awal manual, misal:
+     ```
+     Client_Source | Inbound   | (kosongkan/isi tanggal)
+     Client_Source | Outbound  |
+     Client_Source | Referral  |
+     ```
+     (kolom `Category` harus persis `Client_Source`, `Head_Office`, `Industry`, atau `Entity_Type`).
+   > **Kalau sheet `Client` sudah pernah Anda buat sebelumnya**: tambahkan kolom baru `Other_Notes` (taruh di antara `Created_By` dan `Last_Updated`, atau di mana saja — asal namanya persis `Other_Notes`, urutan kolom tidak masalah karena kode membaca berdasarkan nama header, bukan posisi).
 2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda.
 3. Dari dalam folder `src/`, buat project Apps Script yang terikat (bound) ke Spreadsheet tersebut:
    ```

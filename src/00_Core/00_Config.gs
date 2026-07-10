@@ -22,7 +22,18 @@ var Config = (function (module) {
     INBOUND_RAW: 'Inbound_Raw',
     CLIENT: 'Client',
     PIC_CLIENT: 'PIC_Client',
+    MASTER_DATA: 'Master_Data',
     AUDIT_LOG: 'AuditLog'
+  };
+
+  // Kategori opsi dropdown yang dikelola lewat Setting > Master Data
+  // (sheet Master_Data, kolom Category|Value). Bukan enum tetap di kode —
+  // admin bisa tambah opsi baru sendiri tanpa perlu ubah kode.
+  module.MASTER_DATA_CATEGORY = {
+    HEAD_OFFICE: 'Head_Office',
+    INDUSTRY: 'Industry',
+    ENTITY_TYPE: 'Entity_Type',
+    CLIENT_SOURCE: 'Client_Source'
   };
 
   // Nilai kolom Status pada sheet Lead. Dipusatkan di sini supaya Service/UI
@@ -35,14 +46,11 @@ var Config = (function (module) {
     SPAM: 'Spam'
   };
 
-  // Asal client di sheet Client. "Inbound" hanya boleh diset otomatis oleh
-  // proses Move dari Lead — penambahan manual lewat Client Monitoring wajib
-  // memilih salah satu dari ketiganya.
-  module.CLIENT_SOURCE = {
-    INBOUND: 'Inbound',
-    OUTBOUND: 'Outbound',
-    REFERRAL: 'Referral'
-  };
+  // Nilai Client_Source yang di-set OTOMATIS oleh proses Move dari Lead.
+  // Opsi lain (Outbound/Referral/dst) dikelola sebagai data, bukan enum
+  // tetap — lihat Master_Data kategori CLIENT_SOURCE. Validasi input
+  // manual dicek terhadap Master_Data, bukan daftar hardcode di sini.
+  module.CLIENT_SOURCE_INBOUND = 'Inbound';
 
   // Semua login admin diasumsikan pakai domain perusahaan ini — dicek di
   // AuthService supaya email di luar domain langsung ditolak.
