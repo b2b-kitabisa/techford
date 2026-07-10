@@ -26,7 +26,7 @@ var NavigationConfig = (function (module) {
       items: [
         { page: 'lead-capturing', label: 'Lead Capturing', enabled: true },
         { page: 'client-monitoring', label: 'Client Monitoring', enabled: true },
-        { page: 'sales-pipeline', label: 'Sales Pipeline', enabled: false }
+        { page: 'sales-pipeline', label: 'Sales Pipeline', enabled: true }
       ]
     },
     {

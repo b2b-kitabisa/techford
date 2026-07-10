@@ -34,6 +34,11 @@ var ROUTES = {
     title: 'Client Monitoring 🏢',
     headerActions: '<button class="btn-sync" onclick="openAddClient()">➕ ADD NEW CLIENT</button>'
   },
+  'sales-pipeline': {
+    content: '50_Presentation/html/Project/SalesPipelineContent',
+    title: 'Sales Pipeline 💰',
+    headerActions: '<button class="btn-sync" onclick="openAddPipeline()">➕ ADD PIPELINE</button>'
+  },
   'configure-account': {
     content: '50_Presentation/html/Setting/ConfigureAccountContent',
     title: 'Configure Account',

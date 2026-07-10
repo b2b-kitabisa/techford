@@ -23,6 +23,7 @@ var Config = (function (module) {
     CLIENT: 'Client',
     PIC_CLIENT: 'PIC_Client',
     MASTER_DATA: 'Master_Data',
+    PROJECT: 'Project',
     AUDIT_LOG: 'AuditLog'
   };
 
@@ -55,6 +56,49 @@ var Config = (function (module) {
   // Semua login admin diasumsikan pakai domain perusahaan ini — dicek di
   // AuthService supaya email di luar domain langsung ditolak.
   module.ALLOWED_EMAIL_DOMAIN = 'kitabisa.com';
+
+  // ---- Sales Pipeline (Project) ----
+  // Taxonomy Service/Category/Program/Issue di sini masih set tetap sesuai
+  // wireframe (bukan lewat Master_Data) — kalau nanti perlu diedit admin
+  // tanpa ubah kode, baru dipindah ke pola Master_Data seperti Head Office.
+  //
+  // Beberapa Service (Ads Sponsorship, Placement & Production) sengaja
+  // punya categories: [] — sesuai wireframe, mereka berdiri sendiri tanpa
+  // sub-kategori.
+  module.SERVICE_TAXONOMY = [
+    { key: 'CSR', label: 'CSR', categories: ['Corporate Donation', 'Employee Donation', 'Customer Donation', 'Public Donation', 'Zakat'] },
+    { key: 'Sustainability Services', label: 'Sustainability Services', categories: ['Monitoring & Evaluation', 'Impact Measurement'] },
+    { key: 'Event', label: 'Event', categories: ['Beyond The Game', 'Voluntrip', 'Ekspedisi Kitabisa'] },
+    { key: 'Ads Sponsorship', label: 'Ads Sponsorship', categories: [] },
+    { key: 'Placement & Production', label: 'Placement & Production', categories: [] }
+  ];
+
+  module.PROGRAM_TYPE = {
+    KBORG: 'KB.ORG Program',
+    CLIENT: 'Client Program'
+  };
+
+  // Kalau admin pilih 'Custom Program', Program_Name diisi manual (sama
+  // seperti alur Client Program) — lihat ProjectService.createProject.
+  module.KBORG_PROGRAMS = ['Teach4Hope', 'Ganavira', 'Askara Nusantara', 'Generasi Sehat', 'Harpa', 'Custom Program'];
+  module.KBORG_CUSTOM_PROGRAM = 'Custom Program';
+
+  module.ISSUE_OPTIONS = ['Social', 'Health', 'Empowerment', 'Education', 'Environment', 'Momentum'];
+
+  // Stage granular yang tampil di tabel/dropdown, dan bucket 4-status
+  // (PROS/NEGO/WON/LOSS) yang dipakai score card & stat pipeline.
+  module.PIPELINE_STAGE_LIST = ['First Approaching', 'Follow Up User', 'Drafting Deck', 'Negotiation', 'Revision', 'Won', 'Loss'];
+  module.PIPELINE_STAGE_BUCKET = {
+    'First Approaching': 'PROS',
+    'Follow Up User': 'PROS',
+    'Drafting Deck': 'NEGO',
+    'Negotiation': 'NEGO',
+    'Revision': 'NEGO',
+    'Won': 'WON',
+    'Loss': 'LOSS'
+  };
+  module.PIPELINE_DEFAULT_STAGE = 'First Approaching';
+  module.CONSULTANT_ROLE = 'Consultant';
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'

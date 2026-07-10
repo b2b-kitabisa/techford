@@ -19,6 +19,7 @@ Prasyarat: `clasp` terinstall (`npm install -g @google/clasp`) dan sudah login k
      Client_Source | Referral  |
      ```
      (kolom `Category` harus persis `Client_Source`, `Head_Office`, `Industry`, atau `Entity_Type`).
+   - `Project` dengan header baris pertama: `Project_ID | Project_Name | Client_ID | Consultant | Services | Service_Categories | Program_Type | Program_Category | Program_Name | Issues | Other_Notes | Is_Retainer | Stage | Total_GDV | Total_Service_Revenue | Other_Document_Links | Created_Date | Created_By | Last_Updated`. Ini sheet untuk modul Sales Pipeline. `Services`, `Service_Categories`, `Issues`, dan `Other_Document_Links` isinya string JSON (di-encode/decode otomatis oleh `ProjectService`, jangan diedit manual). `Stage` berisi salah satu dari daftar di `Config.PIPELINE_STAGE_LIST` (First Approaching, Follow Up User, Drafting Deck, Negotiation, Revision, Won, Loss). `Is_Retainer` (TRUE/FALSE) sengaja tidak bisa diubah lagi setelah project dibuat — ini keputusan produk, bukan bug. `Total_GDV`/`Total_Service_Revenue` untuk sekarang masih placeholder (selalu 0) karena breakdown detailnya sengaja ditunda.
    > **Kalau sheet `Client` sudah pernah Anda buat sebelumnya**: tambahkan kolom baru `Other_Notes` (taruh di antara `Created_By` dan `Last_Updated`, atau di mana saja — asal namanya persis `Other_Notes`, urutan kolom tidak masalah karena kode membaca berdasarkan nama header, bukan posisi).
 2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda.
 3. Dari dalam folder `src/`, buat project Apps Script yang terikat (bound) ke Spreadsheet tersebut:
@@ -42,7 +43,7 @@ Prasyarat: `clasp` terinstall (`npm install -g @google/clasp`) dan sudah login k
 Repo Git berfungsi sebagai **source of truth & histori perubahan** — setelah edit di editor, salin balik perubahan ke sini agar tetap terlacak.
 
 1. Buat Google Spreadsheet baru untuk database platform ini, lalu buka **Extensions > Apps Script** (jadi *container-bound script*).
-2. Buat sheet `Employee`, `Lead`, `Inbound_Raw`, `Client`, `PIC_Client` seperti di Opsi A langkah 1.
+2. Buat sheet `Employee`, `Lead`, `Inbound_Raw`, `Client`, `PIC_Client`, `Master_Data`, dan `Project` seperti di Opsi A langkah 1.
 3. Di Apps Script Editor:
    - Hapus file `Code.gs` default.
    - Buat file baru untuk setiap file di folder `src/` pada repo ini. **Nama file harus sama persis dengan path relatif dari folder `src/`** (tanpa ekstensi), misal file di repo `src/50_Presentation/html/Lead/LeadCapturingContent.html` harus dibuat dengan nama `50_Presentation/html/Lead/LeadCapturingContent` di editor (GAS mendukung `/` sebagai pseudo-folder). Ini wajib sama karena kode (`createTemplateFromFile`, `include`) memanggil file berdasarkan nama ini.

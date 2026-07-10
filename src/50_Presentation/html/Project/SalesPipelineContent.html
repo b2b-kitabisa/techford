@@ -1,0 +1,1111 @@
+<div class="pipeline-score-row">
+  <div class="pipeline-score-card pipeline-score-achieved">
+    <div class="pipeline-score-title">🏆 Achieved</div>
+    <div class="pipeline-score-desc">Achievement Target (dari Project berstatus Won)</div>
+    <div class="pipeline-score-value" id="pipelineAchievedValue">GDV : Rp0 | REV : Rp0</div>
+  </div>
+  <div class="pipeline-score-card pipeline-score-forecast">
+    <div class="pipeline-score-title">⏳ Forecast</div>
+    <div class="pipeline-score-desc">Forecast GDV &amp; Revenue in Pipeline (Pros + Nego)</div>
+    <div class="pipeline-score-value" id="pipelineForecastValue">GDV : Rp0 | REV : Rp0</div>
+  </div>
+  <div class="pipeline-bucket-card">
+    <div class="pipeline-bucket-item pipeline-bucket-pros">
+      <div class="pipeline-bucket-label">PROS</div>
+      <div class="pipeline-bucket-value" id="pipelineBucketPros">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-nego">
+      <div class="pipeline-bucket-label">NEGO</div>
+      <div class="pipeline-bucket-value" id="pipelineBucketNego">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-won">
+      <div class="pipeline-bucket-label">WON</div>
+      <div class="pipeline-bucket-value" id="pipelineBucketWon">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-loss">
+      <div class="pipeline-bucket-label">LOSS</div>
+      <div class="pipeline-bucket-value" id="pipelineBucketLoss">0</div>
+    </div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <input id="pipelineSearch" placeholder="Search Entity Name, Project ID, Brand Name...." oninput="onPipelineFilterChange()">
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="pipelineDateFilterBtn" onclick="toggleDateFilterDropdown()">Date ▾</button>
+    <div class="status-filter-dropdown" id="pipelineDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
+      <label style="display:block; margin-bottom:8px;">Dari
+        <input type="date" id="pipelineDateFrom" style="width:100%; margin-top:4px;" oninput="onPipelineFilterChange()">
+      </label>
+      <label style="display:block;">Sampai
+        <input type="date" id="pipelineDateTo" style="width:100%; margin-top:4px;" oninput="onPipelineFilterChange()">
+      </label>
+    </div>
+  </div>
+
+  <select id="pipelineConsultantFilter" onchange="onPipelineFilterChange()">
+    <option value="">Consultant</option>
+  </select>
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="pipelineStageFilterBtn" onclick="toggleStageFilterDropdown()">Stage ▾</button>
+    <div class="status-filter-dropdown" id="pipelineStageFilterDropdown"></div>
+  </div>
+
+  <label style="display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:13px;">
+    <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
+  </label>
+
+  <button class="filter-reset" onclick="resetPipelineFilter()">↺ Reset Filter</button>
+</div>
+
+<div id="pipelineTableError" class="error"></div>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Client Info</th>
+        <th>Project Info</th>
+        <th>Owner &amp; Stage</th>
+        <th>Value</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="pipelineTableBody">
+      <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="pipelinePageSize" onchange="onPipelineFilterChange()">
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="pipelinePageButtons"></div>
+</div>
+
+<!-- ================= Drawer: Add New Pipeline ================= -->
+<div class="drawer-overlay" id="addPipelineDrawer" onclick="if (event.target === this) closeAddPipeline();">
+  <div class="drawer-panel drawer-panel-wide">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <h2 style="color: var(--color-white); font-size:18px; margin:0;">ADD NEW PIPELINE</h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <select id="newConsultant" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;">
+            <option value="">Consultant</option>
+          </select>
+          <button class="drawer-close" onclick="closeAddPipeline()">&times;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row">
+        <h3>Project Information</h3>
+        <label class="switch-wrap">RETAINER PROJECT
+          <span class="switch"><input type="checkbox" id="newIsRetainer"><span class="switch-slider"></span></span>
+        </label>
+      </div>
+      <div class="form-grid-2col">
+        <div>
+          <label>Project Name
+            <input id="newProjectName" placeholder="Type Project Name here.">
+          </label>
+          <div class="placeholder-note" style="margin-top:-6px; margin-bottom:10px;">e.g Program Tanam Mangrove Cilacap, etc</div>
+        </div>
+        <div>
+          <label>Choose Client
+            <div class="searchable-select" id="newClientWrap">
+              <input id="newClientInput" placeholder="Cari nama Client..." autocomplete="off" oninput="onNewClientTyped()" onfocus="renderNewClientOptions(this.value)">
+              <div class="searchable-select-options" id="newClientOptions"></div>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Choose Service (Multiple Select)</span>
+      <div class="toggle-btn-group" id="newServiceButtons"></div>
+
+      <span class="taxonomy-label" style="margin-top:16px;">Choose Service Category (Multiple Select)</span>
+      <div class="service-category-grid" id="newCategoryGrid"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
+        <div>
+          <span class="taxonomy-label">Program Type</span>
+          <div class="toggle-btn-group" id="newProgramTypeButtons" style="margin-bottom:10px;"></div>
+          <div id="newProgramCategoryArea"></div>
+        </div>
+        <div>
+          <span class="taxonomy-label">Issue (Multiple Select)</span>
+          <div class="toggle-btn-group" id="newIssueButtons" style="margin-bottom:10px;"></div>
+          <input id="newIssueCustom" placeholder="Type specific issue...">
+        </div>
+        <div>
+          <span class="taxonomy-label">Other Notes</span>
+          <textarea id="newOtherNotes" placeholder="Type notes..." style="width:100%; min-height:120px;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-save" onclick="openAddPipelineConfirm()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="addPipelineConfirm">
+  <div class="confirm-box" style="width:420px;">
+    <h3>Konfirmasi Simpan Pipeline</h3>
+    <p id="addPipelineConfirmText">Apakah Anda yakin untuk menyimpan pipeline ini? Pastikan Project Name, Client, Service, dan Program sudah benar sebelum klik Save.</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelAddPipelineConfirm()">Cancel</button>
+      <button class="btn-save" onclick="submitAddPipeline()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Drawer: Project Detail ================= -->
+<div class="drawer-overlay" id="pipelineDrawer" onclick="if (event.target === this) closePipelineDetail();">
+  <div class="drawer-panel drawer-panel-wide">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="projectIdHeaderDisplay"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">PROJECT DETAIL</h2>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <select id="detailStageSelect" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;"></select>
+          <button class="btn-outline" onclick="submitStageUpdate()">Update</button>
+          <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row">
+        <h3>Project Information</h3>
+        <button class="btn-outline" id="projectEditInfoToggleBtn" onclick="toggleProjectEditInfo()">✏️ EDIT PROJECT</button>
+      </div>
+
+      <div id="projectViewBlock">
+        <div class="section-title-row" style="align-items:flex-start;">
+          <div>
+            <div class="entity-name" id="projectNameDisplay" style="font-size:18px;"></div>
+            <div class="entity-pic" id="projectClientBrandDisplay"></div>
+            <div class="entity-pic" id="projectClientEntityDisplay"></div>
+            <div class="entity-pic" id="projectIdDisplay" style="color: var(--text-faint);"></div>
+            <div class="entity-pic" id="projectConsultantDisplay" style="margin-top:4px;"></div>
+          </div>
+          <div style="font-size:11px; text-align:right;">
+            <div style="color: var(--text-faint);" id="projectCreatedDateDisplay"></div>
+            <div style="font-weight:700; margin-top:8px;" id="projectProgramTypeDisplay"></div>
+            <div style="font-weight:700;" id="projectProgramNameDisplay"></div>
+            <div style="color: var(--text-muted); margin-top:4px;" id="projectIssuesDisplay"></div>
+          </div>
+        </div>
+
+        <div class="form-grid-2col" style="margin-top:14px; grid-template-columns: 1.3fr 1fr;">
+          <div>
+            <div class="drawer-field-label">Service :</div>
+            <div class="drawer-field-value" id="projectServiceListDisplay"></div>
+          </div>
+          <div>
+            <div class="drawer-field-label">Other Notes :</div>
+            <div class="drawer-field-value" id="projectOtherNotesDisplay">Belum ada catatan.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-edit-form" id="projectEditForm">
+        <label>Project Name<input id="editProjectName"></label>
+        <label>Client (tidak bisa diubah)<input id="editProjectClientDisplay" disabled></label>
+        <label>Consultant
+          <select id="editConsultant"><option value="">Pilih Consultant...</option></select>
+        </label>
+
+        <span class="taxonomy-label" style="margin-top:6px;">Choose Service (Multiple Select)</span>
+        <div class="toggle-btn-group" id="editServiceButtons"></div>
+        <span class="taxonomy-label" style="margin-top:10px;">Choose Service Category (Multiple Select)</span>
+        <div class="service-category-grid" id="editCategoryGrid"></div>
+
+        <span class="taxonomy-label" style="margin-top:10px;">Program Type</span>
+        <div class="toggle-btn-group" id="editProgramTypeButtons" style="margin-bottom:8px;"></div>
+        <div id="editProgramCategoryArea"></div>
+
+        <span class="taxonomy-label" style="margin-top:10px;">Issue (Multiple Select)</span>
+        <div class="toggle-btn-group" id="editIssueButtons" style="margin-bottom:8px;"></div>
+        <input id="editIssueCustom" placeholder="Type specific issue...">
+
+        <label style="margin-top:10px;">Other Notes<textarea id="editOtherNotes" placeholder="Type notes here."></textarea></label>
+      </div>
+    </div>
+
+    <div class="drawer-section placeholder-box">
+      <div class="section-title-row">
+        <h3>Document Request</h3>
+      </div>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Quotation
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Quotation
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Cost of Revenue (COR)
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">RAB
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">PKS
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">DECK
+        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
+      </label>
+      <div style="text-align:right; margin-top:6px;">
+        <button class="btn-save" disabled>💾 REQUEST</button>
+      </div>
+      <div class="placeholder-note">Fitur permintaan dokumen menyusul — logikanya cukup kompleks, ditunda dulu.</div>
+    </div>
+
+    <div class="drawer-section placeholder-box">
+      <div class="form-grid-2col">
+        <div>
+          <div class="section-title-row"><h3>Revenue Breakdown — GDV</h3></div>
+          <div class="drawer-field-label">TOTAL GDV</div>
+          <div class="drawer-field-value" id="projectTotalGdvDisplay">-</div>
+        </div>
+        <div>
+          <div class="section-title-row"><h3>Service Revenue</h3></div>
+          <div class="drawer-field-label">TOTAL SERVICE REVENUE</div>
+          <div class="drawer-field-value" id="projectTotalRevenueDisplay">-</div>
+        </div>
+      </div>
+      <div style="text-align:right; margin-top:6px;">
+        <button class="btn-outline" disabled>✏️ EDIT</button>
+      </div>
+      <div class="placeholder-note">Breakdown detail per campaign/service menyusul — logikanya cukup kompleks, ditunda dulu.</div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row">
+        <h3>Other Document Related</h3>
+        <button class="btn-outline" onclick="addOtherDocLinkRow()">+</button>
+      </div>
+      <div id="otherDocLinksContainer"></div>
+      <div style="text-align:right; margin-top:8px;">
+        <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
+      </div>
+    </div>
+
+    <div class="confirm-overlay" id="projectEditConfirm">
+      <div class="confirm-box">
+        <h3>Konfirmasi Perubahan</h3>
+        <p>Pastikan perubahan yang Anda buat sudah sesuai sebelum disimpan.</p>
+        <div class="confirm-actions">
+          <button class="btn-outline" onclick="cancelProjectEditConfirm()">Cancel</button>
+          <button class="btn-save" onclick="saveProjectInfo()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint" id="projectSaveHint"></span>
+      <button class="btn-save" id="projectSaveBtn" onclick="openProjectEditConfirm()" style="display:none;">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="success-overlay" id="pipelineSuccessModal" onclick="if (event.target === this) closePipelineSuccessModal();">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3 id="pipelineSuccessMessage">Berhasil.</h3>
+    <button class="btn-save" onclick="closePipelineSuccessModal()">OK</button>
+  </div>
+</div>
+
+<script>
+  var allProjects = [];
+  var allClients = [];
+  var allEmployees = [];
+  var taxonomy = { services: [], programType: {}, kborgPrograms: [], issues: [], stages: [], stageBucket: {} };
+
+  var pipelinePage = 1;
+  var currentPipelineDrawerId = null;
+  var newProjectClientId = null;
+  var newProjectServices = [];
+  var newProjectCategories = {};
+  var newProjectProgramType = null;
+  var newProjectProgramCategory = null;
+  var newProjectIssues = [];
+
+  var editProjectServices = [];
+  var editProjectCategories = {};
+  var editProjectProgramType = null;
+  var editProjectProgramCategory = null;
+  var editProjectIssues = [];
+  var editOtherDocLinks = [];
+
+  // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
+  var pipelineBootstrapAttempts = 0;
+  var pipelineBootstrapRetried = false;
+  var PIPELINE_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapPipeline() {
+    pipelineBootstrapAttempts++;
+    fetchProjects();
+    fetchClients();
+    fetchEmployees();
+    fetchTaxonomy();
+    setTimeout(function () {
+      if (allProjects.length || pipelineBootstrapRetried) return;
+      if (pipelineBootstrapAttempts < PIPELINE_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapPipeline();
+      } else {
+        pipelineBootstrapRetried = true;
+        fetchProjects();
+      }
+    }, PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS);
+  }
+  if (document.readyState === 'complete') {
+    bootstrapPipeline();
+  } else {
+    window.addEventListener('load', bootstrapPipeline);
+  }
+
+  function fetchProjects() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          if (!pipelineBootstrapRetried) return;
+          showPipelineTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+          return;
+        }
+        pipelineBootstrapRetried = true;
+        allProjects = res.data;
+        renderPipeline();
+      })
+      .withFailureHandler(function (err) {
+        if (!pipelineBootstrapRetried) return;
+        showPipelineTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .project_getAll();
+  }
+
+  function fetchClients() {
+    google.script.run
+      .withSuccessHandler(function (res) { if (res && res.ok) allClients = res.data; })
+      .withFailureHandler(function () {})
+      .client_getAll();
+  }
+
+  function fetchEmployees() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) {
+          allEmployees = res.data;
+          populateConsultantDropdowns();
+        }
+      })
+      .withFailureHandler(function () {})
+      .employee_listAdmins();
+  }
+
+  function fetchTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) {
+          taxonomy = res.data;
+          renderServiceButtonsInto('newServiceButtons', newProjectServices, 'toggleNewService');
+          renderCategoryGridInto('newCategoryGrid', newProjectServices, newProjectCategories, 'toggleNewCategory');
+          renderProgramTypeButtonsInto('newProgramTypeButtons', newProjectProgramType, 'selectNewProgramType');
+          renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
+          renderStageFilterDropdown();
+          renderStageSelectOptions('detailStageSelect');
+        }
+      })
+      .withFailureHandler(function () {})
+      .project_getTaxonomy();
+  }
+
+  function showPipelineTableError(message) {
+    document.getElementById('pipelineTableError').innerText = message;
+    document.getElementById('pipelineTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+  }
+
+  function getClientById(clientId) {
+    return allClients.filter(function (c) { return c.Client_ID === clientId; })[0] || null;
+  }
+
+  function getConsultants() {
+    var role = String(taxonomy.consultantRole || 'Consultant').trim().toLowerCase();
+    return allEmployees.filter(function (e) {
+      return String(e.Role || '').trim().toLowerCase() === role && e.Status === 'Active';
+    });
+  }
+
+  function populateConsultantDropdowns() {
+    var consultants = getConsultants();
+    var options = consultants.map(function (e) { return '<option value="' + e.Name + '">' + e.Name + '</option>'; }).join('');
+
+    var filterSelect = document.getElementById('pipelineConsultantFilter');
+    var filterCurrent = filterSelect.value;
+    filterSelect.innerHTML = '<option value="">Consultant</option>' + options;
+    if (filterCurrent) filterSelect.value = filterCurrent;
+
+    document.getElementById('newConsultant').innerHTML = '<option value="">Consultant</option>' + options;
+    document.getElementById('editConsultant').innerHTML = '<option value="">Pilih Consultant...</option>' + options;
+  }
+
+  // ---- Format helper ----
+  function formatRupiah(n) {
+    return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+  }
+  function formatCompactRupiah(n) {
+    n = Number(n) || 0;
+    if (Math.abs(n) >= 1e9) return 'Rp' + (n / 1e9).toFixed(1) + 'B';
+    if (Math.abs(n) >= 1e6) return 'Rp' + (n / 1e6).toFixed(1) + 'M';
+    return formatRupiah(n);
+  }
+  function formatDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  // ---- Render: score cards (selalu dari SELURUH data, bukan hasil filter) ----
+  function renderPipelineScoreCards() {
+    var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
+    var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
+
+    allProjects.forEach(function (p) {
+      var bucket = taxonomy.stageBucket[p.Stage] || 'PROS';
+      buckets[bucket] = (buckets[bucket] || 0) + 1;
+      if (bucket === 'WON') {
+        achievedGdv += Number(p.Total_GDV) || 0;
+        achievedRev += Number(p.Total_Service_Revenue) || 0;
+      } else if (bucket === 'PROS' || bucket === 'NEGO') {
+        forecastGdv += Number(p.Total_GDV) || 0;
+        forecastRev += Number(p.Total_Service_Revenue) || 0;
+      }
+    });
+
+    document.getElementById('pipelineAchievedValue').innerText = 'GDV : ' + formatCompactRupiah(achievedGdv) + ' | REV : ' + formatCompactRupiah(achievedRev);
+    document.getElementById('pipelineForecastValue').innerText = 'GDV : ' + formatCompactRupiah(forecastGdv) + ' | REV : ' + formatCompactRupiah(forecastRev);
+    document.getElementById('pipelineBucketPros').innerText = buckets.PROS;
+    document.getElementById('pipelineBucketNego').innerText = buckets.NEGO;
+    document.getElementById('pipelineBucketWon').innerText = buckets.WON;
+    document.getElementById('pipelineBucketLoss').innerText = buckets.LOSS;
+  }
+
+  // ---- Filter, sort, paginate ----
+  var pipelineStageFilterValues = [];
+
+  function getFilteredProjects() {
+    var search = document.getElementById('pipelineSearch').value.toLowerCase().trim();
+    var dateFrom = document.getElementById('pipelineDateFrom').value;
+    var dateTo = document.getElementById('pipelineDateTo').value;
+    var consultant = document.getElementById('pipelineConsultantFilter').value;
+    var retainerOnly = document.getElementById('pipelineRetainerFilter').checked;
+
+    return allProjects.filter(function (p) {
+      var client = getClientById(p.Client_ID) || {};
+      var matchesSearch = !search ||
+        String(p.Project_ID || '').toLowerCase().indexOf(search) !== -1 ||
+        String(p.Project_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(client.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(client.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
+
+      var createdTime = new Date(p.Created_Date).getTime();
+      var matchesFrom = !dateFrom || createdTime >= new Date(dateFrom).getTime();
+      var matchesTo = !dateTo || createdTime <= new Date(dateTo + 'T23:59:59').getTime();
+      var matchesConsultant = !consultant || p.Consultant === consultant;
+      var matchesStage = !pipelineStageFilterValues.length || pipelineStageFilterValues.indexOf(p.Stage) !== -1;
+      var matchesRetainer = !retainerOnly || !!p.Is_Retainer;
+
+      return matchesSearch && matchesFrom && matchesTo && matchesConsultant && matchesStage && matchesRetainer;
+    }).sort(function (a, b) {
+      return new Date(b.Created_Date).getTime() - new Date(a.Created_Date).getTime();
+    });
+  }
+
+  function onPipelineFilterChange() {
+    pipelinePage = 1;
+    renderPipeline();
+  }
+
+  function resetPipelineFilter() {
+    document.getElementById('pipelineSearch').value = '';
+    document.getElementById('pipelineDateFrom').value = '';
+    document.getElementById('pipelineDateTo').value = '';
+    document.getElementById('pipelineConsultantFilter').value = '';
+    document.getElementById('pipelineRetainerFilter').checked = false;
+    pipelineStageFilterValues = [];
+    renderStageFilterDropdown();
+    pipelinePage = 1;
+    renderPipeline();
+  }
+
+  function paginateProjects(list) {
+    var pageSize = Number(document.getElementById('pipelinePageSize').value);
+    var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    pipelinePage = Math.min(Math.max(1, pipelinePage), totalPages);
+    var start = (pipelinePage - 1) * pageSize;
+    return { items: list.slice(start, start + pageSize), page: pipelinePage, totalPages: totalPages };
+  }
+
+  function renderPipeline() {
+    document.getElementById('pipelineTableError').innerText = '';
+    renderPipelineScoreCards();
+    var filtered = getFilteredProjects();
+    var paged = paginateProjects(filtered);
+    renderPipelineTable(paged);
+    renderPipelinePagination(paged);
+  }
+
+  function renderPipelineTable(paged) {
+    var tbody = document.getElementById('pipelineTableBody');
+    if (!paged.items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = paged.items.map(function (p) {
+      var client = getClientById(p.Client_ID) || {};
+      return '<tr>' +
+        '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
+        '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>' +
+        '<td><div class="entity-name">' + p.Project_ID + '</div>' +
+        '<div class="entity-pic">' + (p.Project_Name || '-') + '</div></td>' +
+        '<td><div>' + (p.Consultant || '-') + '</div>' +
+        '<div class="entity-pic">' + (p.Stage || '-') + '</div></td>' +
+        '<td class="nowrap-cell"><div>GDV : ' + formatRupiah(p.Total_GDV) + '</div>' +
+        '<div class="entity-pic">REV : ' + formatRupiah(p.Total_Service_Revenue) + '</div></td>' +
+        '<td><button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderPipelinePagination(paged) {
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToPipelinePage(' + (paged.page - 1) + ')">&lt; Previous</button>';
+    for (var p = 1; p <= paged.totalPages; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToPipelinePage(' + p + ')">' + p + '</button>';
+    }
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToPipelinePage(' + (paged.page + 1) + ')">Next &gt;</button>';
+    document.getElementById('pipelinePageButtons').innerHTML = buttons;
+  }
+
+  function goToPipelinePage(page) {
+    pipelinePage = page;
+    renderPipeline();
+  }
+
+  // ---- Date filter dropdown ----
+  function toggleDateFilterDropdown() {
+    document.getElementById('pipelineDateFilterDropdown').classList.toggle('open');
+  }
+
+  // ---- Stage filter dropdown (multi-select, sama pola dengan status filter Lead) ----
+  function renderStageFilterDropdown() {
+    var container = document.getElementById('pipelineStageFilterDropdown');
+    container.innerHTML = (taxonomy.stages || []).map(function (stage) {
+      var checked = pipelineStageFilterValues.indexOf(stage) !== -1 ? 'checked' : '';
+      return '<label><input type="checkbox" value="' + stage + '" ' + checked + ' onchange="onStageFilterToggle(this)"> ' + stage + '</label>';
+    }).join('');
+  }
+  function onStageFilterToggle(checkbox) {
+    var idx = pipelineStageFilterValues.indexOf(checkbox.value);
+    if (checkbox.checked && idx === -1) pipelineStageFilterValues.push(checkbox.value);
+    if (!checkbox.checked && idx !== -1) pipelineStageFilterValues.splice(idx, 1);
+    onPipelineFilterChange();
+  }
+  function toggleStageFilterDropdown() {
+    document.getElementById('pipelineStageFilterDropdown').classList.toggle('open');
+  }
+
+  document.addEventListener('click', function (e) {
+    ['pipelineDateFilterDropdown', 'pipelineStageFilterDropdown'].forEach(function (id) {
+      var dropdown = document.getElementById(id);
+      var btn = document.getElementById(id.replace('Dropdown', 'Btn'));
+      if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.classList.remove('open');
+      }
+    });
+    var clientWrap = document.getElementById('newClientWrap');
+    if (clientWrap && !clientWrap.contains(e.target)) {
+      document.getElementById('newClientOptions').classList.remove('open');
+    }
+  });
+
+  // ---- Client searchable picker (Add Pipeline) ----
+  function onNewClientTyped() {
+    newProjectClientId = null;
+    renderNewClientOptions(document.getElementById('newClientInput').value);
+  }
+  function renderNewClientOptions(query) {
+    var list = document.getElementById('newClientOptions');
+    var q = (query || '').trim().toLowerCase();
+    var filtered = allClients.filter(function (c) {
+      if (!q) return true;
+      return String(c.Brand_Name || '').toLowerCase().indexOf(q) !== -1 ||
+        String(c.Entity_Name || '').toLowerCase().indexOf(q) !== -1 ||
+        String(c.Head_Office || '').toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 50);
+
+    list.innerHTML = filtered.length
+      ? filtered.map(function (c) {
+          return '<div class="searchable-select-option" onclick="chooseNewClient(\'' + c.Client_ID + '\')">' +
+            (c.Brand_Name || '-') + ' <span style="color:var(--text-faint);">— ' + (c.Entity_Name || '-') + '</span></div>';
+        }).join('')
+      : '<div class="searchable-select-empty">Tidak ada client cocok.</div>';
+    list.classList.add('open');
+  }
+  function chooseNewClient(clientId) {
+    var client = getClientById(clientId);
+    if (!client) return;
+    newProjectClientId = clientId;
+    document.getElementById('newClientInput').value = (client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-');
+    document.getElementById('newClientOptions').classList.remove('open');
+  }
+
+  // ---- Shared taxonomy widget renderers (dipakai New & Edit) ----
+  function renderServiceButtonsInto(containerId, selectedServices, toggleFnName) {
+    document.getElementById(containerId).innerHTML = (taxonomy.services || []).map(function (s) {
+      var active = selectedServices.indexOf(s.key) !== -1;
+      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="' + toggleFnName + '(\'' + s.key + '\')">' + s.label + '</button>';
+    }).join('');
+  }
+
+  function renderCategoryGridInto(gridId, selectedServices, categoriesMap, toggleFnName) {
+    var grid = document.getElementById(gridId);
+    grid.innerHTML = (taxonomy.services || []).map(function (s) {
+      var enabled = selectedServices.indexOf(s.key) !== -1;
+      if (!s.categories.length) {
+        return '<div class="service-category-col"></div>';
+      }
+      var options = s.categories.map(function (cat) {
+        var active = enabled && (categoriesMap[s.key] || []).indexOf(cat) !== -1;
+        var cls = 'toggle-btn' + (active ? ' active' : '') + (enabled ? '' : ' disabled');
+        var onclick = enabled ? ' onclick="' + toggleFnName + '(\'' + s.key + '\',\'' + cat + '\')"' : '';
+        return '<button type="button" class="' + cls + '"' + onclick + '>' + cat + '</button>';
+      }).join('');
+      return '<div class="service-category-col">' + options + '</div>';
+    }).join('');
+  }
+
+  function renderProgramTypeButtonsInto(containerId, currentType, selectFnName) {
+    document.getElementById(containerId).innerHTML = [taxonomy.programType.KBORG, taxonomy.programType.CLIENT].map(function (pt) {
+      var active = currentType === pt;
+      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="' + selectFnName + '(\'' + pt + '\')">' + pt + '</button>';
+    }).join('');
+  }
+
+  function renderIssueButtonsInto(containerId, selectedIssues, toggleFnName) {
+    document.getElementById(containerId).innerHTML = (taxonomy.issues || []).map(function (issue) {
+      var active = selectedIssues.indexOf(issue) !== -1;
+      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="' + toggleFnName + '(\'' + issue + '\')">' + issue + '</button>';
+    }).join('');
+  }
+
+  // ---- Add Pipeline: Service/Category ----
+  function toggleNewService(key) {
+    var idx = newProjectServices.indexOf(key);
+    if (idx === -1) { newProjectServices.push(key); } else { newProjectServices.splice(idx, 1); delete newProjectCategories[key]; }
+    renderServiceButtonsInto('newServiceButtons', newProjectServices, 'toggleNewService');
+    renderCategoryGridInto('newCategoryGrid', newProjectServices, newProjectCategories, 'toggleNewCategory');
+  }
+  function toggleNewCategory(serviceKey, category) {
+    if (newProjectServices.indexOf(serviceKey) === -1) return;
+    if (!newProjectCategories[serviceKey]) newProjectCategories[serviceKey] = [];
+    var arr = newProjectCategories[serviceKey];
+    var idx = arr.indexOf(category);
+    if (idx === -1) arr.push(category); else arr.splice(idx, 1);
+    renderCategoryGridInto('newCategoryGrid', newProjectServices, newProjectCategories, 'toggleNewCategory');
+  }
+
+  // ---- Add Pipeline: Program Type/Category ----
+  function selectNewProgramType(programType) {
+    newProjectProgramType = programType;
+    newProjectProgramCategory = null;
+    renderProgramTypeButtonsInto('newProgramTypeButtons', newProjectProgramType, 'selectNewProgramType');
+    renderNewProgramCategoryArea();
+  }
+  function renderNewProgramCategoryArea() {
+    var area = document.getElementById('newProgramCategoryArea');
+    if (newProjectProgramType === taxonomy.programType.KBORG) {
+      area.innerHTML = '<div class="toggle-btn-list" id="newProgramList"></div>' +
+        (newProjectProgramCategory === taxonomy.kborgCustomProgram ? '<input id="newProgramManualName" placeholder="Nama custom program..." style="margin-top:8px;">' : '');
+      document.getElementById('newProgramList').innerHTML = (taxonomy.kborgPrograms || []).map(function (p) {
+        var active = newProjectProgramCategory === p;
+        return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectNewProgramCategory(\'' + p + '\')">' + p + '</button>';
+      }).join('');
+    } else if (newProjectProgramType === taxonomy.programType.CLIENT) {
+      area.innerHTML = '<input id="newProgramManualName" placeholder="Nama Client Program...">';
+    } else {
+      area.innerHTML = '';
+    }
+  }
+  function selectNewProgramCategory(category) {
+    newProjectProgramCategory = category;
+    renderNewProgramCategoryArea();
+  }
+
+  // ---- Add Pipeline: Issue ----
+  function toggleNewIssue(issue) {
+    var idx = newProjectIssues.indexOf(issue);
+    if (idx === -1) newProjectIssues.push(issue); else newProjectIssues.splice(idx, 1);
+    renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
+  }
+
+  // ---- Add Pipeline: open/close/reset ----
+  function openAddPipeline() {
+    document.getElementById('newProjectName').value = '';
+    document.getElementById('newClientInput').value = '';
+    document.getElementById('newIsRetainer').checked = false;
+    document.getElementById('newOtherNotes').value = '';
+    document.getElementById('newIssueCustom').value = '';
+    document.getElementById('newConsultant').value = '';
+    newProjectClientId = null;
+    newProjectServices = [];
+    newProjectCategories = {};
+    newProjectProgramType = null;
+    newProjectProgramCategory = null;
+    newProjectIssues = [];
+
+    renderServiceButtonsInto('newServiceButtons', newProjectServices, 'toggleNewService');
+    renderCategoryGridInto('newCategoryGrid', newProjectServices, newProjectCategories, 'toggleNewCategory');
+    renderProgramTypeButtonsInto('newProgramTypeButtons', newProjectProgramType, 'selectNewProgramType');
+    renderNewProgramCategoryArea();
+    renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
+
+    document.getElementById('addPipelineDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+  function closeAddPipeline() {
+    document.getElementById('addPipelineDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+  }
+
+  function openAddPipelineConfirm() {
+    if (!document.getElementById('newProjectName').value.trim()) { alert('Project Name wajib diisi.'); return; }
+    if (!newProjectClientId) { alert('Client wajib dipilih dari daftar.'); return; }
+    if (!newProjectProgramType) { alert('Program Type wajib dipilih.'); return; }
+    if (newProjectProgramType === taxonomy.programType.KBORG && !newProjectProgramCategory) { alert('Pilih salah satu Program KB.ORG.'); return; }
+
+    var manualNameEl = document.getElementById('newProgramManualName');
+    var needsManualName = newProjectProgramType === taxonomy.programType.CLIENT || newProjectProgramCategory === taxonomy.kborgCustomProgram;
+    if (needsManualName && (!manualNameEl || !manualNameEl.value.trim())) { alert('Nama program wajib diisi.'); return; }
+
+    var text = 'Apakah Anda yakin untuk menyimpan pipeline ini? Pastikan Project Name, Client, Service, dan Program sudah benar sebelum klik Save.';
+    if (document.getElementById('newIsRetainer').checked) {
+      text += ' Perhatian: status Retainer Project TIDAK BISA dibatalkan lagi setelah disimpan.';
+    }
+    document.getElementById('addPipelineConfirmText').innerText = text;
+    document.getElementById('addPipelineConfirm').classList.add('open');
+  }
+  function cancelAddPipelineConfirm() {
+    document.getElementById('addPipelineConfirm').classList.remove('open');
+  }
+
+  function submitAddPipeline() {
+    document.getElementById('addPipelineConfirm').classList.remove('open');
+
+    var manualNameEl = document.getElementById('newProgramManualName');
+    var customIssue = document.getElementById('newIssueCustom').value.trim();
+    var issues = newProjectIssues.slice();
+    if (customIssue) issues.push(customIssue);
+
+    var input = {
+      projectName: document.getElementById('newProjectName').value.trim(),
+      clientId: newProjectClientId,
+      consultant: document.getElementById('newConsultant').value,
+      services: newProjectServices,
+      serviceCategories: newProjectCategories,
+      programType: newProjectProgramType,
+      programCategory: newProjectProgramCategory,
+      programName: manualNameEl ? manualNameEl.value.trim() : '',
+      issues: issues,
+      otherNotes: document.getElementById('newOtherNotes').value,
+      isRetainer: document.getElementById('newIsRetainer').checked
+    };
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        closeAddPipeline();
+        showPipelineSuccess('Pipeline baru berhasil ditambahkan.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .project_create(input, createdBy);
+  }
+
+  // ---- Project Detail Drawer ----
+  function renderStageSelectOptions(selectId) {
+    document.getElementById(selectId).innerHTML = (taxonomy.stages || []).map(function (s) {
+      return '<option value="' + s + '">' + s + '</option>';
+    }).join('');
+  }
+
+  function openPipelineDetail(projectId) {
+    var project = allProjects.filter(function (p) { return p.Project_ID === projectId; })[0];
+    if (!project) return;
+    currentPipelineDrawerId = projectId;
+    renderPipelineDrawer(project);
+    document.getElementById('pipelineDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+  function closePipelineDetail() {
+    document.getElementById('pipelineDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    currentPipelineDrawerId = null;
+  }
+
+  function renderPipelineDrawer(project) {
+    var client = getClientById(project.Client_ID) || {};
+
+    document.getElementById('projectIdHeaderDisplay').innerText = project.Project_ID;
+    document.getElementById('detailStageSelect').value = project.Stage;
+
+    document.getElementById('projectNameDisplay').innerText = project.Project_Name + (project.Is_Retainer ? ' 🔁' : '');
+    document.getElementById('projectClientBrandDisplay').innerText = client.Brand_Name || '-';
+    document.getElementById('projectClientEntityDisplay').innerText = client.Entity_Name || '-';
+    document.getElementById('projectIdDisplay').innerText = project.Project_ID;
+    document.getElementById('projectConsultantDisplay').innerText = project.Consultant ? ('Consultant: ' + project.Consultant) : '';
+
+    document.getElementById('projectCreatedDateDisplay').innerText = 'Created date: ' + formatDate(project.Created_Date);
+    document.getElementById('projectProgramTypeDisplay').innerText = project.Program_Type || '-';
+    document.getElementById('projectProgramNameDisplay').innerText = project.Program_Name || '-';
+    document.getElementById('projectIssuesDisplay').innerText = (project.Issues || []).join('; ');
+
+    document.getElementById('projectServiceListDisplay').innerHTML = renderServiceListHtml(project);
+    document.getElementById('projectOtherNotesDisplay').innerText = project.Other_Notes || 'Belum ada catatan.';
+
+    document.getElementById('projectTotalGdvDisplay').innerText = project.Total_GDV ? formatRupiah(project.Total_GDV) : '-';
+    document.getElementById('projectTotalRevenueDisplay').innerText = project.Total_Service_Revenue ? formatRupiah(project.Total_Service_Revenue) : '-';
+
+    // Edit form (disiapkan tapi disembunyikan sampai EDIT PROJECT diklik)
+    document.getElementById('editProjectName').value = project.Project_Name || '';
+    document.getElementById('editProjectClientDisplay').value = (client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-');
+    document.getElementById('editConsultant').value = project.Consultant || '';
+    editProjectServices = (project.Services || []).slice();
+    editProjectCategories = JSON.parse(JSON.stringify(project.Service_Categories || {}));
+    editProjectProgramType = project.Program_Type || null;
+    editProjectProgramCategory = project.Program_Category || null;
+    editProjectIssues = (project.Issues || []).slice();
+    document.getElementById('editIssueCustom').value = '';
+    document.getElementById('editOtherNotes').value = project.Other_Notes || '';
+
+    renderServiceButtonsInto('editServiceButtons', editProjectServices, 'toggleEditService');
+    renderCategoryGridInto('editCategoryGrid', editProjectServices, editProjectCategories, 'toggleEditCategory');
+    renderProgramTypeButtonsInto('editProgramTypeButtons', editProjectProgramType, 'selectEditProgramType');
+    renderEditProgramCategoryArea();
+    renderIssueButtonsInto('editIssueButtons', editProjectIssues, 'toggleEditIssue');
+
+    document.getElementById('projectViewBlock').style.display = '';
+    document.getElementById('projectEditForm').classList.remove('open');
+    document.getElementById('projectSaveBtn').style.display = 'none';
+    document.getElementById('projectSaveHint').innerText = '';
+    document.getElementById('projectEditInfoToggleBtn').innerHTML = '✏️ EDIT PROJECT';
+
+    editOtherDocLinks = (project.Other_Document_Links || []).slice();
+    renderOtherDocLinks();
+  }
+
+  function renderServiceListHtml(project) {
+    var services = project.Services || [];
+    if (!services.length) return '<span style="color:var(--text-faint);">Belum ada service dipilih.</span>';
+    var categories = project.Service_Categories || {};
+    return '<ol style="margin:0; padding-left:18px;">' + services.map(function (key) {
+      var svc = (taxonomy.services || []).filter(function (s) { return s.key === key; })[0];
+      var label = svc ? svc.label : key;
+      var cats = categories[key] || [];
+      return '<li><strong>' + label + '</strong>' + (cats.length ? ' : ' + cats.join(' ; ') : '') + '</li>';
+    }).join('') + '</ol>';
+  }
+
+  // ---- Edit Project: Service/Category ----
+  function toggleEditService(key) {
+    var idx = editProjectServices.indexOf(key);
+    if (idx === -1) { editProjectServices.push(key); } else { editProjectServices.splice(idx, 1); delete editProjectCategories[key]; }
+    renderServiceButtonsInto('editServiceButtons', editProjectServices, 'toggleEditService');
+    renderCategoryGridInto('editCategoryGrid', editProjectServices, editProjectCategories, 'toggleEditCategory');
+  }
+  function toggleEditCategory(serviceKey, category) {
+    if (editProjectServices.indexOf(serviceKey) === -1) return;
+    if (!editProjectCategories[serviceKey]) editProjectCategories[serviceKey] = [];
+    var arr = editProjectCategories[serviceKey];
+    var idx = arr.indexOf(category);
+    if (idx === -1) arr.push(category); else arr.splice(idx, 1);
+    renderCategoryGridInto('editCategoryGrid', editProjectServices, editProjectCategories, 'toggleEditCategory');
+  }
+
+  // ---- Edit Project: Program Type/Category ----
+  function selectEditProgramType(programType) {
+    editProjectProgramType = programType;
+    editProjectProgramCategory = null;
+    renderProgramTypeButtonsInto('editProgramTypeButtons', editProjectProgramType, 'selectEditProgramType');
+    renderEditProgramCategoryArea();
+  }
+  function renderEditProgramCategoryArea() {
+    var area = document.getElementById('editProgramCategoryArea');
+    if (editProjectProgramType === taxonomy.programType.KBORG) {
+      var isCustom = editProjectProgramCategory === taxonomy.kborgCustomProgram;
+      area.innerHTML = '<div class="toggle-btn-list" id="editProgramList"></div>' +
+        (isCustom ? '<input id="editProgramManualName" placeholder="Nama custom program..." style="margin-top:8px;" value="' + (isCustom ? '' : '') + '">' : '');
+      document.getElementById('editProgramList').innerHTML = (taxonomy.kborgPrograms || []).map(function (p) {
+        var active = editProjectProgramCategory === p;
+        return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectEditProgramCategory(\'' + p + '\')">' + p + '</button>';
+      }).join('');
+    } else if (editProjectProgramType === taxonomy.programType.CLIENT) {
+      area.innerHTML = '<input id="editProgramManualName" placeholder="Nama Client Program...">';
+    } else {
+      area.innerHTML = '';
+    }
+  }
+  function selectEditProgramCategory(category) {
+    editProjectProgramCategory = category;
+    renderEditProgramCategoryArea();
+  }
+
+  // ---- Edit Project: Issue ----
+  function toggleEditIssue(issue) {
+    var idx = editProjectIssues.indexOf(issue);
+    if (idx === -1) editProjectIssues.push(issue); else editProjectIssues.splice(idx, 1);
+    renderIssueButtonsInto('editIssueButtons', editProjectIssues, 'toggleEditIssue');
+  }
+
+  function toggleProjectEditInfo() {
+    var editForm = document.getElementById('projectEditForm');
+    var isOpen = editForm.classList.toggle('open');
+    document.getElementById('projectViewBlock').style.display = isOpen ? 'none' : '';
+    document.getElementById('projectSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
+    document.getElementById('projectEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT PROJECT';
+
+    if (!isOpen && currentPipelineDrawerId) {
+      var project = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
+      if (project) renderPipelineDrawer(project);
+    }
+  }
+
+  function openProjectEditConfirm() {
+    if (!currentPipelineDrawerId) return;
+    document.getElementById('projectEditConfirm').classList.add('open');
+  }
+  function cancelProjectEditConfirm() {
+    document.getElementById('projectEditConfirm').classList.remove('open');
+  }
+
+  function saveProjectInfo() {
+    document.getElementById('projectEditConfirm').classList.remove('open');
+    if (!currentPipelineDrawerId) return;
+
+    var manualNameEl = document.getElementById('editProgramManualName');
+    var customIssue = document.getElementById('editIssueCustom').value.trim();
+    var issues = editProjectIssues.slice();
+    if (customIssue) issues.push(customIssue);
+
+    var patch = {
+      projectName: document.getElementById('editProjectName').value,
+      consultant: document.getElementById('editConsultant').value,
+      services: editProjectServices,
+      serviceCategories: editProjectCategories,
+      programType: editProjectProgramType,
+      programCategory: editProjectProgramCategory,
+      programName: manualNameEl ? manualNameEl.value.trim() : undefined,
+      issues: issues,
+      otherNotes: document.getElementById('editOtherNotes').value
+    };
+
+    var projectId = currentPipelineDrawerId;
+    var btn = document.getElementById('projectSaveBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Informasi project berhasil disimpan.');
+        fetchProjects();
+        closePipelineDetail();
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 SAVE';
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .project_update(projectId, patch);
+  }
+
+  // ---- Stage quick-update (independen dari EDIT PROJECT) ----
+  function submitStageUpdate() {
+    if (!currentPipelineDrawerId) return;
+    var stage = document.getElementById('detailStageSelect').value;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Stage berhasil diperbarui.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal memperbarui stage: ' + (err && err.message ? err.message : err));
+      })
+      .project_updateStage(currentPipelineDrawerId, stage);
+  }
+
+  // ---- Other Document Related (fitur nyata, terpisah dari EDIT PROJECT) ----
+  function renderOtherDocLinks() {
+    var container = document.getElementById('otherDocLinksContainer');
+    if (!editOtherDocLinks.length) editOtherDocLinks = [''];
+    container.innerHTML = editOtherDocLinks.map(function (link, idx) {
+      return '<input placeholder="Put related link in here....." style="width:100%; margin-bottom:8px;" ' +
+        'value="' + (link || '').replace(/"/g, '&quot;') + '" oninput="editOtherDocLinks[' + idx + ']=this.value">';
+    }).join('');
+  }
+  function addOtherDocLinkRow() {
+    editOtherDocLinks.push('');
+    renderOtherDocLinks();
+  }
+  function submitOtherDocLinks() {
+    if (!currentPipelineDrawerId) return;
+    var links = editOtherDocLinks.filter(function (l) { return l && l.trim(); });
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Link dokumen berhasil disimpan.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan link: ' + (err && err.message ? err.message : err));
+      })
+      .project_updateOtherDocumentLinks(currentPipelineDrawerId, links);
+  }
+
+  function showPipelineSuccess(message) {
+    document.getElementById('pipelineSuccessMessage').innerText = message;
+    document.getElementById('pipelineSuccessModal').classList.add('open');
+  }
+  function closePipelineSuccessModal() {
+    document.getElementById('pipelineSuccessModal').classList.remove('open');
+  }
+</script>

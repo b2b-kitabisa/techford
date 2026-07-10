@@ -430,4 +430,76 @@
     margin: 0 auto 14px;
   }
   .success-box h3 { margin: 0 0 20px; font-size: 15px; }
+
+  /* ---- Sales Pipeline: score cards ---- */
+  .pipeline-score-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .pipeline-score-card {
+    background: var(--color-white); border-radius: 8px; padding: 16px 20px;
+    border: 1px solid var(--border-soft); flex: 2; min-width: 240px;
+  }
+  .pipeline-score-title { font-size: 17px; font-weight: 800; }
+  .pipeline-score-desc { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+  .pipeline-score-value { font-size: 18px; font-weight: 700; }
+  /* Warna Achieved (hijau) & Forecast (oranye) sengaja semantik, sama
+     alasannya dengan badge status di modul lain. */
+  .pipeline-score-achieved .pipeline-score-title, .pipeline-score-achieved .pipeline-score-value { color: #188038; }
+  .pipeline-score-forecast .pipeline-score-title, .pipeline-score-forecast .pipeline-score-value { color: #b8860b; }
+
+  .pipeline-bucket-card {
+    background: var(--color-white); border-radius: 8px; padding: 16px 20px;
+    border: 1px solid var(--border-soft); flex: 3; min-width: 280px;
+    display: flex; align-items: center; justify-content: space-around; gap: 8px;
+  }
+  .pipeline-bucket-item { text-align: center; }
+  .pipeline-bucket-label { font-size: 12px; font-weight: 800; letter-spacing: 0.5px; }
+  .pipeline-bucket-value {
+    display: inline-block; margin-top: 8px; padding: 8px 18px; border-radius: 8px;
+    font-weight: 800; font-size: 20px; min-width: 48px;
+  }
+  .pipeline-bucket-pros .pipeline-bucket-label { color: #b8860b; }
+  .pipeline-bucket-pros .pipeline-bucket-value { background: #fef7e0; color: #b8860b; }
+  .pipeline-bucket-nego .pipeline-bucket-label { color: var(--color-cerulean); }
+  .pipeline-bucket-nego .pipeline-bucket-value { background: var(--accent-tint-strong); color: var(--color-cerulean); }
+  .pipeline-bucket-won .pipeline-bucket-label { color: #188038; }
+  .pipeline-bucket-won .pipeline-bucket-value { background: #e6f4ea; color: #188038; }
+  .pipeline-bucket-loss .pipeline-bucket-label { color: #c5221f; }
+  .pipeline-bucket-loss .pipeline-bucket-value { background: #fce8e6; color: #c5221f; }
+
+  /* ---- Toggle button group (Service, Program Type, Issue, dsb) ---- */
+  .toggle-btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toggle-btn-list { display: flex; flex-direction: column; gap: 6px; }
+  .toggle-btn {
+    padding: 8px 14px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--color-white);
+    cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; color: var(--color-mineshaft);
+    text-align: left;
+  }
+  .toggle-btn:hover { background: var(--bg-hover); }
+  .toggle-btn.active { background: var(--color-cerulean); border-color: var(--color-cerulean); color: var(--color-white); }
+  .toggle-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+  .taxonomy-label {
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-muted); margin-bottom: 8px; display: block;
+  }
+  .service-category-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 14px; margin-top: 10px; }
+  .service-category-col { display: flex; flex-direction: column; gap: 6px; }
+
+  /* ---- On/off switch (Retainer Project, dsb) ---- */
+  .switch-wrap { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+  .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch-slider {
+    position: absolute; inset: 0; background: var(--bg-disabled); border-radius: 22px; cursor: pointer; transition: 0.2s;
+  }
+  .switch-slider:before {
+    content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+    background: var(--color-white); border-radius: 50%; transition: 0.2s;
+  }
+  .switch input:checked + .switch-slider { background: var(--color-cerulean); }
+  .switch input:checked + .switch-slider:before { transform: translateX(18px); }
+  .switch input:disabled + .switch-slider { cursor: not-allowed; opacity: 0.6; }
+
+  /* ---- Fitur yang sengaja masih placeholder (Document Request, Revenue
+     Breakdown detail) — ditandai visual jelas supaya tidak dikira bug. ---- */
+  .placeholder-box { opacity: 0.55; }
+  .placeholder-note { font-size: 11px; color: var(--text-faint); font-style: italic; margin-top: 8px; }
 </style>
