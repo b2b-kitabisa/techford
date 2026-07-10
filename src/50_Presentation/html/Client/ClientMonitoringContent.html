@@ -46,7 +46,7 @@
   <div class="drawer-panel drawer-panel-wide">
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <h2 style="color:#fff; font-size:18px; margin:0;">ADD NEW CLIENT</h2>
+        <h2 style="color: var(--color-white); font-size:18px; margin:0;">ADD NEW CLIENT</h2>
         <button class="drawer-close" onclick="closeAddClient()">&times;</button>
       </div>
     </div>
@@ -128,7 +128,7 @@
   <div class="drawer-panel drawer-panel-wide">
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <h2 style="color:#fff; font-size:18px; margin:0;">CLIENT DETAIL</h2>
+        <h2 style="color: var(--color-white); font-size:18px; margin:0;">CLIENT DETAIL</h2>
         <button class="drawer-close" onclick="closeClientDetail()">&times;</button>
       </div>
     </div>
@@ -144,9 +144,9 @@
           <div>
             <div class="entity-name" id="clientBrandName" style="font-size:18px;"></div>
             <div class="entity-pic" id="clientEntityNameDisplay"></div>
-            <div class="entity-pic" id="clientIdDisplay" style="color:#9aa0a6;"></div>
+            <div class="entity-pic" id="clientIdDisplay" style="color: var(--text-faint);"></div>
           </div>
-          <div style="font-size:11px; color:#9aa0a6; text-align:right;" id="clientCreatedDateDisplay"></div>
+          <div style="font-size:11px; color: var(--text-faint); text-align:right;" id="clientCreatedDateDisplay"></div>
         </div>
 
         <div class="form-grid-2col" style="margin-top:12px;">
@@ -548,8 +548,8 @@
       return '<div class="pic-card">' +
         '<button class="pic-card-remove" onclick="removePendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
         '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
-        '<div style="font-size:12px; color:#5f6368;">' + (p.email || '-') + '</div>' +
-        '<div style="font-size:12px; color:#5f6368;">' + (p.phone || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + (p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + (p.phone || '-') + '</div>' +
         '</div>';
     }).join('');
   }
@@ -669,7 +669,7 @@
       return '<div class="pic-card">' +
         (editing ? '<button class="pic-card-remove" onclick="stageExistingPicRemoval(\'' + p.PIC_ID + '\')" title="Hapus PIC">×</button>' : '') +
         '<div style="font-weight:bold;">' + p.PIC_Name + '</div>' +
-        (p.Title ? '<div style="font-size:11px; color:#5f6368;">' + p.Title + '</div>' : '') +
+        (p.Title ? '<div style="font-size:11px; color: var(--text-muted);">' + p.Title + '</div>' : '') +
         '<div style="font-size:12px; margin-top:6px;">Email : ' + (p.Email || '-') + '</div>' +
         '<div style="font-size:12px;">Phone : ' + (p.Phone || '-') + '</div>' +
         '</div>';
@@ -679,8 +679,8 @@
       return '<div class="pic-card">' +
         '<button class="pic-card-remove" onclick="removeEditPendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
         '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
-        '<div style="font-size:12px; color:#5f6368;">' + (p.email || '-') + '</div>' +
-        '<div style="font-size:12px; color:#5f6368;">' + (p.phone || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + (p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + (p.phone || '-') + '</div>' +
         '</div>';
     }).join('') : '';
 

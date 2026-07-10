@@ -1,5 +1,5 @@
 <div class="container" style="max-width: 900px;">
-  <p style="color:#5f6368; font-size:13px;">
+  <p style="color: var(--text-muted); font-size:13px;">
     Opsi dropdown Head Office, Industry, Entity Type, dan Client Source di Client Monitoring diambil dari daftar ini.
     Klik judul tiap kategori untuk membuka/menutup daftarnya.
   </p>
@@ -72,10 +72,10 @@
       var values = allMasterData.filter(function (row) { return row.Category === cat.key; });
       var listHtml = values.length
         ? values.map(function (v) { return '<span class="badge badge-contacted" style="margin:2px;">' + v.Value + '</span>'; }).join(' ')
-        : '<span style="color:#9aa0a6; font-size:12px;">Belum ada opsi.</span>';
+        : '<span style="color: var(--text-faint); font-size:12px;">Belum ada opsi.</span>';
 
       return '<details class="master-data-section" data-category="' + cat.key + '">' +
-        '<summary>' + cat.label + ' <span style="color:#9aa0a6; font-weight:normal;">(' + values.length + ')</span></summary>' +
+        '<summary>' + cat.label + ' <span style="color: var(--text-faint); font-weight:normal;">(' + values.length + ')</span></summary>' +
         '<div style="margin:10px 0;">' + listHtml + '</div>' +
         '<div style="display:flex; gap:8px;">' +
           '<input id="newValue_' + cat.key + '" placeholder="Tambah opsi ' + cat.label + '...">' +
