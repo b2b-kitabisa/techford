@@ -442,6 +442,13 @@
           renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
           renderStageFilterDropdown();
           renderStageSelectOptions('detailStageSelect');
+          // taxonomy.stageBucket dipakai renderPipelineScoreCards() untuk
+          // menghitung Achieved/Forecast & bucket PROS/NEGO/WON/LOSS — kalau
+          // project sudah lebih dulu ter-render sebelum taxonomy ini datang,
+          // seluruh project akan salah dihitung masuk bucket PROS (fallback
+          // default). Render ulang di sini supaya angka score card benar
+          // begitu taxonomy siap, tidak menunggu trigger lain.
+          renderPipeline();
         }
       })
       .withFailureHandler(function () {})

@@ -218,7 +218,7 @@
         document.getElementById('loginOverlay').classList.add('open');
       }
 
-      function doLogin() {
+      function doLogin(isRetry) {
         var email = document.getElementById('loginEmail').value.trim();
         var password = document.getElementById('loginPassword').value;
         var errEl = document.getElementById('loginError');
@@ -230,9 +230,17 @@
 
         google.script.run
           .withSuccessHandler(function (res) {
+            // Konsisten dengan pola di modul lain: google.script.run kadang
+            // mengirim res=null walau server sebenarnya berhasil (bridge
+            // quirk) — jangan langsung anggap gagal, coba ulang sekali dulu
+            // secara diam-diam sebelum menampilkan error ke user.
+            if (!res && !isRetry) {
+              doLogin(true);
+              return;
+            }
             btn.disabled = false;
             btn.innerText = 'Masuk';
-            if (!res || !res.ok) {
+            if (!res || res.ok === false) {
               errEl.innerText = (res && res.error && res.error.message) || 'Tidak ada respons, silakan coba lagi.';
               return;
             }

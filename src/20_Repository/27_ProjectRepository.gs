@@ -4,11 +4,12 @@
  * Header sheet Project: Project_ID | Project_Name | Client_ID | Consultant |
  * Services | Service_Categories | Program_Type | Program_Category |
  * Program_Name | Issues | Other_Notes | Is_Retainer | Stage | Total_GDV |
- * Total_Service_Revenue | Created_Date | Created_By | Last_Updated
+ * Total_Service_Revenue | Other_Document_Links | Created_Date | Created_By |
+ * Last_Updated
  *
- * Services, Service_Categories, dan Issues disimpan sebagai string JSON di
- * satu sel (bukan multi-kolom) karena bentuknya multi-select/nested — lihat
- * ProjectService untuk encode/decode-nya.
+ * Services, Service_Categories, Issues, dan Other_Document_Links disimpan
+ * sebagai string JSON di satu sel (bukan multi-kolom) karena bentuknya
+ * multi-select/nested — lihat ProjectService untuk encode/decode-nya.
  */
 var ProjectRepository = (function (module) {
 

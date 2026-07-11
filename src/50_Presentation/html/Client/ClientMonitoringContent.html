@@ -338,6 +338,12 @@
         if (res && res.ok) {
           allMasterData = res.data;
           populateMasterDataDropdowns();
+          // fetchClients()/fetchPics() jalan paralel dengan fetchMasterData()
+          // saat bootstrap — kalau tabel Client sudah lebih dulu ter-render
+          // sebelum Master Data ini datang, badge Client_Source & stat card
+          // akan salah/kosong (fallback ke urutan pertama) sampai ada trigger
+          // render lain. Render ulang di sini supaya langsung benar.
+          renderClients();
         }
       })
       .withFailureHandler(function () {})
