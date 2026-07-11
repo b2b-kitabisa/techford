@@ -404,7 +404,17 @@
 
   function fetchClients() {
     google.script.run
-      .withSuccessHandler(function (res) { if (res && res.ok) allClients = res.data; })
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allClients = res.data;
+        // fetchProjects() & fetchClients() jalan paralel saat bootstrap —
+        // kalau tabel Project sudah lebih dulu ter-render sebelum daftar
+        // Client ini datang, kolom Client Info akan telanjur kosong ("-")
+        // dan baru terisi kalau ada trigger render lain (tambah client,
+        // edit project, dst). Render ulang di sini supaya tidak perlu
+        // menunggu trigger lain atau refresh manual.
+        renderPipeline();
+      })
       .withFailureHandler(function () {})
       .client_getAll();
   }
