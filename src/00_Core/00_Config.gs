@@ -113,7 +113,9 @@ var Config = (function (module) {
     { key: 'COR', label: 'Cost of Revenue (COR)' },
     { key: 'RAB', label: 'RAB' },
     { key: 'PRODCOST', label: 'Production Cost (Prodcost)' },
-    { key: 'PKS', label: 'PKS' }
+    { key: 'PKS', label: 'PKS' },
+    { key: 'TRANSFER_REQUEST', label: 'Transfer Request' },
+    { key: 'BAST', label: 'BAST' }
   ];
 
   module.DOCUMENT_STAGE_LIST = ['New Request', 'In Progress', 'Client Review', 'Done'];
@@ -153,18 +155,43 @@ var Config = (function (module) {
       { status: 'Drafting', stage: 'In Progress' },
       { status: 'Sent', stage: 'Client Review' },
       { status: 'Signed', stage: 'Done' }
+    ],
+    // PKS, Transfer Request, BAST adalah dokumen PASCA-Deal (operasional
+    // setelah project Won) — statusnya tetap dilacak tapi TIDAK memengaruhi
+    // Sales Pipeline Stage sama sekali (lihat DOCUMENT_NON_PIPELINE_TYPES).
+    TRANSFER_REQUEST: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Request', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Done' }
+    ],
+    BAST: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Request', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Client Review' },
+      { status: 'Signed', stage: 'Done' }
     ]
   };
 
   // Quotation BISA diterbitkan atas nama salah satu dari 2 entitas ini —
-  // sengaja hanya berlaku untuk Quotation, bukan tipe dokumen lain.
+  // sengaja hanya berlaku untuk Quotation, bukan tipe dokumen lain. Satu
+  // project bisa punya Quotation dari KEDUA entitas sekaligus (2 baris
+  // dokumen terpisah).
   module.QUOTATION_ENTITIES = ['YKB (Yayasan Kita Bisa)', 'PT KAI (PT Kolaborasi Aksi Indonesia)'];
 
-  // Tipe dokumen yang jadi "gate" Deal — kalau dokumen ini ada & Done, Sales
-  // Pipeline Stage otomatis pindah ke Won. Kalau dokumen ini TIDAK PERNAH
-  // diminta untuk sebuah project, Won otomatis terjadi begitu SEMUA dokumen
-  // yang diminta (apa pun tipenya) sudah Done — lihat DocumentService.
-  module.DOCUMENT_DEAL_GATE_TYPE = 'PKS';
+  // ---- Aturan auto-advance Sales Pipeline Stage dari Document Pipeline ----
+  // - DECK/COR/RAB/PRODCOST: begitu SALAH SATU Done -> Stage jadi Negotiation.
+  // - QUOTATION: Deal (Won) baru terjadi begitu SEMUA Quotation yang diminta
+  //   untuk project itu Done/Signed (kalau consultant minta YKB & PT KAI
+  //   dua-duanya, dua-duanya harus Signed dulu).
+  // - PKS/TRANSFER_REQUEST/BAST: dokumen pasca-Deal, TIDAK PERNAH memengaruhi
+  //   Stage sama sekali (lihat DocumentService.checkAndAdvanceProjectStage).
+  // - Kalau project tidak pernah minta Quotation sama sekali, Won TIDAK BISA
+  //   otomatis terjadi lewat dokumen — harus lewat toggle "Allow_Manual_Deal"
+  //   di Project (lihat ProjectService.updateStage) supaya admin bisa pilih
+  //   Won manual khusus project itu.
+  module.DOCUMENT_NEGOTIATION_TYPES = ['DECK', 'COR', 'RAB', 'PRODCOST'];
+  module.DOCUMENT_DEAL_TYPE = 'QUOTATION';
+  module.DOCUMENT_NON_PIPELINE_TYPES = ['PKS', 'TRANSFER_REQUEST', 'BAST'];
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'

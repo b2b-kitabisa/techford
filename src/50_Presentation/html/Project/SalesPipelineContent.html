@@ -184,7 +184,10 @@
           <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="projectIdHeaderDisplay"></div>
           <h2 style="color: var(--color-white); font-size:18px; margin:0;">PROJECT DETAIL</h2>
         </div>
-        <div style="display:flex; align-items:center; gap:10px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <label class="switch-wrap" style="color: var(--color-white);" title="Izinkan Stage &quot;Won&quot; dipilih manual untuk project yang tidak memakai Quotation">Izinkan Deal Manual
+            <span class="switch"><input type="checkbox" id="allowManualDealToggle" onchange="onAllowManualDealToggle()"><span class="switch-slider"></span></span>
+          </label>
           <select id="detailStageSelect" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;"></select>
           <button class="btn-outline" onclick="submitStageUpdate()">Update</button>
           <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
@@ -260,32 +263,15 @@
       </div>
     </div>
 
-    <div class="drawer-section placeholder-box">
+    <div class="drawer-section">
       <div class="section-title-row">
         <h3>Document Request</h3>
       </div>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Quotation
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Quotation
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">Cost of Revenue (COR)
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">RAB
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">PKS
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
-      <label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">DECK
-        <span class="switch"><input type="checkbox" disabled><span class="switch-slider"></span></span>
-      </label>
+      <div id="documentRequestRows"></div>
       <div style="text-align:right; margin-top:6px;">
-        <button class="btn-save" disabled>💾 REQUEST</button>
+        <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
       </div>
-      <div class="placeholder-note">Fitur permintaan dokumen menyusul — logikanya cukup kompleks, ditunda dulu.</div>
+      <div class="placeholder-note">Dokumen yang sudah pernah diminta ditandai terkunci — status &amp; progress-nya dipantau di menu Document Pipeline.</div>
     </div>
 
     <div class="drawer-section placeholder-box">
@@ -337,7 +323,10 @@
   var allProjects = [];
   var allClients = [];
   var allEmployees = [];
+  var allDocuments = [];
   var taxonomy = { services: [], programType: {}, kborgPrograms: [], issues: [], stages: [], stageBucket: {} };
+  var docTaxonomy = { documentTypes: [], quotationEntities: [] };
+  var pendingDocRequestKeys = {}; // key -> true, dokumen yang ditoggle ON tapi belum dikirim lewat REQUEST
 
   var pipelinePage = 1;
   var currentPipelineDrawerId = null;
@@ -367,6 +356,8 @@
     fetchClients();
     fetchEmployees();
     fetchTaxonomy();
+    fetchDocuments();
+    fetchDocumentTaxonomy();
     setTimeout(function () {
       if (allProjects.length || pipelineBootstrapRetried) return;
       if (pipelineBootstrapAttempts < PIPELINE_BOOTSTRAP_MAX_ATTEMPTS) {
@@ -453,6 +444,32 @@
       })
       .withFailureHandler(function () {})
       .project_getTaxonomy();
+  }
+
+  function fetchDocuments() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allDocuments = res.data;
+        // Kalau drawer detail sedang terbuka, box Document Request perlu
+        // ikut ter-render ulang begitu data ini datang (bisa datang belakangan
+        // saat paralel bootstrap) — lihat pelajaran dari bug race-condition
+        // sebelumnya di Client Monitoring & score card Sales Pipeline.
+        if (currentPipelineDrawerId) renderDocumentRequestRows(currentPipelineDrawerId);
+      })
+      .withFailureHandler(function () {})
+      .document_getAll();
+  }
+
+  function fetchDocumentTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        docTaxonomy = res.data;
+        if (currentPipelineDrawerId) renderDocumentRequestRows(currentPipelineDrawerId);
+      })
+      .withFailureHandler(function () {})
+      .document_getTaxonomy();
   }
 
   function showPipelineTableError(message) {
@@ -912,6 +929,7 @@
 
     document.getElementById('projectIdHeaderDisplay').innerText = project.Project_ID;
     document.getElementById('detailStageSelect').value = project.Stage;
+    document.getElementById('allowManualDealToggle').checked = !!project.Allow_Manual_Deal;
 
     document.getElementById('projectNameDisplay').innerText = project.Project_Name + (project.Is_Retainer ? ' 🔁' : '');
     document.getElementById('projectClientBrandDisplay').innerText = client.Brand_Name || '-';
@@ -960,6 +978,100 @@
     });
     renderOtherDocLinks();
     renderOtherDocsView(project.Other_Document_Links || []);
+
+    // Reset staging Document Request setiap kali drawer dibuka/di-render
+    // ulang, supaya toggle yang belum di-REQUEST tidak nyangkut ke project
+    // lain atau sesi berikutnya.
+    pendingDocRequestKeys = {};
+    renderDocumentRequestRows(project.Project_ID);
+  }
+
+  // ---- Document Request (Deck/Quotation-YKB/Quotation-PT KAI/COR/RAB/
+  // Prodcost/PKS/Transfer Request/BAST) — HANYA dari sini, tidak ada lagi
+  // tombol "+ ADD" di halaman Document Pipeline. Quotation direpresentasikan
+  // sebagai 2 baris toggle terpisah (1 per entitas), sesuai keputusan produk
+  // bahwa 1 project bisa minta Quotation dari kedua entitas sekaligus.
+  function getDocRequestRows() {
+    var rows = [];
+    (docTaxonomy.documentTypes || []).forEach(function (t) {
+      if (t.key === 'QUOTATION') {
+        (docTaxonomy.quotationEntities || []).forEach(function (entity) {
+          rows.push({ key: 'QUOTATION::' + entity, documentType: 'QUOTATION', entity: entity, label: 'Quotation (' + entity.split(' ')[0] + ')' });
+        });
+      } else {
+        rows.push({ key: t.key, documentType: t.key, entity: '', label: t.label });
+      }
+    });
+    return rows;
+  }
+
+  function isDocAlreadyRequested(projectId, row) {
+    return allDocuments.some(function (d) {
+      return d.Project_ID === projectId && d.Document_Type === row.documentType && (d.Entity || '') === row.entity;
+    });
+  }
+
+  function renderDocumentRequestRows(projectId) {
+    var container = document.getElementById('documentRequestRows');
+    if (!container) return;
+    container.innerHTML = getDocRequestRows().map(function (row) {
+      var existing = isDocAlreadyRequested(projectId, row);
+      var checked = existing || !!pendingDocRequestKeys[row.key];
+      return '<label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">' + row.label +
+        '<span class="switch"><input type="checkbox" ' + (checked ? 'checked' : '') + ' ' + (existing ? 'disabled' : '') +
+        ' onchange="toggleDocRequestPending(\'' + row.key + '\', this.checked)"><span class="switch-slider"></span></span>' +
+        '</label>';
+    }).join('');
+  }
+
+  function toggleDocRequestPending(key, checked) {
+    pendingDocRequestKeys[key] = checked;
+  }
+
+  function submitDocumentRequests() {
+    if (!currentPipelineDrawerId) return;
+    var projectId = currentPipelineDrawerId;
+    var toRequest = getDocRequestRows().filter(function (row) {
+      return pendingDocRequestKeys[row.key] && !isDocAlreadyRequested(projectId, row);
+    });
+    if (!toRequest.length) { alert('Pilih minimal 1 dokumen yang belum pernah diminta.'); return; }
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    submitDocRequestsSequentially(toRequest, 0, projectId, createdBy, function () {
+      pendingDocRequestKeys = {};
+      fetchDocuments();
+      fetchProjects();
+      showPipelineSuccess('Permintaan dokumen berhasil dikirim ke tim Operation.');
+    });
+  }
+
+  function submitDocRequestsSequentially(rows, index, projectId, createdBy, done) {
+    if (index >= rows.length) return done();
+    var row = rows[index];
+    google.script.run
+      .withSuccessHandler(function () { submitDocRequestsSequentially(rows, index + 1, projectId, createdBy, done); })
+      .withFailureHandler(function (err) {
+        alert('Gagal meminta dokumen ' + row.label + ': ' + (err && err.message ? err.message : err));
+        submitDocRequestsSequentially(rows, index + 1, projectId, createdBy, done);
+      })
+      .document_create({ projectId: projectId, documentType: row.documentType, entity: row.entity }, createdBy);
+  }
+
+  // ---- Allow Manual Deal toggle ----
+  function onAllowManualDealToggle() {
+    if (!currentPipelineDrawerId) return;
+    var checkbox = document.getElementById('allowManualDealToggle');
+    var newValue = checkbox.checked;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) { checkbox.checked = !newValue; return alert(res.error.message); }
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        checkbox.checked = !newValue;
+        alert('Gagal mengubah pengaturan: ' + (err && err.message ? err.message : err));
+      })
+      .project_setAllowManualDeal(currentPipelineDrawerId, newValue);
   }
 
   function renderServiceListHtml(project) {
@@ -1095,17 +1207,25 @@
   // ---- Stage quick-update (independen dari EDIT PROJECT) ----
   function submitStageUpdate() {
     if (!currentPipelineDrawerId) return;
+    var projectId = currentPipelineDrawerId;
     var stage = document.getElementById('detailStageSelect').value;
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
+        if (res && res.ok === false) {
+          // Tolak (misal MANUAL_DEAL_BLOCKED) — kembalikan dropdown ke Stage
+          // asli project supaya tidak menampilkan pilihan yang sebenarnya
+          // gagal disimpan.
+          var current = allProjects.filter(function (p) { return p.Project_ID === projectId; })[0];
+          if (current) document.getElementById('detailStageSelect').value = current.Stage;
+          return alert(res.error.message);
+        }
         showPipelineSuccess('Stage berhasil diperbarui.');
         fetchProjects();
       })
       .withFailureHandler(function (err) {
         alert('Gagal memperbarui stage: ' + (err && err.message ? err.message : err));
       })
-      .project_updateStage(currentPipelineDrawerId, stage);
+      .project_updateStage(projectId, stage);
   }
 
   // ---- Other Document Related ----

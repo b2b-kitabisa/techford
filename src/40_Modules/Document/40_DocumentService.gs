@@ -2,17 +2,20 @@
  * Module.Document.DocumentService
  *
  * "Document" (Document Pipeline) mewakili dokumen (Deck/Quotation/COR/RAB/
- * Prodcost/PKS) yang diminta tim Consultant ke tim Operation untuk satu
- * Project. Tiap Document_Type punya kosakata Status sendiri, dinormalisasi
- * ke 4 Stage yang sama (New Request/In Progress/Client Review/Done) lewat
- * Config.DOCUMENT_STATUS_MAP — lihat ARCHITECTURE.md untuk penjelasan.
+ * Prodcost/PKS/Transfer Request/BAST) yang diminta tim Consultant ke tim
+ * Operation untuk satu Project. Tiap Document_Type punya kosakata Status
+ * sendiri, dinormalisasi ke 4 Stage yang sama (New Request/In Progress/
+ * Client Review/Done) lewat Config.DOCUMENT_STATUS_MAP.
  *
- * Auto-advance ke Sales Pipeline (TANPA toggle manual admin):
- * - Kalau dokumen PKS ada untuk project ini & Stage-nya Done -> Won.
- * - Kalau PKS TIDAK PERNAH diminta untuk project ini, & SEMUA dokumen yang
- *   diminta sudah Done -> Won juga (PKS bukan syarat mutlak kalau memang
- *   tidak dipakai di project tersebut).
- * - Selain itu, begitu ada dokumen non-PKS yang Done -> Negotiation.
+ * Auto-advance ke Sales Pipeline (TANPA toggle manual admin, kecuali project
+ * memang tidak pernah minta Quotation sama sekali — lihat Allow_Manual_Deal
+ * di ProjectService.updateStage):
+ * - DECK/COR/RAB/PRODCOST: begitu SALAH SATU Done -> Negotiation.
+ * - QUOTATION: Deal (Won) baru terjadi begitu SEMUA Quotation yang diminta
+ *   untuk project ini Done (kalau consultant minta YKB & PT KAI dua-duanya,
+ *   dua-duanya harus Signed).
+ * - PKS/TRANSFER_REQUEST/BAST: dokumen pasca-Deal, statusnya dilacak tapi
+ *   TIDAK PERNAH memengaruhi Stage.
  * Lihat checkAndAdvanceProjectStage() & ProjectService.autoAdvanceStageFromDocument
  * (pengecualian cross-module yang terdokumentasi, sama seperti Lead->Client).
  */
@@ -46,7 +49,9 @@ var DocumentService = (function (module) {
       statusMap: Config.DOCUMENT_STATUS_MAP,
       stageList: Config.DOCUMENT_STAGE_LIST,
       quotationEntities: Config.QUOTATION_ENTITIES,
-      dealGateType: Config.DOCUMENT_DEAL_GATE_TYPE
+      negotiationTypes: Config.DOCUMENT_NEGOTIATION_TYPES,
+      dealType: Config.DOCUMENT_DEAL_TYPE,
+      nonPipelineTypes: Config.DOCUMENT_NON_PIPELINE_TYPES
     };
   };
 
@@ -106,23 +111,18 @@ var DocumentService = (function (module) {
     var docs = DocumentPipelineRepository.findByProjectId(projectId);
     if (!docs.length) return;
 
-    var gateType = Config.DOCUMENT_DEAL_GATE_TYPE;
-    var gateDoc = docs.filter(function (d) { return d.Document_Type === gateType; })[0];
+    var dealType = Config.DOCUMENT_DEAL_TYPE;
+    var negotiationTypes = Config.DOCUMENT_NEGOTIATION_TYPES;
+    var quotationDocs = docs.filter(function (d) { return d.Document_Type === dealType; });
     var target = null;
 
-    if (gateDoc) {
-      if (gateDoc.Stage === 'Done') {
-        target = 'Won';
-      } else if (docs.some(function (d) { return d.Document_Type !== gateType && d.Stage === 'Done'; })) {
-        target = 'Negotiation';
-      }
-    } else {
-      var allDone = docs.every(function (d) { return d.Stage === 'Done'; });
-      if (allDone) {
-        target = 'Won';
-      } else if (docs.some(function (d) { return d.Stage === 'Done'; })) {
-        target = 'Negotiation';
-      }
+    // Deal (Won) HANYA lewat Quotation — kalau tidak pernah diminta sama
+    // sekali, project ini tidak bisa otomatis Won lewat dokumen (perlu
+    // Allow_Manual_Deal, lihat ProjectService.updateStage).
+    if (quotationDocs.length && quotationDocs.every(function (d) { return d.Stage === 'Done'; })) {
+      target = 'Won';
+    } else if (docs.some(function (d) { return negotiationTypes.indexOf(d.Document_Type) !== -1 && d.Stage === 'Done'; })) {
+      target = 'Negotiation';
     }
 
     if (target) {

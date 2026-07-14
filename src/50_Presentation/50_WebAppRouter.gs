@@ -42,7 +42,10 @@ var ROUTES = {
   'document-pipeline': {
     content: '50_Presentation/html/Document/DocumentPipelineContent',
     title: 'Document Pipeline 📄',
-    headerActions: '<button class="btn-sync" onclick="openAddDocument()">➕ ADD PIPELINE</button>'
+    // Sengaja tidak ada tombol "+ ADD" di sini — dokumen HANYA bisa diminta
+    // dari box "Document Request" di Project Detail (Sales Pipeline),
+    // bukan dari halaman ini.
+    headerActions: ''
   },
   'configure-account': {
     content: '50_Presentation/html/Setting/ConfigureAccountContent',

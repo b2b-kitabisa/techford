@@ -13,11 +13,12 @@
  *
  * Is_Retainer HANYA di-set sekali saat createProject — sengaja TIDAK ada
  * di whitelist updateProject supaya begitu ON tidak bisa di-nonaktifkan
- * lagi (sesuai keputusan produk: aksi permanen).
+ * lagi (sesuai keputusan produk: aksi permanen). Allow_Manual_Deal beda —
+ * itu toggle bebas (lihat setAllowManualDeal), bukan aksi permanen.
  *
- * Total_GDV/Total_Service_Revenue serta Document Request masih placeholder
- * (belum ada UI/alur nyata) — breakdown detailnya sengaja ditunda karena
- * cukup kompleks, menyusul di iterasi berikutnya.
+ * Total_GDV/Total_Service_Revenue masih placeholder (selalu 0) — breakdown
+ * detailnya sengaja ditunda karena cukup kompleks. Document Request SUDAH
+ * jadi fitur nyata (lihat DocumentService), bukan placeholder lagi.
  */
 var ProjectService = (function (module) {
 
@@ -128,6 +129,7 @@ var ProjectService = (function (module) {
       Issues: encodeJson(input.issues),
       Other_Notes: input.otherNotes || '',
       Is_Retainer: !!input.isRetainer,
+      Allow_Manual_Deal: false,
       Stage: Config.PIPELINE_DEFAULT_STAGE,
       Total_GDV: 0,
       Total_Service_Revenue: 0,
@@ -191,11 +193,50 @@ var ProjectService = (function (module) {
     return module.getAllProjects();
   };
 
+  /**
+   * Perubahan Stage MANUAL (dari dropdown Stage + tombol Update di Project
+   * Detail) — beda dari autoAdvanceStageFromDocument() yang dipicu sistem.
+   * Stage "Won" sengaja DIKUNCI dari sini secara default: harus dicapai
+   * lewat Quotation Signed di Document Pipeline, KECUALI admin sudah
+   * menyalakan toggle Allow_Manual_Deal untuk project ini (project yang
+   * memang tidak memakai Quotation). Ini menegakkan disiplin proses untuk
+   * project normal, sekaligus kasih jalan keluar untuk yang tidak butuh
+   * Quotation — lihat setAllowManualDeal().
+   */
   module.updateStage = function (projectId, stage) {
     if (Config.PIPELINE_STAGE_LIST.indexOf(stage) === -1) {
       throw new AppError('VALIDATION_ERROR', 'Stage tidak valid.');
     }
+
+    if (Config.PIPELINE_STAGE_BUCKET[stage] === 'WON') {
+      var project = ProjectRepository.findById(projectId);
+      if (!project) {
+        throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+      }
+      if (!project.Allow_Manual_Deal) {
+        throw new AppError(
+          'MANUAL_DEAL_BLOCKED',
+          'Stage "Won" tidak bisa dipilih manual untuk project ini. Selesaikan dokumen Quotation (Signed) di Document Pipeline dulu, ' +
+          'atau aktifkan toggle "Izinkan Deal Manual" di Project Detail kalau project ini memang tidak memakai Quotation.'
+        );
+      }
+    }
+
     var updated = ProjectRepository.update(projectId, { Stage: stage, Last_Updated: new Date() });
+    if (!updated) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+    }
+    return module.getAllProjects();
+  };
+
+  /**
+   * Toggle bebas (tidak permanen seperti Is_Retainer) — admin bisa
+   * nyala/matikan kapan saja. Menyalakannya membuka kunci pilihan manual
+   * "Won" di updateStage() untuk project yang memang tidak memakai
+   * Quotation.
+   */
+  module.setAllowManualDeal = function (projectId, allow) {
+    var updated = ProjectRepository.update(projectId, { Allow_Manual_Deal: !!allow, Last_Updated: new Date() });
     if (!updated) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }

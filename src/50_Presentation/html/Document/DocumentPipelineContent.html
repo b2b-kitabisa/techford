@@ -89,49 +89,6 @@
   <div class="page-buttons" id="docPageButtons"></div>
 </div>
 
-<!-- ================= Drawer: Add Document Request ================= -->
-<div class="drawer-overlay" id="addDocumentDrawer" onclick="if (event.target === this) closeAddDocument();">
-  <div class="drawer-panel">
-    <div class="drawer-header">
-      <div class="drawer-header-top">
-        <h2 style="color: var(--color-white); font-size:18px; margin:0;">ADD DOCUMENT REQUEST</h2>
-        <button class="drawer-close" onclick="closeAddDocument()">&times;</button>
-      </div>
-    </div>
-
-    <div class="drawer-section">
-      <label>Choose Project
-        <div class="searchable-select" id="newDocProjectWrap">
-          <input id="newDocProjectInput" placeholder="Cari nama/ID Project..." autocomplete="off" oninput="onNewDocProjectTyped()" onfocus="renderNewDocProjectOptions(this.value)">
-          <div class="searchable-select-options" id="newDocProjectOptions"></div>
-        </div>
-      </label>
-    </div>
-
-    <div class="drawer-section">
-      <span class="taxonomy-label">Document Type</span>
-      <div class="toggle-btn-group" id="newDocTypeButtons"></div>
-
-      <div id="newDocEntityArea" style="margin-top:14px;"></div>
-    </div>
-
-    <div class="drawer-footer">
-      <button class="btn-save" onclick="openAddDocumentConfirm()">💾 SAVE</button>
-    </div>
-  </div>
-</div>
-
-<div class="confirm-overlay" id="addDocumentConfirm">
-  <div class="confirm-box" style="width:400px;">
-    <h3>Konfirmasi Permintaan Dokumen</h3>
-    <p>Apakah Anda yakin untuk meminta dokumen ini? Dokumen akan masuk ke tim Operation dengan status awal "Not Started".</p>
-    <div class="confirm-actions">
-      <button class="btn-outline" onclick="cancelAddDocumentConfirm()">Cancel</button>
-      <button class="btn-save" onclick="submitAddDocument()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- ================= Drawer: Document Detail ================= -->
 <div class="drawer-overlay" id="docDetailDrawer" onclick="if (event.target === this) closeDocDetail();">
   <div class="drawer-panel">
@@ -193,13 +150,10 @@
   var allDocuments = [];
   var allProjects = [];
   var allClients = [];
-  var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [], dealGateType: 'PKS' };
+  var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [] };
 
   var docPage = 1;
   var currentDocDrawerId = null;
-  var newDocProjectId = null;
-  var newDocType = null;
-  var newDocEntity = null;
   var docStageFilterValues = [];
   var docStatusFilterValues = [];
 
@@ -285,7 +239,6 @@
         populateDocTypeFilter();
         renderDocStatusFilterDropdown();
         renderDocStageFilterDropdown();
-        renderNewDocTypeButtons();
         renderDocPipeline();
       })
       .withFailureHandler(function () {})
@@ -507,122 +460,7 @@
         dropdown.classList.remove('open');
       }
     });
-    var projectWrap = document.getElementById('newDocProjectWrap');
-    if (projectWrap && !projectWrap.contains(e.target)) {
-      document.getElementById('newDocProjectOptions').classList.remove('open');
-    }
   });
-
-  // ---- Add Document Request: Project searchable picker ----
-  function onNewDocProjectTyped() {
-    newDocProjectId = null;
-    renderNewDocProjectOptions(document.getElementById('newDocProjectInput').value);
-  }
-  function renderNewDocProjectOptions(query) {
-    var list = document.getElementById('newDocProjectOptions');
-    var q = (query || '').trim().toLowerCase();
-    var filtered = allProjects.filter(function (p) {
-      var client = getClientById(p.Client_ID) || {};
-      if (!q) return true;
-      return String(p.Project_ID || '').toLowerCase().indexOf(q) !== -1 ||
-        String(p.Project_Name || '').toLowerCase().indexOf(q) !== -1 ||
-        String(client.Brand_Name || '').toLowerCase().indexOf(q) !== -1;
-    }).slice(0, 50);
-
-    list.innerHTML = filtered.length
-      ? filtered.map(function (p) {
-          var client = getClientById(p.Client_ID) || {};
-          return '<div class="searchable-select-option" onclick="chooseNewDocProject(\'' + p.Project_ID + '\')">' +
-            p.Project_ID + ' — ' + (p.Project_Name || '-') +
-            ' <span style="color:var(--text-faint);">(' + (client.Brand_Name || '-') + ')</span></div>';
-        }).join('')
-      : '<div class="searchable-select-empty">Tidak ada project cocok.</div>';
-    list.classList.add('open');
-  }
-  function chooseNewDocProject(projectId) {
-    var project = getProjectById(projectId);
-    if (!project) return;
-    newDocProjectId = projectId;
-    document.getElementById('newDocProjectInput').value = project.Project_ID + ' — ' + (project.Project_Name || '-');
-    document.getElementById('newDocProjectOptions').classList.remove('open');
-  }
-
-  // ---- Add Document Request: Document Type & Entity ----
-  function renderNewDocTypeButtons() {
-    document.getElementById('newDocTypeButtons').innerHTML = (taxonomy.documentTypes || []).map(function (t) {
-      var active = newDocType === t.key;
-      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectNewDocType(\'' + t.key + '\')">' + t.label + '</button>';
-    }).join('');
-  }
-  function selectNewDocType(key) {
-    newDocType = key;
-    newDocEntity = null;
-    renderNewDocTypeButtons();
-    renderNewDocEntityArea();
-  }
-  function renderNewDocEntityArea() {
-    var area = document.getElementById('newDocEntityArea');
-    if (newDocType !== 'QUOTATION') { area.innerHTML = ''; return; }
-    area.innerHTML = '<span class="taxonomy-label">Entitas Penerbit</span>' +
-      '<div class="toggle-btn-group" id="newDocEntityButtons"></div>';
-    document.getElementById('newDocEntityButtons').innerHTML = (taxonomy.quotationEntities || []).map(function (entity) {
-      var active = newDocEntity === entity;
-      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectNewDocEntity(\'' + entity + '\')">' + entity + '</button>';
-    }).join('');
-  }
-  function selectNewDocEntity(entity) {
-    newDocEntity = entity;
-    renderNewDocEntityArea();
-  }
-
-  // ---- Add Document Request: open/close/submit ----
-  function openAddDocument() {
-    document.getElementById('newDocProjectInput').value = '';
-    newDocProjectId = null;
-    newDocType = null;
-    newDocEntity = null;
-    renderNewDocTypeButtons();
-    renderNewDocEntityArea();
-    document.getElementById('addDocumentDrawer').classList.add('open');
-    document.body.classList.add('drawer-open');
-  }
-  function closeAddDocument() {
-    document.getElementById('addDocumentDrawer').classList.remove('open');
-    document.body.classList.remove('drawer-open');
-  }
-
-  function openAddDocumentConfirm() {
-    if (!newDocProjectId) { alert('Project wajib dipilih dari daftar.'); return; }
-    if (!newDocType) { alert('Document Type wajib dipilih.'); return; }
-    if (newDocType === 'QUOTATION' && !newDocEntity) { alert('Entitas penerbit Quotation wajib dipilih.'); return; }
-    document.getElementById('addDocumentConfirm').classList.add('open');
-  }
-  function cancelAddDocumentConfirm() {
-    document.getElementById('addDocumentConfirm').classList.remove('open');
-  }
-
-  function submitAddDocument() {
-    document.getElementById('addDocumentConfirm').classList.remove('open');
-
-    var input = {
-      projectId: newDocProjectId,
-      documentType: newDocType,
-      entity: newDocEntity
-    };
-    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
-
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
-        closeAddDocument();
-        showDocSuccess('Permintaan dokumen berhasil ditambahkan.');
-        fetchDocuments();
-      })
-      .withFailureHandler(function (err) {
-        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
-      })
-      .document_create(input, createdBy);
-  }
 
   // ---- Document Detail Drawer ----
   function openDocDetail(docId) {

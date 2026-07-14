@@ -23,3 +23,7 @@ function project_update(projectId, patch) {
 function project_updateStage(projectId, stage) {
   return ProjectController.updateStage(projectId, stage);
 }
+
+function project_setAllowManualDeal(projectId, allow) {
+  return ProjectController.setAllowManualDeal(projectId, allow);
+}

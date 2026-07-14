@@ -36,5 +36,11 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.setAllowManualDeal = function (projectId, allow) {
+    return ErrorHandler.handle('ProjectController.setAllowManualDeal', function () {
+      return ProjectService.setAllowManualDeal(projectId, allow);
+    });
+  };
+
   return module;
 })(ProjectController || {});
