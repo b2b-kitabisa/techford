@@ -1,0 +1,684 @@
+<div class="pipeline-score-row">
+  <div class="pipeline-bucket-card">
+    <div class="pipeline-bucket-item pipeline-bucket-pros">
+      <div class="pipeline-bucket-label">NEW REQUEST</div>
+      <div class="pipeline-bucket-value" id="docStageNewRequest">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-nego">
+      <div class="pipeline-bucket-label">IN PROGRESS</div>
+      <div class="pipeline-bucket-value" id="docStageInProgress">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-loss">
+      <div class="pipeline-bucket-label">CLIENT REVIEW</div>
+      <div class="pipeline-bucket-value" id="docStageClientReview">0</div>
+    </div>
+    <div class="pipeline-bucket-item pipeline-bucket-won">
+      <div class="pipeline-bucket-label">DONE</div>
+      <div class="pipeline-bucket-value" id="docStageDone">0</div>
+    </div>
+  </div>
+  <div class="pipeline-score-card pipeline-score-achieved">
+    <div class="pipeline-score-title">📄 Document Progress</div>
+    <div class="pipeline-score-desc">Dokumen yang sudah Done dari seluruh dokumen yang diminta</div>
+    <div class="pipeline-score-value" id="docProgressValue">0 dari 0 Dokumen (0%)</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <input id="docSearch" placeholder="Search Entity Name, Project ID, Brand Name...." oninput="onDocFilterChange()">
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="docDateFilterBtn" onclick="toggleDocDateFilterDropdown()">Date ▾</button>
+    <div class="status-filter-dropdown" id="docDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
+      <label style="display:block; margin-bottom:8px;">Dari
+        <input type="date" id="docDateFrom" style="width:100%; margin-top:4px;" oninput="onDocFilterChange()">
+      </label>
+      <label style="display:block;">Sampai
+        <input type="date" id="docDateTo" style="width:100%; margin-top:4px;" oninput="onDocFilterChange()">
+      </label>
+    </div>
+  </div>
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="docStatusFilterBtn" onclick="toggleDocStatusFilterDropdown()">Status ▾</button>
+    <div class="status-filter-dropdown" id="docStatusFilterDropdown"></div>
+  </div>
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="docStageFilterBtn" onclick="toggleDocStageFilterDropdown()">Stage ▾</button>
+    <div class="status-filter-dropdown" id="docStageFilterDropdown"></div>
+  </div>
+
+  <select id="docTypeFilter" onchange="onDocFilterChange()">
+    <option value="">Document Type</option>
+  </select>
+
+  <button class="filter-reset" onclick="resetDocFilter()">↺ Reset Filter</button>
+</div>
+
+<div id="docTableError" class="error"></div>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Document Type</th>
+        <th>Project Info</th>
+        <th>Client</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="docTableBody">
+      <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="docPageSize" onchange="onDocFilterChange()">
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="docPageButtons"></div>
+</div>
+
+<!-- ================= Drawer: Add Document Request ================= -->
+<div class="drawer-overlay" id="addDocumentDrawer" onclick="if (event.target === this) closeAddDocument();">
+  <div class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <h2 style="color: var(--color-white); font-size:18px; margin:0;">ADD DOCUMENT REQUEST</h2>
+        <button class="drawer-close" onclick="closeAddDocument()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <label>Choose Project
+        <div class="searchable-select" id="newDocProjectWrap">
+          <input id="newDocProjectInput" placeholder="Cari nama/ID Project..." autocomplete="off" oninput="onNewDocProjectTyped()" onfocus="renderNewDocProjectOptions(this.value)">
+          <div class="searchable-select-options" id="newDocProjectOptions"></div>
+        </div>
+      </label>
+    </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Document Type</span>
+      <div class="toggle-btn-group" id="newDocTypeButtons"></div>
+
+      <div id="newDocEntityArea" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-save" onclick="openAddDocumentConfirm()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="addDocumentConfirm">
+  <div class="confirm-box" style="width:400px;">
+    <h3>Konfirmasi Permintaan Dokumen</h3>
+    <p>Apakah Anda yakin untuk meminta dokumen ini? Dokumen akan masuk ke tim Operation dengan status awal "Not Started".</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelAddDocumentConfirm()">Cancel</button>
+      <button class="btn-save" onclick="submitAddDocument()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Drawer: Document Detail ================= -->
+<div class="drawer-overlay" id="docDetailDrawer" onclick="if (event.target === this) closeDocDetail();">
+  <div class="drawer-panel">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="docIdHeaderDisplay"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;" id="docTypeHeaderDisplay">DOCUMENT DETAIL</h2>
+        </div>
+        <button class="drawer-close" onclick="closeDocDetail()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row" style="align-items:flex-start;">
+        <div>
+          <div class="drawer-field-label">Project</div>
+          <div class="drawer-field-value" id="docProjectDisplay">-</div>
+          <div class="drawer-field-label" style="margin-top:10px;">Client</div>
+          <div class="drawer-field-value" id="docClientDisplay">-</div>
+        </div>
+        <div style="text-align:right; font-size:11px;">
+          <div style="color: var(--text-faint);" id="docRequestedDisplay"></div>
+        </div>
+      </div>
+
+      <div class="form-grid-2col" style="margin-top:14px;">
+        <div>
+          <div class="drawer-field-label">Stage (otomatis dari Status)</div>
+          <div class="drawer-field-value" id="docStageDisplay">-</div>
+        </div>
+        <div>
+          <div class="drawer-field-label">Entitas (Quotation)</div>
+          <div class="drawer-field-value" id="docEntityDisplay">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Update Status</span>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+        <select id="docStatusSelect" style="flex:1;"></select>
+        <button class="btn-outline" onclick="submitDocStatusUpdate()">Update</button>
+      </div>
+      <div class="placeholder-note">Stage &amp; Sales Pipeline Stage project terkait akan otomatis menyesuaikan berdasarkan Status yang dipilih di sini.</div>
+    </div>
+  </div>
+</div>
+
+<div class="success-overlay" id="docSuccessModal" onclick="if (event.target === this) closeDocSuccessModal();">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3 id="docSuccessMessage">Berhasil.</h3>
+    <button class="btn-save" onclick="closeDocSuccessModal()">OK</button>
+  </div>
+</div>
+
+<script>
+  var allDocuments = [];
+  var allProjects = [];
+  var allClients = [];
+  var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [], dealGateType: 'PKS' };
+
+  var docPage = 1;
+  var currentDocDrawerId = null;
+  var newDocProjectId = null;
+  var newDocType = null;
+  var newDocEntity = null;
+  var docStageFilterValues = [];
+  var docStatusFilterValues = [];
+
+  // ---- Bootstrap dengan retry otomatis. Setiap fetch yang datanya dipakai
+  // untuk render tabel/score card WAJIB memicu render ulang di handler-nya
+  // sendiri — supaya kalau salah satu fetch selesai belakangan (race saat
+  // paralel), tampilan tidak telanjur "nyangkut" kosong/salah sampai ada
+  // trigger lain (pelajaran dari bug serupa di Sales Pipeline & Client
+  // Monitoring).
+  var docBootstrapAttempts = 0;
+  var docBootstrapRetried = false;
+  var DOC_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var DOC_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapDocuments() {
+    docBootstrapAttempts++;
+    fetchDocuments();
+    fetchProjects();
+    fetchClients();
+    fetchTaxonomy();
+    setTimeout(function () {
+      if (allDocuments.length || docBootstrapRetried) return;
+      if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapDocuments();
+      } else {
+        docBootstrapRetried = true;
+        fetchDocuments();
+      }
+    }, DOC_BOOTSTRAP_RETRY_INTERVAL_MS);
+  }
+  if (document.readyState === 'complete') {
+    bootstrapDocuments();
+  } else {
+    window.addEventListener('load', bootstrapDocuments);
+  }
+
+  function fetchDocuments() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          if (!docBootstrapRetried) return;
+          showDocTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+          return;
+        }
+        docBootstrapRetried = true;
+        allDocuments = res.data;
+        renderDocPipeline();
+      })
+      .withFailureHandler(function (err) {
+        if (!docBootstrapRetried) return;
+        showDocTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .document_getAll();
+  }
+
+  function fetchProjects() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allProjects = res.data;
+        renderDocPipeline();
+      })
+      .withFailureHandler(function () {})
+      .project_getAll();
+  }
+
+  function fetchClients() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allClients = res.data;
+        renderDocPipeline();
+      })
+      .withFailureHandler(function () {})
+      .client_getAll();
+  }
+
+  function fetchTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        taxonomy = res.data;
+        populateDocTypeFilter();
+        renderDocStatusFilterDropdown();
+        renderDocStageFilterDropdown();
+        renderNewDocTypeButtons();
+        renderDocPipeline();
+      })
+      .withFailureHandler(function () {})
+      .document_getTaxonomy();
+  }
+
+  function showDocTableError(message) {
+    document.getElementById('docTableError').innerText = message;
+    document.getElementById('docTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+  }
+
+  function getProjectById(projectId) {
+    return allProjects.filter(function (p) { return p.Project_ID === projectId; })[0] || null;
+  }
+  function getClientById(clientId) {
+    return allClients.filter(function (c) { return c.Client_ID === clientId; })[0] || null;
+  }
+  function getDocTypeLabel(key) {
+    var t = (taxonomy.documentTypes || []).filter(function (d) { return d.key === key; })[0];
+    return t ? t.label : key;
+  }
+
+  function formatDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  // ---- Score cards (selalu dari SELURUH data, bukan hasil filter) ----
+  function renderDocScoreCards() {
+    var stageCounts = { 'New Request': 0, 'In Progress': 0, 'Client Review': 0, 'Done': 0 };
+    allDocuments.forEach(function (d) {
+      if (stageCounts.hasOwnProperty(d.Stage)) stageCounts[d.Stage]++;
+    });
+    document.getElementById('docStageNewRequest').innerText = stageCounts['New Request'];
+    document.getElementById('docStageInProgress').innerText = stageCounts['In Progress'];
+    document.getElementById('docStageClientReview').innerText = stageCounts['Client Review'];
+    document.getElementById('docStageDone').innerText = stageCounts['Done'];
+
+    var total = allDocuments.length;
+    var done = stageCounts['Done'];
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    document.getElementById('docProgressValue').innerText = done + ' dari ' + total + ' Dokumen (' + pct + '%)';
+  }
+
+  // ---- Filter, sort, paginate ----
+  function getFilteredDocuments() {
+    var search = document.getElementById('docSearch').value.toLowerCase().trim();
+    var dateFrom = document.getElementById('docDateFrom').value;
+    var dateTo = document.getElementById('docDateTo').value;
+    var docType = document.getElementById('docTypeFilter').value;
+
+    return allDocuments.filter(function (d) {
+      var project = getProjectById(d.Project_ID) || {};
+      var client = getClientById(project.Client_ID) || {};
+
+      var matchesSearch = !search ||
+        String(project.Project_ID || '').toLowerCase().indexOf(search) !== -1 ||
+        String(project.Project_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(client.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(client.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
+
+      var requestedTime = new Date(d.Requested_Date).getTime();
+      var matchesFrom = !dateFrom || requestedTime >= new Date(dateFrom).getTime();
+      var matchesTo = !dateTo || requestedTime <= new Date(dateTo + 'T23:59:59').getTime();
+      var matchesType = !docType || d.Document_Type === docType;
+      var matchesStage = !docStageFilterValues.length || docStageFilterValues.indexOf(d.Stage) !== -1;
+      var matchesStatus = !docStatusFilterValues.length || docStatusFilterValues.indexOf(d.Status) !== -1;
+
+      return matchesSearch && matchesFrom && matchesTo && matchesType && matchesStage && matchesStatus;
+    }).sort(function (a, b) {
+      return new Date(b.Requested_Date).getTime() - new Date(a.Requested_Date).getTime();
+    });
+  }
+
+  function onDocFilterChange() {
+    docPage = 1;
+    renderDocPipeline();
+  }
+
+  function resetDocFilter() {
+    document.getElementById('docSearch').value = '';
+    document.getElementById('docDateFrom').value = '';
+    document.getElementById('docDateTo').value = '';
+    document.getElementById('docTypeFilter').value = '';
+    docStageFilterValues = [];
+    docStatusFilterValues = [];
+    renderDocStageFilterDropdown();
+    renderDocStatusFilterDropdown();
+    docPage = 1;
+    renderDocPipeline();
+  }
+
+  function paginateDocuments(list) {
+    var pageSize = Number(document.getElementById('docPageSize').value);
+    var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    docPage = Math.min(Math.max(1, docPage), totalPages);
+    var start = (docPage - 1) * pageSize;
+    return { items: list.slice(start, start + pageSize), page: docPage, totalPages: totalPages };
+  }
+
+  function renderDocPipeline() {
+    document.getElementById('docTableError').innerText = '';
+    renderDocScoreCards();
+    var filtered = getFilteredDocuments();
+    var paged = paginateDocuments(filtered);
+    renderDocTable(paged);
+    renderDocPagination(paged);
+  }
+
+  function stageBadgeClass(stage) {
+    if (stage === 'Done') return 'badge-contacted';
+    if (stage === 'Client Review') return 'badge-spam';
+    if (stage === 'In Progress') return 'badge-other';
+    return 'badge-new';
+  }
+
+  function renderDocTable(paged) {
+    var tbody = document.getElementById('docTableBody');
+    if (!paged.items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = paged.items.map(function (d) {
+      var project = getProjectById(d.Project_ID) || {};
+      var client = getClientById(project.Client_ID) || {};
+      var typeLabel = getDocTypeLabel(d.Document_Type) + (d.Entity ? ' — ' + d.Entity : '');
+      return '<tr>' +
+        '<td><span class="badge ' + stageBadgeClass(d.Stage) + '">' + (d.Stage || '-').toUpperCase() + '</span>' +
+        '<div class="entity-name" style="margin-top:4px;">' + typeLabel + '</div></td>' +
+        '<td><div class="entity-name">' + (project.Project_ID || '-') + '</div>' +
+        '<div class="entity-pic">' + (project.Project_Name || '-') + '</div></td>' +
+        '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
+        '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>' +
+        '<td>' + (d.Status || '-').toUpperCase() + '</td>' +
+        '<td><button class="btn-outline" onclick="openDocDetail(\'' + d.Doc_ID + '\')">🔘 DETAIL</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderDocPagination(paged) {
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToDocPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
+    for (var p = 1; p <= paged.totalPages; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToDocPage(' + p + ')">' + p + '</button>';
+    }
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToDocPage(' + (paged.page + 1) + ')">Next &gt;</button>';
+    document.getElementById('docPageButtons').innerHTML = buttons;
+  }
+
+  function goToDocPage(page) {
+    docPage = page;
+    renderDocPipeline();
+  }
+
+  // ---- Date filter dropdown ----
+  function toggleDocDateFilterDropdown() {
+    document.getElementById('docDateFilterDropdown').classList.toggle('open');
+  }
+
+  // ---- Status filter dropdown (union semua Status lintas Document Type) ----
+  function renderDocStatusFilterDropdown() {
+    var seen = {};
+    var statuses = [];
+    Object.keys(taxonomy.statusMap || {}).forEach(function (type) {
+      taxonomy.statusMap[type].forEach(function (entry) {
+        if (!seen[entry.status]) { seen[entry.status] = true; statuses.push(entry.status); }
+      });
+    });
+    var container = document.getElementById('docStatusFilterDropdown');
+    container.innerHTML = statuses.map(function (status) {
+      var checked = docStatusFilterValues.indexOf(status) !== -1 ? 'checked' : '';
+      return '<label><input type="checkbox" value="' + status + '" ' + checked + ' onchange="onDocStatusFilterToggle(this)"> ' + status + '</label>';
+    }).join('');
+  }
+  function onDocStatusFilterToggle(checkbox) {
+    var idx = docStatusFilterValues.indexOf(checkbox.value);
+    if (checkbox.checked && idx === -1) docStatusFilterValues.push(checkbox.value);
+    if (!checkbox.checked && idx !== -1) docStatusFilterValues.splice(idx, 1);
+    onDocFilterChange();
+  }
+  function toggleDocStatusFilterDropdown() {
+    document.getElementById('docStatusFilterDropdown').classList.toggle('open');
+  }
+
+  // ---- Stage filter dropdown ----
+  function renderDocStageFilterDropdown() {
+    var container = document.getElementById('docStageFilterDropdown');
+    container.innerHTML = (taxonomy.stageList || []).map(function (stage) {
+      var checked = docStageFilterValues.indexOf(stage) !== -1 ? 'checked' : '';
+      return '<label><input type="checkbox" value="' + stage + '" ' + checked + ' onchange="onDocStageFilterToggle(this)"> ' + stage + '</label>';
+    }).join('');
+  }
+  function onDocStageFilterToggle(checkbox) {
+    var idx = docStageFilterValues.indexOf(checkbox.value);
+    if (checkbox.checked && idx === -1) docStageFilterValues.push(checkbox.value);
+    if (!checkbox.checked && idx !== -1) docStageFilterValues.splice(idx, 1);
+    onDocFilterChange();
+  }
+  function toggleDocStageFilterDropdown() {
+    document.getElementById('docStageFilterDropdown').classList.toggle('open');
+  }
+
+  function populateDocTypeFilter() {
+    var select = document.getElementById('docTypeFilter');
+    var current = select.value;
+    select.innerHTML = '<option value="">Document Type</option>' + (taxonomy.documentTypes || []).map(function (t) {
+      return '<option value="' + t.key + '">' + t.label + '</option>';
+    }).join('');
+    if (current) select.value = current;
+  }
+
+  document.addEventListener('click', function (e) {
+    ['docDateFilterDropdown', 'docStatusFilterDropdown', 'docStageFilterDropdown'].forEach(function (id) {
+      var dropdown = document.getElementById(id);
+      var btn = document.getElementById(id.replace('Dropdown', 'Btn'));
+      if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.classList.remove('open');
+      }
+    });
+    var projectWrap = document.getElementById('newDocProjectWrap');
+    if (projectWrap && !projectWrap.contains(e.target)) {
+      document.getElementById('newDocProjectOptions').classList.remove('open');
+    }
+  });
+
+  // ---- Add Document Request: Project searchable picker ----
+  function onNewDocProjectTyped() {
+    newDocProjectId = null;
+    renderNewDocProjectOptions(document.getElementById('newDocProjectInput').value);
+  }
+  function renderNewDocProjectOptions(query) {
+    var list = document.getElementById('newDocProjectOptions');
+    var q = (query || '').trim().toLowerCase();
+    var filtered = allProjects.filter(function (p) {
+      var client = getClientById(p.Client_ID) || {};
+      if (!q) return true;
+      return String(p.Project_ID || '').toLowerCase().indexOf(q) !== -1 ||
+        String(p.Project_Name || '').toLowerCase().indexOf(q) !== -1 ||
+        String(client.Brand_Name || '').toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 50);
+
+    list.innerHTML = filtered.length
+      ? filtered.map(function (p) {
+          var client = getClientById(p.Client_ID) || {};
+          return '<div class="searchable-select-option" onclick="chooseNewDocProject(\'' + p.Project_ID + '\')">' +
+            p.Project_ID + ' — ' + (p.Project_Name || '-') +
+            ' <span style="color:var(--text-faint);">(' + (client.Brand_Name || '-') + ')</span></div>';
+        }).join('')
+      : '<div class="searchable-select-empty">Tidak ada project cocok.</div>';
+    list.classList.add('open');
+  }
+  function chooseNewDocProject(projectId) {
+    var project = getProjectById(projectId);
+    if (!project) return;
+    newDocProjectId = projectId;
+    document.getElementById('newDocProjectInput').value = project.Project_ID + ' — ' + (project.Project_Name || '-');
+    document.getElementById('newDocProjectOptions').classList.remove('open');
+  }
+
+  // ---- Add Document Request: Document Type & Entity ----
+  function renderNewDocTypeButtons() {
+    document.getElementById('newDocTypeButtons').innerHTML = (taxonomy.documentTypes || []).map(function (t) {
+      var active = newDocType === t.key;
+      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectNewDocType(\'' + t.key + '\')">' + t.label + '</button>';
+    }).join('');
+  }
+  function selectNewDocType(key) {
+    newDocType = key;
+    newDocEntity = null;
+    renderNewDocTypeButtons();
+    renderNewDocEntityArea();
+  }
+  function renderNewDocEntityArea() {
+    var area = document.getElementById('newDocEntityArea');
+    if (newDocType !== 'QUOTATION') { area.innerHTML = ''; return; }
+    area.innerHTML = '<span class="taxonomy-label">Entitas Penerbit</span>' +
+      '<div class="toggle-btn-group" id="newDocEntityButtons"></div>';
+    document.getElementById('newDocEntityButtons').innerHTML = (taxonomy.quotationEntities || []).map(function (entity) {
+      var active = newDocEntity === entity;
+      return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectNewDocEntity(\'' + entity + '\')">' + entity + '</button>';
+    }).join('');
+  }
+  function selectNewDocEntity(entity) {
+    newDocEntity = entity;
+    renderNewDocEntityArea();
+  }
+
+  // ---- Add Document Request: open/close/submit ----
+  function openAddDocument() {
+    document.getElementById('newDocProjectInput').value = '';
+    newDocProjectId = null;
+    newDocType = null;
+    newDocEntity = null;
+    renderNewDocTypeButtons();
+    renderNewDocEntityArea();
+    document.getElementById('addDocumentDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+  function closeAddDocument() {
+    document.getElementById('addDocumentDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+  }
+
+  function openAddDocumentConfirm() {
+    if (!newDocProjectId) { alert('Project wajib dipilih dari daftar.'); return; }
+    if (!newDocType) { alert('Document Type wajib dipilih.'); return; }
+    if (newDocType === 'QUOTATION' && !newDocEntity) { alert('Entitas penerbit Quotation wajib dipilih.'); return; }
+    document.getElementById('addDocumentConfirm').classList.add('open');
+  }
+  function cancelAddDocumentConfirm() {
+    document.getElementById('addDocumentConfirm').classList.remove('open');
+  }
+
+  function submitAddDocument() {
+    document.getElementById('addDocumentConfirm').classList.remove('open');
+
+    var input = {
+      projectId: newDocProjectId,
+      documentType: newDocType,
+      entity: newDocEntity
+    };
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        closeAddDocument();
+        showDocSuccess('Permintaan dokumen berhasil ditambahkan.');
+        fetchDocuments();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .document_create(input, createdBy);
+  }
+
+  // ---- Document Detail Drawer ----
+  function openDocDetail(docId) {
+    var doc = allDocuments.filter(function (d) { return d.Doc_ID === docId; })[0];
+    if (!doc) return;
+    currentDocDrawerId = docId;
+    renderDocDetailDrawer(doc);
+    document.getElementById('docDetailDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+  function closeDocDetail() {
+    document.getElementById('docDetailDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    currentDocDrawerId = null;
+  }
+
+  function renderDocDetailDrawer(doc) {
+    var project = getProjectById(doc.Project_ID) || {};
+    var client = getClientById(project.Client_ID) || {};
+
+    document.getElementById('docIdHeaderDisplay').innerText = doc.Doc_ID;
+    document.getElementById('docTypeHeaderDisplay').innerText = getDocTypeLabel(doc.Document_Type);
+    document.getElementById('docProjectDisplay').innerText = project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-';
+    document.getElementById('docClientDisplay').innerText = client.Brand_Name ? (client.Brand_Name + ' — ' + (client.Entity_Name || '-')) : '-';
+    document.getElementById('docRequestedDisplay').innerText = 'Diminta oleh ' + (doc.Requested_By || '-') + ' — ' + formatDate(doc.Requested_Date);
+    document.getElementById('docStageDisplay').innerText = doc.Stage || '-';
+    document.getElementById('docEntityDisplay').innerText = doc.Entity || '-';
+
+    var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];
+    document.getElementById('docStatusSelect').innerHTML = statusOptions.map(function (entry) {
+      return '<option value="' + entry.status + '">' + entry.status + '</option>';
+    }).join('');
+    document.getElementById('docStatusSelect').value = doc.Status;
+  }
+
+  function submitDocStatusUpdate() {
+    if (!currentDocDrawerId) return;
+    var newStatus = document.getElementById('docStatusSelect').value;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        showDocSuccess('Status dokumen berhasil diperbarui.');
+        fetchDocuments();
+        closeDocDetail();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal memperbarui status: ' + (err && err.message ? err.message : err));
+      })
+      .document_updateStatus(currentDocDrawerId, newStatus);
+  }
+
+  function showDocSuccess(message) {
+    document.getElementById('docSuccessMessage').innerText = message;
+    document.getElementById('docSuccessModal').classList.add('open');
+  }
+  function closeDocSuccessModal() {
+    document.getElementById('docSuccessModal').classList.remove('open');
+  }
+</script>

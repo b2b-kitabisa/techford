@@ -202,5 +202,37 @@ var ProjectService = (function (module) {
     return module.getAllProjects();
   };
 
+  /**
+   * Dipanggil oleh DocumentService — BUKAN endpoint RPC. Pengecualian
+   * arsitektur yang sama seperti LeadService.moveToClient memanggil
+   * ClientService.createFromLead: Document Pipeline & Sales Pipeline
+   * adalah 2 entitas yang secara alami saling memengaruhi (dokumen kunci
+   * selesai -> stage project maju), jadi DocumentService boleh memanggil
+   * API publik ProjectService ini — TIDAK boleh menyentuh ProjectRepository
+   * langsung.
+   *
+   * HANYA maju, tidak pernah mundur, dan tidak pernah menyentuh Loss
+   * (Loss murni aksi manual admin). "Maju" ditentukan dari bucket stage
+   * (PROS < NEGO < WON), bukan status per dokumen.
+   */
+  var STAGE_BUCKET_RANK = { PROS: 1, NEGO: 2, WON: 3 };
+
+  module.autoAdvanceStageFromDocument = function (projectId, targetStage) {
+    var project = ProjectRepository.findById(projectId);
+    if (!project) return;
+
+    var currentBucket = Config.PIPELINE_STAGE_BUCKET[project.Stage] || 'PROS';
+    if (currentBucket === 'LOSS') return;
+
+    var targetBucket = Config.PIPELINE_STAGE_BUCKET[targetStage] || 'PROS';
+    var currentRank = STAGE_BUCKET_RANK[currentBucket] || 0;
+    var targetRank = STAGE_BUCKET_RANK[targetBucket] || 0;
+
+    if (targetRank > currentRank) {
+      ProjectRepository.update(projectId, { Stage: targetStage, Last_Updated: new Date() });
+      Log.info('ProjectService', 'Stage project ' + projectId + ' otomatis maju ke ' + targetStage + ' (dipicu Document Pipeline).');
+    }
+  };
+
   return module;
 })(ProjectService || {});

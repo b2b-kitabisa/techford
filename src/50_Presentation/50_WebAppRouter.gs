@@ -39,6 +39,11 @@ var ROUTES = {
     title: 'Sales Pipeline 💰',
     headerActions: '<button class="btn-sync" onclick="openAddPipeline()">➕ ADD PIPELINE</button>'
   },
+  'document-pipeline': {
+    content: '50_Presentation/html/Document/DocumentPipelineContent',
+    title: 'Document Pipeline 📄',
+    headerActions: '<button class="btn-sync" onclick="openAddDocument()">➕ ADD PIPELINE</button>'
+  },
   'configure-account': {
     content: '50_Presentation/html/Setting/ConfigureAccountContent',
     title: 'Configure Account',

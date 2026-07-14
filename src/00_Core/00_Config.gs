@@ -24,6 +24,7 @@ var Config = (function (module) {
     PIC_CLIENT: 'PIC_Client',
     MASTER_DATA: 'Master_Data',
     PROJECT: 'Project',
+    DOCUMENT_PIPELINE: 'Document_Pipeline',
     AUDIT_LOG: 'AuditLog'
   };
 
@@ -99,6 +100,71 @@ var Config = (function (module) {
   };
   module.PIPELINE_DEFAULT_STAGE = 'First Approaching';
   module.CONSULTANT_ROLE = 'Consultant';
+
+  // ---- Document Pipeline ----
+  // Tiap Document_Type punya kosakata Status sendiri (beda-beda), tapi semua
+  // dinormalisasi ke 4 Stage yang sama supaya bisa diagregasi lintas tipe
+  // dokumen (score card, filter). Peta Status->Stage per tipe ada di
+  // DOCUMENT_STATUS_MAP; status pertama di tiap daftar = status awal saat
+  // dokumen baru diminta.
+  module.DOCUMENT_TYPES = [
+    { key: 'DECK', label: 'Deck' },
+    { key: 'QUOTATION', label: 'Quotation' },
+    { key: 'COR', label: 'Cost of Revenue (COR)' },
+    { key: 'RAB', label: 'RAB' },
+    { key: 'PRODCOST', label: 'Production Cost (Prodcost)' },
+    { key: 'PKS', label: 'PKS' }
+  ];
+
+  module.DOCUMENT_STAGE_LIST = ['New Request', 'In Progress', 'Client Review', 'Done'];
+
+  module.DOCUMENT_STATUS_MAP = {
+    DECK: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Done' }
+    ],
+    QUOTATION: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Revision', stage: 'Client Review' },
+      { status: 'Sent', stage: 'Client Review' },
+      { status: 'Signed', stage: 'Done' }
+    ],
+    COR: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Approved', stage: 'Done' }
+    ],
+    RAB: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Client Review' },
+      { status: 'Signed', stage: 'Done' }
+    ],
+    PRODCOST: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Client Review' },
+      { status: 'Signed', stage: 'Done' }
+    ],
+    PKS: [
+      { status: 'Not Started', stage: 'New Request' },
+      { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Sent', stage: 'Client Review' },
+      { status: 'Signed', stage: 'Done' }
+    ]
+  };
+
+  // Quotation BISA diterbitkan atas nama salah satu dari 2 entitas ini —
+  // sengaja hanya berlaku untuk Quotation, bukan tipe dokumen lain.
+  module.QUOTATION_ENTITIES = ['YKB (Yayasan Kita Bisa)', 'PT KAI (PT Kolaborasi Aksi Indonesia)'];
+
+  // Tipe dokumen yang jadi "gate" Deal — kalau dokumen ini ada & Done, Sales
+  // Pipeline Stage otomatis pindah ke Won. Kalau dokumen ini TIDAK PERNAH
+  // diminta untuk sebuah project, Won otomatis terjadi begitu SEMUA dokumen
+  // yang diminta (apa pun tipenya) sudah Done — lihat DocumentService.
+  module.DOCUMENT_DEAL_GATE_TYPE = 'PKS';
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'
