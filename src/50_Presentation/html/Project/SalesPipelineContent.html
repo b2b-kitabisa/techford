@@ -262,7 +262,6 @@
       <div style="text-align:right; margin-top:6px;">
         <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
       </div>
-      <div class="placeholder-note">Dokumen yang sudah pernah diminta ditandai terkunci — status &amp; progress-nya dipantau di menu Document Pipeline.</div>
     </div>
 
     <div class="drawer-section" id="otherDocSection">
@@ -276,23 +275,26 @@
       </div>
     </div>
 
-    <div class="drawer-section placeholder-box">
+    <div class="drawer-section" id="revenueBreakdownSection">
       <div class="form-grid-2col">
         <div>
           <div class="section-title-row"><h3>Revenue Breakdown — GDV</h3></div>
-          <div class="drawer-field-label">TOTAL GDV</div>
-          <div class="drawer-field-value" id="projectTotalGdvDisplay">-</div>
+          <div id="gdvCampaignsContainer"></div>
+          <button type="button" class="btn-outline" id="addGdvCampaignBtn" onclick="addGdvCampaignRow()">+ Tambah Campaign</button>
+          <div class="placeholder-note" id="gdvDisabledNote" style="display:none;">Pilih service CSR dulu di Project Information untuk menambahkan campaign GDV.</div>
+          <div class="drawer-field-label" style="margin-top:12px;">TOTAL GDV</div>
+          <div class="drawer-field-value" id="projectTotalGdvDisplay">Rp0</div>
         </div>
         <div>
           <div class="section-title-row"><h3>Service Revenue</h3></div>
-          <div class="drawer-field-label">TOTAL SERVICE REVENUE</div>
-          <div class="drawer-field-value" id="projectTotalRevenueDisplay">-</div>
+          <div id="serviceRevenueItemsContainer"></div>
+          <div class="drawer-field-label" style="margin-top:12px;">TOTAL SERVICE REVENUE</div>
+          <div class="drawer-field-value" id="projectTotalRevenueDisplay">Rp0</div>
         </div>
       </div>
-      <div style="text-align:right; margin-top:6px;">
-        <button class="btn-outline" disabled>✏️ EDIT</button>
+      <div style="text-align:right; margin-top:10px;">
+        <button class="btn-save" onclick="submitRevenueBreakdown()">💾 SAVE</button>
       </div>
-      <div class="placeholder-note">Breakdown detail per campaign/service menyusul — logikanya cukup kompleks, ditunda dulu.</div>
     </div>
 
     <div class="confirm-overlay" id="projectEditConfirm">
@@ -346,6 +348,8 @@
   var editProjectProgramCategory = null;
   var editProjectIssues = [];
   var editOtherDocLinks = [];
+  var editGdvCampaigns = [];
+  var editServiceRevenueItems = {};
 
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
   var pipelineBootstrapAttempts = 0;
@@ -1004,9 +1008,8 @@
 
     document.getElementById('projectServiceListDisplay').innerHTML = renderServiceListHtml(project);
     document.getElementById('projectOtherNotesDisplay').innerText = project.Other_Notes || 'Belum ada catatan.';
-
-    document.getElementById('projectTotalGdvDisplay').innerText = project.Total_GDV ? formatRupiah(project.Total_GDV) : '-';
-    document.getElementById('projectTotalRevenueDisplay').innerText = project.Total_Service_Revenue ? formatRupiah(project.Total_Service_Revenue) : '-';
+    // Total GDV/Service Revenue ditampilkan oleh renderRevenueBreakdown() di
+    // akhir fungsi ini (dihitung dari Gdv_Campaigns/Service_Revenue_Items).
 
     // Edit form (disiapkan tapi disembunyikan sampai EDIT PROJECT diklik)
     document.getElementById('editProjectName').value = project.Project_Name || '';
@@ -1034,6 +1037,7 @@
     document.getElementById('projectEditInfoToggleBtn').innerHTML = '✏️ EDIT PROJECT';
     document.getElementById('documentRequestSection').style.display = '';
     document.getElementById('otherDocSection').style.display = '';
+    document.getElementById('revenueBreakdownSection').style.display = '';
 
     editOtherDocLinks = (project.Other_Document_Links || []).map(function (d) {
       return { name: (d && d.name) || '', link: (d && d.link) || '' };
@@ -1045,6 +1049,8 @@
     // lain atau sesi berikutnya.
     pendingDocRequestKeys = {};
     renderDocumentRequestRows(project.Project_ID);
+
+    renderRevenueBreakdown(project);
   }
 
   // ---- Document Request (Deck/Quotation-YKB/Quotation-PT KAI/COR/RAB/
@@ -1221,12 +1227,16 @@
     document.getElementById('projectSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
     document.getElementById('projectEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT PROJECT';
 
-    // Document Request & Other Document Related cuma relevan di tampilan
-    // depan (bukan bagian dari EDIT PROJECT) — sembunyikan selagi mode edit
-    // aktif supaya tidak membingungkan (Edit Project murni cuma Project
-    // Information/Service/Category/Program/Issue/Other Notes).
+    // Document Request, Other Document Related, & Revenue Breakdown cuma
+    // relevan di tampilan depan (bukan bagian dari EDIT PROJECT) —
+    // sembunyikan selagi mode edit aktif supaya tidak membingungkan (Edit
+    // Project murni cuma Project Information/Service/Category/Program/
+    // Issue/Other Notes). Revenue Breakdown juga bergantung pada Services/
+    // Categories yang sedang diedit, jadi tidak masuk akal ditampilkan
+    // bersamaan.
     document.getElementById('documentRequestSection').style.display = isOpen ? 'none' : '';
     document.getElementById('otherDocSection').style.display = isOpen ? 'none' : '';
+    document.getElementById('revenueBreakdownSection').style.display = isOpen ? 'none' : '';
 
     if (!isOpen && currentPipelineDrawerId) {
       var project = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
@@ -1354,6 +1364,109 @@
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .project_update(currentPipelineDrawerId, { otherDocumentLinks: links });
+  }
+
+  // ---- Revenue Breakdown ----
+  // Service 'CSR' menghasilkan GDV (daftar campaign bebas, link + nominal).
+  // Service SELAIN CSR menghasilkan Service Revenue: satu nilai per category
+  // yang dipilih (atau per service itu sendiri kalau service itu tidak
+  // punya category, misal Ads Sponsorship/Placement & Production).
+  function getServiceRevenueRows(project) {
+    var rows = [];
+    (project.Services || []).forEach(function (service) {
+      if (service === 'CSR') return;
+      var svcDef = (taxonomy.services || []).filter(function (s) { return s.key === service; })[0];
+      var label = svcDef ? svcDef.label : service;
+      var categories = (project.Service_Categories || {})[service] || [];
+      if (categories.length) {
+        categories.forEach(function (cat) { rows.push({ key: service + '::' + cat, label: cat }); });
+      } else {
+        rows.push({ key: service, label: label });
+      }
+    });
+    return rows;
+  }
+
+  function renderRevenueBreakdown(project) {
+    var hasCsr = (project.Services || []).indexOf('CSR') !== -1;
+
+    editGdvCampaigns = hasCsr
+      ? (project.Gdv_Campaigns || []).map(function (c) { return { link: c.link || '', amount: Number(c.amount) || 0 }; })
+      : [];
+    renderGdvCampaigns(hasCsr);
+
+    var rows = getServiceRevenueRows(project);
+    var savedItems = project.Service_Revenue_Items || {};
+    editServiceRevenueItems = {};
+    rows.forEach(function (r) { editServiceRevenueItems[r.key] = Number(savedItems[r.key]) || 0; });
+    renderServiceRevenueItems(rows);
+
+    updateRevenueTotals();
+  }
+
+  function renderGdvCampaigns(enabled) {
+    var container = document.getElementById('gdvCampaignsContainer');
+    document.getElementById('addGdvCampaignBtn').style.display = enabled ? '' : 'none';
+    document.getElementById('gdvDisabledNote').style.display = enabled ? 'none' : '';
+    if (!enabled) { container.innerHTML = ''; return; }
+    if (!editGdvCampaigns.length) editGdvCampaigns = [{ link: '', amount: 0 }];
+
+    container.innerHTML = editGdvCampaigns.map(function (c, idx) {
+      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">' +
+        '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCampaigns[' + idx + '].link=this.value">' +
+        '<input type="number" placeholder="0" style="flex:1;" value="' + (c.amount || '') + '" oninput="editGdvCampaigns[' + idx + '].amount=Number(this.value)||0; updateRevenueTotals();">' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function addGdvCampaignRow() {
+    editGdvCampaigns.push({ link: '', amount: 0 });
+    renderGdvCampaigns(true);
+  }
+  function removeGdvCampaignRow(index) {
+    editGdvCampaigns.splice(index, 1);
+    renderGdvCampaigns(true);
+    updateRevenueTotals();
+  }
+
+  function renderServiceRevenueItems(rows) {
+    var container = document.getElementById('serviceRevenueItemsContainer');
+    if (!rows.length) {
+      container.innerHTML = '<div class="drawer-field-value" style="color:var(--text-faint);">Belum ada service (selain CSR) dipilih.</div>';
+      return;
+    }
+    container.innerHTML = rows.map(function (r) {
+      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; justify-content:space-between;">' +
+        '<span style="font-size:13px;">' + r.label + '</span>' +
+        '<input type="number" placeholder="0" style="width:160px;" value="' + (editServiceRevenueItems[r.key] || '') + '" ' +
+        'oninput="editServiceRevenueItems[\'' + r.key + '\']=Number(this.value)||0; updateRevenueTotals();">' +
+        '</div>';
+    }).join('');
+  }
+
+  function updateRevenueTotals() {
+    var totalGdv = editGdvCampaigns.reduce(function (sum, c) { return sum + (Number(c.amount) || 0); }, 0);
+    var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key]) || 0); }, 0);
+    document.getElementById('projectTotalGdvDisplay').innerText = formatRupiah(totalGdv);
+    document.getElementById('projectTotalRevenueDisplay').innerText = formatRupiah(totalRev);
+  }
+
+  function submitRevenueBreakdown() {
+    if (!currentPipelineDrawerId) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Revenue breakdown berhasil disimpan.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .project_updateRevenueBreakdown(currentPipelineDrawerId, {
+        gdvCampaigns: editGdvCampaigns,
+        serviceRevenueItems: editServiceRevenueItems
+      });
   }
 
   function showPipelineSuccess(message) {

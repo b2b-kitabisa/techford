@@ -54,5 +54,11 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.updateRevenueBreakdown = function (projectId, input) {
+    return ErrorHandler.handle('ProjectController.updateRevenueBreakdown', function () {
+      return ProjectService.updateRevenueBreakdown(projectId, input);
+    });
+  };
+
   return module;
 })(ProjectController || {});
