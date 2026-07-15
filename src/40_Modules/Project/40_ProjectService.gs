@@ -16,9 +16,11 @@
  * lagi (sesuai keputusan produk: aksi permanen). Allow_Manual_Deal beda —
  * itu toggle bebas (lihat setAllowManualDeal), bukan aksi permanen.
  *
- * Total_GDV/Total_Service_Revenue masih placeholder (selalu 0) — breakdown
- * detailnya sengaja ditunda karena cukup kompleks. Document Request SUDAH
- * jadi fitur nyata (lihat DocumentService), bukan placeholder lagi.
+ * Total_GDV/Total_Service_Revenue adalah SUM hasil breakdown yang disimpan
+ * di sheet terpisah Revenue_Breakdown (lihat RevenueBreakdownRepository &
+ * updateRevenueBreakdown) — bukan JSON di kolom Project, supaya satu
+ * project bisa punya banyak baris breakdown dan tetap bisa diagregasi/
+ * pivot native lewat Sheets.
  */
 var ProjectService = (function (module) {
 
@@ -44,15 +46,8 @@ var ProjectService = (function (module) {
     decorated.Service_Categories = decodeJson(row.Service_Categories, {});
     decorated.Issues = decodeJson(row.Issues, []);
     decorated.Other_Document_Links = decodeJson(row.Other_Document_Links, []);
-    decorated.Gdv_Campaigns = decodeJson(row.Gdv_Campaigns, []);
-    decorated.Service_Revenue_Items = decodeJson(row.Service_Revenue_Items, {});
     return decorated;
   }
-
-  // Service yang menghasilkan GDV (lewat daftar campaign) — semua service
-  // LAIN menghasilkan Service Revenue (satu nilai per category yang dipilih,
-  // atau per service itu sendiri kalau service itu tidak punya category).
-  var GDV_SERVICE_KEY = 'CSR';
 
   /**
    * Program_Name final ditentukan dari Program_Type + Program_Category:
@@ -152,8 +147,6 @@ var ProjectService = (function (module) {
       Total_GDV: 0,
       Total_Service_Revenue: 0,
       Other_Document_Links: encodeJson([]),
-      Gdv_Campaigns: encodeJson([]),
-      Service_Revenue_Items: encodeJson({}),
       Is_Draft: false,
       Created_Date: now,
       Created_By: createdBy || '',
@@ -200,8 +193,6 @@ var ProjectService = (function (module) {
       Total_GDV: 0,
       Total_Service_Revenue: 0,
       Other_Document_Links: encodeJson([]),
-      Gdv_Campaigns: encodeJson([]),
-      Service_Revenue_Items: encodeJson({}),
       Is_Draft: true,
       Created_Date: now,
       Created_By: createdBy || '',
@@ -339,22 +330,29 @@ var ProjectService = (function (module) {
   /**
    * Revenue Breakdown — standalone section di Project Detail (bukan bagian
    * EDIT PROJECT), sama seperti Document Request & Other Document Related.
+   * Disimpan di sheet terpisah Revenue_Breakdown (bukan JSON di kolom
+   * Project) supaya satu project bisa punya banyak baris breakdown dan
+   * tetap bisa diagregasi/pivot native lewat Sheets. Penyimpanan pakai pola
+   * "replace semua" — hapus semua baris lama punya project ini, tulis ulang
+   * baris baru — setiap kali tombol SAVE diklik (lihat
+   * RevenueBreakdownRepository.replaceForProject).
    *
    * @param {Object} input
-   *   - gdvCampaigns: [{link, amount}] — HANYA valid kalau service 'CSR'
-   *     ada di Project.Services. Ini daftar bebas (bukan per-category),
+   *   - gdvCampaigns: [{link, amount, notes}] — HANYA valid kalau service
+   *     'CSR' ada di Project.Services. Ini daftar bebas (bukan per-category),
    *     consultant bisa tambah campaign sebanyak apa pun.
-   *   - serviceRevenueItems: {key: amount} — satu nilai per category yang
-   *     dipilih untuk tiap service SELAIN CSR (key = "Service::Category"),
+   *   - serviceRevenueItems: {key: {amount, notes}} — satu baris per category
+   *     yang dipilih untuk tiap service SELAIN CSR (key = "Service::Category"),
    *     atau per service itu sendiri kalau service itu tidak punya category
    *     (key = "Service", misal Ads Sponsorship/Placement & Production).
    *     Key yang tidak lagi cocok dengan Services/Service_Categories project
    *     saat ini (misal category-nya sudah dihapus dari Edit Project)
    *     otomatis diabaikan (bukan error) — supaya tidak "nyangkut" data usang.
    *
-   * Total_GDV & Total_Service_Revenue dihitung ulang di sini (SUM), bukan
-   * dikirim manual dari client — supaya angka score card/tabel selalu
-   * konsisten dengan breakdown-nya.
+   * Total_GDV & Total_Service_Revenue tetap dihitung ulang di sini (SUM) dan
+   * disimpan di Project row — bukan dikirim manual dari client — supaya
+   * angka score card/tabel selalu konsisten dengan breakdown-nya, tanpa
+   * harus SUM ulang dari sheet Revenue_Breakdown tiap kali render tabel.
    */
   module.updateRevenueBreakdown = function (projectId, input) {
     var project = ProjectRepository.findById(projectId);
@@ -364,19 +362,41 @@ var ProjectService = (function (module) {
 
     var services = decodeJson(project.Services, []);
     var serviceCategories = decodeJson(project.Service_Categories, {});
+    var now = new Date();
+    var rows = [];
 
     var gdvCampaigns = [];
-    if (services.indexOf(GDV_SERVICE_KEY) !== -1) {
+    if (services.indexOf(Config.REVENUE_GDV_SERVICE_KEY) !== -1) {
       gdvCampaigns = (input.gdvCampaigns || [])
-        .map(function (c) { return { link: String((c && c.link) || '').trim(), amount: Number(c && c.amount) || 0 }; })
+        .map(function (c) {
+          return {
+            link: String((c && c.link) || '').trim(),
+            amount: Number(c && c.amount) || 0,
+            notes: String((c && c.notes) || '').trim()
+          };
+        })
         .filter(function (c) { return c.link || c.amount; });
     }
     // Kalau CSR tidak dipilih, gdvCampaigns dipaksa kosong — konsisten
     // dengan aturan "tidak dipilih CSR maka tidak bisa menambahkan campaign".
 
+    gdvCampaigns.forEach(function (c) {
+      rows.push({
+        Breakdown_ID: Utils.generateId('RB'),
+        Project_ID: projectId,
+        Value_Type: Config.REVENUE_VALUE_TYPE.GDV,
+        Item_Name: c.link,
+        Amount: c.amount,
+        Notes: c.notes,
+        Created_By: project.Created_By || '',
+        Created_Date: now,
+        Last_Updated: now
+      });
+    });
+
     var validKeys = {};
     services.forEach(function (service) {
-      if (service === GDV_SERVICE_KEY) return;
+      if (service === Config.REVENUE_GDV_SERVICE_KEY) return;
       var categories = serviceCategories[service] || [];
       if (categories.length) {
         categories.forEach(function (cat) { validKeys[service + '::' + cat] = true; });
@@ -385,25 +405,50 @@ var ProjectService = (function (module) {
       }
     });
 
-    var serviceRevenueItems = {};
-    Object.keys(input.serviceRevenueItems || {}).forEach(function (key) {
+    var serviceRevenueItems = input.serviceRevenueItems || {};
+    Object.keys(serviceRevenueItems).forEach(function (key) {
       if (!validKeys[key]) return; // buang key yang sudah tidak relevan
-      var amount = Number(input.serviceRevenueItems[key]) || 0;
-      if (amount) serviceRevenueItems[key] = amount;
+      var entry = serviceRevenueItems[key];
+      var amount = Number(entry && entry.amount) || 0;
+      if (!amount) return;
+      rows.push({
+        Breakdown_ID: Utils.generateId('RB'),
+        Project_ID: projectId,
+        Value_Type: Config.REVENUE_VALUE_TYPE.SERVICE,
+        Item_Name: key.indexOf('::') !== -1 ? key.split('::')[1] : key,
+        Amount: amount,
+        Notes: String((entry && entry.notes) || '').trim(),
+        Created_By: project.Created_By || '',
+        Created_Date: now,
+        Last_Updated: now
+      });
     });
 
-    var totalGdv = gdvCampaigns.reduce(function (sum, c) { return sum + c.amount; }, 0);
-    var totalServiceRevenue = Object.keys(serviceRevenueItems).reduce(function (sum, key) { return sum + serviceRevenueItems[key]; }, 0);
+    RevenueBreakdownRepository.replaceForProject(projectId, rows);
+
+    var totalGdv = rows
+      .filter(function (r) { return r.Value_Type === Config.REVENUE_VALUE_TYPE.GDV; })
+      .reduce(function (sum, r) { return sum + r.Amount; }, 0);
+    var totalServiceRevenue = rows
+      .filter(function (r) { return r.Value_Type === Config.REVENUE_VALUE_TYPE.SERVICE; })
+      .reduce(function (sum, r) { return sum + r.Amount; }, 0);
 
     ProjectRepository.update(projectId, {
-      Gdv_Campaigns: encodeJson(gdvCampaigns),
-      Service_Revenue_Items: encodeJson(serviceRevenueItems),
       Total_GDV: totalGdv,
       Total_Service_Revenue: totalServiceRevenue,
-      Last_Updated: new Date()
+      Last_Updated: now
     });
 
     return module.getAllProjects();
+  };
+
+  /**
+   * Bulk-fetch semua baris Revenue_Breakdown — dipanggil sekali saat
+   * bootstrap Sales Pipeline (pola Load Once, Filter Local), sama seperti
+   * getAllProjects/getAllDocuments.
+   */
+  module.getAllRevenueBreakdown = function () {
+    return RevenueBreakdownRepository.findAll();
   };
 
   /**

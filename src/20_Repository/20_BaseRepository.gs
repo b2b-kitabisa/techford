@@ -107,3 +107,32 @@ BaseRepository.prototype.deleteWhere = function (predicateFn) {
     return false;
   });
 };
+
+/**
+ * Hapus SEMUA baris yang cocok dengan predicateFn (bukan cuma yang
+ * pertama). Dipakai pola "replace semua baris milik X" (misal ganti total
+ * breakdown revenue satu project) — hapus dulu semua baris lama punya
+ * project itu, baru insert yang baru. Iterasi dari BAWAH ke ATAS supaya
+ * index baris yang belum diproses tidak bergeser akibat deleteRow.
+ * @returns {number} jumlah baris yang dihapus.
+ */
+BaseRepository.prototype.deleteAllWhere = function (predicateFn) {
+  var self = this;
+  return LockHelper.withLock(function () {
+    var sheet = self._getSheet();
+    var rows = sheet.getDataRange().getValues();
+    var headers = rows[0];
+    var deletedCount = 0;
+
+    for (var r = rows.length - 1; r >= 1; r--) {
+      var rowObj = {};
+      headers.forEach(function (h, i) { rowObj[h] = rows[r][i]; });
+
+      if (predicateFn(rowObj)) {
+        sheet.deleteRow(r + 1);
+        deletedCount++;
+      }
+    }
+    return deletedCount;
+  });
+};

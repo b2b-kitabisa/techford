@@ -25,6 +25,7 @@ var Config = (function (module) {
     MASTER_DATA: 'Master_Data',
     PROJECT: 'Project',
     DOCUMENT_PIPELINE: 'Document_Pipeline',
+    REVENUE_BREAKDOWN: 'Revenue_Breakdown',
     AUDIT_LOG: 'AuditLog'
   };
 
@@ -191,6 +192,14 @@ var Config = (function (module) {
   module.DOCUMENT_NEGOTIATION_TYPES = ['DECK', 'COR', 'RAB', 'PRODCOST'];
   module.DOCUMENT_DEAL_TYPE = 'QUOTATION';
   module.DOCUMENT_NON_PIPELINE_TYPES = ['PKS', 'TRANSFER_REQUEST', 'BAST'];
+
+  // ---- Revenue Breakdown (sheet Revenue_Breakdown, terpisah dari Project) ----
+  // Service 'CSR' menghasilkan baris GDV (Item_Name = link campaign).
+  // Service SELAIN CSR menghasilkan baris SERVICE (Item_Name = nama
+  // category yang dipilih, atau nama service itu sendiri kalau service-nya
+  // tidak punya category, misal Ads Sponsorship/Placement & Production).
+  module.REVENUE_VALUE_TYPE = { GDV: 'GDV', SERVICE: 'SERVICE' };
+  module.REVENUE_GDV_SERVICE_KEY = 'CSR';
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'

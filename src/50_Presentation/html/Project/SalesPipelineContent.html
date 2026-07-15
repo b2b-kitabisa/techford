@@ -328,6 +328,7 @@
   var allClients = [];
   var allEmployees = [];
   var allDocuments = [];
+  var allRevenueBreakdown = [];
   var taxonomy = { services: [], programType: {}, kborgPrograms: [], issues: [], stages: [], stageBucket: {} };
   var docTaxonomy = { documentTypes: [], quotationEntities: [] };
   var pendingDocRequestKeys = {}; // key -> true, dokumen yang ditoggle ON tapi belum dikirim lewat REQUEST
@@ -365,6 +366,7 @@
     fetchTaxonomy();
     fetchDocuments();
     fetchDocumentTaxonomy();
+    fetchRevenueBreakdown();
     setTimeout(function () {
       if (allProjects.length || pipelineBootstrapRetried) return;
       if (pipelineBootstrapAttempts < PIPELINE_BOOTSTRAP_MAX_ATTEMPTS) {
@@ -477,6 +479,23 @@
       })
       .withFailureHandler(function () {})
       .document_getTaxonomy();
+  }
+
+  function fetchRevenueBreakdown() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allRevenueBreakdown = res.data;
+        // Sama seperti fetchDocuments — data ini bisa datang belakangan
+        // saat paralel bootstrap, jadi drawer yang sedang terbuka perlu
+        // ikut di-render ulang begitu data ini datang.
+        if (currentPipelineDrawerId) {
+          var openProject = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
+          if (openProject) renderRevenueBreakdown(openProject);
+        }
+      })
+      .withFailureHandler(function () {})
+      .project_getRevenueBreakdown();
   }
 
   function showPipelineTableError(message) {
@@ -1389,16 +1408,21 @@
 
   function renderRevenueBreakdown(project) {
     var hasCsr = (project.Services || []).indexOf('CSR') !== -1;
+    var savedRows = allRevenueBreakdown.filter(function (r) { return r.Project_ID === project.Project_ID; });
 
     editGdvCampaigns = hasCsr
-      ? (project.Gdv_Campaigns || []).map(function (c) { return { link: c.link || '', amount: Number(c.amount) || 0 }; })
+      ? savedRows.filter(function (r) { return r.Value_Type === 'GDV'; })
+          .map(function (r) { return { link: r.Item_Name || '', amount: Number(r.Amount) || 0, notes: r.Notes || '' }; })
       : [];
     renderGdvCampaigns(hasCsr);
 
     var rows = getServiceRevenueRows(project);
-    var savedItems = project.Service_Revenue_Items || {};
+    var savedServiceRows = savedRows.filter(function (r) { return r.Value_Type === 'SERVICE'; });
     editServiceRevenueItems = {};
-    rows.forEach(function (r) { editServiceRevenueItems[r.key] = Number(savedItems[r.key]) || 0; });
+    rows.forEach(function (r) {
+      var savedRow = savedServiceRows.filter(function (s) { return s.Item_Name === r.label; })[0];
+      editServiceRevenueItems[r.key] = { amount: savedRow ? Number(savedRow.Amount) || 0 : 0, notes: savedRow ? (savedRow.Notes || '') : '' };
+    });
     renderServiceRevenueItems(rows);
 
     updateRevenueTotals();
@@ -1409,19 +1433,20 @@
     document.getElementById('addGdvCampaignBtn').style.display = enabled ? '' : 'none';
     document.getElementById('gdvDisabledNote').style.display = enabled ? 'none' : '';
     if (!enabled) { container.innerHTML = ''; return; }
-    if (!editGdvCampaigns.length) editGdvCampaigns = [{ link: '', amount: 0 }];
+    if (!editGdvCampaigns.length) editGdvCampaigns = [{ link: '', amount: 0, notes: '' }];
 
     container.innerHTML = editGdvCampaigns.map(function (c, idx) {
-      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">' +
+      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">' +
         '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCampaigns[' + idx + '].link=this.value">' +
         '<input type="number" placeholder="0" style="flex:1;" value="' + (c.amount || '') + '" oninput="editGdvCampaigns[' + idx + '].amount=Number(this.value)||0; updateRevenueTotals();">' +
+        '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCampaigns[' + idx + '].notes=this.value">' +
         '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
         '</div>';
     }).join('');
   }
 
   function addGdvCampaignRow() {
-    editGdvCampaigns.push({ link: '', amount: 0 });
+    editGdvCampaigns.push({ link: '', amount: 0, notes: '' });
     renderGdvCampaigns(true);
   }
   function removeGdvCampaignRow(index) {
@@ -1437,17 +1462,20 @@
       return;
     }
     container.innerHTML = rows.map(function (r) {
-      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; justify-content:space-between;">' +
-        '<span style="font-size:13px;">' + r.label + '</span>' +
-        '<input type="number" placeholder="0" style="width:160px;" value="' + (editServiceRevenueItems[r.key] || '') + '" ' +
-        'oninput="editServiceRevenueItems[\'' + r.key + '\']=Number(this.value)||0; updateRevenueTotals();">' +
+      var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
+      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">' +
+        '<span style="font-size:13px; flex:1;">' + r.label + '</span>' +
+        '<input type="number" placeholder="0" style="width:140px;" value="' + (entry.amount || '') + '" ' +
+        'oninput="editServiceRevenueItems[\'' + r.key + '\'].amount=Number(this.value)||0; updateRevenueTotals();">' +
+        '<input placeholder="Notes (opsional)" style="width:160px;" value="' + escAttr(entry.notes) + '" ' +
+        'oninput="editServiceRevenueItems[\'' + r.key + '\'].notes=this.value">' +
         '</div>';
     }).join('');
   }
 
   function updateRevenueTotals() {
     var totalGdv = editGdvCampaigns.reduce(function (sum, c) { return sum + (Number(c.amount) || 0); }, 0);
-    var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key]) || 0); }, 0);
+    var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key].amount) || 0); }, 0);
     document.getElementById('projectTotalGdvDisplay').innerText = formatRupiah(totalGdv);
     document.getElementById('projectTotalRevenueDisplay').innerText = formatRupiah(totalRev);
   }
@@ -1459,6 +1487,7 @@
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Revenue breakdown berhasil disimpan.');
         fetchProjects();
+        fetchRevenueBreakdown();
       })
       .withFailureHandler(function (err) {
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));

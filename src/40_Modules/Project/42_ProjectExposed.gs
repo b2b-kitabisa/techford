@@ -39,3 +39,7 @@ function project_completeDraft(draftProjectId, input, createdBy) {
 function project_updateRevenueBreakdown(projectId, input) {
   return ProjectController.updateRevenueBreakdown(projectId, input);
 }
+
+function project_getRevenueBreakdown() {
+  return ProjectController.getRevenueBreakdown();
+}
