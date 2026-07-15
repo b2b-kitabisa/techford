@@ -120,8 +120,8 @@
           <div class="drawer-field-label">Stage (otomatis dari Status)</div>
           <div class="drawer-field-value" id="docStageDisplay">-</div>
         </div>
-        <div>
-          <div class="drawer-field-label">Entitas (Quotation)</div>
+        <div id="docEntityFieldWrap">
+          <div class="drawer-field-label">Entitas</div>
           <div class="drawer-field-value" id="docEntityDisplay">-</div>
         </div>
       </div>
@@ -487,6 +487,10 @@
     document.getElementById('docClientDisplay').innerText = client.Brand_Name ? (client.Brand_Name + ' — ' + (client.Entity_Name || '-')) : '-';
     document.getElementById('docRequestedDisplay').innerText = 'Diminta oleh ' + (doc.Requested_By || '-') + ' — ' + formatDate(doc.Requested_Date);
     document.getElementById('docStageDisplay').innerText = doc.Stage || '-';
+    // Entitas cuma relevan untuk Quotation — sembunyikan seluruh field-nya
+    // (bukan cuma tampilkan "-") untuk tipe dokumen lain.
+    var isQuotation = doc.Document_Type === 'QUOTATION';
+    document.getElementById('docEntityFieldWrap').style.display = isQuotation ? '' : 'none';
     document.getElementById('docEntityDisplay').innerText = doc.Entity || '-';
 
     var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];

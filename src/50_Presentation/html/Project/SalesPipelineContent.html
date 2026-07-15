@@ -228,11 +228,6 @@
             <div class="drawer-field-value" id="projectOtherNotesDisplay">Belum ada catatan.</div>
           </div>
         </div>
-
-        <div style="margin-top:14px;">
-          <div class="drawer-field-label">Other Document Related :</div>
-          <div class="drawer-field-value" id="otherDocsViewList">Belum ada dokumen terkait.</div>
-        </div>
       </div>
 
       <div class="drawer-edit-form" id="projectEditForm">
@@ -256,10 +251,6 @@
         <input id="editIssueCustom" placeholder="Pilih Momentum untuk mengisi issue spesifik" disabled>
 
         <label style="margin-top:10px;">Other Notes<textarea id="editOtherNotes" placeholder="Type notes here."></textarea></label>
-
-        <span class="taxonomy-label" style="margin-top:10px;">Other Document Related</span>
-        <div id="otherDocLinksContainer"></div>
-        <button type="button" class="btn-outline" onclick="addOtherDocLinkRow()" style="align-self:flex-start;">+ Tambah Dokumen</button>
       </div>
     </div>
 
@@ -272,6 +263,17 @@
         <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
       </div>
       <div class="placeholder-note">Dokumen yang sudah pernah diminta ditandai terkunci — status &amp; progress-nya dipantau di menu Document Pipeline.</div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="section-title-row">
+        <h3>Other Document Related</h3>
+      </div>
+      <div id="otherDocLinksContainer"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <button type="button" class="btn-outline" onclick="addOtherDocLinkRow()">+ Tambah Dokumen</button>
+        <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
+      </div>
     </div>
 
     <div class="drawer-section placeholder-box">
@@ -1035,7 +1037,6 @@
       return { name: (d && d.name) || '', link: (d && d.link) || '' };
     });
     renderOtherDocLinks();
-    renderOtherDocsView(project.Other_Document_Links || []);
 
     // Reset staging Document Request setiap kali drawer dibuka/di-render
     // ulang, supaya toggle yang belum di-REQUEST tidak nyangkut ke project
@@ -1250,9 +1251,7 @@
       programCategory: editProjectProgramCategory,
       programName: manualNameEl ? manualNameEl.value.trim() : undefined,
       issues: issues,
-      otherNotes: document.getElementById('editOtherNotes').value,
-      otherDocumentLinks: editOtherDocLinks.filter(function (d) { return d.name.trim() || d.link.trim(); })
-        .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; })
+      otherNotes: document.getElementById('editOtherNotes').value
     };
 
     var projectId = currentPipelineDrawerId;
@@ -1303,8 +1302,9 @@
 
   // ---- Other Document Related ----
   // Sekarang bagian dari EDIT PROJECT — hanya bisa ditambah/hapus saat mode
-  // edit aktif, dan ikut tersimpan lewat tombol SAVE utama (saveProjectInfo),
-  // BUKAN tombol save sendiri.
+  // edit aktif — sekarang section berdiri sendiri (bukan bagian dari EDIT
+  // PROJECT lagi) dengan tombol SAVE-nya sendiri, sama seperti Document
+  // Request.
   function escAttr(str) {
     return String(str || '').replace(/"/g, '&quot;');
   }
@@ -1328,17 +1328,23 @@
     editOtherDocLinks.splice(index, 1);
     renderOtherDocLinks();
   }
-  function renderOtherDocsView(docs) {
-    var el = document.getElementById('otherDocsViewList');
-    var withContent = (docs || []).filter(function (d) { return d && (d.name || d.link); });
-    if (!withContent.length) {
-      el.innerHTML = 'Belum ada dokumen terkait.';
-      return;
-    }
-    el.innerHTML = '<ul style="margin:0; padding-left:18px;">' + withContent.map(function (d) {
-      var name = d.name || 'Dokumen';
-      return '<li>' + name + (d.link ? ' — <a href="' + d.link + '" target="_blank" style="color:var(--color-cerulean);">' + d.link + '</a>' : '') + '</li>';
-    }).join('') + '</ul>';
+
+  function submitOtherDocLinks() {
+    if (!currentPipelineDrawerId) return;
+    var links = editOtherDocLinks
+      .filter(function (d) { return d.name.trim() || d.link.trim(); })
+      .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; });
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Dokumen terkait berhasil disimpan.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .project_update(currentPipelineDrawerId, { otherDocumentLinks: links });
   }
 
   function showPipelineSuccess(message) {
