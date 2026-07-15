@@ -276,23 +276,38 @@
     </div>
 
     <div class="drawer-section" id="revenueBreakdownSection">
-      <div class="form-grid-2col">
-        <div>
-          <div class="section-title-row"><h3>Revenue Breakdown — GDV</h3></div>
-          <div id="gdvCampaignsContainer"></div>
-          <button type="button" class="btn-outline" id="addGdvCampaignBtn" onclick="addGdvCampaignRow()">+ Tambah Campaign</button>
-          <div class="placeholder-note" id="gdvDisabledNote" style="display:none;">Pilih service CSR dulu di Project Information untuk menambahkan campaign GDV.</div>
-          <div class="drawer-field-label" style="margin-top:12px;">TOTAL GDV</div>
-          <div class="drawer-field-value" id="projectTotalGdvDisplay">Rp0</div>
+      <div class="section-title-row"><h3>Revenue Breakdown</h3></div>
+
+      <div class="revenue-subsection">
+        <div class="revenue-subsection-header">
+          <h3>GDV (dari Service CSR)</h3>
+          <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
-        <div>
-          <div class="section-title-row"><h3>Service Revenue</h3></div>
-          <div id="serviceRevenueItemsContainer"></div>
-          <div class="drawer-field-label" style="margin-top:12px;">TOTAL SERVICE REVENUE</div>
-          <div class="drawer-field-value" id="projectTotalRevenueDisplay">Rp0</div>
+        <div class="revenue-row-labels" id="gdvRowLabels" style="display:none;">
+          <span style="flex:2;">Campaign Link</span>
+          <span style="flex:1;">Nominal GDV</span>
+          <span style="flex:2;">Notes</span>
+          <span style="width:28px;"></span>
         </div>
+        <div id="gdvCampaignsContainer"></div>
+        <button type="button" class="btn-outline" id="addGdvCampaignBtn" onclick="addGdvCampaignRow()">+ Tambah Campaign</button>
+        <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR dulu di Project Information untuk menambahkan campaign GDV.</div>
       </div>
-      <div style="text-align:right; margin-top:10px;">
+
+      <div class="revenue-subsection">
+        <div class="revenue-subsection-header">
+          <h3>Service Revenue (selain CSR)</h3>
+          <span class="revenue-total-pill">Total: <span id="projectTotalRevenueDisplay">Rp0</span></span>
+        </div>
+        <div class="revenue-row-labels" id="serviceRevenueRowLabels" style="display:none;">
+          <span class="revenue-service-label">Category / Service</span>
+          <span style="width:140px;">Nominal</span>
+          <span style="width:160px;">Notes</span>
+        </div>
+        <div id="serviceRevenueItemsContainer"></div>
+      </div>
+
+      <div style="text-align:right; margin-top:12px;">
         <button class="btn-save" onclick="submitRevenueBreakdown()">💾 SAVE</button>
       </div>
     </div>
@@ -1430,17 +1445,19 @@
 
   function renderGdvCampaigns(enabled) {
     var container = document.getElementById('gdvCampaignsContainer');
+    var labels = document.getElementById('gdvRowLabels');
     document.getElementById('addGdvCampaignBtn').style.display = enabled ? '' : 'none';
     document.getElementById('gdvDisabledNote').style.display = enabled ? 'none' : '';
-    if (!enabled) { container.innerHTML = ''; return; }
+    if (!enabled) { container.innerHTML = ''; labels.style.display = 'none'; return; }
     if (!editGdvCampaigns.length) editGdvCampaigns = [{ link: '', amount: 0, notes: '' }];
+    labels.style.display = '';
 
     container.innerHTML = editGdvCampaigns.map(function (c, idx) {
-      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">' +
+      return '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCampaigns[' + idx + '].link=this.value">' +
         '<input type="number" placeholder="0" style="flex:1;" value="' + (c.amount || '') + '" oninput="editGdvCampaigns[' + idx + '].amount=Number(this.value)||0; updateRevenueTotals();">' +
         '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCampaigns[' + idx + '].notes=this.value">' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
         '</div>';
     }).join('');
   }
@@ -1457,14 +1474,17 @@
 
   function renderServiceRevenueItems(rows) {
     var container = document.getElementById('serviceRevenueItemsContainer');
+    var labels = document.getElementById('serviceRevenueRowLabels');
     if (!rows.length) {
-      container.innerHTML = '<div class="drawer-field-value" style="color:var(--text-faint);">Belum ada service (selain CSR) dipilih.</div>';
+      labels.style.display = 'none';
+      container.innerHTML = '<div class="revenue-row-empty">Belum ada service (selain CSR) dipilih di Project Information.</div>';
       return;
     }
+    labels.style.display = '';
     container.innerHTML = rows.map(function (r) {
       var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
-      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">' +
-        '<span style="font-size:13px; flex:1;">' + r.label + '</span>' +
+      return '<div class="revenue-row">' +
+        '<span class="revenue-service-label">' + r.label + '</span>' +
         '<input type="number" placeholder="0" style="width:140px;" value="' + (entry.amount || '') + '" ' +
         'oninput="editServiceRevenueItems[\'' + r.key + '\'].amount=Number(this.value)||0; updateRevenueTotals();">' +
         '<input placeholder="Notes (opsional)" style="width:160px;" value="' + escAttr(entry.notes) + '" ' +

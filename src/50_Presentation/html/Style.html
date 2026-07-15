@@ -526,4 +526,19 @@
      Breakdown detail) — ditandai visual jelas supaya tidak dikira bug. ---- */
   .placeholder-box { opacity: 0.55; }
   .placeholder-note { font-size: 11px; color: var(--text-faint); font-style: italic; margin-top: 8px; }
+
+  /* ---- Revenue Breakdown — GDV & Service Revenue ditumpuk vertikal
+     (bukan bersebelahan) supaya tiap baris (link/nominal/notes) punya
+     ruang cukup dan tidak berdesakan. Tiap sub-section punya "kartu"
+     sendiri dengan header rata kanan-kiri (judul + total). ---- */
+  .revenue-subsection { border: 1px solid var(--border-softer); border-radius: 10px; padding: 16px; margin-bottom: 16px; background: var(--bg-hover); }
+  .revenue-subsection:last-of-type { margin-bottom: 0; }
+  .revenue-subsection-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .revenue-subsection-header h3 { margin: 0; font-size: 14px; }
+  .revenue-total-pill { font-size: 13px; font-weight: 700; color: var(--color-cerulean); background: var(--accent-tint); border-radius: 8px; padding: 4px 12px; }
+  .revenue-row-labels { display: flex; gap: 8px; padding: 0 2px 6px; font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.02em; }
+  .revenue-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .revenue-row input { background: var(--color-white); }
+  .revenue-row-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; }
+  .revenue-service-label { font-size: 13px; flex: 1.4; }
 </style>
