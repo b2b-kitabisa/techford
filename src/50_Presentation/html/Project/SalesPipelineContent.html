@@ -185,11 +185,11 @@
           <h2 style="color: var(--color-white); font-size:18px; margin:0;">PROJECT DETAIL</h2>
         </div>
         <div style="display:flex; align-items:center; gap:14px;">
-          <label class="switch-wrap" style="color: var(--color-white);" title="Izinkan Stage &quot;Won&quot; dipilih manual untuk project yang tidak memakai Quotation">Izinkan Deal Manual
-            <span class="switch"><input type="checkbox" id="allowManualDealToggle" onchange="onAllowManualDealToggle()"><span class="switch-slider"></span></span>
+          <label class="switch-wrap" style="color: var(--color-white);" title="Izinkan Stage diubah manual — kalau OFF, Stage hanya bisa maju otomatis lewat Document Pipeline">Izinkan Deal Manual
+            <span class="switch switch-on-dark"><input type="checkbox" id="allowManualDealToggle" onchange="onAllowManualDealToggle()"><span class="switch-slider"></span></span>
           </label>
           <select id="detailStageSelect" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;"></select>
-          <button class="btn-outline" onclick="submitStageUpdate()">Update</button>
+          <button class="btn-outline" id="stageUpdateBtn" onclick="submitStageUpdate()">Update</button>
           <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
         </div>
       </div>
@@ -330,6 +330,7 @@
 
   var pipelinePage = 1;
   var currentPipelineDrawerId = null;
+  var currentDraftProjectId = null; // diisi saat mode "lengkapi draft New Pipeline", null = mode buat baru biasa
   var newProjectClientId = null;
   var newProjectServices = [];
   var newProjectCategories = {};
@@ -524,7 +525,9 @@
     var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
     var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
 
-    allProjects.forEach(function (p) {
+    // Draft (Is_Draft) belum benar-benar "di pipeline" — belum ada nama,
+    // service, dsb — jadi tidak ikut dihitung score card.
+    allProjects.filter(function (p) { return !p.Is_Draft; }).forEach(function (p) {
       var bucket = taxonomy.stageBucket[p.Stage] || 'PROS';
       buckets[bucket] = (buckets[bucket] || 0) + 1;
       if (bucket === 'WON') {
@@ -617,18 +620,24 @@
     }
     tbody.innerHTML = paged.items.map(function (p) {
       var client = getClientById(p.Client_ID) || {};
+      var projectInfoHtml = p.Is_Draft
+        ? '<span class="badge badge-other">NEW PIPELINE</span>'
+        : '<div class="entity-name">' + p.Project_ID + '</div><div class="entity-pic">' + (p.Project_Name || '-') + '</div>';
+      var actionHtml = p.Is_Draft
+        ? '<button class="btn-outline" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">✏️ EDIT</button>'
+        : '<button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button>';
+
       return '<tr>' +
         '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
         '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>' +
-        '<td><div class="entity-name">' + p.Project_ID + '</div>' +
-        '<div class="entity-pic">' + (p.Project_Name || '-') + '</div></td>' +
+        '<td>' + projectInfoHtml + '</td>' +
         '<td><div>' + (p.Consultant || '-') + '</div>' +
         '<div class="entity-pic">' + (p.Stage || '-') + '</div></td>' +
         '<td class="nowrap-cell">' +
         '<div class="pipeline-value-line"><span class="pipeline-value-label">GDV</span>' + formatRupiah(p.Total_GDV) + '</div>' +
         '<div class="pipeline-value-line"><span class="pipeline-value-label">REV</span>' + formatRupiah(p.Total_Service_Revenue) + '</div>' +
         '</td>' +
-        '<td><button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button></td>' +
+        '<td>' + actionHtml + '</td>' +
         '</tr>';
     }).join('');
   }
@@ -817,7 +826,7 @@
   }
 
   // ---- Add Pipeline: open/close/reset ----
-  function openAddPipeline() {
+  function resetAddPipelineForm() {
     document.getElementById('newProjectName').value = '';
     document.getElementById('newClientInput').value = '';
     document.getElementById('newIsRetainer').checked = false;
@@ -837,10 +846,41 @@
     renderNewProgramCategoryArea();
     renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
     updateIssueCustomInputState('newIssueCustom', newProjectIssues);
+  }
+
+  function setNewClientPickerLocked(locked) {
+    var input = document.getElementById('newClientInput');
+    input.disabled = locked;
+  }
+
+  function openAddPipeline() {
+    currentDraftProjectId = null;
+    resetAddPipelineForm();
+    setNewClientPickerLocked(false);
+    document.getElementById('addPipelineDrawer').classList.add('open');
+    document.body.classList.add('drawer-open');
+  }
+
+  // Dipicu tombol "✏️ EDIT" pada baris "NEW PIPELINE" — melengkapi draft
+  // yang Client-nya sudah ditentukan sejak dibuat dari Client Monitoring
+  // (lihat createDraftProjectAndGo di ClientMonitoringContent.html).
+  // Choose Client dikunci, tidak bisa diubah.
+  function openEditDraftPipeline(draftProjectId) {
+    var draft = allProjects.filter(function (p) { return p.Project_ID === draftProjectId; })[0];
+    if (!draft) return;
+
+    currentDraftProjectId = draftProjectId;
+    resetAddPipelineForm();
+
+    var client = getClientById(draft.Client_ID);
+    newProjectClientId = draft.Client_ID;
+    document.getElementById('newClientInput').value = client ? ((client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-')) : draft.Client_ID;
+    setNewClientPickerLocked(true);
 
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
   }
+
   function closeAddPipeline() {
     document.getElementById('addPipelineDrawer').classList.remove('open');
     document.body.classList.remove('drawer-open');
@@ -890,6 +930,23 @@
     };
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
 
+    if (currentDraftProjectId) {
+      var draftId = currentDraftProjectId;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok === false) return alert(res.error.message);
+          currentDraftProjectId = null;
+          closeAddPipeline();
+          showPipelineSuccess('Pipeline berhasil dilengkapi — Project ID sudah dibuat.');
+          fetchProjects();
+        })
+        .withFailureHandler(function (err) {
+          alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+        })
+        .project_completeDraft(draftId, input, createdBy);
+      return;
+    }
+
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);
@@ -930,6 +987,7 @@
     document.getElementById('projectIdHeaderDisplay').innerText = project.Project_ID;
     document.getElementById('detailStageSelect').value = project.Stage;
     document.getElementById('allowManualDealToggle').checked = !!project.Allow_Manual_Deal;
+    setStageBoxLocked(!project.Allow_Manual_Deal);
 
     document.getElementById('projectNameDisplay').innerText = project.Project_Name + (project.Is_Retainer ? ' 🔁' : '');
     document.getElementById('projectClientBrandDisplay').innerText = client.Brand_Name || '-';
@@ -1058,17 +1116,32 @@
   }
 
   // ---- Allow Manual Deal toggle ----
+  // Box Stage TERKUNCI (select + tombol Update disabled) selama toggle ini
+  // OFF — Stage seharusnya bergerak otomatis lewat Document Pipeline.
+  // Menyalakan toggle membuka semua pilihan Stage (termasuk Loss) untuk
+  // diedit manual.
+  function setStageBoxLocked(locked) {
+    document.getElementById('detailStageSelect').disabled = locked;
+    document.getElementById('stageUpdateBtn').disabled = locked;
+  }
+
   function onAllowManualDealToggle() {
     if (!currentPipelineDrawerId) return;
     var checkbox = document.getElementById('allowManualDealToggle');
     var newValue = checkbox.checked;
+    setStageBoxLocked(!newValue);
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok === false) { checkbox.checked = !newValue; return alert(res.error.message); }
+        if (res && res.ok === false) {
+          checkbox.checked = !newValue;
+          setStageBoxLocked(!checkbox.checked);
+          return alert(res.error.message);
+        }
         fetchProjects();
       })
       .withFailureHandler(function (err) {
         checkbox.checked = !newValue;
+        setStageBoxLocked(!checkbox.checked);
         alert('Gagal mengubah pengaturan: ' + (err && err.message ? err.message : err));
       })
       .project_setAllowManualDeal(currentPipelineDrawerId, newValue);

@@ -134,6 +134,7 @@ var ProjectService = (function (module) {
       Total_GDV: 0,
       Total_Service_Revenue: 0,
       Other_Document_Links: encodeJson([]),
+      Is_Draft: false,
       Created_Date: now,
       Created_By: createdBy || '',
       Last_Updated: now
@@ -141,6 +142,95 @@ var ProjectService = (function (module) {
 
     ProjectRepository.create(project);
     Log.info('ProjectService', 'Project dibuat oleh ' + createdBy + ': ' + project.Project_ID);
+    return module.getAllProjects();
+  };
+
+  /**
+   * Dipicu tombol "Buat Project di Sales Pipeline" di reminder sukses Add/
+   * Edit Client (Client Monitoring) — BUKAN alur createProject biasa.
+   * Project_ID SUNGGUHAN (format PRJ26-xxxxx) belum dialokasikan di sini —
+   * baris ini dibuat dengan ID placeholder internal (tidak pernah
+   * ditampilkan ke user) supaya nomor urut resmi tidak "terbuang" untuk
+   * draft yang mungkin tidak pernah dilengkapi. Nomor asli baru dialokasikan
+   * saat completeDraftProject() dipanggil. Ditandai Is_Draft: true supaya
+   * tabel Sales Pipeline tahu harus menampilkan tag "New Pipeline" + tombol
+   * "Edit" (bukan Detail).
+   */
+  module.createDraftProject = function (clientId, createdBy) {
+    if (Utils.isBlank(clientId) || !ClientRepository.findById(clientId)) {
+      throw new AppError('VALIDATION_ERROR', 'Client wajib dipilih dari daftar Client Monitoring.');
+    }
+
+    var now = new Date();
+    var project = {
+      Project_ID: Utils.generateId('DRAFT'),
+      Project_Name: '',
+      Client_ID: clientId,
+      Consultant: '',
+      Services: encodeJson([]),
+      Service_Categories: encodeJson({}),
+      Program_Type: '',
+      Program_Category: '',
+      Program_Name: '',
+      Issues: encodeJson([]),
+      Other_Notes: '',
+      Is_Retainer: false,
+      Allow_Manual_Deal: false,
+      Stage: Config.PIPELINE_DEFAULT_STAGE,
+      Total_GDV: 0,
+      Total_Service_Revenue: 0,
+      Other_Document_Links: encodeJson([]),
+      Is_Draft: true,
+      Created_Date: now,
+      Created_By: createdBy || '',
+      Last_Updated: now
+    };
+
+    ProjectRepository.create(project);
+    Log.info('ProjectService', 'Draft project dibuat untuk client ' + clientId + ' oleh ' + createdBy + ': ' + project.Project_ID);
+    return module.getAllProjects();
+  };
+
+  /**
+   * Melengkapi draft (dari tombol "Edit" di baris "New Pipeline") — di sini
+   * baru Project_ID resmi dialokasikan. Client TIDAK bisa diubah (sudah
+   * dikunci sejak createDraftProject), jadi input.clientId diabaikan.
+   */
+  module.completeDraftProject = function (draftProjectId, input, createdBy) {
+    var draft = ProjectRepository.findById(draftProjectId);
+    if (!draft) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Draft project tidak ditemukan.');
+    }
+    if (!draft.Is_Draft) {
+      throw new AppError('VALIDATION_ERROR', 'Project ini bukan draft — gunakan Edit Project biasa.');
+    }
+    if (Utils.isBlank(input.projectName)) {
+      throw new AppError('VALIDATION_ERROR', 'Project Name wajib diisi.');
+    }
+    if (input.programType !== Config.PROGRAM_TYPE.KBORG && input.programType !== Config.PROGRAM_TYPE.CLIENT) {
+      throw new AppError('VALIDATION_ERROR', 'Program Type wajib dipilih.');
+    }
+
+    var programName = resolveProgramName(input.programType, input.programCategory, input.programName);
+    var realProjectId = 'PRJ' + SequenceService.next('PROJECT', PROJECT_ID_DIGITS);
+
+    ProjectRepository.update(draftProjectId, {
+      Project_ID: realProjectId,
+      Project_Name: input.projectName,
+      Consultant: input.consultant || '',
+      Services: encodeJson(input.services),
+      Service_Categories: encodeJson(input.serviceCategories),
+      Program_Type: input.programType,
+      Program_Category: input.programType === Config.PROGRAM_TYPE.KBORG ? input.programCategory : '',
+      Program_Name: programName,
+      Issues: encodeJson(input.issues),
+      Other_Notes: input.otherNotes || '',
+      Is_Retainer: !!input.isRetainer,
+      Is_Draft: false,
+      Last_Updated: new Date()
+    });
+
+    Log.info('ProjectService', 'Draft ' + draftProjectId + ' dilengkapi oleh ' + createdBy + ' -> ' + realProjectId);
     return module.getAllProjects();
   };
 
@@ -196,36 +286,31 @@ var ProjectService = (function (module) {
   /**
    * Perubahan Stage MANUAL (dari dropdown Stage + tombol Update di Project
    * Detail) — beda dari autoAdvanceStageFromDocument() yang dipicu sistem.
-   * Stage "Won" sengaja DIKUNCI dari sini secara default: harus dicapai
-   * lewat Quotation Signed di Document Pipeline, KECUALI admin sudah
-   * menyalakan toggle Allow_Manual_Deal untuk project ini (project yang
-   * memang tidak memakai Quotation). Ini menegakkan disiplin proses untuk
-   * project normal, sekaligus kasih jalan keluar untuk yang tidak butuh
-   * Quotation — lihat setAllowManualDeal().
+   * SELURUH dropdown ini sengaja DIKUNCI secara default (bukan cuma pilihan
+   * "Won") — Stage seharusnya bergerak otomatis lewat Document Pipeline,
+   * KECUALI admin sudah menyalakan toggle Allow_Manual_Deal untuk project
+   * ini (project yang memang tidak memakai Quotation/dokumen). Menyalakan
+   * toggle itu membuka SEMUA pilihan Stage (termasuk Loss) untuk diedit
+   * manual — lihat setAllowManualDeal().
    */
   module.updateStage = function (projectId, stage) {
     if (Config.PIPELINE_STAGE_LIST.indexOf(stage) === -1) {
       throw new AppError('VALIDATION_ERROR', 'Stage tidak valid.');
     }
 
-    if (Config.PIPELINE_STAGE_BUCKET[stage] === 'WON') {
-      var project = ProjectRepository.findById(projectId);
-      if (!project) {
-        throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
-      }
-      if (!project.Allow_Manual_Deal) {
-        throw new AppError(
-          'MANUAL_DEAL_BLOCKED',
-          'Stage "Won" tidak bisa dipilih manual untuk project ini. Selesaikan dokumen Quotation (Signed) di Document Pipeline dulu, ' +
-          'atau aktifkan toggle "Izinkan Deal Manual" di Project Detail kalau project ini memang tidak memakai Quotation.'
-        );
-      }
-    }
-
-    var updated = ProjectRepository.update(projectId, { Stage: stage, Last_Updated: new Date() });
-    if (!updated) {
+    var project = ProjectRepository.findById(projectId);
+    if (!project) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }
+    if (!project.Allow_Manual_Deal) {
+      throw new AppError(
+        'MANUAL_DEAL_BLOCKED',
+        'Stage project ini tidak bisa diubah manual. Aktifkan toggle "Izinkan Deal Manual" di Project Detail dulu, ' +
+        'atau biarkan Stage mengikuti progres dokumen di Document Pipeline.'
+      );
+    }
+
+    ProjectRepository.update(projectId, { Stage: stage, Last_Updated: new Date() });
     return module.getAllProjects();
   };
 

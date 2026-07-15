@@ -86,6 +86,13 @@
   </div>
 
   <script>
+    // Karena arsitektur platform ini full-page-reload (bukan SPA), halaman
+    // konten kadang perlu redirect ke halaman lain (misal Client Monitoring
+    // -> Sales Pipeline setelah bikin draft project). webAppUrl di sini
+    // sama persis dengan yang dipakai link sidebar (ScriptApp.getService().getUrl()),
+    // supaya redirect juga selalu pakai URL absolut, bukan relatif.
+    var TECHFORD_WEB_APP_URL = '<?= webAppUrl ?>';
+
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
     }

@@ -17,6 +17,11 @@
  *
  * Sama seperti modul Lead: statistik & filter dihitung di client dari
  * dataset penuh (Load Once, Filter Local).
+ *
+ * Is_From_Lead (boolean) di-set SEKALI saat Client dibuat (true dari
+ * createFromLead, false dari createManualClient) dan TIDAK PERNAH bisa
+ * diubah lagi — dipakai untuk mengunci Client_Source (selalu Inbound)
+ * saat client hasil Move dari Lead di-edit lewat updateClient().
  */
 var ClientService = (function (module) {
 
@@ -63,6 +68,7 @@ var ClientService = (function (module) {
       Website: '',
       Industry: '',
       Client_Source: Config.CLIENT_SOURCE_INBOUND,
+      Is_From_Lead: true,
       Created_Date: now,
       Created_By: createdBy || '',
       Other_Notes: '',
@@ -107,6 +113,7 @@ var ClientService = (function (module) {
       Website: input.website || '',
       Industry: input.industry || '',
       Client_Source: input.source,
+      Is_From_Lead: false,
       Created_Date: now,
       Created_By: createdBy || '',
       Other_Notes: input.otherNotes || '',
@@ -118,12 +125,26 @@ var ClientService = (function (module) {
     });
 
     Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy + ': ' + clientId);
-    return ClientRepository.findAll();
+    // Dibungkus objek (bukan cuma array) supaya UI bisa tahu persis Client_ID
+    // yang baru dibuat — dipakai tombol "Buat Project di Sales Pipeline" di
+    // reminder sukses, tanpa perlu menebak-nebak dari daftar penuh.
+    return { client: ClientRepository.findById(clientId), clients: ClientRepository.findAll() };
   };
 
   module.updateClient = function (clientId, patch) {
     if (Utils.isBlank(clientId)) {
       throw new AppError('VALIDATION_ERROR', 'Client ID wajib diisi.');
+    }
+    var existing = ClientRepository.findById(clientId);
+    if (!existing) {
+      throw new AppError('CLIENT_NOT_FOUND', 'Client tidak ditemukan.');
+    }
+
+    // Client hasil Move dari Lead PASTI Inbound — Client_Source dikunci,
+    // tidak boleh diubah lewat edit info (Is_From_Lead sendiri juga
+    // immutable, sengaja TIDAK ada di whitelist field di bawah).
+    if (existing.Is_From_Lead && patch.hasOwnProperty('Client_Source') && patch.Client_Source !== existing.Client_Source) {
+      throw new AppError('VALIDATION_ERROR', 'Client Source terkunci untuk client yang berasal dari Lead (selalu Inbound).');
     }
 
     var safePatch = {};
@@ -135,11 +156,7 @@ var ClientService = (function (module) {
     if (safePatch.Entity_Name) safePatch.Entity_Name = String(safePatch.Entity_Name).toUpperCase();
     safePatch.Last_Updated = new Date();
 
-    var updated = ClientRepository.update(clientId, safePatch);
-    if (!updated) {
-      throw new AppError('CLIENT_NOT_FOUND', 'Client tidak ditemukan.');
-    }
-
+    ClientRepository.update(clientId, safePatch);
     return ClientRepository.findAll();
   };
 

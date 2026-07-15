@@ -504,6 +504,13 @@
   .switch input:checked + .switch-slider:before { transform: translateX(18px); }
   .switch input:disabled + .switch-slider { cursor: not-allowed; opacity: 0.6; }
 
+  /* Varian untuk switch yang duduk di atas background gelap (drawer-header
+     Mine Shaft) — versi default (tint Mine Shaft tipis) nyaris tidak
+     kelihatan di atas background yang juga Mine Shaft. */
+  .switch-on-dark .switch-slider { background: rgba(255, 255, 255, 0.3); border: 1px solid rgba(255, 255, 255, 0.55); }
+  .switch-on-dark .switch-slider:before { background: var(--color-white); }
+  .switch-on-dark input:checked + .switch-slider { background: var(--color-cerulean); border-color: var(--color-cerulean); }
+
   /* ---- Fitur yang sengaja masih placeholder (Document Request, Revenue
      Breakdown detail) — ditandai visual jelas supaya tidak dikira bug. ---- */
   .placeholder-box { opacity: 0.55; }

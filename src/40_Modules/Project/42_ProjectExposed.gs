@@ -27,3 +27,11 @@ function project_updateStage(projectId, stage) {
 function project_setAllowManualDeal(projectId, allow) {
   return ProjectController.setAllowManualDeal(projectId, allow);
 }
+
+function project_createDraft(clientId, createdBy) {
+  return ProjectController.createDraft(clientId, createdBy);
+}
+
+function project_completeDraft(draftProjectId, input, createdBy) {
+  return ProjectController.completeDraft(draftProjectId, input, createdBy);
+}

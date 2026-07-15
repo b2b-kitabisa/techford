@@ -255,6 +255,7 @@
   <div class="success-box">
     <div class="success-icon">✓</div>
     <h3 id="clientSuccessMessage">Berhasil.</h3>
+    <button class="btn-outline" id="clientSuccessGoToPipelineBtn" style="display:none; margin-bottom:10px;" onclick="createDraftProjectAndGo()">🚀 Buat Project di Sales Pipeline</button>
     <button class="btn-save" onclick="closeClientSuccessModal()">OK</button>
   </div>
 </div>
@@ -265,6 +266,7 @@
   var allClients = [];
   var allPics = [];
   var allMasterData = [];
+  var allProjects = []; // dipakai untuk cek eligibility tombol "Buat Project" (hindari dobel)
   var clientPage = 1;
   var currentClientDrawerId = null;
   var clientSort = { field: 'Created_Date', dir: 'desc' };
@@ -285,6 +287,7 @@
     clientBootstrapAttempts++;
     fetchClients();
     fetchMasterData();
+    fetchProjectsForPipelineCheck();
     setTimeout(function () {
       if (allClients.length || clientBootstrapRetried) return;
       if (clientBootstrapAttempts < CLIENT_BOOTSTRAP_MAX_ATTEMPTS) {
@@ -348,6 +351,17 @@
       })
       .withFailureHandler(function () {})
       .masterdata_getAll();
+  }
+
+  // Hanya dipakai untuk cek "client ini sudah punya project belum" (gate
+  // tombol "Buat Project di Sales Pipeline") — tidak perlu pola render-ulang
+  // race-safe yang ketat karena cuma dipakai saat tombol Save diklik, bukan
+  // dirender terus-menerus.
+  function fetchProjectsForPipelineCheck() {
+    google.script.run
+      .withSuccessHandler(function (res) { if (res && res.ok) allProjects = res.data; })
+      .withFailureHandler(function () {})
+      .project_getAll();
   }
 
   function optionsForCategory(category) {
@@ -594,13 +608,30 @@
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);
         closeAddClient();
-        showClientSuccess('Client baru berhasil ditambahkan.');
         fetchClients();
+
+        // client_create sekarang mengembalikan { client, clients } (bukan
+        // cuma array) supaya kita tahu persis Client_ID yang baru dibuat,
+        // dipakai untuk tombol "Buat Project" di reminder sukses.
+        var newClient = res.data && res.data.client;
+        var eligible = newClient && isEligibleForPipeline(newClient.Brand_Name, newClient.Entity_Name, newClient.Entity_Type, newClient.Client_Source, pendingNewPics.length, newClient.Client_ID);
+        showClientSuccess('Client baru berhasil ditambahkan.', eligible ? newClient.Client_ID : null);
       })
       .withFailureHandler(function (err) {
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .client_create(input, createdBy);
+  }
+
+  // Syarat minimum supaya tombol "Buat Project di Sales Pipeline" muncul di
+  // reminder sukses: Brand Name, Entity Name, Entity Type, Client Source
+  // terisi, minimal 1 PIC, dan client itu belum punya project sama sekali
+  // (hindari draft/dobel kalau sudah ada).
+  function isEligibleForPipeline(brandName, entityName, entityType, source, picCount, clientId) {
+    if (!brandName || !entityName || !entityType || !source) return false;
+    if (!picCount || picCount < 1) return false;
+    if (clientId && allProjects.some(function (p) { return p.Client_ID === clientId; })) return false;
+    return true;
   }
 
   // ---- Client Detail Drawer ----
@@ -644,6 +675,9 @@
     setSearchableSelectValue('editIndustry', client.Industry || '');
     document.getElementById('editEntityType').value = client.Entity_Type || '';
     document.getElementById('editClientSource').value = client.Client_Source || '';
+    // Client hasil Move dari Lead PASTI Inbound — kunci dropdown-nya supaya
+    // tidak bisa diubah (server juga menolak kalau tetap dipaksa lewat API).
+    document.getElementById('editClientSource').disabled = !!client.Is_From_Lead;
     document.getElementById('editWebsite').value = client.Website || '';
     document.getElementById('editOtherNotes').value = client.Other_Notes || '';
 
@@ -828,6 +862,13 @@
         // secara berurutan (bukan paralel) supaya sederhana untuk di-debug.
         applyStagedPicRemovals(removedPicIds, 0, function () {
           applyStagedPicAdditions(newPics, clientId, 0, function () {
+            // Hitung jumlah PIC final SEBELUM staging di-reset — dipakai
+            // untuk cek eligibility tombol "Buat Project", tanpa perlu
+            // menunggu fetchPics() (async) selesai dulu.
+            var picCountAfterSave = allPics.filter(function (p) {
+              return p.Client_ID === clientId && removedPicIds.indexOf(p.PIC_ID) === -1;
+            }).length + newPics.length;
+
             editModeRemovedPicIds = [];
             editModePendingNewPics = [];
             btn.disabled = false;
@@ -835,7 +876,13 @@
             fetchPics();
             if (idx !== -1) renderClientDrawer(allClients[idx]);
             renderClients();
-            showClientSuccess('Data client berhasil disimpan.');
+
+            var updatedClient = idx !== -1 ? allClients[idx] : null;
+            var eligible = updatedClient && isEligibleForPipeline(
+              updatedClient.Brand_Name, updatedClient.Entity_Name, updatedClient.Entity_Type,
+              updatedClient.Client_Source, picCountAfterSave, clientId
+            );
+            showClientSuccess('Data client berhasil disimpan.', eligible ? clientId : null);
           });
         });
       })
@@ -863,11 +910,40 @@
       .client_addPic(clientId, pics[index]);
   }
 
-  function showClientSuccess(message) {
+  var clientSuccessPipelineTargetId = null;
+
+  function showClientSuccess(message, pipelineEligibleClientId) {
     document.getElementById('clientSuccessMessage').innerText = message;
+    var btn = document.getElementById('clientSuccessGoToPipelineBtn');
+    clientSuccessPipelineTargetId = pipelineEligibleClientId || null;
+    if (clientSuccessPipelineTargetId) {
+      btn.style.display = 'block';
+      btn.style.width = '100%';
+    } else {
+      btn.style.display = 'none';
+    }
     document.getElementById('clientSuccessModal').classList.add('open');
   }
   function closeClientSuccessModal() {
     document.getElementById('clientSuccessModal').classList.remove('open');
+    clientSuccessPipelineTargetId = null;
+  }
+
+  // Dipicu tombol "🚀 Buat Project di Sales Pipeline" di reminder sukses —
+  // bikin draft project (belum ada Project ID) untuk client ini, lalu
+  // langsung pindah ke halaman Sales Pipeline supaya konsultan lanjut
+  // mengisi lewat tombol EDIT pada baris "NEW PIPELINE".
+  function createDraftProjectAndGo() {
+    if (!clientSuccessPipelineTargetId) return;
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        window.location.href = TECHFORD_WEB_APP_URL + '?page=sales-pipeline';
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal membuat draft project: ' + (err && err.message ? err.message : err));
+      })
+      .project_createDraft(clientSuccessPipelineTargetId, createdBy);
   }
 </script>

@@ -86,19 +86,18 @@ var Config = (function (module) {
 
   module.ISSUE_OPTIONS = ['Social', 'Health', 'Empowerment', 'Education', 'Environment', 'Momentum'];
 
-  // Stage granular yang tampil di tabel/dropdown, dan bucket 4-status
-  // (PROS/NEGO/WON/LOSS) yang dipakai score card & stat pipeline.
-  module.PIPELINE_STAGE_LIST = ['First Approaching', 'Follow Up User', 'Drafting Deck', 'Negotiation', 'Revision', 'Won', 'Loss'];
+  // Stage yang tampil di tabel/dropdown Sales Pipeline — sengaja disederhanakan
+  // jadi cuma 4 (sama persis dengan bucket-nya sendiri), karena progres
+  // detail-nya nanti mengikuti Document Pipeline (Prospect/Negotiation
+  // otomatis dari dokumen, Won dari Quotation Signed) — lihat DocumentService.
+  module.PIPELINE_STAGE_LIST = ['Prospect', 'Negotiation', 'Won', 'Loss'];
   module.PIPELINE_STAGE_BUCKET = {
-    'First Approaching': 'PROS',
-    'Follow Up User': 'PROS',
-    'Drafting Deck': 'NEGO',
+    'Prospect': 'PROS',
     'Negotiation': 'NEGO',
-    'Revision': 'NEGO',
     'Won': 'WON',
     'Loss': 'LOSS'
   };
-  module.PIPELINE_DEFAULT_STAGE = 'First Approaching';
+  module.PIPELINE_DEFAULT_STAGE = 'Prospect';
   module.CONSULTANT_ROLE = 'Consultant';
 
   // ---- Document Pipeline ----

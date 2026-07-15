@@ -42,5 +42,17 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.createDraft = function (clientId, createdBy) {
+    return ErrorHandler.handle('ProjectController.createDraft', function () {
+      return ProjectService.createDraftProject(clientId, createdBy);
+    });
+  };
+
+  module.completeDraft = function (draftProjectId, input, createdBy) {
+    return ErrorHandler.handle('ProjectController.completeDraft', function () {
+      return ProjectService.completeDraftProject(draftProjectId, input, createdBy);
+    });
+  };
+
   return module;
 })(ProjectController || {});
