@@ -74,7 +74,7 @@ function doGet(e) {
   shell.headerActions = route.headerActions;
   shell.pageTitle = route.title;
   shell.activePage = page;
-  shell.menu = NavigationConfig.MENU;
+  shell.menu = buildMenuWithBadges();
   shell.breadcrumbGroup = findBreadcrumbGroup(page);
   shell.helpText = route.helpText || '';
 
@@ -89,6 +89,32 @@ function doGet(e) {
     .setTitle('Techford Platform - ' + route.title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Sisipkan badge notifikasi angka (mirip unread count) ke item menu
+ * tertentu — dihitung langsung server-side (bukan lewat RPC) saat Shell
+ * dirender, supaya sidebar selalu menampilkan angka terkini tanpa perlu
+ * JS tambahan di client. Deep-clone NavigationConfig.MENU dulu supaya
+ * object config aslinya tidak ikut ditempeli badge (dipakai juga oleh
+ * findBreadcrumbGroup).
+ */
+function buildMenuWithBadges() {
+  var menu = JSON.parse(JSON.stringify(NavigationConfig.MENU));
+  var badgeCounts = {
+    'lead-capturing': LeadService.countNewLeads(),
+    'sales-pipeline': ProjectService.countDraftProjects()
+  };
+
+  menu.forEach(function (group) {
+    group.items.forEach(function (item) {
+      if (badgeCounts.hasOwnProperty(item.page) && badgeCounts[item.page] > 0) {
+        item.badge = badgeCounts[item.page];
+      }
+    });
+  });
+
+  return menu;
 }
 
 function findBreadcrumbGroup(page) {

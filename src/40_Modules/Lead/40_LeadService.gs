@@ -30,6 +30,17 @@ var LeadService = (function (module) {
     return LeadRepository.findAll();
   };
 
+  /**
+   * Dipakai WebAppRouter untuk badge notifikasi jumlah "New Leads" di
+   * sidebar (dipanggil langsung server-side saat render Shell, bukan lewat
+   * RPC — tidak butuh pembungkus ErrorHandler).
+   */
+  module.countNewLeads = function () {
+    return LeadRepository.findAll().filter(function (l) {
+      return l.Status === Config.LEAD_STATUS.NEW;
+    }).length;
+  };
+
   module.updateLead = function (inboundId, patch) {
     if (Utils.isBlank(inboundId)) {
       throw new AppError('VALIDATION_ERROR', 'Inbound ID wajib diisi.');

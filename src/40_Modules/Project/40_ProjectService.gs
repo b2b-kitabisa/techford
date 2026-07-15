@@ -80,6 +80,17 @@ var ProjectService = (function (module) {
   };
 
   /**
+   * Dipakai WebAppRouter untuk badge notifikasi jumlah "New Pipeline"
+   * (draft belum dilengkapi) di sidebar — dipanggil langsung server-side
+   * saat render Shell, bukan lewat RPC.
+   */
+  module.countDraftProjects = function () {
+    return ProjectRepository.findAll().filter(function (p) {
+      return p.Is_Draft;
+    }).length;
+  };
+
+  /**
    * Bundel taxonomy dari Config supaya UI tidak perlu hardcode ulang di
    * client-side — satu sumber kebenaran tetap di Config.
    */

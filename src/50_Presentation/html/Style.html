@@ -60,7 +60,10 @@
     color: var(--text-faint); padding: 12px 16px 4px;
   }
   .nav-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     padding: 8px 16px;
     font-size: 14px;
     color: var(--color-mineshaft);
@@ -71,6 +74,14 @@
   .nav-item-active { background: var(--color-mineshaft); color: var(--color-white); font-weight: 700; }
   .nav-item-disabled { color: var(--bg-disabled); cursor: not-allowed; }
   .nav-item-disabled:hover { background: transparent; }
+
+  /* Badge notifikasi jumlah (mirip unread count inbox) di sidebar — misal
+     jumlah New Leads / New Pipeline yang belum ditindaklanjuti. */
+  .nav-badge {
+    background: var(--color-cerulean); color: var(--color-white); border-radius: 10px;
+    padding: 1px 7px; font-size: 11px; font-weight: 800; line-height: 1.5; flex-shrink: 0;
+  }
+  .nav-item-active .nav-badge { background: var(--color-white); color: var(--color-mineshaft); }
 
   .sidebar-footer { border-top: 1px solid var(--border-soft); padding: 8px 0; }
 

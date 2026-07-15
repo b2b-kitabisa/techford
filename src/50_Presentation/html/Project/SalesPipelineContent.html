@@ -1,7 +1,7 @@
 <div class="pipeline-score-row">
   <div class="pipeline-score-card pipeline-score-achieved">
-    <div class="pipeline-score-title">🏆 Achieved</div>
-    <div class="pipeline-score-desc">Achievement Target (dari Project berstatus Won)</div>
+    <div class="pipeline-score-title">🏆 Deal Value</div>
+    <div class="pipeline-score-desc">Deal Value dari project status Won</div>
     <div class="pipeline-score-value" id="pipelineAchievedValue">GDV : Rp0 | REV : Rp0</div>
   </div>
   <div class="pipeline-score-card pipeline-score-forecast">
@@ -254,7 +254,7 @@
       </div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" id="documentRequestSection">
       <div class="section-title-row">
         <h3>Document Request</h3>
       </div>
@@ -265,7 +265,7 @@
       <div class="placeholder-note">Dokumen yang sudah pernah diminta ditandai terkunci — status &amp; progress-nya dipantau di menu Document Pipeline.</div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" id="otherDocSection">
       <div class="section-title-row">
         <h3>Other Document Related</h3>
       </div>
@@ -1032,6 +1032,8 @@
     document.getElementById('projectSaveBtn').style.display = 'none';
     document.getElementById('projectSaveHint').innerText = '';
     document.getElementById('projectEditInfoToggleBtn').innerHTML = '✏️ EDIT PROJECT';
+    document.getElementById('documentRequestSection').style.display = '';
+    document.getElementById('otherDocSection').style.display = '';
 
     editOtherDocLinks = (project.Other_Document_Links || []).map(function (d) {
       return { name: (d && d.name) || '', link: (d && d.link) || '' };
@@ -1218,6 +1220,13 @@
     document.getElementById('projectViewBlock').style.display = isOpen ? 'none' : '';
     document.getElementById('projectSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
     document.getElementById('projectEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT PROJECT';
+
+    // Document Request & Other Document Related cuma relevan di tampilan
+    // depan (bukan bagian dari EDIT PROJECT) — sembunyikan selagi mode edit
+    // aktif supaya tidak membingungkan (Edit Project murni cuma Project
+    // Information/Service/Category/Program/Issue/Other Notes).
+    document.getElementById('documentRequestSection').style.display = isOpen ? 'none' : '';
+    document.getElementById('otherDocSection').style.display = isOpen ? 'none' : '';
 
     if (!isOpen && currentPipelineDrawerId) {
       var project = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];

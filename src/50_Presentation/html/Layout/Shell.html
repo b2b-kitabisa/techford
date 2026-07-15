@@ -27,7 +27,10 @@
                var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
           ?>
             <? if (item.enabled) { ?>
-              <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>"><?= item.label ?></a>
+              <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>">
+                <span><?= item.label ?></span>
+                <? if (item.badge) { ?><span class="nav-badge"><?= item.badge ?></span><? } ?>
+              </a>
             <? } else { ?>
               <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
             <? } ?>
