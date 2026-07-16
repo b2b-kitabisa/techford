@@ -160,6 +160,7 @@
       alert('Nama, email, dan password wajib diisi.');
       return;
     }
+    if (!techfordConfirm('Tambahkan admin baru "' + input.name + '"?')) return;
 
     // google.script.run terbukti kadang mengirim res=null ke browser walau
     // operasi di server berhasil (independen dari bentuk respons array/
@@ -208,6 +209,7 @@
     var newPassword = document.getElementById('resetPasswordValue').value;
     if (!newPassword) { alert('Password baru wajib diisi.'); return; }
     if (!resetPasswordTargetId) return;
+    if (!techfordConfirm('Reset password admin ini?')) return;
 
     google.script.run
       .withSuccessHandler(function (res) {

@@ -97,6 +97,7 @@
     var input = document.getElementById('newValue_' + category);
     var value = input.value.trim();
     if (!value) return;
+    if (!techfordConfirm('Tambah opsi "' + value + '" ke Master Data?')) return;
 
     google.script.run
       .withSuccessHandler(function (res) {

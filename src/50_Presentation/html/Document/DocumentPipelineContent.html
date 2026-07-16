@@ -503,6 +503,7 @@
   function submitDocStatusUpdate() {
     if (!currentDocDrawerId) return;
     var newStatus = document.getElementById('docStatusSelect').value;
+    if (!techfordConfirm('Update status dokumen ini jadi "' + newStatus + '"?')) return;
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);

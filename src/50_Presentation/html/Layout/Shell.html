@@ -19,8 +19,11 @@
       </div>
 
       <nav class="sidebar-nav">
-        <? for (var g = 0; g < menu.length; g++) { ?>
-          <div class="nav-group-label"><?= menu[g].group ?></div>
+        <? for (var g = 0; g < menu.length; g++) {
+             var groupColor = menu[g].color || '#6B7280';
+        ?>
+          <? if (g > 0) { ?><div class="nav-group-divider"></div><? } ?>
+          <div class="nav-group-label" style="color:<?= groupColor ?>; background:<?= Utils.hexToRgba(groupColor, 0.12) ?>;"><?= menu[g].group ?></div>
           <? for (var i = 0; i < menu[g].items.length; i++) {
                var item = menu[g].items[i];
                var isActive = item.page === activePage;
@@ -98,6 +101,15 @@
 
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+    }
+
+    // Pengaman terakhir sebelum aksi tulis (save/request/update) benar-benar
+    // dikirim ke server — dipanggil dari halaman manapun (Sales Pipeline,
+    // Document Pipeline, Master Data, Configure Account, dst) supaya user
+    // selalu punya kesempatan Lanjut/Batal, bahkan untuk aksi yang di
+    // halamannya sendiri tidak punya modal konfirmasi custom.
+    function techfordConfirm(message) {
+      return window.confirm(message);
     }
 
     // Fungsi global (dipakai halaman manapun yang punya input password,

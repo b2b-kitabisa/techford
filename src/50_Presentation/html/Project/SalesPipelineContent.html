@@ -1,11 +1,21 @@
 <div class="pipeline-score-row">
   <div class="pipeline-score-card pipeline-score-achieved">
-    <div class="pipeline-score-title">🏆 Deal Value</div>
+    <div class="pipeline-score-title">🏆 Deal Value
+      <span class="help-tooltip-wrap">
+        <span class="score-tooltip-icon">i</span>
+        <div class="score-tooltip" id="pipelineAchievedTooltip">Memuat...</div>
+      </span>
+    </div>
     <div class="pipeline-score-desc">Deal Value dari project status Won</div>
     <div class="pipeline-score-value" id="pipelineAchievedValue">GDV : Rp0 | REV : Rp0</div>
   </div>
   <div class="pipeline-score-card pipeline-score-forecast">
-    <div class="pipeline-score-title">⏳ Forecast</div>
+    <div class="pipeline-score-title">⏳ Forecast
+      <span class="help-tooltip-wrap">
+        <span class="score-tooltip-icon">i</span>
+        <div class="score-tooltip" id="pipelineForecastTooltip">Memuat...</div>
+      </span>
+    </div>
     <div class="pipeline-score-desc">Forecast GDV &amp; Revenue in Pipeline (Pros + Nego)</div>
     <div class="pipeline-score-value" id="pipelineForecastValue">GDV : Rp0 | REV : Rp0</div>
   </div>
@@ -50,11 +60,17 @@
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="pipelineStageFilterBtn" onclick="toggleStageFilterDropdown()">Stage ▾</button>
-    <div class="status-filter-dropdown" id="pipelineStageFilterDropdown"></div>
+    <div class="status-filter-dropdown" id="pipelineStageFilterDropdown">
+      <div class="status-filter-actions">
+        <button type="button" onclick="setAllStageFilter(true)">Pilih Semua</button>
+        <button type="button" onclick="setAllStageFilter(false)">Bersihkan</button>
+      </div>
+      <div id="pipelineStageFilterOptions"></div>
+    </div>
   </div>
 
-  <label style="display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:13px;">
-    <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
+  <label class="filter-toggle-chip">
+    <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> 🔁 Retainer
   </label>
 
   <button class="filter-reset" onclick="resetPipelineFilter()">↺ Reset Filter</button>
@@ -280,7 +296,7 @@
 
       <div class="revenue-subsection">
         <div class="revenue-subsection-header">
-          <h3>GDV (dari Service CSR)</h3>
+          <h3>GDV</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
         <div class="revenue-row-labels" id="gdvRowLabels" style="display:none;">
@@ -296,7 +312,7 @@
 
       <div class="revenue-subsection">
         <div class="revenue-subsection-header">
-          <h3>Service Revenue (selain CSR)</h3>
+          <h3>Service Revenue</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalRevenueDisplay">Rp0</span></span>
         </div>
         <div class="revenue-row-labels" id="serviceRevenueRowLabels" style="display:none;">
@@ -581,6 +597,8 @@
 
     document.getElementById('pipelineAchievedValue').innerText = 'GDV : ' + formatCompactRupiah(achievedGdv) + ' | REV : ' + formatCompactRupiah(achievedRev);
     document.getElementById('pipelineForecastValue').innerText = 'GDV : ' + formatCompactRupiah(forecastGdv) + ' | REV : ' + formatCompactRupiah(forecastRev);
+    document.getElementById('pipelineAchievedTooltip').innerHTML = 'GDV: ' + formatRupiah(achievedGdv) + '<br>REV: ' + formatRupiah(achievedRev) + '<br><strong>Total: ' + formatRupiah(achievedGdv + achievedRev) + '</strong>';
+    document.getElementById('pipelineForecastTooltip').innerHTML = 'GDV: ' + formatRupiah(forecastGdv) + '<br>REV: ' + formatRupiah(forecastRev) + '<br><strong>Total: ' + formatRupiah(forecastGdv + forecastRev) + '</strong>';
     document.getElementById('pipelineBucketPros').innerText = buckets.PROS;
     document.getElementById('pipelineBucketNego').innerText = buckets.NEGO;
     document.getElementById('pipelineBucketWon').innerText = buckets.WON;
@@ -660,9 +678,10 @@
     }
     tbody.innerHTML = paged.items.map(function (p) {
       var client = getClientById(p.Client_ID) || {};
+      var retainerTag = p.Is_Retainer ? '<span class="badge-retainer">🔁 Retainer</span>' : '';
       var projectInfoHtml = p.Is_Draft
         ? '<span class="badge badge-other">NEW PIPELINE</span>'
-        : '<div class="entity-name">' + p.Project_ID + '</div><div class="entity-pic">' + (p.Project_Name || '-') + '</div>';
+        : '<div class="entity-name">' + p.Project_ID + retainerTag + '</div><div class="entity-pic">' + (p.Project_Name || '-') + '</div>';
       var actionHtml = p.Is_Draft
         ? '<button class="btn-outline" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">✏️ EDIT</button>'
         : '<button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button>';
@@ -703,17 +722,30 @@
 
   // ---- Stage filter dropdown (multi-select, sama pola dengan status filter Lead) ----
   function renderStageFilterDropdown() {
-    var container = document.getElementById('pipelineStageFilterDropdown');
+    var container = document.getElementById('pipelineStageFilterOptions');
     container.innerHTML = (taxonomy.stages || []).map(function (stage) {
       var checked = pipelineStageFilterValues.indexOf(stage) !== -1 ? 'checked' : '';
       return '<label><input type="checkbox" value="' + stage + '" ' + checked + ' onchange="onStageFilterToggle(this)"> ' + stage + '</label>';
     }).join('');
+    updateStageFilterButtonLabel();
   }
   function onStageFilterToggle(checkbox) {
     var idx = pipelineStageFilterValues.indexOf(checkbox.value);
     if (checkbox.checked && idx === -1) pipelineStageFilterValues.push(checkbox.value);
     if (!checkbox.checked && idx !== -1) pipelineStageFilterValues.splice(idx, 1);
+    updateStageFilterButtonLabel();
     onPipelineFilterChange();
+  }
+  function setAllStageFilter(selectAll) {
+    pipelineStageFilterValues = selectAll ? (taxonomy.stages || []).slice() : [];
+    renderStageFilterDropdown();
+    onPipelineFilterChange();
+  }
+  function updateStageFilterButtonLabel() {
+    var btn = document.getElementById('pipelineStageFilterBtn');
+    var count = pipelineStageFilterValues.length;
+    btn.innerText = count ? 'Stage (' + count + ') ▾' : 'Stage ▾';
+    btn.classList.toggle('has-value', count > 0);
   }
   function toggleStageFilterDropdown() {
     document.getElementById('pipelineStageFilterDropdown').classList.toggle('open');
@@ -1136,6 +1168,7 @@
       return pendingDocRequestKeys[row.key] && !isDocAlreadyRequested(projectId, row);
     });
     if (!toRequest.length) { alert('Pilih minimal 1 dokumen yang belum pernah diminta.'); return; }
+    if (!techfordConfirm('Kirim permintaan ' + toRequest.length + ' dokumen ke tim Operation?')) return;
 
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     submitDocRequestsSequentially(toRequest, 0, projectId, createdBy, function () {
@@ -1172,6 +1205,10 @@
     if (!currentPipelineDrawerId) return;
     var checkbox = document.getElementById('allowManualDealToggle');
     var newValue = checkbox.checked;
+    var confirmMessage = newValue
+      ? 'Izinkan Stage project ini diubah manual (termasuk Loss)?'
+      : 'Kunci lagi Stage project ini — hanya bisa bergerak otomatis lewat Document Pipeline?';
+    if (!techfordConfirm(confirmMessage)) { checkbox.checked = !newValue; return; }
     setStageBoxLocked(!newValue);
     google.script.run
       .withSuccessHandler(function (res) {
@@ -1334,6 +1371,7 @@
     if (!currentPipelineDrawerId) return;
     var projectId = currentPipelineDrawerId;
     var stage = document.getElementById('detailStageSelect').value;
+    if (!techfordConfirm('Ubah Stage project ini jadi "' + stage + '"?')) return;
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) {
@@ -1384,6 +1422,7 @@
 
   function submitOtherDocLinks() {
     if (!currentPipelineDrawerId) return;
+    if (!techfordConfirm('Simpan perubahan Other Document Related ini?')) return;
     var links = editOtherDocLinks
       .filter(function (d) { return d.name.trim() || d.link.trim(); })
       .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; });
@@ -1455,11 +1494,32 @@
     container.innerHTML = editGdvCampaigns.map(function (c, idx) {
       return '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCampaigns[' + idx + '].link=this.value">' +
-        '<input type="number" placeholder="0" style="flex:1;" value="' + (c.amount || '') + '" oninput="editGdvCampaigns[' + idx + '].amount=Number(this.value)||0; updateRevenueTotals();">' +
+        '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvAmountInput(this, ' + idx + ')">' +
         '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCampaigns[' + idx + '].notes=this.value">' +
         '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
         '</div>';
     }).join('');
+  }
+
+  // Format angka besar dengan titik pemisah ribuan (id-ID) langsung saat
+  // diketik — supaya nominal miliaran (misal 100000000) mudah dibaca jadi
+  // 100.000.000. Model tetap menyimpan angka murni (Number), formatting
+  // hanya di tampilan input.
+  function formatThousands(n) {
+    n = Number(n) || 0;
+    return n ? n.toLocaleString('id-ID') : '';
+  }
+  function onGdvAmountInput(el, idx) {
+    var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
+    editGdvCampaigns[idx].amount = amount;
+    el.value = formatThousands(amount);
+    updateRevenueTotals();
+  }
+  function onServiceRevenueAmountInput(el, key) {
+    var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
+    editServiceRevenueItems[key].amount = amount;
+    el.value = formatThousands(amount);
+    updateRevenueTotals();
   }
 
   function addGdvCampaignRow() {
@@ -1477,7 +1537,7 @@
     var labels = document.getElementById('serviceRevenueRowLabels');
     if (!rows.length) {
       labels.style.display = 'none';
-      container.innerHTML = '<div class="revenue-row-empty">Belum ada service (selain CSR) dipilih di Project Information.</div>';
+      container.innerHTML = '<div class="revenue-row-empty">Belum ada service dipilih di Project Information.</div>';
       return;
     }
     labels.style.display = '';
@@ -1485,8 +1545,8 @@
       var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
       return '<div class="revenue-row">' +
         '<span class="revenue-service-label">' + r.label + '</span>' +
-        '<input type="number" placeholder="0" style="width:140px;" value="' + (entry.amount || '') + '" ' +
-        'oninput="editServiceRevenueItems[\'' + r.key + '\'].amount=Number(this.value)||0; updateRevenueTotals();">' +
+        '<input type="text" inputmode="numeric" placeholder="0" style="width:140px;" value="' + formatThousands(entry.amount) + '" ' +
+        'oninput="onServiceRevenueAmountInput(this, \'' + r.key + '\')">' +
         '<input placeholder="Notes (opsional)" style="width:160px;" value="' + escAttr(entry.notes) + '" ' +
         'oninput="editServiceRevenueItems[\'' + r.key + '\'].notes=this.value">' +
         '</div>';
@@ -1502,6 +1562,7 @@
 
   function submitRevenueBreakdown() {
     if (!currentPipelineDrawerId) return;
+    if (!techfordConfirm('Simpan Revenue Breakdown ini?')) return;
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) return alert(res.error.message);

@@ -29,6 +29,7 @@
       name: document.getElementById('name').value,
       email: document.getElementById('email').value
     };
+    if (!techfordConfirm('Simpan employee baru ini?')) return;
     google.script.run.withSuccessHandler(function (res) {
       if (!res.ok) return showError(res.error.message);
       loadEmployees();

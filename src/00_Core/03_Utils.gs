@@ -17,6 +17,20 @@ var Utils = (function (module) {
   };
 
   /**
+   * Konversi hex color ("#10A8E5") jadi string rgba() dengan alpha tertentu —
+   * dipakai Shell.html untuk highlight chip nav-group-label per modul
+   * (NavigationConfig.MENU[].color), supaya teks tetap kontras di atas
+   * background putih (bukan warna solid penuh yang bisa terlalu terang).
+   */
+  module.hexToRgba = function (hex, alpha) {
+    var clean = String(hex || '').replace('#', '');
+    var r = parseInt(clean.substring(0, 2), 16) || 0;
+    var g = parseInt(clean.substring(2, 4), 16) || 0;
+    var b = parseInt(clean.substring(4, 6), 16) || 0;
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  };
+
+  /**
    * Konversi array-of-arrays hasil Range.getValues() menjadi array of object
    * berdasarkan baris header. Dipakai oleh Repository Layer supaya semua
    * modul bekerja dengan object, bukan index kolom mentah (rawan salah saat
