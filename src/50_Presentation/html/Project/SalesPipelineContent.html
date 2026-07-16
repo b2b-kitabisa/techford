@@ -69,8 +69,8 @@
     </div>
   </div>
 
-  <label class="filter-toggle-chip">
-    <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> 🔁 Retainer
+  <label style="display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:13px;">
+    <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
   </label>
 
   <button class="filter-reset" onclick="resetPipelineFilter()">↺ Reset Filter</button>
@@ -597,8 +597,8 @@
 
     document.getElementById('pipelineAchievedValue').innerText = 'GDV : ' + formatCompactRupiah(achievedGdv) + ' | REV : ' + formatCompactRupiah(achievedRev);
     document.getElementById('pipelineForecastValue').innerText = 'GDV : ' + formatCompactRupiah(forecastGdv) + ' | REV : ' + formatCompactRupiah(forecastRev);
-    document.getElementById('pipelineAchievedTooltip').innerHTML = 'GDV: ' + formatRupiah(achievedGdv) + '<br>REV: ' + formatRupiah(achievedRev) + '<br><strong>Total: ' + formatRupiah(achievedGdv + achievedRev) + '</strong>';
-    document.getElementById('pipelineForecastTooltip').innerHTML = 'GDV: ' + formatRupiah(forecastGdv) + '<br>REV: ' + formatRupiah(forecastRev) + '<br><strong>Total: ' + formatRupiah(forecastGdv + forecastRev) + '</strong>';
+    document.getElementById('pipelineAchievedTooltip').innerHTML = 'GDV: ' + formatRupiah(achievedGdv) + '<br>REV: ' + formatRupiah(achievedRev);
+    document.getElementById('pipelineForecastTooltip').innerHTML = 'GDV: ' + formatRupiah(forecastGdv) + '<br>REV: ' + formatRupiah(forecastRev);
     document.getElementById('pipelineBucketPros').innerText = buckets.PROS;
     document.getElementById('pipelineBucketNego').innerText = buckets.NEGO;
     document.getElementById('pipelineBucketWon').innerText = buckets.WON;

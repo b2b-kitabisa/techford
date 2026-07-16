@@ -915,6 +915,8 @@
   function showClientSuccess(message, pipelineEligibleClientId) {
     document.getElementById('clientSuccessMessage').innerText = message;
     var btn = document.getElementById('clientSuccessGoToPipelineBtn');
+    btn.disabled = false;
+    btn.innerText = '🚀 Buat Project di Sales Pipeline';
     clientSuccessPipelineTargetId = pipelineEligibleClientId || null;
     if (clientSuccessPipelineTargetId) {
       btn.style.display = 'block';
@@ -935,13 +937,24 @@
   // mengisi lewat tombol EDIT pada baris "NEW PIPELINE".
   function createDraftProjectAndGo() {
     if (!clientSuccessPipelineTargetId) return;
+    var btn = document.getElementById('clientSuccessGoToPipelineBtn');
+    if (btn.disabled) return; // cegah dobel klik selama proses berjalan — halaman redirect setelah ini jadi tidak ada momen untuk "restore" tombol
+    btn.disabled = true;
+    btn.innerText = '⏳ Memproses...';
+
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok === false) return alert(res.error.message);
+        if (res && res.ok === false) {
+          btn.disabled = false;
+          btn.innerText = '🚀 Buat Project di Sales Pipeline';
+          return alert(res.error.message);
+        }
         window.location.href = TECHFORD_WEB_APP_URL + '?page=sales-pipeline';
       })
       .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '🚀 Buat Project di Sales Pipeline';
         alert('Gagal membuat draft project: ' + (err && err.message ? err.message : err));
       })
       .project_createDraft(clientSuccessPipelineTargetId, createdBy);

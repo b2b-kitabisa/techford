@@ -19,11 +19,9 @@
       </div>
 
       <nav class="sidebar-nav">
-        <? for (var g = 0; g < menu.length; g++) {
-             var groupColor = menu[g].color || '#6B7280';
-        ?>
+        <? for (var g = 0; g < menu.length; g++) { ?>
           <? if (g > 0) { ?><div class="nav-group-divider"></div><? } ?>
-          <div class="nav-group-label" style="color:<?= groupColor ?>; background:<?= Utils.hexToRgba(groupColor, 0.12) ?>;"><?= menu[g].group ?></div>
+          <div class="nav-group-label"><?= menu[g].group ?></div>
           <? for (var i = 0; i < menu[g].items.length; i++) {
                var item = menu[g].items[i];
                var isActive = item.page === activePage;
