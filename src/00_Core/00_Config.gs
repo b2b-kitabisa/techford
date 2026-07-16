@@ -11,8 +11,14 @@ var Config = (function (module) {
   // Ganti sesuai Spreadsheet database utama platform ini.
   module.SPREADSHEET_ID = '1DXjYDtL6QEqGvBDnQHGMiSqIXX9EHiBOiPmJsyz3tdM';
 
-  // Folder Drive tempat dokumen hasil generate disimpan.
-  module.ROOT_FOLDER_ID = 'GANTI_DENGAN_FOLDER_ID_ANDA';
+  // Folder Shared Drive B2B tempat dokumen hasil generate (COR, dst) disimpan.
+  // Script berjalan sebagai USER_DEPLOYING (lihat appsscript.json) — jadi
+  // file yang dibuat ke sini SELALU lewat identitas admin yang deploy,
+  // bukan identitas consultant yang klik tombol di browser. Karena Shared
+  // Drive pakai izin berbasis membership (bukan per-file), siapa pun yang
+  // jadi member Shared Drive ini otomatis bisa buka file yang dibuat di sini
+  // tanpa perlu share manual.
+  module.ROOT_FOLDER_ID = '116wYHofIduCAFZZzLvkGnQ6VB9eTILI5';
 
   // Nama sheet terpusat — kalau nama tab diganti di Spreadsheet,
   // cukup ubah di sini, tidak perlu grep semua modul.
@@ -26,6 +32,12 @@ var Config = (function (module) {
     PROJECT: 'Project',
     DOCUMENT_PIPELINE: 'Document_Pipeline',
     REVENUE_BREAKDOWN: 'Revenue_Breakdown',
+    COR_ENTITY: 'COR_Entity',
+    COR_HEADER: 'COR_Header',
+    COR_FUND: 'COR_Fund',
+    COR_COST: 'COR_Cost',
+    COR_MARGIN: 'COR_Margin',
+    MARGIN_GUIDE: 'Margin_Guide',
     AUDIT_LOG: 'AuditLog'
   };
 
@@ -200,6 +212,38 @@ var Config = (function (module) {
   // tidak punya category, misal Ads Sponsorship/Placement & Production).
   module.REVENUE_VALUE_TYPE = { GDV: 'GDV', SERVICE: 'SERVICE' };
   module.REVENUE_GDV_SERVICE_KEY = 'CSR';
+
+  // ---- COR Calculator (Cost of Revenue) ----
+  // Direplikasi dari kalkulator COR manual (spreadsheet "Template COR" +
+  // mockup HTML kalkulator) — lihat dokumentasi arsitektur di
+  // CorHeaderRepository. File hasil generate (Google Sheets, dengan rumus
+  // hidup, BUKAN PDF) disalin dari COR_TEMPLATE_FILE_ID ke ROOT_FOLDER_ID.
+  module.COR_TEMPLATE_FILE_ID = '1pUkBIzoH5edriD1VewhunQAHLl5rkwzOLOdGVcxAgAM';
+
+  // Admin pilih SALAH SATU metode per dokumen COR (tidak wajib dua-duanya):
+  // GROSS_DOWN dipakai kalau dana sudah benar masuk (rekonsiliasi aktual),
+  // GROSS_UP dipakai kalau dana belum masuk (estimasi/quote dari cost).
+  module.COR_METHOD = { GROSS_DOWN: 'GROSS_DOWN', GROSS_UP: 'GROSS_UP' };
+
+  // Sumber dana Gross Down — kalau project punya KEDUANYA (Mix Fund) dan
+  // tidak lewat SALSET, sistem menghasilkan 2 file COR terpisah, satu per
+  // Cor_Tab (lihat CorHeaderRepository).
+  module.COR_FUND_TYPE = { CLIENT: 'CLIENT', CAMPAIGN: 'CAMPAIGN' };
+  module.COR_TAB = { CLIENT: 'CLIENT', CAMPAIGN: 'CAMPAIGN' };
+
+  // 2 kelompok baris biaya (Cost SALSET vs Cost Vendor/entity terpilih) —
+  // sama untuk method Gross Down maupun Gross Up.
+  module.COR_COST_GROUP = { SAL: 'SAL', VENDOR: 'VENDOR' };
+
+  // 4 komponen Default Margin — struktur ini tetap (mengikuti Panduan
+  // Margin), tapi daftar sub-kategori & persentase tiap komponen dikelola
+  // admin lewat sheet Margin_Guide (Setting > Master Data), bukan hardcode.
+  module.MARGIN_COMPONENTS = [
+    { key: 'CONS', label: 'Consultancy Service Fee' },
+    { key: 'CRE', label: 'Creative Development' },
+    { key: 'PROG', label: 'Program Implementation and Coordination' },
+    { key: 'IMP', label: 'Impact Measurement and Reporting' }
+  ];
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'

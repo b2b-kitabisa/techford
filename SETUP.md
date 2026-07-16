@@ -26,7 +26,36 @@ Prasyarat: `clasp` terinstall (`npm install -g @google/clasp`) dan sudah login k
    - `Revenue_Breakdown` dengan header baris pertama: `Breakdown_ID | Project_ID | Value_Type | Item_Name | Amount | Notes | Created_By | Created_Date | Last_Updated`. Satu baris = satu item breakdown revenue milik satu Project — sebuah project bisa punya banyak baris. `Value_Type` salah satu dari `Config.REVENUE_VALUE_TYPE`: `GDV` (dihasilkan dari service `CSR`, `Item_Name` = link campaign) atau `SERVICE` (dihasilkan dari service SELAIN CSR, `Item_Name` = nama category yang dipilih, atau nama service itu sendiri untuk service tanpa category seperti Ads Sponsorship/Placement & Production). `Notes` opsional, per baris. Setiap kali tombol SAVE di section Revenue Breakdown (Project Detail) diklik, SEMUA baris lama milik project itu dihapus lalu ditulis ulang dengan baris baru (lihat `ProjectService.updateRevenueBreakdown`/`RevenueBreakdownRepository.replaceForProject`) — jangan diedit manual.
    - `Document_Pipeline` dengan header baris pertama: `Doc_ID | Project_ID | Document_Type | Entity | Status | Stage | Requested_By | Requested_Date | Last_Updated`. Ini sheet untuk modul Document Pipeline. `Document_Type` salah satu dari `Config.DOCUMENT_TYPES` (DECK, QUOTATION, COR, RAB, PRODCOST, PKS, TRANSFER_REQUEST, BAST). `Entity` hanya terisi kalau `Document_Type = QUOTATION` (YKB atau PT KAI — lihat `Config.QUOTATION_ENTITIES`; satu project bisa punya 2 baris Quotation, satu per entitas), kosong untuk tipe lain. `Status` kosakatanya beda-beda per `Document_Type` (lihat `Config.DOCUMENT_STATUS_MAP`), sementara `Stage` selalu salah satu dari 4 nilai universal (`New Request`, `In Progress`, `Client Review`, `Done`) yang diturunkan otomatis dari `Status`. Aturan auto-advance ke `Project.Stage`: DECK/COR/RAB/PRODCOST — salah satu Done -> `Negotiation`; QUOTATION — begitu SEMUA Quotation yang diminta untuk project itu Done -> `Won` (Deal); PKS/TRANSFER_REQUEST/BAST adalah dokumen pasca-Deal yang TIDAK PERNAH memengaruhi Stage. Dokumen hanya bisa diminta lewat box "Document Request" di Project Detail (Sales Pipeline), bukan dari halaman Document Pipeline itu sendiri — lihat `DocumentService.checkAndAdvanceProjectStage`.
    > **Kalau sheet `Client` sudah pernah Anda buat sebelumnya**: tambahkan kolom baru `Other_Notes` (taruh di antara `Created_By` dan `Last_Updated`, atau di mana saja — asal namanya persis `Other_Notes`, urutan kolom tidak masalah karena kode membaca berdasarkan nama header, bukan posisi).
-2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda.
+   - `COR_Entity` dengan header baris pertama: `Entity_ID | Entity_Name | Bank | Is_PKP | Biaya_Pencairan | Created_By | Created_Date`. Ini replika tabel `INDEX` di spreadsheet "Template COR" — daftar entitas/vendor (Salam Setara, PT BAA, dst) beserta bank, status PKP (TRUE/FALSE), dan biaya pencairan tetap (Rupiah). Dipakai dropdown "Via Vendor" di kalkulator COR (menyusul di tahap berikutnya). Isi baris awal sesuai tab INDEX Anda, contoh:
+     ```
+     Entity_ID | Entity_Name  | Bank    | Is_PKP | Biaya_Pencairan
+     ENT-001   | Salam Setara | BSI     | FALSE  | 2500
+     ENT-002   | PT BAA       | MANDIRI | FALSE  | 800
+     ENT-003   | PT ABC       | BCA     | FALSE  | 1200
+     ENT-004   | PT GDV       | BRI     | FALSE  | 900
+     ```
+   - `COR_Header` dengan header baris pertama: `Doc_ID | Cor_Method | Is_Via_Salset | Vendor_Entity | Ngo_Rate | Biaya_Salset | Is_Mix_Fund | Link_Campaigns | Output_File_Id_Client | Output_File_Id_Campaign | Created_By | Created_Date | Last_Updated`. Satu baris per dokumen COR (1:1 dengan `Doc_ID` di `Document_Pipeline`). `Cor_Method` salah satu dari `Config.COR_METHOD` (`GROSS_DOWN` atau `GROSS_UP` — admin pilih satu, tidak wajib dua-duanya). `Link_Campaigns` string JSON array (murni informasi, tidak memengaruhi kalkulasi). `Output_File_Id_Client`/`Output_File_Id_Campaign` diisi otomatis setelah file Sheets di-generate (Campaign hanya terisi kalau `Is_Mix_Fund` true). Kosong untuk sekarang — akan dipakai mulai tahap kalkulator COR.
+   - `COR_Fund` dengan header baris pertama: `Fund_ID | Doc_ID | Fund_Type | Link_Campaign | Nominal | Is_Zakat | Sort_Order`. Baris "Source of Fund" (dana masuk) — hanya relevan untuk `Cor_Method = GROSS_DOWN`. `Fund_Type` salah satu dari `Config.COR_FUND_TYPE` (`CLIENT`/`CAMPAIGN`).
+   - `COR_Cost` dengan header baris pertama: `Cost_ID | Doc_ID | Cor_Tab | Cost_Group | Keterangan | Kategori | Tipe | Harga | Qty | Periode | Sort_Order`. Baris item biaya (tabel Cost SALSET/Cost Vendor), dipakai baik oleh Gross Down maupun Gross Up. `Cor_Tab` (`CLIENT`/`CAMPAIGN`) memisahkan baris kalau dokumen Mix Fund. `Cost_Group` salah satu dari `Config.COR_COST_GROUP` (`SAL`/`VENDOR`).
+   - `COR_Margin` dengan header baris pertama: `Margin_ID | Doc_ID | Cor_Tab | Component | Sub_Category | Percentage`. Snapshot pilihan Default Margin (4 baris per `Cor_Tab`, satu per `Config.MARGIN_COMPONENTS`) pada saat dokumen COR disimpan — `Percentage` disimpan sebagai nilai tetap (bukan referensi ke `Margin_Guide`) supaya dokumen lama tidak berubah kalau `Margin_Guide` direvisi belakangan.
+   - `Margin_Guide` dengan header baris pertama: `Margin_Guide_ID | Component | Sub_Category | Percentage | Sort_Order | Created_By | Created_Date`. Ini replika tabel "Panduan Margin" — dikelola admin lewat Setting > Master Data (section "Margin Guide"). `Component` salah satu dari `Config.MARGIN_COMPONENTS` (`CONS`/`CRE`/`PROG`/`IMP` — struktur komponennya tetap, sub-kategori & %-nya yang bisa admin tambah/hapus). Isi baris awal sesuai tab "Panduan Margin" Anda, contoh:
+     ```
+     Margin_Guide_ID | Component | Sub_Category    | Percentage | Sort_Order
+     MG-001          | CONS      | General         | 10         | 0
+     MG-002          | CRE       | Simple          | 8          | 0
+     MG-003          | CRE       | Medium          | 10         | 1
+     MG-004          | CRE       | High            | 12         | 2
+     MG-005          | PROG      | Low             | 8          | 0
+     MG-006          | PROG      | Medium          | 10         | 1
+     MG-007          | PROG      | High            | 12         | 2
+     MG-008          | IMP       | Low             | 4          | 0
+     MG-009          | IMP       | Med <=6 bln     | 4          | 1
+     MG-010          | IMP       | Med 1 thn       | 5          | 2
+     MG-011          | IMP       | Med >1 thn      | 8          | 3
+     MG-012          | IMP       | High            | 10         | 4
+     ```
+2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda. `ROOT_FOLDER_ID` (folder Shared Drive B2B tempat dokumen hasil generate seperti COR disimpan) dan `COR_TEMPLATE_FILE_ID` (spreadsheet "Template COR") sudah diisi sesuai Shared Drive & template yang Anda berikan — cukup pastikan akun yang menjalankan `clasp login`/yang jadi "Execute as" Web App punya akses tulis ke folder Shared Drive tersebut.
+   > File `appsscript.json` sudah mengaktifkan Advanced Service **Drive API v3** dan **Sheets API v4** (dibutuhkan untuk membuat/mengedit file di Shared Drive) — saat deploy pertama kali setelah ini, Google akan minta otorisasi ulang (scope baru) sekali di browser, itu normal.
 3. Dari dalam folder `src/`, buat project Apps Script yang terikat (bound) ke Spreadsheet tersebut:
    ```
    clasp create --type sheets --title "Techford Platform" --parentId <SPREADSHEET_ID> --rootDir .

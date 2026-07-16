@@ -5,6 +5,13 @@
   </p>
   <div id="masterDataError" class="error"></div>
   <div id="masterDataSections" style="margin-top:8px;"></div>
+
+  <h3 style="margin-top:24px; margin-bottom:4px; font-size:14px;">Margin Guide (Kalkulator COR)</h3>
+  <p style="color: var(--text-muted); font-size:13px;">
+    Daftar sub-kategori &amp; persentase Default Margin yang dipakai kalkulator COR (Consultancy Service Fee, Creative Development, Program Implementation, Impact Measurement). Komponennya tetap, sub-kategori &amp; %-nya bisa Anda kelola di sini.
+  </p>
+  <div id="marginGuideError" class="error"></div>
+  <div id="marginGuideSections" style="margin-top:8px;"></div>
 </div>
 
 <script>
@@ -16,6 +23,15 @@
   ];
   var allMasterData = [];
   var openMasterDataCategories = {}; // key -> bool, dipertahankan lintas render ulang
+
+  var MARGIN_COMPONENTS = [
+    { key: 'CONS', label: 'Consultancy Service Fee' },
+    { key: 'CRE', label: 'Creative Development' },
+    { key: 'PROG', label: 'Program Implementation and Coordination' },
+    { key: 'IMP', label: 'Impact Measurement and Reporting' }
+  ];
+  var allMarginGuides = [];
+  var openMarginComponents = {};
 
   // ---- Bootstrap dengan retry otomatis ----
   // Jembatan google.script.run kadang belum sepenuhnya siap tepat saat
@@ -30,6 +46,7 @@
   function bootstrapMasterData() {
     masterDataBootstrapAttempts++;
     fetchMasterData();
+    fetchMarginGuides();
     setTimeout(function () {
       if (allMasterData.length || masterDataBootstrapDone) return;
       if (masterDataBootstrapAttempts < MASTER_DATA_MAX_ATTEMPTS) {
@@ -109,5 +126,87 @@
         alert('Gagal menambah opsi: ' + (err && err.message ? err.message : err));
       })
       .masterdata_addOption(category, value);
+  }
+
+  // ---- Margin Guide (kalkulator COR) ----
+  function fetchMarginGuides() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        document.getElementById('marginGuideError').innerText = '';
+        allMarginGuides = res.data;
+        renderMarginGuideSections();
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('marginGuideError').innerText = 'Gagal memuat Margin Guide: ' + (err && err.message ? err.message : err);
+      })
+      .marginguide_getAll();
+  }
+
+  function renderMarginGuideSections() {
+    var container = document.getElementById('marginGuideSections');
+    container.innerHTML = MARGIN_COMPONENTS.map(function (comp) {
+      var rows = allMarginGuides.filter(function (r) { return r.Component === comp.key; });
+      var listHtml = rows.length
+        ? rows.map(function (r) {
+            return '<span class="badge badge-contacted" style="margin:2px; display:inline-flex; align-items:center; gap:6px;">' +
+              r.Sub_Category + ' — ' + r.Percentage + '%' +
+              '<button type="button" onclick="removeMarginGuide(\'' + r.Margin_Guide_ID + '\')" style="background:none;border:none;cursor:pointer;color:inherit;font-weight:700;padding:0;" title="Hapus">×</button>' +
+              '</span>';
+          }).join(' ')
+        : '<span style="color: var(--text-faint); font-size:12px;">Belum ada sub-kategori.</span>';
+
+      return '<details class="master-data-section" data-component="' + comp.key + '">' +
+        '<summary>' + comp.label + ' <span style="color: var(--text-faint); font-weight:normal;">(' + rows.length + ')</span></summary>' +
+        '<div style="margin:10px 0;">' + listHtml + '</div>' +
+        '<div style="display:flex; gap:8px;">' +
+          '<input id="newMgSub_' + comp.key + '" placeholder="Nama sub-kategori (misal Medium)..." style="flex:1;">' +
+          '<input id="newMgPct_' + comp.key + '" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:80px;">' +
+          '<button class="btn-outline" onclick="submitAddMarginGuide(\'' + comp.key + '\')">+ Tambah</button>' +
+        '</div>' +
+        '</details>';
+    }).join('');
+
+    Array.prototype.forEach.call(container.querySelectorAll('details.master-data-section'), function (details) {
+      var key = details.getAttribute('data-component');
+      if (openMarginComponents[key]) details.setAttribute('open', '');
+      details.addEventListener('toggle', function () {
+        openMarginComponents[key] = details.open;
+      });
+    });
+  }
+
+  function submitAddMarginGuide(component) {
+    var subInput = document.getElementById('newMgSub_' + component);
+    var pctInput = document.getElementById('newMgPct_' + component);
+    var subCategory = subInput.value.trim();
+    var percentage = pctInput.value;
+    if (!subCategory || percentage === '') { alert('Sub-kategori dan persentase wajib diisi.'); return; }
+    if (!techfordConfirm('Tambah sub-kategori "' + subCategory + '" (' + percentage + '%) ke Margin Guide?')) return;
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        openMarginComponents[component] = true;
+        fetchMarginGuides();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menambah Margin Guide: ' + (err && err.message ? err.message : err));
+      })
+      .marginguide_add(component, subCategory, Number(percentage), createdBy);
+  }
+
+  function removeMarginGuide(marginGuideId) {
+    if (!techfordConfirm('Hapus sub-kategori ini dari Margin Guide?')) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchMarginGuides();
+      })
+      .withFailureHandler(function (err) {
+        alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
+      })
+      .marginguide_remove(marginGuideId);
   }
 </script>
