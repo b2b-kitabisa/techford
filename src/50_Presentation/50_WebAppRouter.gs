@@ -47,6 +47,15 @@ var ROUTES = {
     // bukan dari halaman ini.
     headerActions: ''
   },
+  'cor-calculator': {
+    content: '50_Presentation/html/Document/CorCalculatorContent',
+    title: 'COR Calculator 🧮',
+    // SENGAJA TIDAK didaftarkan di NavigationConfig.MENU — halaman ini
+    // full-page (bukan drawer) tapi hanya bisa diakses lewat tombol
+    // "Kerjakan COR" di drawer Document Pipeline (butuh ?docId=... di URL),
+    // bukan navigasi sidebar biasa.
+    headerActions: ''
+  },
   'configure-account': {
     content: '50_Presentation/html/Setting/ConfigureAccountContent',
     title: 'Configure Account',
@@ -67,7 +76,13 @@ function doGet(e) {
     return HtmlService.createHtmlOutput('Halaman tidak ditemukan: ' + page);
   }
 
-  var contentHtml = HtmlService.createTemplateFromFile(route.content).evaluate().getContent();
+  // queryParams diteruskan ke template content — dipakai halaman yang butuh
+  // parameter URL (misal cor-calculator butuh ?docId=...). Halaman yang
+  // tidak pakai scriptlet <?= queryParams... ?> tidak terpengaruh sama
+  // sekali (aman ditambahkan tanpa menyentuh page lain).
+  var contentTemplate = HtmlService.createTemplateFromFile(route.content);
+  contentTemplate.queryParams = (e && e.parameter) || {};
+  var contentHtml = contentTemplate.evaluate().getContent();
 
   var shell = HtmlService.createTemplateFromFile('50_Presentation/html/Layout/Shell');
   shell.content = contentHtml;

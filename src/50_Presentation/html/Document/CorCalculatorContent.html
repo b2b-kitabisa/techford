@@ -1,0 +1,1073 @@
+<script>var CALCULATOR_DOC_ID = '<?= queryParams.docId || "" ?>';</script>
+
+<style>
+  .cor-page { max-width: 1400px; }
+  .cor-back { font-size: 12px; color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 8px; }
+  .cor-back:hover { color: var(--color-cerulean); }
+  .cor-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .cor-docinfo h2 { margin: 0 0 2px; font-size: 18px; }
+  .cor-docinfo .sub { font-size: 12px; color: var(--text-muted); }
+
+  .cor-mtabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
+  .cor-mtab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
+  .cor-mtab.on { background: var(--color-cerulean); color: var(--color-white); }
+
+  .cor-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .cor-grid { grid-template-columns: 1fr; } }
+
+  .cor-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
+  .cor-box-hd .sub { font-weight: 400; color: var(--text-faint); font-size: 11px; margin-left: 4px; }
+
+  .cor-route-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--bg-tint); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+  .cor-route-bar select { max-width: 220px; }
+
+  .cor-type-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .cor-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: var(--accent-tint); color: var(--color-cerulean); }
+  .cor-pph-pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+  .cor-pph-on { background: #fce8e6; color: #c5221f; }
+  .cor-pph-off { background: var(--bg-hover); color: var(--text-faint); }
+  .cor-mix-tabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-left: auto; }
+  .cor-mix-tab { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
+  .cor-mix-tab.on { background: var(--color-cerulean); color: var(--color-white); }
+
+  .cor-fund-row { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg-tint); }
+  .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 130px 70px 28px; gap: 8px; align-items: center; }
+  .cor-fund-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
+
+  .cor-hi { border-radius: 8px; padding: 8px 10px; }
+  .cor-hi-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; }
+  .cor-hi-value { font-family: monospace; font-size: 14px; font-weight: 700; }
+
+  .cor-ct-wrap { overflow-x: auto; }
+  .cor-ct-tbl { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 12px; }
+  .cor-ct-tbl th { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; padding: 5px; text-align: right; border-bottom: 1px solid var(--border-soft); background: var(--bg-tint); white-space: nowrap; }
+  .cor-ct-tbl th:first-child { text-align: left; }
+  .cor-ct-tbl td { padding: 4px; border-bottom: 1px solid var(--border-softer); vertical-align: middle; }
+  .cor-ct-tbl td input, .cor-ct-tbl td select { font-size: 11px; }
+  .cor-cv { font-family: monospace; font-size: 11px; text-align: right; display: block; padding: 3px 6px; border-radius: 4px; background: var(--bg-tint); }
+  .cor-cv.pph { background: #fdf3e0; color: #7a4a00; }
+  .cor-ct-total td { background: var(--bg-tint); border-top: 1px solid var(--border-soft); font-weight: 700; }
+
+  .cor-margin-row { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; }
+  .cor-margin-hd { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; margin-bottom: 4px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
+
+  .cor-saldo { border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; border: 1px solid; }
+  .cor-saldo-pos { background: #e6f4ea; border-color: #a8cebc; }
+  .cor-saldo-neg { background: #fce8e6; border-color: #f09595; }
+
+  .cor-step { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; font-size: 12px; background: var(--bg-tint); }
+  .cor-step.result { background: #e6f4ea; font-weight: 700; }
+  .cor-step-val { font-family: monospace; font-weight: 700; }
+
+  .cor-rbox { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: sticky; top: 8px; }
+  .cor-rbox-hd { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-softer); }
+  .cor-rrow { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border-softer); }
+  .cor-rrow:last-child { border-bottom: none; }
+  .cor-rrow .v { font-family: monospace; font-weight: 700; }
+
+  .cor-btn-del { padding: 2px 7px; border-radius: 5px; cursor: pointer; border: 1px solid var(--border-soft); background: transparent; color: var(--text-faint); font-size: 12px; }
+  .cor-btn-del:hover { color: #c5221f; border-color: #f09595; }
+</style>
+
+<div class="cor-page">
+  <a class="cor-back" href="#" onclick="goBackToDocumentPipeline();return false;">&larr; Kembali ke Document Pipeline</a>
+  <div class="cor-docinfo">
+    <div>
+      <h2 id="corDocIdDisplay">COR Calculator</h2>
+      <div class="sub" id="corDocSubDisplay">Memuat data dokumen...</div>
+    </div>
+    <button class="btn-save" onclick="submitSaveDraft()">💾 Simpan Draft</button>
+  </div>
+
+  <div class="cor-mtabs">
+    <button class="cor-mtab on" id="corTabGD" onclick="setCorMethod('GROSS_DOWN')">Gross Down</button>
+    <button class="cor-mtab" id="corTabGU" onclick="setCorMethod('GROSS_UP')">Gross Up</button>
+  </div>
+
+  <div class="cor-route-bar">
+    <label class="switch-wrap">Via SALSET
+      <span class="switch"><input type="checkbox" id="corViaSalset" onchange="onRouteChange()"><span class="switch-slider"></span></span>
+    </label>
+    <span style="color:var(--text-faint);">&rarr;</span>
+    <div>
+      <span style="font-size:11px; color:var(--text-muted); margin-right:6px;">Via Vendor</span>
+      <select id="corVendorSelect" onchange="onRouteChange()"></select>
+    </div>
+    <div style="margin-left:auto; font-size:12px; color:var(--text-muted);">
+      Bank aktif: <strong id="corActiveBankChip">-</strong>
+    </div>
+  </div>
+
+  <div class="cor-type-bar">
+    <span class="cor-badge" id="corTypeBadge">COR Normal</span>
+    <span class="cor-pph-pill cor-pph-on" id="corPphPill">PPh berlaku</span>
+    <div class="cor-mix-tabs" id="corMixTabs" style="display:none;">
+      <button class="cor-mix-tab on" id="corMixTabClient" onclick="setCorTab('CLIENT')">COR Dana Client</button>
+      <button class="cor-mix-tab" id="corMixTabCampaign" onclick="setCorTab('CAMPAIGN')">COR Dana Campaign</button>
+    </div>
+  </div>
+
+  <div class="cor-grid">
+    <div>
+      <!-- ══════════ GROSS DOWN VIEW ══════════ -->
+      <div id="corGdView">
+
+        <div class="cor-box">
+          <div class="cor-box-hd">1. Source of Fund</div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:11px; font-weight:700; color:var(--color-cerulean); text-transform:uppercase;">Dana Client</span>
+            <span style="font-size:11px;">Subtotal: <strong id="corSubClient">Rp0</strong></span>
+          </div>
+          <div id="corClientFundRows"></div>
+          <button class="btn-outline" onclick="addFundRow('CLIENT')" id="corAddClientFundBtn">+ Dana Client</button>
+
+          <div style="height:1px; background:var(--border-softer); margin:12px 0;"></div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:11px; font-weight:700; color:#188038; text-transform:uppercase;">Dana Campaign <span style="font-weight:400; color:var(--text-faint);">(NDV — sudah dipotong platform &amp; tech fee)</span></span>
+            <span style="font-size:11px;">Subtotal: <strong id="corSubCampaign">Rp0</strong></span>
+          </div>
+          <div id="corCampaignFundRows"></div>
+          <button class="btn-outline" onclick="addFundRow('CAMPAIGN')" id="corAddCampaignFundBtn">+ Dana Campaign</button>
+
+          <div style="height:1px; background:var(--border-softer); margin:12px 0;"></div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="font-size:12px; color:var(--text-muted);">Total dana masuk ke rekening tujuan</span>
+            <strong id="corTotalMasuk" style="font-family:monospace;">Rp0</strong>
+          </div>
+        </div>
+
+        <div class="cor-box" id="corBoxImpl" style="display:none;">
+          <div class="cor-box-hd">2. Implementation Fund <span class="sub">(via SALSET)</span></div>
+          <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div>
+              <div class="drawer-field-label">SALSET cash in (gross)</div>
+              <div class="cor-hi" style="background:var(--accent-tint);"><span class="cor-hi-value" id="corSalsetGross">Rp0</span></div>
+            </div>
+            <div>
+              <div class="drawer-field-label">NGO fee rate SALSET</div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <input type="number" id="corNgoRate" value="10" min="0" max="100" step="0.5" oninput="onNgoRateChange()" style="width:70px;">
+                <span style="font-size:12px;">%</span>
+              </div>
+              <div style="font-size:11px; color:#188038; margin-top:4px;">Fee: <span id="corSalsetFee">Rp0</span></div>
+            </div>
+            <div>
+              <div class="drawer-field-label">Sisa dana setelah NGO fee</div>
+              <div class="cor-hi" style="background:#e6f4ea;"><span class="cor-hi-value" id="corSisaDana" style="color:#188038;">Rp0</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd">3. Fund Detail</div>
+          <div id="corBiayaSalsetWrap" style="display:none; margin-bottom:10px;">
+            <div class="drawer-field-label">Biaya pengeluaran SALSET <span style="font-weight:400; color:#188038;">(input manual)</span></div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px;">Rp</span>
+              <input type="number" id="corBiayaSalset" value="0" oninput="onBiayaSalsetChange()" style="max-width:200px;">
+            </div>
+          </div>
+          <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div>
+              <div class="drawer-field-label">Cash in <span id="corVl1">vendor</span> (gross)</div>
+              <div class="cor-hi" style="background:var(--accent-tint);"><span class="cor-hi-value" id="corCashGross">Rp0</span></div>
+            </div>
+            <div>
+              <div class="drawer-field-label">PPN gross down <span id="corPkpNote" style="font-weight:400; color:var(--text-faint);">(not PKP)</span></div>
+              <div class="cor-hi" style="background:var(--bg-tint);"><span id="corPpnGd" style="font-family:monospace;">Rp0</span></div>
+            </div>
+            <div>
+              <div class="drawer-field-label">Cash in <span id="corVl2">vendor</span> (net)</div>
+              <div class="cor-hi" style="background:#e6f4ea;"><span class="cor-hi-value" id="corCashNet" style="color:#188038;">Rp0</span></div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">PPh 23 (2%): <strong id="corPph23" style="color:#c5221f;">Rp0</strong></div>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd">4. Default Margin</div>
+          <div class="cor-margin-hd">
+            <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
+          </div>
+          <div id="corGdMarginRows"></div>
+          <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:12px; color:var(--text-muted);">Total margin</span>
+            <strong id="corGdTotalMarginPct">0%</strong>
+          </div>
+          <div class="form-grid-2col">
+            <div class="cor-hi" style="background:var(--accent-tint-strong);">
+              <div class="cor-hi-label">Profit (margin)</div>
+              <div class="cor-hi-value" id="corProfitFd" style="color:var(--color-cerulean);">Rp0</div>
+            </div>
+            <div class="cor-hi" style="background:#fdf3e0;">
+              <div class="cor-hi-label">Available cost <span id="corVl3">vendor</span></div>
+              <div class="cor-hi-value" id="corAvailCost" style="color:#7a4a00;">Rp0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cor-box" id="corBoxCostSal" style="display:none;">
+          <div class="cor-box-hd">5. Biaya Pengeluaran SALSET <span class="sub">Budget: <strong id="corBudSal">Rp0</strong></span></div>
+          <div class="cor-ct-wrap">
+            <table class="cor-ct-tbl">
+              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <tbody id="corGdSalCostRows"></tbody>
+              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran SALSET</td><td><span class="cor-cv" id="corGdSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdSalTotal">Rp0</span></td><td></td></tr></tfoot>
+            </table>
+          </div>
+          <button class="btn-outline" onclick="addCostRow('GROSS_DOWN','SAL')" style="margin-top:8px;">+ Tambah item</button>
+          <div id="corGdSalSaldo"></div>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd"><span id="corGdVendorBoxNum">5</span>. Biaya Pengeluaran <span id="corVl4">Vendor</span> <span class="sub">Budget: <strong id="corBudVendor">Rp0</strong></span></div>
+          <div class="cor-ct-wrap">
+            <table class="cor-ct-tbl">
+              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <tbody id="corGdVendorCostRows"></tbody>
+              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran <span id="corVl5">Vendor</span></td><td><span class="cor-cv" id="corGdVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdVendorTotal">Rp0</span></td><td></td></tr></tfoot>
+            </table>
+          </div>
+          <button class="btn-outline" onclick="addCostRow('GROSS_DOWN','VENDOR')" style="margin-top:8px;">+ Tambah item</button>
+          <div id="corGdVendorSaldo"></div>
+        </div>
+
+      </div><!-- end corGdView -->
+
+      <!-- ══════════ GROSS UP VIEW ══════════ -->
+      <div id="corGuView" style="display:none;">
+
+        <div class="cor-box" id="corGuBoxSal" style="display:none;">
+          <div class="cor-box-hd">1. Cost SALSET</div>
+          <div class="cor-ct-wrap">
+            <table class="cor-ct-tbl">
+              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <tbody id="corGuSalCostRows"></tbody>
+              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost SALSET</td><td><span class="cor-cv" id="corGuSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuSalTotal">Rp0</span></td><td></td></tr></tfoot>
+            </table>
+          </div>
+          <button class="btn-outline" onclick="addCostRow('GROSS_UP','SAL')" style="margin-top:8px;">+ Tambah item</button>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd"><span id="corGuVendorBoxNum">1</span>. Cost <span id="corVlGu1">Vendor</span></div>
+          <div class="cor-ct-wrap">
+            <table class="cor-ct-tbl">
+              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <tbody id="corGuVendorCostRows"></tbody>
+              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost <span id="corVlGu2">Vendor</span></td><td><span class="cor-cv" id="corGuVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuVendorTotal">Rp0</span></td><td></td></tr></tfoot>
+            </table>
+          </div>
+          <button class="btn-outline" onclick="addCostRow('GROSS_UP','VENDOR')" style="margin-top:8px;">+ Tambah item</button>
+        </div>
+
+        <div class="form-grid-2col">
+          <div class="cor-box" id="corGuBoxSalsum" style="display:none;">
+            <div class="cor-box-hd">SALSET Gross Up</div>
+            <div class="drawer-field-label">Total cost SALSET</div>
+            <div class="cor-hi" style="background:var(--accent-tint); margin-bottom:8px;"><span class="cor-hi-value" id="corGuSalsetIn">Rp0</span></div>
+            <div class="drawer-field-label">NGO fee rate <span style="font-weight:400; color:#188038;">(linked ke Gross Down)</span></div>
+            <input type="number" id="corGuNgoRateDisplay" value="10" readonly style="width:80px;">
+            <div class="cor-hi" style="background:#e6f4ea; margin-top:8px;"><span class="cor-hi-value" id="corGuSalsetGrossup" style="color:#188038;">Rp0</span></div>
+          </div>
+          <div class="cor-box">
+            <div class="cor-box-hd">Default Margin <span class="sub">estimasi — independen dari Gross Down</span></div>
+            <div class="cor-margin-hd">
+              <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
+            </div>
+            <div id="corGuMarginRows"></div>
+            <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
+            <div style="display:flex; justify-content:space-between;">
+              <span style="font-size:12px; color:var(--text-muted);">Total margin</span>
+              <strong id="corGuTotalMarginPct">0%</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd">Gross Up Calculation</div>
+          <div class="cor-step" id="corGuSalStep" style="display:none;"><span>SALSET gross up</span><span class="cor-step-val" id="corGuStSalgu">Rp0</span></div>
+          <div class="cor-step"><span>Amount — total cost <span id="corVlGu3">Vendor</span></span><span class="cor-step-val" id="corGuStAmt">Rp0</span></div>
+          <div class="cor-step"><span>Gross up margin (&divide; 1 &minus; margin%)</span><span class="cor-step-val" id="corGuStMgn">Rp0</span></div>
+          <div class="cor-step"><span>Gross up PPh 23 (&divide; 98%)</span><span class="cor-step-val" id="corGuStPph">Rp0</span></div>
+          <div class="cor-step" id="corGuNgoStep" style="display:none;"><span>Gross up NGO fee vendor (&divide; 1 &minus; NGO rate)</span><span class="cor-step-val" id="corGuStBaa">Rp0</span></div>
+          <div class="cor-step result"><span>Total hasil gross up</span><span class="cor-step-val" id="corGuStTotal">Rp0</span></div>
+        </div>
+
+        <div class="cor-box">
+          <div class="cor-box-hd">Admin Pencairan</div>
+          <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom:10px;">
+            <div>
+              <div class="drawer-field-label">Bank aktif (auto)</div>
+              <strong id="corGuBankLabel">-</strong>
+            </div>
+            <div>
+              <div class="drawer-field-label">Rate / pencairan</div>
+              <span id="corGuBankRate" style="font-family:monospace;">Rp0</span>
+            </div>
+            <div>
+              <div class="drawer-field-label">Biaya admin</div>
+              <strong id="corGuAdminTotal" style="color:#c5221f;">Rp0</strong>
+              <div style="font-size:9px; color:var(--text-faint);" id="corGuAdminFormula">ceil(total &divide; 200jt) &times; rate</div>
+            </div>
+          </div>
+          <div style="background:var(--bg-tint); border-radius:8px; padding:8px 10px; margin-bottom:10px;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-muted);">Link campaign <span style="font-weight:400; color:var(--text-faint);">(opsional — hanya informasi, tidak memengaruhi kalkulasi)</span></div>
+            <div id="corLinkCampaignRows" style="margin-top:6px;"></div>
+            <button class="btn-outline" onclick="addLinkCampaignRow()" style="margin-top:4px;">+ Tambah link</button>
+          </div>
+          <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
+          <div class="cor-step" style="background:var(--accent-tint);">
+            <span style="color:var(--color-cerulean); font-weight:700;">Gross up platform &amp; tech fee (&divide; 94%)</span>
+            <span class="cor-step-val" id="corGuStFinal" style="color:var(--color-cerulean);">Rp0</span>
+          </div>
+        </div>
+
+      </div><!-- end corGuView -->
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div>
+      <div id="corRpGd">
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">Alur Dana</div>
+          <div class="cor-rrow"><span>Total masuk</span><span class="v" id="corRrTotalMasuk">Rp0</span></div>
+          <div class="cor-rrow" id="corRrSalRow" style="display:none;"><span>SALSET cash in</span><span class="v" id="corRrSalsetGross">Rp0</span></div>
+          <div class="cor-rrow" id="corRrSalFeeRow" style="display:none;"><span>SALSET fee (NGO)</span><span class="v" id="corRrSalsetFee">Rp0</span></div>
+          <div class="cor-rrow" id="corRrBsalRow" style="display:none;"><span>Biaya pengeluaran SAL</span><span class="v" id="corRrBiayaSal">Rp0</span></div>
+          <div class="cor-rrow"><span>Cash in <span id="corRrVl">vendor</span> (gross)</span><span class="v" id="corRrCashGross">Rp0</span></div>
+          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
+          <div class="cor-rrow"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
+        </div>
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">Margin</div>
+          <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
+          <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
+          <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
+        </div>
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">Profit Margin</div>
+          <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
+          <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
+          <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
+          <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
+        </div>
+      </div>
+      <div id="corRpGu" style="display:none;">
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">Gross Up Chain</div>
+          <div class="cor-rrow" id="corRrGuSalRow" style="display:none;"><span>SALSET gross up</span><span class="v" id="corRrGuSal">Rp0</span></div>
+          <div class="cor-rrow"><span>Amount (cost vendor)</span><span class="v" id="corRrGuAmt">Rp0</span></div>
+          <div class="cor-rrow"><span>Gross up margin</span><span class="v" id="corRrGuMgn">Rp0</span></div>
+          <div class="cor-rrow"><span>Gross up PPh</span><span class="v" id="corRrGuPph">Rp0</span></div>
+          <div class="cor-rrow"><span>Total hasil gross up</span><span class="v" id="corRrGuTotal">Rp0</span></div>
+          <div class="cor-rrow"><span>Biaya admin</span><span class="v" id="corRrGuAdm">Rp0</span></div>
+          <div class="cor-rrow"><span>Gross up platform &amp; tech</span><span class="v" id="corRrGuFinal">Rp0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ══════════════════════════ STATE ══════════════════════════
+  var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {} };
+  var currentDoc = null;
+  var allCorProjects = [];
+  var allCorClients = [];
+  var corDraftLoaded = false;
+
+  var currentMethod = 'GROSS_DOWN';
+  var isViaSalset = false;
+  var vendorEntity = '';
+  var ngoRate = 10;
+  var activeCorTab = 'CLIENT';
+  var linkCampaigns = [''];
+  var seq = 1;
+  function nextIdx() { return seq++; }
+
+  function emptyMarginState() {
+    var m = {};
+    (corTaxonomy.marginComponents || []).forEach(function (c) {
+      var guideRows = corTaxonomy.marginGuide
+        .filter(function (g) { return g.Component === c.key; })
+        .sort(function (a, b) { return (Number(a.Sort_Order) || 0) - (Number(b.Sort_Order) || 0); });
+      var first = guideRows[0];
+      m[c.key] = { subCategory: first ? first.Sub_Category : '', percentage: first ? Number(first.Percentage) : 0 };
+    });
+    return m;
+  }
+
+  var funds = []; // {idx, type:'CLIENT'|'CAMPAIGN', nominal, isZakat, linkCampaign}
+  var corState = {
+    CLIENT: { salItems: [], baaItems: [], biayaSalset: 0, margin: {} },
+    CAMPAIGN: { salItems: [], baaItems: [], biayaSalset: 0, margin: {} }
+  };
+  var guState = { salItems: [], baaItems: [], margin: {} };
+
+  // ══════════════════════════ BOOTSTRAP ══════════════════════════
+  function goBackToDocumentPipeline() {
+    window.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+  }
+
+  var corBootstrapAttempts = 0;
+  var corBootstrapDone = false;
+  var COR_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var COR_BOOTSTRAP_RETRY_MS = 1500;
+
+  function bootstrapCor() {
+    corBootstrapAttempts++;
+    fetchCorTaxonomy();
+    fetchCorDraft();
+    fetchCorProjectsClients();
+    setTimeout(function () {
+      if (corDraftLoaded || corBootstrapDone) return;
+      if (corBootstrapAttempts < COR_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapCor();
+      } else {
+        corBootstrapDone = true;
+      }
+    }, COR_BOOTSTRAP_RETRY_MS);
+  }
+  if (document.readyState === 'complete') {
+    bootstrapCor();
+  } else {
+    window.addEventListener('load', bootstrapCor);
+  }
+
+  function fetchCorProjectsClients() {
+    google.script.run.withSuccessHandler(function (res) {
+      if (res && res.ok) { allCorProjects = res.data; renderDocInfo(); }
+    }).withFailureHandler(function () {}).project_getAll();
+    google.script.run.withSuccessHandler(function (res) {
+      if (res && res.ok) { allCorClients = res.data; renderDocInfo(); }
+    }).withFailureHandler(function () {}).client_getAll();
+  }
+
+  function renderDocInfo() {
+    if (!currentDoc) return;
+    var project = allCorProjects.filter(function (p) { return p.Project_ID === currentDoc.Project_ID; })[0] || {};
+    var client = allCorClients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] || {};
+    document.getElementById('corDocIdDisplay').innerText = 'COR — ' + currentDoc.Doc_ID;
+    document.getElementById('corDocSubDisplay').innerText =
+      (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-');
+  }
+
+  function fetchCorTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        corTaxonomy = res.data;
+        populateVendorSelect();
+        if (corDraftLoaded) { initDefaultsIfEmpty(); renderAll(); }
+      })
+      .withFailureHandler(function () {})
+      .cor_getTaxonomy();
+  }
+
+  function fetchCorDraft() {
+    if (!CALCULATOR_DOC_ID) {
+      document.getElementById('corDocSubDisplay').innerText = 'Doc ID tidak ditemukan di URL.';
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        corBootstrapDone = true;
+        if (!res || !res.ok) {
+          document.getElementById('corDocSubDisplay').innerText = (res && res.error && res.error.message) || 'Gagal memuat dokumen.';
+          return;
+        }
+        corDraftLoaded = true;
+        loadDraftIntoState(res.data);
+        renderDocInfo();
+        renderAll();
+      })
+      .withFailureHandler(function (err) {
+        corBootstrapDone = true;
+        document.getElementById('corDocSubDisplay').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+      })
+      .cor_getDraft(CALCULATOR_DOC_ID);
+  }
+
+  function populateVendorSelect() {
+    var sel = document.getElementById('corVendorSelect');
+    var entities = corTaxonomy.entities || [];
+    sel.innerHTML = entities.map(function (e) {
+      return '<option value="' + e.Entity_Name + '">' + e.Entity_Name + ' &middot; ' + e.Bank + '</option>';
+    }).join('');
+    if (vendorEntity) sel.value = vendorEntity;
+    else if (entities.length) vendorEntity = sel.value;
+  }
+
+  function loadDraftIntoState(draft) {
+    currentDoc = draft.doc;
+
+    if (draft.header) {
+      currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';
+      isViaSalset = !!draft.header.Is_Via_Salset;
+      vendorEntity = draft.header.Vendor_Entity || '';
+      ngoRate = Number(draft.header.Ngo_Rate) || 10;
+      corState.CLIENT.biayaSalset = Number(draft.header.Biaya_Salset) || 0;
+      linkCampaigns = draft.header.Link_Campaigns && draft.header.Link_Campaigns.length ? draft.header.Link_Campaigns : [''];
+    }
+
+    funds = (draft.funds || []).map(function (f) {
+      return { idx: nextIdx(), type: f.Fund_Type, nominal: Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '' };
+    });
+
+    var gdCosts = (draft.costs || []);
+    ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
+      corState[tab].salItems = gdCosts.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'SAL'; }).map(costRowFromServer);
+      corState[tab].baaItems = gdCosts.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'VENDOR'; }).map(costRowFromServer);
+    });
+    if (currentMethod === 'GROSS_UP') {
+      guState.salItems = gdCosts.filter(function (c) { return c.Cost_Group === 'SAL'; }).map(costRowFromServer);
+      guState.baaItems = gdCosts.filter(function (c) { return c.Cost_Group === 'VENDOR'; }).map(costRowFromServer);
+    }
+
+    var margins = (draft.margins || []);
+    ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
+      var m = {};
+      margins.filter(function (r) { return r.Cor_Tab === tab; }).forEach(function (r) {
+        m[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 };
+      });
+      if (Object.keys(m).length) corState[tab].margin = m;
+    });
+    if (currentMethod === 'GROSS_UP') {
+      var gm = {};
+      margins.forEach(function (r) { gm[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 }; });
+      if (Object.keys(gm).length) guState.margin = gm;
+    }
+
+    initDefaultsIfEmpty();
+  }
+
+  function costRowFromServer(c) {
+    return { idx: nextIdx(), ket: c.Keterangan || '', kat: c.Kategori || 'Barang', tipe: c.Tipe || '', h: Number(c.Harga) || 0, q: Number(c.Qty) || 1, p: Number(c.Periode) || 1 };
+  }
+
+  function initDefaultsIfEmpty() {
+    if (!corTaxonomy.marginComponents || !corTaxonomy.marginComponents.length) return;
+    ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
+      if (!corState[tab].margin || !Object.keys(corState[tab].margin).length) corState[tab].margin = emptyMarginState();
+      if (!corState[tab].salItems.length) corState[tab].salItems = [];
+      if (!corState[tab].baaItems.length) corState[tab].baaItems = [];
+    });
+    if (!guState.margin || !Object.keys(guState.margin).length) guState.margin = emptyMarginState();
+    if (!vendorEntity && corTaxonomy.entities && corTaxonomy.entities.length) vendorEntity = corTaxonomy.entities[0].Entity_Name;
+    document.getElementById('corViaSalset').checked = isViaSalset;
+    document.getElementById('corNgoRate').value = ngoRate;
+    document.getElementById('corGuNgoRateDisplay').value = ngoRate;
+    document.getElementById('corBiayaSalset').value = corState.CLIENT.biayaSalset;
+    populateVendorSelect();
+    setCorMethod(currentMethod, true);
+  }
+
+  // ══════════════════════════ HELPERS ══════════════════════════
+  function ri(n) { return isNaN(n) || !isFinite(n) ? 0 : Math.round(n); }
+  function fmtRp(n) { return 'Rp' + ri(n).toLocaleString('id-ID'); }
+  function esc(str) { return String(str || '').replace(/"/g, '&quot;'); }
+  var KATS = ['Barang', 'Jasa', 'Operasional', 'Uang Saku'];
+
+  function getEntityByName(name) {
+    return (corTaxonomy.entities || []).filter(function (e) { return e.Entity_Name === name; })[0] || null;
+  }
+  // Entitas SALSET diidentifikasi dari nama "Salam Setara" (sesuai seed data
+  // di SETUP.md) — kalau nama baris itu diubah admin di COR_Entity, routing
+  // "Via SALSET" perlu disesuaikan juga.
+  function getSalsetEntity() {
+    return getEntityByName('Salam Setara') || { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
+  }
+  function getActiveEntity() {
+    return isViaSalset ? getSalsetEntity() : (getEntityByName(vendorEntity) || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+  }
+  function getPKP() {
+    var e = getEntityByName(vendorEntity);
+    return e ? !!e.Is_PKP : false;
+  }
+  function detectMixFund() {
+    if (isViaSalset) return false;
+    return funds.some(function (f) { return f.type === 'CLIENT'; }) && funds.some(function (f) { return f.type === 'CAMPAIGN'; });
+  }
+  function getActiveCor() { return detectMixFund() ? corState[activeCorTab] : corState.CLIENT; }
+  function usePPh() {
+    if (isViaSalset) return true;
+    var isMix = detectMixFund();
+    if (isMix) return activeCorTab === 'CLIENT';
+    return funds.some(function (f) { return f.type === 'CLIENT'; });
+  }
+  function getCorFunds() {
+    if (isViaSalset) return funds;
+    var isMix = detectMixFund();
+    if (isMix) return funds.filter(function (f) { return f.type === activeCorTab; });
+    return funds;
+  }
+  function getTotalMarginPct(marginState) {
+    var sum = 0;
+    (corTaxonomy.marginComponents || []).forEach(function (c) { sum += (marginState[c.key] ? marginState[c.key].percentage : 0) / 100; });
+    return sum;
+  }
+  function pphRate(kat, tipe) {
+    if (kat === 'Jasa') { if (tipe === 'Lembaga') return 0.02; if (tipe === 'Individu') return 0.025; }
+    return 0;
+  }
+  function calcItemRow(item) {
+    var total = ri(item.h * item.q * item.p);
+    var rt = pphRate(item.kat, item.tipe);
+    var tap = rt > 0 ? total / (1 - rt) : total;
+    return { total: total, rt: rt, tap: tap };
+  }
+  function adminFee(bankRate, afterFee) {
+    if (!afterFee || afterFee <= 0) return 0;
+    return Math.ceil(afterFee / 200000000) * bankRate;
+  }
+
+  // ══════════════════════════ METHOD / TAB SWITCH ══════════════════════════
+  function setCorMethod(method, silent) {
+    currentMethod = method;
+    document.getElementById('corTabGD').className = 'cor-mtab' + (method === 'GROSS_DOWN' ? ' on' : '');
+    document.getElementById('corTabGU').className = 'cor-mtab' + (method === 'GROSS_UP' ? ' on' : '');
+    document.getElementById('corGdView').style.display = method === 'GROSS_DOWN' ? '' : 'none';
+    document.getElementById('corGuView').style.display = method === 'GROSS_UP' ? '' : 'none';
+    document.getElementById('corRpGd').style.display = method === 'GROSS_DOWN' ? '' : 'none';
+    document.getElementById('corRpGu').style.display = method === 'GROSS_UP' ? '' : 'none';
+    if (!silent) renderAll();
+  }
+
+  function setCorTab(tab) {
+    activeCorTab = tab;
+    document.getElementById('corMixTabClient').className = 'cor-mix-tab' + (tab === 'CLIENT' ? ' on' : '');
+    document.getElementById('corMixTabCampaign').className = 'cor-mix-tab' + (tab === 'CAMPAIGN' ? ' on' : '');
+    renderAll();
+  }
+
+  function onRouteChange() {
+    isViaSalset = document.getElementById('corViaSalset').checked;
+    vendorEntity = document.getElementById('corVendorSelect').value;
+    renderAll();
+  }
+  function onNgoRateChange() {
+    ngoRate = Number(document.getElementById('corNgoRate').value) || 10;
+    document.getElementById('corGuNgoRateDisplay').value = ngoRate;
+    renderAll();
+  }
+  function onBiayaSalsetChange() {
+    corState.CLIENT.biayaSalset = Number(document.getElementById('corBiayaSalset').value) || 0;
+    corState.CAMPAIGN.biayaSalset = corState.CLIENT.biayaSalset;
+    renderAll();
+  }
+
+  // ══════════════════════════ FUND ROWS ══════════════════════════
+  function addFundRow(type) {
+    funds.push({ idx: nextIdx(), type: type, nominal: 0, isZakat: false, linkCampaign: '' });
+    renderAll();
+  }
+  function removeFundRow(idx) {
+    funds = funds.filter(function (f) { return f.idx !== idx; });
+    renderAll();
+  }
+  function updateFund(idx, field, value) {
+    var f = funds.filter(function (x) { return x.idx === idx; })[0];
+    if (!f) return;
+    f[field] = value;
+    renderAll();
+  }
+
+  function buildFundRowHtml(f, ent) {
+    var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
+    var tf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+    var af = f.nominal - pf - tf;
+    var adm = adminFee(Number(ent.Biaya_Pencairan) || 0, af);
+    var tot = af - adm;
+    var isClient = f.type === 'CLIENT';
+    return '<div class="cor-fund-row">' +
+      '<div class="cor-fund-cols">' +
+      '<input type="text" placeholder="Link campaign (opsional)" value="' + esc(f.linkCampaign) + '" oninput="updateFund(' + f.idx + ',\'linkCampaign\',this.value)">' +
+      '<input type="number" value="' + f.nominal + '" onchange="updateFund(' + f.idx + ',\'nominal\',Number(this.value)||0)">' +
+      (isClient
+        ? '<label style="display:flex; align-items:center; gap:4px; justify-content:center; font-size:10px;"><input type="checkbox" ' + (f.isZakat ? 'checked' : '') + ' onchange="updateFund(' + f.idx + ',\'isZakat\',this.checked)" style="width:auto;"> Zakat</label>'
+        : '<span style="font-size:10px; color:var(--text-faint); text-align:center;">N/A</span>') +
+      '<button class="cor-btn-del" onclick="removeFundRow(' + f.idx + ')">&times;</button>' +
+      '</div>' +
+      '<div class="cor-fund-foot">' +
+      '<span>Bank: <strong>' + ent.Bank + '</strong></span>' +
+      '<span>Biaya adm: <strong style="color:#c5221f;">-' + fmtRp(adm) + '</strong></span>' +
+      '<span>Total masuk: <strong style="color:' + (isClient ? 'var(--color-cerulean)' : '#188038') + ';">' + fmtRp(tot) + '</strong></span>' +
+      '</div></div>';
+  }
+
+  function renderFunds() {
+    var ent = getActiveEntity();
+    var cf = funds.filter(function (f) { return f.type === 'CLIENT'; });
+    var kf = funds.filter(function (f) { return f.type === 'CAMPAIGN'; });
+    document.getElementById('corClientFundRows').innerHTML = cf.length
+      ? cf.map(function (f) { return buildFundRowHtml(f, ent); }).join('')
+      : '<div style="font-size:12px; color:var(--text-faint); text-align:center; padding:6px 0;">Belum ada dana client.</div>';
+    document.getElementById('corCampaignFundRows').innerHTML = kf.length
+      ? kf.map(function (f) { return buildFundRowHtml(f, ent); }).join('')
+      : '<div style="font-size:12px; color:var(--text-faint); text-align:center; padding:6px 0;">Belum ada dana campaign.</div>';
+  }
+
+  // ══════════════════════════ COST TABLES ══════════════════════════
+  function katOptions(sel) {
+    return KATS.map(function (k) { return '<option ' + (k === sel ? 'selected' : '') + '>' + k + '</option>'; }).join('');
+  }
+  function tipeCellHtml(kat, tipe, idx, changeFn) {
+    if (kat !== 'Jasa') return '<span style="font-size:10px; color:var(--text-faint);">-</span>';
+    return '<select onchange="' + changeFn + '(' + idx + ',\'tipe\',this.value)">' +
+      ['Lembaga', 'Individu'].map(function (x) { return '<option ' + (x === tipe ? 'selected' : '') + '>' + x + '</option>'; }).join('') + '</select>';
+  }
+
+  function getCostArray(method, group) {
+    if (method === 'GROSS_UP') return group === 'SAL' ? guState.salItems : guState.baaItems;
+    var cor = getActiveCor();
+    return group === 'SAL' ? cor.salItems : cor.baaItems;
+  }
+
+  function addCostRow(method, group) {
+    var row = { idx: nextIdx(), ket: '', kat: 'Barang', tipe: '', h: 0, q: 1, p: 1 };
+    getCostArray(method, group).push(row);
+    renderAll();
+  }
+  function removeCostRow(method, group, idx) {
+    var arr = getCostArray(method, group);
+    var i = arr.findIndex(function (x) { return x.idx === idx; });
+    if (i > -1) arr.splice(i, 1);
+    renderAll();
+  }
+  function updateCostField(method, group, idx, field, value) {
+    var arr = getCostArray(method, group);
+    var row = arr.filter(function (x) { return x.idx === idx; })[0];
+    if (!row) return;
+    row[field] = value;
+    if (field === 'kat') row.tipe = '';
+    renderAll();
+  }
+
+  function renderCostTable(method, group, tbodyId) {
+    var arr = getCostArray(method, group);
+    var changeFn = 'onCostTipeChange_' + method + '_' + group;
+    window[changeFn] = function (idx, field, value) { updateCostField(method, group, idx, field, value); };
+    var tb = document.getElementById(tbodyId);
+    tb.innerHTML = arr.map(function (r) {
+      var c = calcItemRow(r);
+      return '<tr>' +
+        '<td><input type="text" placeholder="Keterangan..." value="' + esc(r.ket) + '" oninput="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'ket\',this.value)"></td>' +
+        '<td><select onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'kat\',this.value)">' + katOptions(r.kat) + '</select></td>' +
+        '<td>' + tipeCellHtml(r.kat, r.tipe, r.idx, changeFn) + '</td>' +
+        '<td><span class="cor-cv pph">' + (c.rt * 100).toFixed(1) + '%</span></td>' +
+        '<td><input type="number" value="' + (r.h || '') + '" placeholder="0" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'h\',parseFloat(this.value)||0)"></td>' +
+        '<td><input type="number" value="' + r.q + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'q\',parseFloat(this.value)||1)"></td>' +
+        '<td><input type="number" value="' + r.p + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'p\',parseFloat(this.value)||1)"></td>' +
+        '<td><span class="cor-cv">' + fmtRp(c.total) + '</span></td>' +
+        '<td><span class="cor-cv ' + (c.rt > 0 ? 'pph' : '') + '">' + fmtRp(c.tap) + '</span></td>' +
+        '<td><button class="cor-btn-del" onclick="removeCostRow(\'' + method + '\',\'' + group + '\',' + r.idx + ')">&times;</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function saldoBoxHtml(saldo, budget) {
+    var cls = saldo >= 0 ? 'cor-saldo-pos' : 'cor-saldo-neg';
+    return '<div class="cor-saldo ' + cls + '"><span style="font-size:11px;">Saldo (budget: ' + fmtRp(budget) + ')</span><strong style="font-family:monospace;">' + fmtRp(saldo) + '</strong></div>';
+  }
+
+  // ══════════════════════════ MARGIN ══════════════════════════
+  function renderMarginRows(marginState, rowsContainerId, onChangeFnName) {
+    var container = document.getElementById(rowsContainerId);
+    container.innerHTML = (corTaxonomy.marginComponents || []).map(function (comp) {
+      var guideRows = corTaxonomy.marginGuide
+        .filter(function (g) { return g.Component === comp.key; })
+        .sort(function (a, b) { return (Number(a.Sort_Order) || 0) - (Number(b.Sort_Order) || 0); });
+      var current = marginState[comp.key] || { subCategory: '', percentage: 0 };
+      var options = guideRows.map(function (g) {
+        return '<option value="' + g.Sub_Category + '" data-pct="' + g.Percentage + '" ' + (g.Sub_Category === current.subCategory ? 'selected' : '') + '>' + g.Sub_Category + '</option>';
+      }).join('');
+      return '<div class="cor-margin-row">' +
+        '<span>' + comp.label + '</span>' +
+        '<select onchange="' + onChangeFnName + '(\'' + comp.key + '\',this)">' + options + '</select>' +
+        '<span style="font-family:monospace; text-align:right; color:var(--color-cerulean);">' + current.percentage + '%</span>' +
+        '<span style="font-family:monospace; text-align:right; color:var(--text-muted);" id="' + rowsContainerId + '_n_' + comp.key + '">Rp0</span>' +
+        '</div>';
+    }).join('');
+  }
+  function onGdMarginChange(componentKey, selectEl) {
+    var opt = selectEl.options[selectEl.selectedIndex];
+    getActiveCor().margin[componentKey] = { subCategory: opt.value, percentage: Number(opt.getAttribute('data-pct')) || 0 };
+    renderAll();
+  }
+  function onGuMarginChange(componentKey, selectEl) {
+    var opt = selectEl.options[selectEl.selectedIndex];
+    guState.margin[componentKey] = { subCategory: opt.value, percentage: Number(opt.getAttribute('data-pct')) || 0 };
+    renderAll();
+  }
+
+  // ══════════════════════════ LINK CAMPAIGN (Gross Up, informasi saja) ══════════════════════════
+  function addLinkCampaignRow() { linkCampaigns.push(''); renderLinkCampaigns(); }
+  function updateLinkCampaign(i, value) { linkCampaigns[i] = value; }
+  function removeLinkCampaignRow(i) {
+    linkCampaigns.splice(i, 1);
+    if (!linkCampaigns.length) linkCampaigns = [''];
+    renderLinkCampaigns();
+  }
+  function renderLinkCampaigns() {
+    document.getElementById('corLinkCampaignRows').innerHTML = linkCampaigns.map(function (l, i) {
+      return '<div style="display:flex; gap:6px; margin-bottom:4px;">' +
+        '<input type="text" value="' + esc(l) + '" placeholder="https://kitabisa.com/campaign/..." oninput="updateLinkCampaign(' + i + ',this.value)" style="flex:1;">' +
+        '<button class="cor-btn-del" onclick="removeLinkCampaignRow(' + i + ')">&times;</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  // ══════════════════════════ MAIN CALC (porting 1:1 dari mockup kalkulator) ══════════════════════════
+  function calcAll() {
+    var ent = getActiveEntity();
+    var pkp = getPKP();
+    var ngoRateFrac = ngoRate / 100;
+    var pphOn = usePPh();
+    var cor = getActiveCor();
+    var isMix = detectMixFund();
+    var hasClient = funds.some(function (f) { return f.type === 'CLIENT'; });
+    var hasCampaign = funds.some(function (f) { return f.type === 'CAMPAIGN'; });
+
+    // Badge & PPh pill
+    var badge = document.getElementById('corTypeBadge');
+    if (isViaSalset) badge.innerText = (hasClient && hasCampaign) ? 'COR Normal · Mix Fund' : 'COR Normal';
+    else if (isMix) badge.innerText = 'Mix Fund — 2 COR terpisah';
+    else if (hasClient) badge.innerText = 'COR Dana Client';
+    else if (hasCampaign) badge.innerText = 'COR Dana Campaign';
+    else badge.innerText = '-';
+    var pill = document.getElementById('corPphPill');
+    pill.innerText = pphOn ? 'PPh berlaku' : 'PPh tidak berlaku';
+    pill.className = 'cor-pph-pill ' + (pphOn ? 'cor-pph-on' : 'cor-pph-off');
+    document.getElementById('corMixTabs').style.display = isMix ? 'inline-flex' : 'none';
+    document.getElementById('corActiveBankChip').innerText = ent.Entity_Name + ' (' + ent.Bank + ')';
+    document.getElementById('corPkpNote').innerText = pkp ? '(PKP, ÷1.11)' : '(not PKP)';
+    ['corVl1', 'corVl2', 'corVl3', 'corVl4', 'corVl5', 'corVlGu1', 'corVlGu2', 'corVlGu3', 'corRrVl', 'corRrVl2'].forEach(function (id) {
+      document.getElementById(id).innerText = ent.Entity_Name;
+    });
+
+    // Show/hide SALSET-only boxes — set ke '' (bukan paksa 'flex'/'block')
+    // supaya kembali ke display bawaan class CSS masing-masing elemen
+    // (.cor-rrow sudah display:flex lewat stylesheet, .cor-box default block).
+    ['corBoxImpl', 'corBiayaSalsetWrap', 'corBoxCostSal', 'corGuBoxSal', 'corGuBoxSalsum', 'corGuSalStep', 'corGuNgoStep', 'corRrSalRow', 'corRrSalFeeRow', 'corRrBsalRow', 'corRrGuSalRow'].forEach(function (id) {
+      document.getElementById(id).style.display = isViaSalset ? '' : 'none';
+    });
+
+    // ---- Subtotals per fund type ----
+    function calcFundTotal(f) {
+      var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
+      var tf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+      var af = f.nominal - pf - tf;
+      return af - adminFee(Number(ent.Biaya_Pencairan) || 0, af);
+    }
+    var subClient = funds.filter(function (f) { return f.type === 'CLIENT'; }).reduce(function (s, f) { return s + calcFundTotal(f); }, 0);
+    var subCampaign = funds.filter(function (f) { return f.type === 'CAMPAIGN'; }).reduce(function (s, f) { return s + calcFundTotal(f); }, 0);
+    document.getElementById('corSubClient').innerText = fmtRp(subClient);
+    document.getElementById('corSubCampaign').innerText = fmtRp(subCampaign);
+
+    var totalMasuk = getCorFunds().reduce(function (s, f) { return s + calcFundTotal(f); }, 0);
+
+    // ---- SALSET chain ----
+    var cashGross = totalMasuk, salFee = 0, sisaDana = 0;
+    if (isViaSalset) {
+      salFee = ri(totalMasuk * ngoRateFrac);
+      sisaDana = totalMasuk - salFee;
+      var bsal = ri(cor.biayaSalset || 0);
+      cashGross = sisaDana - bsal;
+      document.getElementById('corSalsetGross').innerText = fmtRp(totalMasuk);
+      document.getElementById('corSalsetFee').innerText = fmtRp(salFee);
+      document.getElementById('corSisaDana').innerText = fmtRp(sisaDana);
+      document.getElementById('corRrSalsetGross').innerText = fmtRp(totalMasuk);
+      document.getElementById('corRrSalsetFee').innerText = fmtRp(salFee);
+      document.getElementById('corRrBiayaSal').innerText = fmtRp(bsal);
+    }
+
+    var ppnGd = pkp ? ri(cashGross / 1.11) : cashGross;
+    var pph23 = pphOn ? ri(ppnGd * 0.02) : 0;
+    var cashNet = ppnGd - pph23;
+    var budSal = isViaSalset ? ri(cor.biayaSalset || 0) : 0;
+    var totalMgnFrac = getTotalMarginPct(cor.margin);
+    var profit = ri(cashNet * totalMgnFrac);
+    var availCost = cashNet - profit;
+
+    var salCalc = cor.salItems.map(calcItemRow);
+    var baaCalc = cor.baaItems.map(calcItemRow);
+    var totalSal = ri(salCalc.reduce(function (s, r) { return s + r.tap; }, 0));
+    var totalBaa = ri(baaCalc.reduce(function (s, r) { return s + r.tap; }, 0));
+    var totalSalRaw = ri(salCalc.reduce(function (s, r) { return s + r.total; }, 0));
+    var totalBaaRaw = ri(baaCalc.reduce(function (s, r) { return s + r.total; }, 0));
+
+    var pmProfit = cashNet - totalBaa;
+    var pmPct = cashNet > 0 ? pmProfit / cashNet : 0;
+
+    document.getElementById('corTotalMasuk').innerText = fmtRp(totalMasuk);
+    document.getElementById('corCashGross').innerText = fmtRp(cashGross);
+    document.getElementById('corPpnGd').innerText = fmtRp(ppnGd);
+    document.getElementById('corPph23').innerText = fmtRp(pph23);
+    document.getElementById('corCashNet').innerText = fmtRp(cashNet);
+    document.getElementById('corProfitFd').innerText = fmtRp(profit);
+    document.getElementById('corAvailCost').innerText = fmtRp(availCost);
+    document.getElementById('corGdTotalMarginPct').innerText = (totalMgnFrac * 100).toFixed(0) + '%';
+    document.getElementById('corBudSal').innerText = fmtRp(budSal);
+    document.getElementById('corBudVendor').innerText = fmtRp(availCost);
+    document.getElementById('corGdSalTotal').innerText = fmtRp(totalSal);
+    document.getElementById('corGdSalTotalRaw').innerText = fmtRp(totalSalRaw);
+    document.getElementById('corGdVendorTotal').innerText = fmtRp(totalBaa);
+    document.getElementById('corGdVendorTotalRaw').innerText = fmtRp(totalBaaRaw);
+    document.getElementById('corGdSalSaldo').innerHTML = saldoBoxHtml(budSal - totalSal, budSal);
+    document.getElementById('corGdVendorSaldo').innerHTML = saldoBoxHtml(availCost - totalBaa, availCost);
+    document.getElementById('corGdVendorBoxNum').innerText = isViaSalset ? '6' : '5';
+
+    document.getElementById('corRrTotalMasuk').innerText = fmtRp(totalMasuk);
+    document.getElementById('corRrCashGross').innerText = fmtRp(cashGross);
+    document.getElementById('corRrPph23').innerText = fmtRp(pph23);
+    document.getElementById('corRrCashNet').innerText = fmtRp(cashNet);
+    document.getElementById('corRrMgPct').innerText = (totalMgnFrac * 100).toFixed(0) + '%';
+    document.getElementById('corRrMgNom').innerText = fmtRp(profit);
+    document.getElementById('corRrAvail').innerText = fmtRp(availCost);
+    document.getElementById('corRrPmRev').innerText = fmtRp(cashNet);
+    document.getElementById('corRrPmCost').innerText = fmtRp(totalBaa);
+    document.getElementById('corRrPmProfit').innerText = fmtRp(pmProfit);
+    document.getElementById('corRrPmPct').innerText = cashNet > 0 ? (pmPct * 100).toFixed(2) + '%' : '0%';
+
+    renderMarginRows(cor.margin, 'corGdMarginRows', 'onGdMarginChange');
+    (corTaxonomy.marginComponents || []).forEach(function (c) {
+      var pct = (cor.margin[c.key] ? cor.margin[c.key].percentage : 0) / 100;
+      var el = document.getElementById('corGdMarginRows_n_' + c.key);
+      if (el) el.innerText = fmtRp(ri(cashNet * pct));
+    });
+
+    // ---- GROSS UP (independen dari Gross Down) ----
+    var guSalCalc = guState.salItems.map(calcItemRow);
+    var guBaaCalc = guState.baaItems.map(calcItemRow);
+    var totalGuSal = ri(guSalCalc.reduce(function (s, r) { return s + r.tap; }, 0));
+    var totalGuBaa = ri(guBaaCalc.reduce(function (s, r) { return s + r.tap; }, 0));
+    var totalGuSalRaw = ri(guSalCalc.reduce(function (s, r) { return s + r.total; }, 0));
+    var totalGuBaaRaw = ri(guBaaCalc.reduce(function (s, r) { return s + r.total; }, 0));
+    var guTotalMgnFrac = getTotalMarginPct(guState.margin);
+    var salGu = isViaSalset ? totalGuSal / (1 - ngoRateFrac) : 0;
+    var guMargin = guTotalMgnFrac < 1 ? totalGuBaa / (1 - guTotalMgnFrac) : totalGuBaa;
+    var guPph = guMargin / 0.98;
+    var guPpn = pkp ? guPph * 1.11 : guPph;
+    var guBaa, totalHasilGu;
+    if (isViaSalset) { guBaa = guPpn / (1 - ngoRateFrac); totalHasilGu = salGu + guBaa; }
+    else { guBaa = guPpn; totalHasilGu = guPpn; }
+    var guAdmin = adminFee(Number(ent.Biaya_Pencairan) || 0, totalHasilGu);
+    var guFinal = (totalHasilGu + guAdmin) / 0.94;
+
+    document.getElementById('corGuSalTotal').innerText = fmtRp(totalGuSal);
+    document.getElementById('corGuSalTotalRaw').innerText = fmtRp(totalGuSalRaw);
+    document.getElementById('corGuVendorTotal').innerText = fmtRp(totalGuBaa);
+    document.getElementById('corGuVendorTotalRaw').innerText = fmtRp(totalGuBaaRaw);
+    document.getElementById('corGuVendorBoxNum').innerText = isViaSalset ? '2' : '1';
+    document.getElementById('corGuTotalMarginPct').innerText = (guTotalMgnFrac * 100).toFixed(0) + '%';
+    document.getElementById('corGuSalsetIn').innerText = fmtRp(totalGuSal);
+    document.getElementById('corGuSalsetGrossup').innerText = fmtRp(salGu);
+    document.getElementById('corGuBankLabel').innerText = ent.Bank;
+    document.getElementById('corGuBankRate').innerText = fmtRp(Number(ent.Biaya_Pencairan) || 0);
+    document.getElementById('corGuAdminTotal').innerText = fmtRp(guAdmin);
+    document.getElementById('corGuAdminFormula').innerText = 'ceil(' + fmtRp(totalHasilGu) + ' ÷ 200jt) × ' + fmtRp(Number(ent.Biaya_Pencairan) || 0);
+    document.getElementById('corGuStSalgu').innerText = fmtRp(salGu);
+    document.getElementById('corGuStAmt').innerText = fmtRp(totalGuBaa);
+    document.getElementById('corGuStMgn').innerText = fmtRp(guMargin);
+    document.getElementById('corGuStPph').innerText = fmtRp(guPph);
+    document.getElementById('corGuStBaa').innerText = fmtRp(guBaa);
+    document.getElementById('corGuStTotal').innerText = fmtRp(totalHasilGu);
+    document.getElementById('corGuStFinal').innerText = fmtRp(guFinal);
+    document.getElementById('corRrGuSal').innerText = fmtRp(salGu);
+    document.getElementById('corRrGuAmt').innerText = fmtRp(totalGuBaa);
+    document.getElementById('corRrGuMgn').innerText = fmtRp(guMargin);
+    document.getElementById('corRrGuPph').innerText = fmtRp(guPph);
+    document.getElementById('corRrGuTotal').innerText = fmtRp(totalHasilGu);
+    document.getElementById('corRrGuAdm').innerText = fmtRp(guAdmin);
+    document.getElementById('corRrGuFinal').innerText = fmtRp(guFinal);
+
+    renderMarginRows(guState.margin, 'corGuMarginRows', 'onGuMarginChange');
+    (corTaxonomy.marginComponents || []).forEach(function (c) {
+      var pct = (guState.margin[c.key] ? guState.margin[c.key].percentage : 0) / 100;
+      var el = document.getElementById('corGuMarginRows_n_' + c.key);
+      if (el) el.innerText = fmtRp(ri(guMargin * pct));
+    });
+  }
+
+  function renderAll() {
+    if (!corDraftLoaded) return;
+    renderFunds();
+    renderCostTable('GROSS_DOWN', 'SAL', 'corGdSalCostRows');
+    renderCostTable('GROSS_DOWN', 'VENDOR', 'corGdVendorCostRows');
+    renderCostTable('GROSS_UP', 'SAL', 'corGuSalCostRows');
+    renderCostTable('GROSS_UP', 'VENDOR', 'corGuVendorCostRows');
+    renderLinkCampaigns();
+    calcAll();
+  }
+
+  // ══════════════════════════ SAVE DRAFT ══════════════════════════
+  function submitSaveDraft() {
+    if (!CALCULATOR_DOC_ID) return;
+    if (!techfordConfirm('Simpan draft COR ini?')) return;
+
+    var isMix = detectMixFund();
+    var funds_payload = funds.map(function (f) {
+      return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
+    });
+
+    var costs_payload = [];
+    if (currentMethod === 'GROSS_DOWN') {
+      ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
+        corState[tab].salItems.forEach(function (r) { costs_payload.push({ tab: tab, group: 'SAL', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+        corState[tab].baaItems.forEach(function (r) { costs_payload.push({ tab: tab, group: 'VENDOR', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+      });
+    } else {
+      guState.salItems.forEach(function (r) { costs_payload.push({ tab: 'CLIENT', group: 'SAL', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+      guState.baaItems.forEach(function (r) { costs_payload.push({ tab: 'CLIENT', group: 'VENDOR', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+    }
+
+    var margins_payload = [];
+    if (currentMethod === 'GROSS_DOWN') {
+      ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
+        Object.keys(corState[tab].margin || {}).forEach(function (key) {
+          margins_payload.push({ tab: tab, component: key, subCategory: corState[tab].margin[key].subCategory, percentage: corState[tab].margin[key].percentage });
+        });
+      });
+    } else {
+      Object.keys(guState.margin || {}).forEach(function (key) {
+        margins_payload.push({ tab: 'CLIENT', component: key, subCategory: guState.margin[key].subCategory, percentage: guState.margin[key].percentage });
+      });
+    }
+
+    var payload = {
+      corMethod: currentMethod,
+      isViaSalset: isViaSalset,
+      vendorEntity: vendorEntity,
+      ngoRate: ngoRate,
+      biayaSalset: corState.CLIENT.biayaSalset,
+      isMixFund: isMix,
+      linkCampaigns: linkCampaigns,
+      funds: currentMethod === 'GROSS_DOWN' ? funds_payload : [],
+      costs: costs_payload,
+      margins: margins_payload
+    };
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.querySelector('.cor-docinfo .btn-save');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        if (res && res.ok === false) return alert(res.error.message);
+        alert('Draft COR berhasil disimpan.');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        alert('Gagal menyimpan draft: ' + (err && err.message ? err.message : err));
+      })
+      .cor_saveDraft(CALCULATOR_DOC_ID, payload, createdBy);
+  }
+</script>

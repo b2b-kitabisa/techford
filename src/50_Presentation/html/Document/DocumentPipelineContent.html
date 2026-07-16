@@ -127,6 +127,14 @@
       </div>
     </div>
 
+    <div class="drawer-section" id="docCorActionWrap" style="display:none;">
+      <span class="taxonomy-label">Pengerjaan COR</span>
+      <div style="margin-top:8px;">
+        <button class="btn-save" onclick="openCorCalculator()" style="width:100%;">🧮 Kerjakan COR</button>
+      </div>
+      <div class="placeholder-note">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
+    </div>
+
     <div class="drawer-section">
       <span class="taxonomy-label">Update Status</span>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
@@ -493,11 +501,18 @@
     document.getElementById('docEntityFieldWrap').style.display = isQuotation ? '' : 'none';
     document.getElementById('docEntityDisplay').innerText = doc.Entity || '-';
 
+    document.getElementById('docCorActionWrap').style.display = doc.Document_Type === 'COR' ? '' : 'none';
+
     var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];
     document.getElementById('docStatusSelect').innerHTML = statusOptions.map(function (entry) {
       return '<option value="' + entry.status + '">' + entry.status + '</option>';
     }).join('');
     document.getElementById('docStatusSelect').value = doc.Status;
+  }
+
+  function openCorCalculator() {
+    if (!currentDocDrawerId) return;
+    window.location.href = TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId);
   }
 
   function submitDocStatusUpdate() {
