@@ -473,6 +473,14 @@
           renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
           renderStageFilterDropdown();
           renderStageSelectOptions('detailStageSelect');
+          // fetchEmployees() & fetchTaxonomy() jalan paralel saat bootstrap —
+          // populateConsultantDropdowns() memfilter allEmployees berdasarkan
+          // taxonomy.consultantRole, jadi kalau taxonomy ini datang BELAKANGAN
+          // (setelah fetchEmployees selesai), dropdown consultant akan
+          // telanjur terisi pakai fallback role yang salah dan tidak pernah
+          // di-render ulang. Panggil lagi di sini supaya selalu benar,
+          // siapa pun yang datang belakangan.
+          populateConsultantDropdowns();
           // taxonomy.stageBucket dipakai renderPipelineScoreCards() untuk
           // menghitung Achieved/Forecast & bucket PROS/NEGO/WON/LOSS — kalau
           // project sudah lebih dulu ter-render sebelum taxonomy ini datang,
