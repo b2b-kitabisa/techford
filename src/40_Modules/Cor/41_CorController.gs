@@ -27,11 +27,5 @@ var CorController = (function (module) {
     });
   };
 
-  module.generateDocument = function (docId) {
-    return ErrorHandler.handle('CorController.generateDocument', function () {
-      return CorGenerateService.generate(docId);
-    });
-  };
-
   return module;
 })(CorController || {});

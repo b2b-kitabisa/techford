@@ -16,7 +16,3 @@ function cor_getDraft(docId) {
 function cor_saveDraft(docId, input, createdBy) {
   return CorController.saveDraft(docId, input, createdBy);
 }
-
-function cor_generateDocument(docId) {
-  return CorController.generateDocument(docId);
-}
