@@ -1,4 +1,13 @@
-<script>var CALCULATOR_DOC_ID = '<?= queryParams.docId || "" ?>';</script>
+<script>
+  var CALCULATOR_DOC_ID = '<?= queryParams.docId || "" ?>';
+  // Hasil pilihan wizard "Kerjakan COR" di Document Pipeline (lihat
+  // DocumentPipelineContent.html) — HANYA dipakai sebagai default awal kalau
+  // dokumen ini belum pernah disimpan sama sekali (belum ada COR_Header).
+  // Begitu ada draft tersimpan, konfigurasi asli draft itu yang menang.
+  var WIZARD_METHOD = '<?= queryParams.method || "" ?>';
+  var WIZARD_VIA_SALSET = '<?= queryParams.viaSalset || "" ?>' === '1';
+  var WIZARD_MIX_FUND = '<?= queryParams.mixFund || "" ?>' === '1';
+</script>
 
 <style>
   .cor-page { max-width: 1400px; }
@@ -40,11 +49,11 @@
   .cor-hi-value { font-family: monospace; font-size: 14px; font-weight: 700; }
 
   .cor-ct-wrap { overflow-x: auto; }
-  .cor-ct-tbl { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 12px; }
-  .cor-ct-tbl th { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; padding: 5px; text-align: right; border-bottom: 1px solid var(--border-soft); background: var(--bg-tint); white-space: nowrap; }
+  .cor-ct-tbl { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 12px; table-layout: fixed; }
+  .cor-ct-tbl th { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; padding: 5px; text-align: right; border-bottom: 1px solid var(--border-soft); background: var(--bg-tint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cor-ct-tbl th:first-child { text-align: left; }
-  .cor-ct-tbl td { padding: 4px; border-bottom: 1px solid var(--border-softer); vertical-align: middle; }
-  .cor-ct-tbl td input, .cor-ct-tbl td select { font-size: 11px; }
+  .cor-ct-tbl td { padding: 4px; border-bottom: 1px solid var(--border-softer); vertical-align: middle; overflow: hidden; }
+  .cor-ct-tbl td input, .cor-ct-tbl td select { font-size: 11px; width: 100%; box-sizing: border-box; }
   .cor-cv { font-family: monospace; font-size: 11px; text-align: right; display: block; padding: 3px 6px; border-radius: 4px; background: var(--bg-tint); }
   .cor-cv.pph { background: #fdf3e0; color: #7a4a00; }
   .cor-ct-total td { background: var(--bg-tint); border-top: 1px solid var(--border-soft); font-weight: 700; }
@@ -214,6 +223,11 @@
           <div class="cor-box-hd">5. Biaya Pengeluaran SALSET <span class="sub">Budget: <strong id="corBudSal">Rp0</strong></span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
+              <colgroup>
+                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
+                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
+                <col style="width:12%;"><col style="width:4%;">
+              </colgroup>
               <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdSalCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran SALSET</td><td><span class="cor-cv" id="corGdSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdSalTotal">Rp0</span></td><td></td></tr></tfoot>
@@ -227,6 +241,11 @@
           <div class="cor-box-hd"><span id="corGdVendorBoxNum">5</span>. Biaya Pengeluaran <span id="corVl4">Vendor</span> <span class="sub">Budget: <strong id="corBudVendor">Rp0</strong></span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
+              <colgroup>
+                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
+                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
+                <col style="width:12%;"><col style="width:4%;">
+              </colgroup>
               <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdVendorCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran <span id="corVl5">Vendor</span></td><td><span class="cor-cv" id="corGdVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdVendorTotal">Rp0</span></td><td></td></tr></tfoot>
@@ -245,6 +264,11 @@
           <div class="cor-box-hd">1. Cost SALSET</div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
+              <colgroup>
+                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
+                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
+                <col style="width:12%;"><col style="width:4%;">
+              </colgroup>
               <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuSalCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost SALSET</td><td><span class="cor-cv" id="corGuSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuSalTotal">Rp0</span></td><td></td></tr></tfoot>
@@ -257,6 +281,11 @@
           <div class="cor-box-hd"><span id="corGuVendorBoxNum">1</span>. Cost <span id="corVlGu1">Vendor</span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
+              <colgroup>
+                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
+                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
+                <col style="width:12%;"><col style="width:4%;">
+              </colgroup>
               <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuVendorCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost <span id="corVlGu2">Vendor</span></td><td><span class="cor-cv" id="corGuVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuVendorTotal">Rp0</span></td><td></td></tr></tfoot>
@@ -270,8 +299,11 @@
             <div class="cor-box-hd">SALSET Gross Up</div>
             <div class="drawer-field-label">Total cost SALSET</div>
             <div class="cor-hi" style="background:var(--accent-tint); margin-bottom:8px;"><span class="cor-hi-value" id="corGuSalsetIn">Rp0</span></div>
-            <div class="drawer-field-label">NGO fee rate <span style="font-weight:400; color:#188038;">(linked ke Gross Down)</span></div>
-            <input type="number" id="corGuNgoRateDisplay" value="10" readonly style="width:80px;">
+            <div class="drawer-field-label">NGO fee rate <span style="font-weight:400; color:var(--text-faint);">(independen dari Gross Down)</span></div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="number" id="corGuNgoRate" value="10" min="0" max="100" step="0.5" oninput="onGuNgoRateChange()" style="width:80px;">
+              <span style="font-size:12px;">%</span>
+            </div>
             <div class="cor-hi" style="background:#e6f4ea; margin-top:8px;"><span class="cor-hi-value" id="corGuSalsetGrossup" style="color:#188038;">Rp0</span></div>
           </div>
           <div class="cor-box">
@@ -350,6 +382,13 @@
           <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
         </div>
         <div class="cor-rbox">
+          <div class="cor-rbox-hd">SPP Amount</div>
+          <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrSppDpp">Rp0</span></div>
+          <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrSppPpn">Rp0</span></div>
+          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrSppPph">Rp0</span></div>
+          <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrSppNeto">Rp0</span></div>
+        </div>
+        <div class="cor-rbox">
           <div class="cor-rbox-hd">Profit Margin</div>
           <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
           <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
@@ -368,6 +407,19 @@
           <div class="cor-rrow"><span>Biaya admin</span><span class="v" id="corRrGuAdm">Rp0</span></div>
           <div class="cor-rrow"><span>Gross up platform &amp; tech</span><span class="v" id="corRrGuFinal">Rp0</span></div>
         </div>
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">SPP Amount</div>
+          <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrGuSppDpp">Rp0</span></div>
+          <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrGuSppPpn">Rp0</span></div>
+          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrGuSppPph">Rp0</span></div>
+          <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrGuSppNeto">Rp0</span></div>
+        </div>
+        <div class="cor-rbox">
+          <div class="cor-rbox-hd">Program Fee</div>
+          <div class="cor-rrow"><span>Profit vendor</span><span class="v" id="corRrGuProfit">Rp0</span></div>
+          <div class="cor-rrow" id="corRrGuSalfRow" style="display:none;"><span>Salset fee</span><span class="v" id="corRrGuSalf">Rp0</span></div>
+          <div class="cor-rrow"><span>Margin</span><span class="v" id="corRrGuMpct">0%</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -383,12 +435,22 @@
 
   var currentMethod = 'GROSS_DOWN';
   var isViaSalset = false;
+  // isMixFund SEKARANG keputusan eksplisit (dari wizard "Kerjakan COR" atau
+  // draft tersimpan) — BUKAN lagi dideteksi otomatis dari isi baris dana,
+  // supaya alur 4 CARA (lihat wizard di Document Pipeline) konsisten &
+  // tidak "meleset" sendiri kalau user kebetulan mengisi dua jenis dana.
+  var isMixFund = false;
   var vendorEntity = '';
-  var ngoRate = 10;
+  var ngoRate = 10; // NGO rate Gross Down
+  var guNgoRate = 10; // NGO rate Gross Up — independen, TIDAK terhubung ke Gross Down
   var activeCorTab = 'CLIENT';
   var linkCampaigns = [''];
   var seq = 1;
   function nextIdx() { return seq++; }
+
+  // Default Default Margin: General/Medium/Medium/Med 1 thn = 35% total —
+  // tetap bisa diganti admin lewat dropdown, ini cuma nilai awal.
+  var DEFAULT_MARGIN_SUBCATEGORY = { CONS: 'General', CRE: 'Medium', PROG: 'Medium', IMP: 'Med 1 thn' };
 
   function emptyMarginState() {
     var m = {};
@@ -396,8 +458,9 @@
       var guideRows = corTaxonomy.marginGuide
         .filter(function (g) { return g.Component === c.key; })
         .sort(function (a, b) { return (Number(a.Sort_Order) || 0) - (Number(b.Sort_Order) || 0); });
-      var first = guideRows[0];
-      m[c.key] = { subCategory: first ? first.Sub_Category : '', percentage: first ? Number(first.Percentage) : 0 };
+      var wanted = DEFAULT_MARGIN_SUBCATEGORY[c.key];
+      var match = guideRows.filter(function (g) { return g.Sub_Category === wanted; })[0] || guideRows[0];
+      m[c.key] = { subCategory: match ? match.Sub_Category : '', percentage: match ? Number(match.Percentage) : 0 };
     });
     return m;
   }
@@ -509,10 +572,17 @@
     if (draft.header) {
       currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';
       isViaSalset = !!draft.header.Is_Via_Salset;
+      isMixFund = !!draft.header.Is_Mix_Fund;
       vendorEntity = draft.header.Vendor_Entity || '';
-      ngoRate = Number(draft.header.Ngo_Rate) || 10;
+      if (currentMethod === 'GROSS_UP') guNgoRate = Number(draft.header.Ngo_Rate) || 10;
+      else ngoRate = Number(draft.header.Ngo_Rate) || 10;
       corState.CLIENT.biayaSalset = Number(draft.header.Biaya_Salset) || 0;
       linkCampaigns = draft.header.Link_Campaigns && draft.header.Link_Campaigns.length ? draft.header.Link_Campaigns : [''];
+    } else {
+      // Belum pernah disimpan — pakai hasil wizard "Kerjakan COR".
+      if (WIZARD_METHOD) currentMethod = WIZARD_METHOD;
+      isViaSalset = WIZARD_VIA_SALSET;
+      isMixFund = WIZARD_MIX_FUND;
     }
 
     funds = (draft.funds || []).map(function (f) {
@@ -561,7 +631,7 @@
     if (!vendorEntity && corTaxonomy.entities && corTaxonomy.entities.length) vendorEntity = corTaxonomy.entities[0].Entity_Name;
     document.getElementById('corViaSalset').checked = isViaSalset;
     document.getElementById('corNgoRate').value = ngoRate;
-    document.getElementById('corGuNgoRateDisplay').value = ngoRate;
+    document.getElementById('corGuNgoRate').value = guNgoRate;
     document.getElementById('corBiayaSalset').value = corState.CLIENT.biayaSalset;
     populateVendorSelect();
     setCorMethod(currentMethod, true);
@@ -571,6 +641,16 @@
   function ri(n) { return isNaN(n) || !isFinite(n) ? 0 : Math.round(n); }
   function fmtRp(n) { return 'Rp' + ri(n).toLocaleString('id-ID'); }
   function esc(str) { return String(str || '').replace(/"/g, '&quot;'); }
+  // Format angka besar dengan titik pemisah ribuan (id-ID) langsung saat
+  // diketik, sama seperti input nominal di Revenue Breakdown — supaya
+  // nominal miliaran mudah dibaca. Model tetap simpan angka murni (Number).
+  function formatThousands(n) {
+    n = Number(n) || 0;
+    return n ? n.toLocaleString('id-ID') : '';
+  }
+  function parseThousands(el) {
+    return Number(String(el.value).replace(/[^0-9]/g, '')) || 0;
+  }
   var KATS = ['Barang', 'Jasa', 'Operasional', 'Uang Saku'];
 
   function getEntityByName(name) {
@@ -589,21 +669,21 @@
     var e = getEntityByName(vendorEntity);
     return e ? !!e.Is_PKP : false;
   }
-  function detectMixFund() {
-    if (isViaSalset) return false;
-    return funds.some(function (f) { return f.type === 'CLIENT'; }) && funds.some(function (f) { return f.type === 'CAMPAIGN'; });
+  // isMixFund adalah keputusan EKSPLISIT (wizard "Kerjakan COR" / draft
+  // tersimpan) — Via SALSET tetap memaksa non-Mix Fund (CARA 1 di wizard
+  // tidak pernah menanyakan Mix Fund sama sekali karena mustahil).
+  function getEffectiveMixFund() {
+    return isViaSalset ? false : isMixFund;
   }
-  function getActiveCor() { return detectMixFund() ? corState[activeCorTab] : corState.CLIENT; }
+  function getActiveCor() { return getEffectiveMixFund() ? corState[activeCorTab] : corState.CLIENT; }
   function usePPh() {
     if (isViaSalset) return true;
-    var isMix = detectMixFund();
-    if (isMix) return activeCorTab === 'CLIENT';
+    if (getEffectiveMixFund()) return activeCorTab === 'CLIENT';
     return funds.some(function (f) { return f.type === 'CLIENT'; });
   }
   function getCorFunds() {
     if (isViaSalset) return funds;
-    var isMix = detectMixFund();
-    if (isMix) return funds.filter(function (f) { return f.type === activeCorTab; });
+    if (getEffectiveMixFund()) return funds.filter(function (f) { return f.type === activeCorTab; });
     return funds;
   }
   function getTotalMarginPct(marginState) {
@@ -652,7 +732,10 @@
   }
   function onNgoRateChange() {
     ngoRate = Number(document.getElementById('corNgoRate').value) || 10;
-    document.getElementById('corGuNgoRateDisplay').value = ngoRate;
+    renderAll();
+  }
+  function onGuNgoRateChange() {
+    guNgoRate = Number(document.getElementById('corGuNgoRate').value) || 10;
     renderAll();
   }
   function onBiayaSalsetChange() {
@@ -687,7 +770,10 @@
     return '<div class="cor-fund-row">' +
       '<div class="cor-fund-cols">' +
       '<input type="text" placeholder="Link campaign (opsional)" value="' + esc(f.linkCampaign) + '" oninput="updateFund(' + f.idx + ',\'linkCampaign\',this.value)">' +
-      '<input type="number" value="' + f.nominal + '" onchange="updateFund(' + f.idx + ',\'nominal\',Number(this.value)||0)">' +
+      // oninput cuma reformat tampilan (titik ribuan) TANPA render ulang —
+      // supaya kursor/fokus tidak hilang tiap ketik. Model & kalkulasi baru
+      // di-commit saat blur (onchange), sama seperti sebelumnya.
+      '<input type="text" inputmode="numeric" value="' + formatThousands(f.nominal) + '" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateFund(' + f.idx + ',\'nominal\',parseThousands(this))">' +
       (isClient
         ? '<label style="display:flex; align-items:center; gap:4px; justify-content:center; font-size:10px;"><input type="checkbox" ' + (f.isZakat ? 'checked' : '') + ' onchange="updateFund(' + f.idx + ',\'isZakat\',this.checked)" style="width:auto;"> Zakat</label>'
         : '<span style="font-size:10px; color:var(--text-faint); text-align:center;">N/A</span>') +
@@ -760,7 +846,7 @@
         '<td><select onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'kat\',this.value)">' + katOptions(r.kat) + '</select></td>' +
         '<td>' + tipeCellHtml(r.kat, r.tipe, r.idx, changeFn) + '</td>' +
         '<td><span class="cor-cv pph">' + (c.rt * 100).toFixed(1) + '%</span></td>' +
-        '<td><input type="number" value="' + (r.h || '') + '" placeholder="0" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'h\',parseFloat(this.value)||0)"></td>' +
+        '<td><input type="text" inputmode="numeric" value="' + formatThousands(r.h) + '" placeholder="0" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'h\',parseThousands(this))"></td>' +
         '<td><input type="number" value="' + r.q + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'q\',parseFloat(this.value)||1)"></td>' +
         '<td><input type="number" value="' + r.p + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'p\',parseFloat(this.value)||1)"></td>' +
         '<td><span class="cor-cv">' + fmtRp(c.total) + '</span></td>' +
@@ -829,7 +915,7 @@
     var ngoRateFrac = ngoRate / 100;
     var pphOn = usePPh();
     var cor = getActiveCor();
-    var isMix = detectMixFund();
+    var isMix = getEffectiveMixFund();
     var hasClient = funds.some(function (f) { return f.type === 'CLIENT'; });
     var hasCampaign = funds.some(function (f) { return f.type === 'CAMPAIGN'; });
 
@@ -904,6 +990,12 @@
     var pmProfit = cashNet - totalBaa;
     var pmPct = cashNet > 0 ? pmProfit / cashNet : 0;
 
+    // ---- SPP Amount (GD) — sama seperti di Template COR ----
+    var dpp = ppnGd;
+    var ppn11 = pkp ? ri(dpp * 0.11) : 0;
+    var pphSpp = pphOn ? ri(dpp * 0.02) : 0;
+    var neto = dpp - pphSpp;
+
     document.getElementById('corTotalMasuk').innerText = fmtRp(totalMasuk);
     document.getElementById('corCashGross').innerText = fmtRp(cashGross);
     document.getElementById('corPpnGd').innerText = fmtRp(ppnGd);
@@ -933,6 +1025,10 @@
     document.getElementById('corRrPmCost').innerText = fmtRp(totalBaa);
     document.getElementById('corRrPmProfit').innerText = fmtRp(pmProfit);
     document.getElementById('corRrPmPct').innerText = cashNet > 0 ? (pmPct * 100).toFixed(2) + '%' : '0%';
+    document.getElementById('corRrSppDpp').innerText = fmtRp(dpp);
+    document.getElementById('corRrSppPpn').innerText = fmtRp(ppn11);
+    document.getElementById('corRrSppPph').innerText = fmtRp(pphSpp);
+    document.getElementById('corRrSppNeto').innerText = fmtRp(neto);
 
     renderMarginRows(cor.margin, 'corGdMarginRows', 'onGdMarginChange');
     (corTaxonomy.marginComponents || []).forEach(function (c) {
@@ -948,16 +1044,24 @@
     var totalGuBaa = ri(guBaaCalc.reduce(function (s, r) { return s + r.tap; }, 0));
     var totalGuSalRaw = ri(guSalCalc.reduce(function (s, r) { return s + r.total; }, 0));
     var totalGuBaaRaw = ri(guBaaCalc.reduce(function (s, r) { return s + r.total; }, 0));
+    var guNgoRateFrac = guNgoRate / 100;
     var guTotalMgnFrac = getTotalMarginPct(guState.margin);
-    var salGu = isViaSalset ? totalGuSal / (1 - ngoRateFrac) : 0;
+    var salGu = isViaSalset ? totalGuSal / (1 - guNgoRateFrac) : 0;
     var guMargin = guTotalMgnFrac < 1 ? totalGuBaa / (1 - guTotalMgnFrac) : totalGuBaa;
     var guPph = guMargin / 0.98;
     var guPpn = pkp ? guPph * 1.11 : guPph;
     var guBaa, totalHasilGu;
-    if (isViaSalset) { guBaa = guPpn / (1 - ngoRateFrac); totalHasilGu = salGu + guBaa; }
+    if (isViaSalset) { guBaa = guPpn / (1 - guNgoRateFrac); totalHasilGu = salGu + guBaa; }
     else { guBaa = guPpn; totalHasilGu = guPpn; }
     var guAdmin = adminFee(Number(ent.Biaya_Pencairan) || 0, totalHasilGu);
     var guFinal = (totalHasilGu + guAdmin) / 0.94;
+    // ---- SPP Amount (GU) & Program Fee — sama seperti di Template COR ----
+    var guDpp = guPph;
+    var guPpn11 = pkp ? ri(guDpp * 0.11) : 0;
+    var guPphSpp = ri(guDpp * 0.02);
+    var guNeto = guDpp - guPphSpp;
+    var guProfit = guMargin - totalGuBaa;
+    var guSalFee = isViaSalset ? ri(totalHasilGu * guNgoRateFrac) : 0;
 
     document.getElementById('corGuSalTotal').innerText = fmtRp(totalGuSal);
     document.getElementById('corGuSalTotalRaw').innerText = fmtRp(totalGuSalRaw);
@@ -985,6 +1089,14 @@
     document.getElementById('corRrGuTotal').innerText = fmtRp(totalHasilGu);
     document.getElementById('corRrGuAdm').innerText = fmtRp(guAdmin);
     document.getElementById('corRrGuFinal').innerText = fmtRp(guFinal);
+    document.getElementById('corRrGuSppDpp').innerText = fmtRp(guDpp);
+    document.getElementById('corRrGuSppPpn').innerText = fmtRp(guPpn11);
+    document.getElementById('corRrGuSppPph').innerText = fmtRp(guPphSpp);
+    document.getElementById('corRrGuSppNeto').innerText = fmtRp(guNeto);
+    document.getElementById('corRrGuProfit').innerText = fmtRp(guProfit);
+    document.getElementById('corRrGuMpct').innerText = (guTotalMgnFrac * 100).toFixed(0) + '%';
+    document.getElementById('corRrGuSalfRow').style.display = isViaSalset ? '' : 'none';
+    document.getElementById('corRrGuSalf').innerText = fmtRp(guSalFee);
 
     renderMarginRows(guState.margin, 'corGuMarginRows', 'onGuMarginChange');
     (corTaxonomy.marginComponents || []).forEach(function (c) {
@@ -1010,7 +1122,7 @@
     if (!CALCULATOR_DOC_ID) return;
     if (!techfordConfirm('Simpan draft COR ini?')) return;
 
-    var isMix = detectMixFund();
+    var isMix = getEffectiveMixFund();
     var funds_payload = funds.map(function (f) {
       return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
     });
@@ -1043,7 +1155,7 @@
       corMethod: currentMethod,
       isViaSalset: isViaSalset,
       vendorEntity: vendorEntity,
-      ngoRate: ngoRate,
+      ngoRate: currentMethod === 'GROSS_UP' ? guNgoRate : ngoRate,
       biayaSalset: corState.CLIENT.biayaSalset,
       isMixFund: isMix,
       linkCampaigns: linkCampaigns,
@@ -1058,10 +1170,13 @@
     btn.innerText = 'Menyimpan...';
     google.script.run
       .withSuccessHandler(function (res) {
-        btn.disabled = false;
-        btn.innerText = '💾 Simpan Draft';
-        if (res && res.ok === false) return alert(res.error.message);
+        if (res && res.ok === false) {
+          btn.disabled = false;
+          btn.innerText = '💾 Simpan Draft';
+          return alert(res.error.message);
+        }
         alert('Draft COR berhasil disimpan.');
+        goBackToDocumentPipeline();
       })
       .withFailureHandler(function (err) {
         btn.disabled = false;

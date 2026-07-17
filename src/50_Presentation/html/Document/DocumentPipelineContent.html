@@ -130,9 +130,9 @@
     <div class="drawer-section" id="docCorActionWrap" style="display:none;">
       <span class="taxonomy-label">Pengerjaan COR</span>
       <div style="margin-top:8px;">
-        <button class="btn-save" onclick="openCorCalculator()" style="width:100%;">🧮 Kerjakan COR</button>
+        <button class="btn-save" id="docCorActionBtn" onclick="openCorCalculator()" style="width:100%;">🧮 Kerjakan COR</button>
       </div>
-      <div class="placeholder-note">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
+      <div class="placeholder-note" id="docCorActionNote">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
     </div>
 
     <div class="drawer-section">
@@ -142,6 +142,35 @@
         <button class="btn-outline" onclick="submitDocStatusUpdate()">Update</button>
       </div>
       <div class="placeholder-note">Stage &amp; Sales Pipeline Stage project terkait akan otomatis menyesuaikan berdasarkan Status yang dipilih di sini.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Wizard: Pilih Metode/Cara Pengerjaan COR ================= -->
+<div class="confirm-overlay" id="corWizardModal">
+  <div class="confirm-box" style="width:420px;">
+    <h3 id="corWizardTitle">Pilih Metode COR</h3>
+
+    <div id="corWizardStep1">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Dokumen ini akan dikerjakan pakai metode apa?</p>
+      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseMethod('GROSS_DOWN')">Gross Down</button>
+      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseMethod('GROSS_UP')">Gross Up</button>
+    </div>
+
+    <div id="corWizardStep2" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah dana project ini lewat SALSET?</p>
+      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseSalset(true)">Ya, Via SALSET</button>
+      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseSalset(false)">Tidak</button>
+    </div>
+
+    <div id="corWizardStep3" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah project ini Mix Fund — dana Client DAN Campaign sekaligus (jadi 2 COR terpisah)?</p>
+      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseMixFund(true)">Ya, Mix Fund (2 COR)</button>
+      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseMixFund(false)">Tidak, satu sumber dana saja</button>
+    </div>
+
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeCorWizard()">Batal</button>
     </div>
   </div>
 </div>
@@ -158,6 +187,7 @@
   var allDocuments = [];
   var allProjects = [];
   var allClients = [];
+  var allCorHeaders = [];
   var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [] };
 
   var docPage = 1;
@@ -182,6 +212,7 @@
     fetchProjects();
     fetchClients();
     fetchTaxonomy();
+    fetchCorHeaders();
     setTimeout(function () {
       if (allDocuments.length || docBootstrapRetried) return;
       if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
@@ -215,6 +246,22 @@
         showDocTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
       })
       .document_getAll();
+  }
+
+  function fetchCorHeaders() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        allCorHeaders = res.data;
+        // Kalau drawer detail COR sedang terbuka, tombol Kerjakan/Lanjutkan
+        // perlu ikut ter-render ulang begitu data ini datang.
+        if (currentDocDrawerId) {
+          var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+          if (doc) renderCorActionButton(doc);
+        }
+      })
+      .withFailureHandler(function () {})
+      .cor_getAllHeaders();
   }
 
   function fetchProjects() {
@@ -501,7 +548,7 @@
     document.getElementById('docEntityFieldWrap').style.display = isQuotation ? '' : 'none';
     document.getElementById('docEntityDisplay').innerText = doc.Entity || '-';
 
-    document.getElementById('docCorActionWrap').style.display = doc.Document_Type === 'COR' ? '' : 'none';
+    renderCorActionButton(doc);
 
     var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];
     document.getElementById('docStatusSelect').innerHTML = statusOptions.map(function (entry) {
@@ -510,9 +557,77 @@
     document.getElementById('docStatusSelect').value = doc.Status;
   }
 
+  // Tombol & wizard "Kerjakan COR" — kalau dokumen ini SUDAH punya draft
+  // tersimpan (ada baris di COR_Header), tombol jadi "Lanjutkan COR" dan
+  // langsung buka halaman kalkulator (draft-nya otomatis dimuat lagi di
+  // sana). Kalau BELUM ada draft sama sekali, tombol "Kerjakan COR" dulu
+  // menampilkan wizard (Metode -> Via SALSET? -> Mix Fund?) sesuai alur 4
+  // CARA COR, baru masuk ke halaman kalkulator dengan konfigurasi awal
+  // sesuai jawaban wizard.
+  function renderCorActionButton(doc) {
+    var wrap = document.getElementById('docCorActionWrap');
+    if (doc.Document_Type !== 'COR') { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    var hasDraft = allCorHeaders.some(function (h) { return h.Doc_ID === doc.Doc_ID; });
+    var btn = document.getElementById('docCorActionBtn');
+    var note = document.getElementById('docCorActionNote');
+    if (hasDraft) {
+      btn.innerText = '▶️ Lanjutkan COR';
+      note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
+    } else {
+      btn.innerText = '🧮 Kerjakan COR';
+      note.innerText = 'Anda akan ditanya metode & cara pengerjaan dulu, baru masuk ke halaman kalkulator.';
+    }
+  }
+
   function openCorCalculator() {
     if (!currentDocDrawerId) return;
-    window.location.href = TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId);
+    var hasDraft = allCorHeaders.some(function (h) { return h.Doc_ID === currentDocDrawerId; });
+    if (hasDraft) {
+      window.location.href = TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId);
+      return;
+    }
+    openCorWizard(currentDocDrawerId);
+  }
+
+  var corWizardDocId = null;
+  function openCorWizard(docId) {
+    corWizardDocId = docId;
+    document.getElementById('corWizardStep1').style.display = '';
+    document.getElementById('corWizardStep2').style.display = 'none';
+    document.getElementById('corWizardStep3').style.display = 'none';
+    document.getElementById('corWizardModal').classList.add('open');
+  }
+  function closeCorWizard() {
+    document.getElementById('corWizardModal').classList.remove('open');
+    corWizardDocId = null;
+  }
+  function corWizardChooseMethod(method) {
+    if (method === 'GROSS_UP') {
+      navigateToCorCalculator({ method: 'GROSS_UP', viaSalset: false, mixFund: false });
+      return;
+    }
+    document.getElementById('corWizardStep1').style.display = 'none';
+    document.getElementById('corWizardStep2').style.display = '';
+  }
+  function corWizardChooseSalset(viaSalset) {
+    if (viaSalset) {
+      navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: true, mixFund: false });
+      return;
+    }
+    document.getElementById('corWizardStep2').style.display = 'none';
+    document.getElementById('corWizardStep3').style.display = '';
+  }
+  function corWizardChooseMixFund(mixFund) {
+    navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: false, mixFund: mixFund });
+  }
+  function navigateToCorCalculator(opts) {
+    var url = TECHFORD_WEB_APP_URL + '?page=cor-calculator' +
+      '&docId=' + encodeURIComponent(corWizardDocId) +
+      '&method=' + encodeURIComponent(opts.method) +
+      '&viaSalset=' + (opts.viaSalset ? '1' : '0') +
+      '&mixFund=' + (opts.mixFund ? '1' : '0');
+    window.location.href = url;
   }
 
   function submitDocStatusUpdate() {

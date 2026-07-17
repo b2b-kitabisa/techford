@@ -5,6 +5,10 @@ function cor_getTaxonomy() {
   return CorController.getTaxonomy();
 }
 
+function cor_getAllHeaders() {
+  return CorController.getAllHeaders();
+}
+
 function cor_getDraft(docId) {
   return CorController.getDraft(docId);
 }

@@ -61,6 +61,16 @@ var CorService = (function (module) {
   };
 
   /**
+   * Bulk-fetch semua header COR — dipakai Document Pipeline (Load Once,
+   * Filter Local) untuk tahu dokumen COR mana yang SUDAH punya draft
+   * tersimpan (tombol jadi "Lanjutkan COR", skip wizard) vs yang belum
+   * (tombol "Kerjakan COR", tampilkan wizard dulu).
+   */
+  module.getAllHeaders = function () {
+    return CorHeaderRepository.findAll();
+  };
+
+  /**
    * Ambil draft kalkulator COR untuk satu dokumen — dipanggil saat halaman
    * kalkulator dibuka, supaya kalau sudah pernah diisi/disimpan sebelumnya,
    * datanya muncul lagi (bukan mulai dari kosong).

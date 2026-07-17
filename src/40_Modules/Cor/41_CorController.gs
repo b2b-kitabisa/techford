@@ -9,6 +9,12 @@ var CorController = (function (module) {
     });
   };
 
+  module.getAllHeaders = function () {
+    return ErrorHandler.handle('CorController.getAllHeaders', function () {
+      return CorService.getAllHeaders();
+    });
+  };
+
   module.getDraft = function (docId) {
     return ErrorHandler.handle('CorController.getDraft', function () {
       return CorService.getDraft(docId);
