@@ -116,13 +116,16 @@
     if (!value) return;
     if (!techfordConfirm('Tambah opsi "' + value + '" ke Master Data?')) return;
 
+    TechfordLoading.show('Menambah opsi...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         openMasterDataCategories[category] = true;
         fetchMasterData();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menambah opsi: ' + (err && err.message ? err.message : err));
       })
       .masterdata_addOption(category, value);
@@ -185,13 +188,16 @@
     if (!techfordConfirm('Tambah sub-kategori "' + subCategory + '" (' + percentage + '%) ke Margin Guide?')) return;
 
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Menambah Margin Guide...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         openMarginComponents[component] = true;
         fetchMarginGuides();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menambah Margin Guide: ' + (err && err.message ? err.message : err));
       })
       .marginguide_add(component, subCategory, Number(percentage), createdBy);
@@ -199,12 +205,15 @@
 
   function removeMarginGuide(marginGuideId) {
     if (!techfordConfirm('Hapus sub-kategori ini dari Margin Guide?')) return;
+    TechfordLoading.show('Menghapus...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         fetchMarginGuides();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
       })
       .marginguide_remove(marginGuideId);

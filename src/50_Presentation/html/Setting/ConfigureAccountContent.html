@@ -168,13 +168,16 @@
     // EKSPLISIT bilang { ok: false } — kalau res kosong/null, anggap
     // berhasil dan sinkronkan tampilan lewat pemanggilan baca terpisah
     // (fetchAdmins), bukan bergantung pada isi respons tulis ini.
+    TechfordLoading.show('Menambah admin...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         closeAddAdmin();
         fetchAdmins();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menambah admin: ' + (err && err.message ? err.message : err));
       })
       .employee_createAdmin(input);
@@ -184,12 +187,15 @@
     var nextStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     if (!confirm('Ubah status admin ini jadi ' + nextStatus + '?')) return;
 
+    TechfordLoading.show('Mengubah status admin...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         fetchAdmins();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal mengubah status: ' + (err && err.message ? err.message : err));
       })
       .employee_setStatus(employeeId, nextStatus);
@@ -211,13 +217,16 @@
     if (!resetPasswordTargetId) return;
     if (!techfordConfirm('Reset password admin ini?')) return;
 
+    TechfordLoading.show('Mereset password...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         closeResetPassword();
         fetchAdmins();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal reset password: ' + (err && err.message ? err.message : err));
       })
       .employee_resetPassword(resetPasswordTargetId, newPassword);

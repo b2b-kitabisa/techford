@@ -604,8 +604,10 @@
     };
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
 
+    TechfordLoading.show('Menyimpan client...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         closeAddClient();
         fetchClients();
@@ -618,6 +620,7 @@
         showClientSuccess('Client baru berhasil ditambahkan.', eligible ? newClient.Client_ID : null);
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .client_create(input, createdBy);
@@ -839,6 +842,8 @@
     var removedPicIds = editModeRemovedPicIds.slice();
     var newPics = editModePendingNewPics.slice();
 
+    TechfordLoading.show('Menyimpan data client...');
+
     // google.script.run kadang mengirim res=null walau operasi di server
     // berhasil — kita terapkan langsung ke cache lokal (optimistic update)
     // tanpa bergantung pada isi respons, konsisten dengan pola di modul Lead.
@@ -873,6 +878,7 @@
             editModePendingNewPics = [];
             btn.disabled = false;
             btn.innerText = '💾 SAVE';
+            TechfordLoading.hide();
             fetchPics();
             if (idx !== -1) renderClientDrawer(allClients[idx]);
             renderClients();
@@ -889,6 +895,7 @@
       .withFailureHandler(function (err) {
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
+        TechfordLoading.hide();
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .client_update(clientId, patch);
@@ -943,16 +950,22 @@
     btn.innerText = '⏳ Memproses...';
 
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Membuat draft project...');
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok === false) {
+          TechfordLoading.hide();
           btn.disabled = false;
           btn.innerText = '🚀 Buat Project di Sales Pipeline';
           return alert(res.error.message);
         }
-        window.location.href = TECHFORD_WEB_APP_URL + '?page=sales-pipeline';
+        // window.location.href biasa hanya menavigasi iframe sandbox GAS
+        // (halaman jadi nyangkut/blank) — wajib lewat window.top supaya
+        // benar-benar pindah halaman penuh ke Sales Pipeline.
+        window.top.location.href = TECHFORD_WEB_APP_URL + '?page=sales-pipeline';
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '🚀 Buat Project di Sales Pipeline';
         alert('Gagal membuat draft project: ' + (err && err.message ? err.message : err));

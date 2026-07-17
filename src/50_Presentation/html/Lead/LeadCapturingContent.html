@@ -619,9 +619,11 @@
     var btn = document.querySelector('.drawer-footer .btn-save');
     btn.disabled = true;
     btn.innerText = 'Memproses...';
+    TechfordLoading.show('Memindahkan lead...');
 
     google.script.run
       .withSuccessHandler(function () {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
 
@@ -639,6 +641,7 @@
         showSuccessModal('Lead berhasil dipindahkan menjadi Client.');
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
         alert('Gagal memindahkan: ' + (err && err.message ? err.message : err));
@@ -664,6 +667,7 @@
     var btn = document.querySelector('.drawer-footer .btn-save');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Menyimpan data lead...');
 
     // Optimistic update: google.script.run terbukti berkali-kali gagal
     // mengirim balik BODY respons yang bisa dibaca untuk endpoint ini
@@ -677,6 +681,7 @@
     // selalu berfungsi benar untuk kasus gagal sungguhan).
     google.script.run
       .withSuccessHandler(function () {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
 
@@ -697,6 +702,7 @@
         showSuccessModal('Data berhasil disimpan.');
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
@@ -707,17 +713,20 @@
   function syncNewLeads() {
     var btn = document.querySelector('.btn-sync');
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
+    TechfordLoading.show('Sinkronisasi lead baru...');
 
     // google.script.run kadang mengirim res=null walau sync di server
     // berhasil — hanya anggap gagal kalau server EKSPLISIT bilang
     // { ok: false }, selebihnya refresh lewat pemanggilan baca terpisah.
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
         if (res && res.ok === false) return alert(res.error.message);
         fetchLeads();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
         alert('Gagal sync: ' + (err && err.message ? err.message : err));
       })

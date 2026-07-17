@@ -1012,8 +1012,10 @@
 
     if (currentDraftProjectId) {
       var draftId = currentDraftProjectId;
+      TechfordLoading.show('Menyimpan pipeline...');
       google.script.run
         .withSuccessHandler(function (res) {
+          TechfordLoading.hide();
           if (res && res.ok === false) return alert(res.error.message);
           currentDraftProjectId = null;
           closeAddPipeline();
@@ -1021,20 +1023,24 @@
           fetchProjects();
         })
         .withFailureHandler(function (err) {
+          TechfordLoading.hide();
           alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
         })
         .project_completeDraft(draftId, input, createdBy);
       return;
     }
 
+    TechfordLoading.show('Menyimpan pipeline...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         closeAddPipeline();
         showPipelineSuccess('Pipeline baru berhasil ditambahkan.');
         fetchProjects();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .project_create(input, createdBy);
@@ -1179,7 +1185,9 @@
     if (!techfordConfirm('Kirim permintaan ' + toRequest.length + ' dokumen ke tim Operation?')) return;
 
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Mengirim permintaan dokumen...');
     submitDocRequestsSequentially(toRequest, 0, projectId, createdBy, function () {
+      TechfordLoading.hide();
       pendingDocRequestKeys = {};
       fetchDocuments();
       fetchProjects();
@@ -1356,9 +1364,11 @@
     var btn = document.getElementById('projectSaveBtn');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Menyimpan informasi project...');
 
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
         if (res && res.ok === false) return alert(res.error.message);
@@ -1367,6 +1377,7 @@
         closePipelineDetail();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
@@ -1380,8 +1391,10 @@
     var projectId = currentPipelineDrawerId;
     var stage = document.getElementById('detailStageSelect').value;
     if (!techfordConfirm('Ubah Stage project ini jadi "' + stage + '"?')) return;
+    TechfordLoading.show('Memperbarui stage...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) {
           // Tolak (misal MANUAL_DEAL_BLOCKED) — kembalikan dropdown ke Stage
           // asli project supaya tidak menampilkan pilihan yang sebenarnya
@@ -1394,6 +1407,7 @@
         fetchProjects();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal memperbarui stage: ' + (err && err.message ? err.message : err));
       })
       .project_updateStage(projectId, stage);
@@ -1435,13 +1449,16 @@
       .filter(function (d) { return d.name.trim() || d.link.trim(); })
       .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; });
 
+    TechfordLoading.show('Menyimpan dokumen terkait...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Dokumen terkait berhasil disimpan.');
         fetchProjects();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .project_update(currentPipelineDrawerId, { otherDocumentLinks: links });
@@ -1571,14 +1588,17 @@
   function submitRevenueBreakdown() {
     if (!currentPipelineDrawerId) return;
     if (!techfordConfirm('Simpan Revenue Breakdown ini?')) return;
+    TechfordLoading.show('Menyimpan revenue breakdown...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Revenue breakdown berhasil disimpan.');
         fetchProjects();
         fetchRevenueBreakdown();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .project_updateRevenueBreakdown(currentPipelineDrawerId, {

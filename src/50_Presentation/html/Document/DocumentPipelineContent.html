@@ -839,14 +839,17 @@
     if (!currentDocDrawerId) return;
     var newStatus = document.getElementById('docStatusSelect').value;
     if (!techfordConfirm('Update status dokumen ini jadi "' + newStatus + '"?')) return;
+    TechfordLoading.show('Memperbarui status...');
     google.script.run
       .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showDocSuccess('Status dokumen berhasil diperbarui.');
         fetchDocuments();
         closeDocDetail();
       })
       .withFailureHandler(function (err) {
+        TechfordLoading.hide();
         alert('Gagal memperbarui status: ' + (err && err.message ? err.message : err));
       })
       .document_updateStatus(currentDocDrawerId, newStatus);

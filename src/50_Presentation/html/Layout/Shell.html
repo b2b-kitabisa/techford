@@ -89,6 +89,13 @@
     </div>
   </div>
 
+  <div class="techford-loading-overlay" id="techfordLoadingOverlay">
+    <div class="techford-loading-box">
+      <div class="techford-loading-spinner"></div>
+      <div class="techford-loading-text" id="techfordLoadingText">Memproses...</div>
+    </div>
+  </div>
+
   <script>
     // Karena arsitektur platform ini full-page-reload (bukan SPA), halaman
     // konten kadang perlu redirect ke halaman lain (misal Client Monitoring
@@ -109,6 +116,37 @@
     function techfordConfirm(message) {
       return window.confirm(message);
     }
+
+    // Freeze halaman selama proses save/update/request ke server sedang
+    // berjalan (dipanggil di setiap aksi tulis, sebelum google.script.run
+    // dikirim, lalu di-hide lagi di success/failure handler-nya) — pakai
+    // counter supaya aman kalau ada beberapa proses tumpang tindih (hide
+    // hanya benar-benar menutup overlay kalau semua proses sudah selesai).
+    var TechfordLoading = (function () {
+      var pending = 0;
+      function show(message) {
+        pending++;
+        var overlay = document.getElementById('techfordLoadingOverlay');
+        if (!overlay) return;
+        document.getElementById('techfordLoadingText').innerText = message || 'Memproses...';
+        overlay.classList.add('open');
+      }
+      function hide() {
+        pending = Math.max(0, pending - 1);
+        if (pending > 0) return;
+        var overlay = document.getElementById('techfordLoadingOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
+      function reset() {
+        pending = 0;
+        var overlay = document.getElementById('techfordLoadingOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
+      return { show: show, hide: hide, reset: reset };
+    })();
+    // Kalau user pindah halaman (full page reload) sementara overlay masih
+    // terbuka, pastikan tidak "nyangkut" ke render halaman berikutnya.
+    window.addEventListener('beforeunload', function () { TechfordLoading.reset(); });
 
     /**
      * CorCalc — kalkulasi & rendering laporan COR, dipakai BERSAMA oleh
@@ -234,7 +272,8 @@
         '.cor-report h2{font-size:14px;margin:20px 0 6px;border-bottom:2px solid #333;padding-bottom:4px;}' +
         '.cor-report h3{font-size:12px;margin:10px 0 4px;color:#555;}' +
         '.cor-report table{width:100%;border-collapse:collapse;margin-bottom:6px;border:1px solid #ccc;}' +
-        '.cor-report .pdf-tbl th,.cor-report .pdf-tbl td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;}' +
+        '.cor-report .pdf-tbl{table-layout:fixed;}' +
+        '.cor-report .pdf-tbl th,.cor-report .pdf-tbl td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;word-break:break-word;}' +
         '.cor-report .pdf-tbl th{background:#f2f2f2;}' +
         '.cor-report .pdf-tbl td.r,.cor-report .pdf-meta td.r{text-align:right;}' +
         '.cor-report .pdf-meta td{padding:5px 7px;font-size:12px;border:1px solid #ccc;}' +
@@ -246,8 +285,18 @@
       function pdfRow(label, value) {
         return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
       }
-      function tblHead(headers) {
-        return '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>';
+      // Lebar kolom DITENTUKAN tetap (persis seperti resize manual kolom di
+      // spreadsheet) supaya garis antar baris/tabel rapi konsisten — bukan
+      // fit-to-content, isi yang kepanjangan cukup wrap ke bawah.
+      var FUND_COLS = [28, 15, 9, 14, 14, 20];
+      var COST_COLS = [28, 13, 12, 22, 12, 13];
+      var MARGIN_COLS = [28, 40, 10, 22];
+      function colgroup(widths) {
+        return '<colgroup>' + widths.map(function (w) { return '<col style="width:' + w + '%">'; }).join('') + '</colgroup>';
+      }
+      function tblHead(headers, widths) {
+        return (widths ? colgroup(widths) : '') +
+          '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>';
       }
       function fundRowsHtml(rows, biayaPencairan) {
         if (!rows.length) return '<tr><td colspan="6" class="pdf-empty">Tidak ada data.</td></tr>';
@@ -313,9 +362,9 @@
             });
 
             html += '<h2>Source of Fund</h2>' +
-              '<h3>Dana Client</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk']) +
+              '<h3>Dana Client</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk'], FUND_COLS) +
               '<tbody>' + fundRowsHtml(block.funds.filter(function (f) { return f.fundType === 'CLIENT'; }), biayaPencairan) + '</tbody></table>' +
-              '<h3>Dana Campaign</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk']) +
+              '<h3>Dana Campaign</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk'], FUND_COLS) +
               '<tbody>' + fundRowsHtml(block.funds.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), biayaPencairan) + '</tbody></table>' +
               '<table class="pdf-meta"><tbody>' + pdfRow('Total Dana Masuk', fmtRp(gd.totalMasuk)) + '</tbody></table>';
 
@@ -336,7 +385,7 @@
               pdfRow('Cash In ' + model.vendorEntity + ' (Net)', fmtRp(gd.cashNet)) +
               '</tbody></table>' +
 
-              '<h2>Default Margin</h2><table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal']) +
+              '<h2>Default Margin</h2><table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal'], MARGIN_COLS) +
               '<tbody>' + marginTableHtml(block.margin, model.marginComponents, gd.cashNet) + '</tbody></table>' +
               '<table class="pdf-meta"><tbody>' +
               pdfRow('Total Margin', (gd.totalMgnFrac * 100).toFixed(0) + '%') +
@@ -346,13 +395,13 @@
 
             if (model.isViaSalset) {
               html += '<h2>Biaya Pengeluaran SALSET</h2><table class="pdf-tbl">' +
-                tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+                tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
                 '<tbody>' + costRowsHtml(block.salItems) + '</tbody></table>' +
                 '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gd.totalSal)) + '</tbody></table>';
             }
 
             html += '<h2>Biaya Pengeluaran ' + model.vendorEntity + '</h2><table class="pdf-tbl">' +
-              tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+              tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
               '<tbody>' + costRowsHtml(block.baaItems) + '</tbody></table>' +
               '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gd.totalBaa)) + '</tbody></table>' +
 
@@ -373,12 +422,12 @@
 
             if (model.isViaSalset) {
               html += '<h2>Cost SALSET</h2><table class="pdf-tbl">' +
-                tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+                tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
                 '<tbody>' + costRowsHtml(block.salItems) + '</tbody></table>' +
                 '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gu.totalGuSal)) + '</tbody></table>';
             }
             html += '<h2>Cost ' + model.vendorEntity + '</h2><table class="pdf-tbl">' +
-              tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+              tblHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
               '<tbody>' + costRowsHtml(block.baaItems) + '</tbody></table>' +
               '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gu.totalGuBaa)) + '</tbody></table>';
 
@@ -390,7 +439,7 @@
                 '</tbody></table>';
             }
 
-            html += '<h2>Default Margin</h2><table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal']) +
+            html += '<h2>Default Margin</h2><table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal'], MARGIN_COLS) +
               '<tbody>' + marginTableHtml(block.margin, model.marginComponents, gu.guMargin) + '</tbody></table>' +
               '<table class="pdf-meta"><tbody>' + pdfRow('Total Margin', (gu.guTotalMgnFrac * 100).toFixed(0) + '%') + '</tbody></table>' +
 

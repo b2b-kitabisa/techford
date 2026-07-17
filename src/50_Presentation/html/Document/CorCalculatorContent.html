@@ -1292,15 +1292,25 @@
     var btn = document.getElementById('corSaveDraftBtn');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Menyimpan draft COR...');
     saveDraft(
       function () {
-        // Langsung redirect (bukan window.alert() dulu) — dialog alert()
-        // native browser kadang macet/tidak jelas kelihatan di dalam
-        // iframe sandbox GAS, kesannya tombol "nyangkut" di Menyimpan.
-        btn.innerText = '✓ Tersimpan — kembali ke Document Pipeline...';
+        TechfordLoading.hide();
+        // window.top.location.href yang dipanggil di sini (async, setelah
+        // round-trip ke server) kadang DITAHAN diam-diam oleh browser —
+        // sandbox iframe GAS cuma izinkan navigasi top-level selama masih
+        // dalam jendela "user activation", dan itu bisa sudah lewat saat
+        // callback save selesai. Makanya tetap coba redirect otomatis DULU,
+        // tapi tombolnya juga diubah jadi tombol klik manual (fresh user
+        // gesture, dijamin jalan) sebagai fallback kalau auto-redirect diam
+        // gagal.
+        btn.disabled = false;
+        btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
+        btn.onclick = goBackToDocumentPipeline;
         goBackToDocumentPipeline();
       },
       function (message) {
+        TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 Simpan Draft';
         alert('Gagal menyimpan draft: ' + message);
@@ -1313,18 +1323,28 @@
   // halaman HTML rapi (lewat CorCalc.renderDocumentHtml, DIBAGI dengan
   // "Lihat COR" di Document Pipeline supaya satu sumber logika) lalu
   // diserahkan ke dialog print browser (user tinggal pilih "Save as PDF").
+  // CorCalc (Shell.html) mengharapkan field long-name (fundType/label/
+  // kategori/tipe/harga/qty/periode) — state di kalkulator ini pakai
+  // singkatan (type/ket/kat/h/q/p) untuk hemat, jadi wajib di-map dulu
+  // sebelum dipakai buat preview/PDF, kalau tidak datanya kebaca kosong.
+  function toPdfFund(f) {
+    return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
+  }
+  function toPdfCost(r) {
+    return { label: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p };
+  }
   function buildPdfModel() {
     var isMix = getEffectiveMixFund();
     var blocks;
     if (isMix) {
       blocks = [
-        { tabLabel: 'Client', funds: funds.filter(function (f) { return f.type === 'CLIENT'; }), salItems: corState.CLIENT.salItems, baaItems: corState.CLIENT.baaItems, margin: corState.CLIENT.margin },
-        { tabLabel: 'Campaign', funds: funds.filter(function (f) { return f.type === 'CAMPAIGN'; }), salItems: corState.CAMPAIGN.salItems, baaItems: corState.CAMPAIGN.baaItems, margin: corState.CAMPAIGN.margin }
+        { tabLabel: 'Client', funds: funds.filter(function (f) { return f.type === 'CLIENT'; }).map(toPdfFund), salItems: corState.CLIENT.salItems.map(toPdfCost), baaItems: corState.CLIENT.baaItems.map(toPdfCost), margin: corState.CLIENT.margin },
+        { tabLabel: 'Campaign', funds: funds.filter(function (f) { return f.type === 'CAMPAIGN'; }).map(toPdfFund), salItems: corState.CAMPAIGN.salItems.map(toPdfCost), baaItems: corState.CAMPAIGN.baaItems.map(toPdfCost), margin: corState.CAMPAIGN.margin }
       ];
     } else if (currentMethod === 'GROSS_DOWN') {
-      blocks = [{ tabLabel: null, funds: funds, salItems: corState.CLIENT.salItems, baaItems: corState.CLIENT.baaItems, margin: corState.CLIENT.margin }];
+      blocks = [{ tabLabel: null, funds: funds.map(toPdfFund), salItems: corState.CLIENT.salItems.map(toPdfCost), baaItems: corState.CLIENT.baaItems.map(toPdfCost), margin: corState.CLIENT.margin }];
     } else {
-      blocks = [{ tabLabel: null, funds: [], salItems: guState.salItems, baaItems: guState.baaItems, margin: guState.margin }];
+      blocks = [{ tabLabel: null, funds: [], salItems: guState.salItems.map(toPdfCost), baaItems: guState.baaItems.map(toPdfCost), margin: guState.margin }];
     }
 
     return {

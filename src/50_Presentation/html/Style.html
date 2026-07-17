@@ -450,6 +450,25 @@
   .confirm-box p { margin: 0 0 20px; font-size: 13px; color: var(--text-muted); }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
+  /* ---- Freeze overlay (dipasang selama proses save/update/request ke
+     server sedang berjalan, supaya admin tidak bisa klik apapun lagi &
+     paham halamannya sedang memproses) ---- */
+  .techford-loading-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.25);
+    align-items: center; justify-content: center; z-index: 2000; cursor: wait;
+  }
+  .techford-loading-overlay.open { display: flex; }
+  .techford-loading-box {
+    background: var(--color-white); border-radius: 8px; padding: 18px 26px;
+    display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(var(--color-mineshaft-rgb), 0.25);
+  }
+  .techford-loading-spinner {
+    width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--border-soft);
+    border-top-color: var(--color-mineshaft); animation: techford-spin 0.7s linear infinite;
+  }
+  .techford-loading-text { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+  @keyframes techford-spin { to { transform: rotate(360deg); } }
+
   /* ---- Success Popup ---- */
   .success-overlay {
     display: none; position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);
