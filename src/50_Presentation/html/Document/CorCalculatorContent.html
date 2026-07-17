@@ -7,6 +7,7 @@
   var WIZARD_METHOD = '<?= queryParams.method || "" ?>';
   var WIZARD_VIA_SALSET = '<?= queryParams.viaSalset || "" ?>' === '1';
   var WIZARD_MIX_FUND = '<?= queryParams.mixFund || "" ?>' === '1';
+  var WIZARD_FUND_TYPE = '<?= queryParams.fundType || "" ?>'; // 'CLIENT'/'CAMPAIGN', hanya untuk CARA 3 (satu sumber dana)
 </script>
 
 <style>
@@ -20,6 +21,10 @@
   .cor-mtabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
   .cor-mtab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
   .cor-mtab.on { background: var(--color-cerulean); color: var(--color-white); }
+  .cor-mtab.locked { cursor: not-allowed; pointer-events: none; }
+  .cor-mtab.locked:not(.on) { opacity: 0.5; }
+  .cor-route-locked-note { font-size: 10px; color: var(--text-faint); margin-left: 4px; }
+  .cor-fund-locked-note { font-size: 11px; color: var(--text-faint); font-style: italic; padding: 8px 0; text-align: center; }
 
   .cor-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
   @media (max-width: 1100px) { .cor-grid { grid-template-columns: 1fr; } }
@@ -90,14 +95,16 @@
   </div>
 
   <div class="cor-mtabs">
-    <button class="cor-mtab on" id="corTabGD" onclick="setCorMethod('GROSS_DOWN')">Gross Down</button>
-    <button class="cor-mtab" id="corTabGU" onclick="setCorMethod('GROSS_UP')">Gross Up</button>
+    <button class="cor-mtab on" id="corTabGD">Gross Down</button>
+    <button class="cor-mtab" id="corTabGU">Gross Up</button>
+    <span class="cor-route-locked-note">🔒 sesuai pilihan wizard</span>
   </div>
 
   <div class="cor-route-bar">
     <label class="switch-wrap">Via SALSET
-      <span class="switch"><input type="checkbox" id="corViaSalset" onchange="onRouteChange()"><span class="switch-slider"></span></span>
+      <span class="switch"><input type="checkbox" id="corViaSalset" disabled><span class="switch-slider"></span></span>
     </label>
+    <span class="cor-route-locked-note">🔒 sesuai pilihan wizard</span>
     <span style="color:var(--text-faint);">&rarr;</span>
     <div>
       <span style="font-size:11px; color:var(--text-muted); margin-right:6px;">Via Vendor</span>
@@ -125,21 +132,27 @@
         <div class="cor-box">
           <div class="cor-box-hd">1. Source of Fund</div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-size:11px; font-weight:700; color:var(--color-cerulean); text-transform:uppercase;">Dana Client</span>
-            <span style="font-size:11px;">Subtotal: <strong id="corSubClient">Rp0</strong></span>
+          <div id="corClientFundSection">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:11px; font-weight:700; color:var(--color-cerulean); text-transform:uppercase;">Dana Client</span>
+              <span style="font-size:11px;">Subtotal: <strong id="corSubClient">Rp0</strong></span>
+            </div>
+            <div id="corClientFundRows"></div>
+            <button class="btn-outline" onclick="addFundRow('CLIENT')" id="corAddClientFundBtn">+ Dana Client</button>
           </div>
-          <div id="corClientFundRows"></div>
-          <button class="btn-outline" onclick="addFundRow('CLIENT')" id="corAddClientFundBtn">+ Dana Client</button>
+          <div id="corClientFundLockedNote" class="cor-fund-locked-note" style="display:none;">🔒 Sumber dana ini terkunci — sesuai pilihan wizard, project ini hanya pakai Dana Campaign.</div>
 
-          <div style="height:1px; background:var(--border-softer); margin:12px 0;"></div>
+          <div id="corFundDivider" style="height:1px; background:var(--border-softer); margin:12px 0;"></div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-size:11px; font-weight:700; color:#188038; text-transform:uppercase;">Dana Campaign <span style="font-weight:400; color:var(--text-faint);">(NDV — sudah dipotong platform &amp; tech fee)</span></span>
-            <span style="font-size:11px;">Subtotal: <strong id="corSubCampaign">Rp0</strong></span>
+          <div id="corCampaignFundSection">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:11px; font-weight:700; color:#188038; text-transform:uppercase;">Dana Campaign <span style="font-weight:400; color:var(--text-faint);">(NDV — sudah dipotong platform &amp; tech fee)</span></span>
+              <span style="font-size:11px;">Subtotal: <strong id="corSubCampaign">Rp0</strong></span>
+            </div>
+            <div id="corCampaignFundRows"></div>
+            <button class="btn-outline" onclick="addFundRow('CAMPAIGN')" id="corAddCampaignFundBtn">+ Dana Campaign</button>
           </div>
-          <div id="corCampaignFundRows"></div>
-          <button class="btn-outline" onclick="addFundRow('CAMPAIGN')" id="corAddCampaignFundBtn">+ Dana Campaign</button>
+          <div id="corCampaignFundLockedNote" class="cor-fund-locked-note" style="display:none;">🔒 Sumber dana ini terkunci — sesuai pilihan wizard, project ini hanya pakai Dana Client.</div>
 
           <div style="height:1px; background:var(--border-softer); margin:12px 0;"></div>
           <div style="display:flex; justify-content:space-between;">
@@ -440,6 +453,10 @@
   // supaya alur 4 CARA (lihat wizard di Document Pipeline) konsisten &
   // tidak "meleset" sendiri kalau user kebetulan mengisi dua jenis dana.
   var isMixFund = false;
+  // Hanya terisi ('CLIENT'/'CAMPAIGN') untuk CARA 3 (Gross Down, bukan Via
+  // SALSET, bukan Mix Fund) — mengunci Source of Fund supaya cuma satu
+  // jenis dana yang bisa diisi, sesuai jawaban wizard "Kerjakan COR".
+  var singleFundType = null;
   var vendorEntity = '';
   var ngoRate = 10; // NGO rate Gross Down
   var guNgoRate = 10; // NGO rate Gross Up — independen, TIDAK terhubung ke Gross Down
@@ -473,8 +490,11 @@
   var guState = { salItems: [], baaItems: [], margin: {} };
 
   // ══════════════════════════ BOOTSTRAP ══════════════════════════
+  // Halaman GAS Web App dirender di dalam iframe sandbox — window.location
+  // hanya menavigasi iframe itu sendiri (jadi blank/nyangkut), harus lewat
+  // window.top supaya benar-benar pindah halaman penuh.
   function goBackToDocumentPipeline() {
-    window.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+    window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
   }
 
   var corBootstrapAttempts = 0;
@@ -558,7 +578,9 @@
 
   function populateVendorSelect() {
     var sel = document.getElementById('corVendorSelect');
-    var entities = corTaxonomy.entities || [];
+    // Salam Setara bukan pilihan Vendor — itu entitas SALSET, dipilih lewat
+    // toggle "Via SALSET", bukan lewat dropdown Vendor ini.
+    var entities = (corTaxonomy.entities || []).filter(function (e) { return e.Entity_Name !== 'Salam Setara'; });
     sel.innerHTML = entities.map(function (e) {
       return '<option value="' + e.Entity_Name + '">' + e.Entity_Name + ' &middot; ' + e.Bank + '</option>';
     }).join('');
@@ -573,6 +595,7 @@
       currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';
       isViaSalset = !!draft.header.Is_Via_Salset;
       isMixFund = !!draft.header.Is_Mix_Fund;
+      singleFundType = draft.header.Single_Fund_Type || null;
       vendorEntity = draft.header.Vendor_Entity || '';
       if (currentMethod === 'GROSS_UP') guNgoRate = Number(draft.header.Ngo_Rate) || 10;
       else ngoRate = Number(draft.header.Ngo_Rate) || 10;
@@ -583,6 +606,7 @@
       if (WIZARD_METHOD) currentMethod = WIZARD_METHOD;
       isViaSalset = WIZARD_VIA_SALSET;
       isMixFund = WIZARD_MIX_FUND;
+      singleFundType = WIZARD_FUND_TYPE || null;
     }
 
     funds = (draft.funds || []).map(function (f) {
@@ -635,6 +659,21 @@
     document.getElementById('corBiayaSalset').value = corState.CLIENT.biayaSalset;
     populateVendorSelect();
     setCorMethod(currentMethod, true);
+    applyFundLock();
+  }
+
+  // Item 5 & 7 — Metode/Via SALSET/jenis dana sudah diputuskan lewat wizard
+  // "Kerjakan COR" dan tidak bisa diubah lagi di halaman ini (cuma nama
+  // Vendor yang masih bebas dipilih). Kalau CARA 3 (singleFundType terisi),
+  // Source of Fund cuma boleh diisi utk satu jenis dana — yang lain dikunci.
+  function applyFundLock() {
+    var showClient = singleFundType !== 'CAMPAIGN';
+    var showCampaign = singleFundType !== 'CLIENT';
+    document.getElementById('corClientFundSection').style.display = showClient ? '' : 'none';
+    document.getElementById('corClientFundLockedNote').style.display = showClient ? 'none' : '';
+    document.getElementById('corCampaignFundSection').style.display = showCampaign ? '' : 'none';
+    document.getElementById('corCampaignFundLockedNote').style.display = showCampaign ? 'none' : '';
+    document.getElementById('corFundDivider').style.display = (showClient && showCampaign) ? '' : 'none';
   }
 
   // ══════════════════════════ HELPERS ══════════════════════════
@@ -709,8 +748,8 @@
   // ══════════════════════════ METHOD / TAB SWITCH ══════════════════════════
   function setCorMethod(method, silent) {
     currentMethod = method;
-    document.getElementById('corTabGD').className = 'cor-mtab' + (method === 'GROSS_DOWN' ? ' on' : '');
-    document.getElementById('corTabGU').className = 'cor-mtab' + (method === 'GROSS_UP' ? ' on' : '');
+    document.getElementById('corTabGD').className = 'cor-mtab locked' + (method === 'GROSS_DOWN' ? ' on' : '');
+    document.getElementById('corTabGU').className = 'cor-mtab locked' + (method === 'GROSS_UP' ? ' on' : '');
     document.getElementById('corGdView').style.display = method === 'GROSS_DOWN' ? '' : 'none';
     document.getElementById('corGuView').style.display = method === 'GROSS_UP' ? '' : 'none';
     document.getElementById('corRpGd').style.display = method === 'GROSS_DOWN' ? '' : 'none';
@@ -932,8 +971,12 @@
     document.getElementById('corMixTabs').style.display = isMix ? 'inline-flex' : 'none';
     document.getElementById('corActiveBankChip').innerText = ent.Entity_Name + ' (' + ent.Bank + ')';
     document.getElementById('corPkpNote').innerText = pkp ? '(PKP, ÷1.11)' : '(not PKP)';
+    // vl-* SELALU nama Vendor terpilih (bukan entitas aktif) — Salam Setara
+    // cuma perantara rekening, bukan Vendor, jadi label box "Biaya
+    // Pengeluaran ..." tidak boleh ikut jadi "Salam Setara" walau Via
+    // SALSET aktif.
     ['corVl1', 'corVl2', 'corVl3', 'corVl4', 'corVl5', 'corVlGu1', 'corVlGu2', 'corVlGu3', 'corRrVl', 'corRrVl2'].forEach(function (id) {
-      document.getElementById(id).innerText = ent.Entity_Name;
+      document.getElementById(id).innerText = vendorEntity || '-';
     });
 
     // Show/hide SALSET-only boxes — set ke '' (bukan paksa 'flex'/'block')
@@ -1158,6 +1201,7 @@
       ngoRate: currentMethod === 'GROSS_UP' ? guNgoRate : ngoRate,
       biayaSalset: corState.CLIENT.biayaSalset,
       isMixFund: isMix,
+      singleFundType: singleFundType,
       linkCampaigns: linkCampaigns,
       funds: currentMethod === 'GROSS_DOWN' ? funds_payload : [],
       costs: costs_payload,

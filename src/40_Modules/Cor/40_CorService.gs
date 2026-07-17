@@ -89,6 +89,7 @@ var CorService = (function (module) {
         Ngo_Rate: Number(header.Ngo_Rate) || 10,
         Biaya_Salset: Number(header.Biaya_Salset) || 0,
         Is_Mix_Fund: !!header.Is_Mix_Fund,
+        Single_Fund_Type: header.Single_Fund_Type || null,
         Link_Campaigns: decodeJson(header.Link_Campaigns, []),
         Output_File_Id_Client: header.Output_File_Id_Client || '',
         Output_File_Id_Campaign: header.Output_File_Id_Campaign || ''
@@ -113,6 +114,9 @@ var CorService = (function (module) {
    *   - biayaSalset: number
    *   - linkCampaigns: string[] (opsional, murni informasi)
    *   - isMixFund: boolean
+   *   - singleFundType: 'CLIENT' | 'CAMPAIGN' | null (hanya CARA 3 — Gross
+   *     Down, bukan Via SALSET, bukan Mix Fund — mengunci Source of Fund
+   *     supaya cuma 1 jenis dana yang bisa diisi)
    *   - funds: [{ fundType, linkCampaign, nominal, isZakat }]
    *   - costs: [{ tab, group, keterangan, kategori, tipe, harga, qty, periode }]
    *   - margins: [{ tab, component, subCategory, percentage }]
@@ -135,6 +139,7 @@ var CorService = (function (module) {
       Ngo_Rate: Number(input.ngoRate) || 10,
       Biaya_Salset: Number(input.biayaSalset) || 0,
       Is_Mix_Fund: !!input.isMixFund,
+      Single_Fund_Type: input.singleFundType || '',
       Link_Campaigns: JSON.stringify((input.linkCampaigns || []).filter(function (l) { return l && String(l).trim(); })),
       Output_File_Id_Client: existing ? existing.Output_File_Id_Client : '',
       Output_File_Id_Campaign: existing ? existing.Output_File_Id_Campaign : '',

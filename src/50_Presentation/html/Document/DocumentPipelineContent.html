@@ -147,30 +147,50 @@
 </div>
 
 <!-- ================= Wizard: Pilih Metode/Cara Pengerjaan COR ================= -->
+<style>
+  /* Semua opsi wizard disamakan: putih polos, border tipis, hover cuma
+     tint abu-abu lembut (bukan warna kontras beda-beda antar tombol). */
+  .cor-wizard-choice {
+    display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px;
+    border: 1px solid var(--border-soft); border-radius: 8px; background: var(--color-white);
+    color: var(--color-mineshaft); font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;
+  }
+  .cor-wizard-choice:last-of-type { margin-bottom: 0; }
+  .cor-wizard-choice:hover { background: var(--bg-hover); border-color: var(--accent-border); }
+  .cor-wizard-loading { text-align: center; padding: 20px 0; font-size: 13px; color: var(--text-muted); }
+</style>
 <div class="confirm-overlay" id="corWizardModal">
   <div class="confirm-box" style="width:420px;">
     <h3 id="corWizardTitle">Pilih Metode COR</h3>
 
     <div id="corWizardStep1">
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Dokumen ini akan dikerjakan pakai metode apa?</p>
-      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseMethod('GROSS_DOWN')">Gross Down</button>
-      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseMethod('GROSS_UP')">Gross Up</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseMethod('GROSS_DOWN')">Gross Down</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseMethod('GROSS_UP')">Gross Up</button>
     </div>
 
     <div id="corWizardStep2" style="display:none;">
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah dana project ini lewat SALSET?</p>
-      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseSalset(true)">Ya, Via SALSET</button>
-      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseSalset(false)">Tidak</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseSalset(true)">Ya, Via SALSET</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseSalset(false)">Tidak</button>
     </div>
 
     <div id="corWizardStep3" style="display:none;">
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah project ini Mix Fund — dana Client DAN Campaign sekaligus (jadi 2 COR terpisah)?</p>
-      <button class="btn-save" style="width:100%; margin-bottom:8px;" onclick="corWizardChooseMixFund(true)">Ya, Mix Fund (2 COR)</button>
-      <button class="btn-outline" style="width:100%;" onclick="corWizardChooseMixFund(false)">Tidak, satu sumber dana saja</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseMixFund(true)">Ya, Mix Fund (2 COR)</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseMixFund(false)">Tidak, satu sumber dana saja</button>
     </div>
 
+    <div id="corWizardStep4" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Dana project ini dari sumber apa?</p>
+      <button class="cor-wizard-choice" onclick="corWizardChooseFundType('CLIENT')">Dana Client</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseFundType('CAMPAIGN')">Dana Campaign</button>
+    </div>
+
+    <div id="corWizardLoading" class="cor-wizard-loading" style="display:none;">⏳ Membuka Kalkulator COR...</div>
+
     <div class="confirm-actions" style="margin-top:14px;">
-      <button class="btn-outline" onclick="closeCorWizard()">Batal</button>
+      <button class="btn-outline" id="corWizardCancelBtn" onclick="closeCorWizard()">Batal</button>
     </div>
   </div>
 </div>
@@ -584,50 +604,84 @@
     if (!currentDocDrawerId) return;
     var hasDraft = allCorHeaders.some(function (h) { return h.Doc_ID === currentDocDrawerId; });
     if (hasDraft) {
-      window.location.href = TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId);
+      // Sudah ada draft — langsung buka kalkulator (skip wizard), tapi tetap
+      // beri tanda loading di tombolnya sendiri supaya tidak diklik berkali-kali.
+      var btn = document.getElementById('docCorActionBtn');
+      btn.disabled = true;
+      btn.innerText = '⏳ Membuka...';
+      goToCorCalculatorUrl(TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId));
       return;
     }
     openCorWizard(currentDocDrawerId);
   }
 
+  // Halaman GAS Web App dirender di dalam iframe sandbox — window.location
+  // hanya menavigasi iframe itu sendiri (jadi blank/nyangkut), harus lewat
+  // window.top supaya benar-benar pindah halaman penuh.
+  function goToCorCalculatorUrl(url) {
+    window.top.location.href = url;
+  }
+
   var corWizardDocId = null;
+  var corWizardAnswers = {};
   function openCorWizard(docId) {
     corWizardDocId = docId;
-    document.getElementById('corWizardStep1').style.display = '';
-    document.getElementById('corWizardStep2').style.display = 'none';
-    document.getElementById('corWizardStep3').style.display = 'none';
+    corWizardAnswers = {};
+    document.getElementById('corWizardCancelBtn').disabled = false;
+    showCorWizardStep(1);
     document.getElementById('corWizardModal').classList.add('open');
   }
   function closeCorWizard() {
     document.getElementById('corWizardModal').classList.remove('open');
     corWizardDocId = null;
   }
+  function showCorWizardStep(n) {
+    [1, 2, 3, 4].forEach(function (i) {
+      document.getElementById('corWizardStep' + i).style.display = i === n ? '' : 'none';
+    });
+    document.getElementById('corWizardLoading').style.display = 'none';
+  }
   function corWizardChooseMethod(method) {
+    corWizardAnswers.method = method;
     if (method === 'GROSS_UP') {
       navigateToCorCalculator({ method: 'GROSS_UP', viaSalset: false, mixFund: false });
       return;
     }
-    document.getElementById('corWizardStep1').style.display = 'none';
-    document.getElementById('corWizardStep2').style.display = '';
+    showCorWizardStep(2);
   }
   function corWizardChooseSalset(viaSalset) {
+    corWizardAnswers.viaSalset = viaSalset;
     if (viaSalset) {
       navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: true, mixFund: false });
       return;
     }
-    document.getElementById('corWizardStep2').style.display = 'none';
-    document.getElementById('corWizardStep3').style.display = '';
+    showCorWizardStep(3);
   }
   function corWizardChooseMixFund(mixFund) {
-    navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: false, mixFund: mixFund });
+    corWizardAnswers.mixFund = mixFund;
+    if (mixFund) {
+      navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: false, mixFund: true });
+      return;
+    }
+    showCorWizardStep(4);
+  }
+  function corWizardChooseFundType(fundType) {
+    navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: false, mixFund: false, fundType: fundType });
   }
   function navigateToCorCalculator(opts) {
+    // Tampilkan loading & kunci tombol Batal supaya user tidak klik
+    // berkali-kali sambil menunggu halaman kalkulator terbuka.
+    [1, 2, 3, 4].forEach(function (i) { document.getElementById('corWizardStep' + i).style.display = 'none'; });
+    document.getElementById('corWizardLoading').style.display = '';
+    document.getElementById('corWizardCancelBtn').disabled = true;
+
     var url = TECHFORD_WEB_APP_URL + '?page=cor-calculator' +
       '&docId=' + encodeURIComponent(corWizardDocId) +
       '&method=' + encodeURIComponent(opts.method) +
       '&viaSalset=' + (opts.viaSalset ? '1' : '0') +
-      '&mixFund=' + (opts.mixFund ? '1' : '0');
-    window.location.href = url;
+      '&mixFund=' + (opts.mixFund ? '1' : '0') +
+      (opts.fundType ? '&fundType=' + encodeURIComponent(opts.fundType) : '');
+    goToCorCalculatorUrl(url);
   }
 
   function submitDocStatusUpdate() {
