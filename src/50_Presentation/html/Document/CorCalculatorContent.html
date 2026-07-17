@@ -91,7 +91,10 @@
       <h2 id="corDocIdDisplay">COR Calculator</h2>
       <div class="sub" id="corDocSubDisplay">Memuat data dokumen...</div>
     </div>
-    <button class="btn-save" onclick="submitSaveDraft()">💾 Simpan Draft</button>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-outline" id="corGenerateBtn" onclick="submitGenerateDocument()">📄 Generate Dokumen</button>
+      <button class="btn-save" id="corSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
+    </div>
   </div>
 
   <div class="cor-mtabs">
@@ -1177,10 +1180,7 @@
   }
 
   // ══════════════════════════ SAVE DRAFT ══════════════════════════
-  function submitSaveDraft() {
-    if (!CALCULATOR_DOC_ID) return;
-    if (!techfordConfirm('Simpan draft COR ini?')) return;
-
+  function buildDraftPayload() {
     var isMix = getEffectiveMixFund();
     var funds_payload = funds.map(function (f) {
       return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
@@ -1210,7 +1210,7 @@
       });
     }
 
-    var payload = {
+    return {
       corMethod: currentMethod,
       isViaSalset: isViaSalset,
       vendorEntity: vendorEntity,
@@ -1223,26 +1223,81 @@
       costs: costs_payload,
       margins: margins_payload
     };
+  }
 
+  function saveDraft(onSuccess, onFailure) {
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
-    var btn = document.querySelector('.cor-docinfo .btn-save');
-    btn.disabled = true;
-    btn.innerText = 'Menyimpan...';
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok === false) {
-          btn.disabled = false;
-          btn.innerText = '💾 Simpan Draft';
-          return alert(res.error.message);
-        }
-        alert('Draft COR berhasil disimpan.');
-        goBackToDocumentPipeline();
+        if (res && res.ok === false) return onFailure(res.error.message);
+        onSuccess();
       })
       .withFailureHandler(function (err) {
+        onFailure(err && err.message ? err.message : err);
+      })
+      .cor_saveDraft(CALCULATOR_DOC_ID, buildDraftPayload(), createdBy);
+  }
+
+  function submitSaveDraft() {
+    if (!CALCULATOR_DOC_ID) return;
+    if (!techfordConfirm('Simpan draft COR ini?')) return;
+
+    var btn = document.getElementById('corSaveDraftBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    saveDraft(
+      function () {
+        alert('Draft COR berhasil disimpan.');
+        goBackToDocumentPipeline();
+      },
+      function (message) {
         btn.disabled = false;
         btn.innerText = '💾 Simpan Draft';
-        alert('Gagal menyimpan draft: ' + (err && err.message ? err.message : err));
-      })
-      .cor_saveDraft(CALCULATOR_DOC_ID, payload, createdBy);
+        alert('Gagal menyimpan draft: ' + message);
+      }
+    );
+  }
+
+  // ══════════════════════════ GENERATE DOKUMEN (Tahap 3) ══════════════════════════
+  function submitGenerateDocument() {
+    if (!CALCULATOR_DOC_ID) return;
+    if (!techfordConfirm('Generate dokumen COR ke Google Sheets sekarang? Draft akan disimpan dulu, lalu file dibuat di Shared Drive B2B.')) return;
+
+    var btn = document.getElementById('corGenerateBtn');
+    btn.disabled = true;
+    btn.innerText = '⏳ Menyimpan draft...';
+
+    saveDraft(
+      function () {
+        btn.innerText = '⏳ Membuat dokumen Sheets...';
+        google.script.run
+          .withSuccessHandler(function (res) {
+            btn.disabled = false;
+            btn.innerText = '📄 Generate Dokumen';
+            if (res && res.ok === false) return alert('Gagal generate: ' + res.error.message);
+            showGenerateResult(res.data);
+          })
+          .withFailureHandler(function (err) {
+            btn.disabled = false;
+            btn.innerText = '📄 Generate Dokumen';
+            alert('Gagal generate dokumen: ' + (err && err.message ? err.message : err));
+          })
+          .cor_generateDocument(CALCULATOR_DOC_ID);
+      },
+      function (message) {
+        btn.disabled = false;
+        btn.innerText = '📄 Generate Dokumen';
+        alert('Gagal menyimpan draft: ' + message);
+      }
+    );
+  }
+
+  function showGenerateResult(data) {
+    var lines = ['Dokumen COR berhasil dibuat:'];
+    if (data.urlClient) lines.push((data.urlCampaign ? 'Dana Client: ' : 'File: ') + data.urlClient);
+    if (data.urlCampaign) lines.push('Dana Campaign: ' + data.urlCampaign);
+    alert(lines.join('\n'));
+    if (data.urlClient) window.open(data.urlClient, '_blank');
+    if (data.urlCampaign) window.open(data.urlCampaign, '_blank');
   }
 </script>

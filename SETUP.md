@@ -54,7 +54,7 @@ Prasyarat: `clasp` terinstall (`npm install -g @google/clasp`) dan sudah login k
      MG-011          | IMP       | Med >1 thn      | 8          | 3
      MG-012          | IMP       | High            | 10         | 4
      ```
-2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda. `ROOT_FOLDER_ID` (folder Shared Drive B2B tempat dokumen hasil generate seperti COR disimpan) dan `COR_TEMPLATE_FILE_ID` (spreadsheet "Template COR") sudah diisi sesuai Shared Drive & template yang Anda berikan — cukup pastikan akun yang menjalankan `clasp login`/yang jadi "Execute as" Web App punya akses tulis ke folder Shared Drive tersebut.
+2. Isi `SPREADSHEET_ID` di `src/00_Core/00_Config.gs` dengan ID Spreadsheet Anda. `ROOT_FOLDER_ID` (folder Shared Drive B2B tempat dokumen hasil generate seperti COR disimpan) dan `COR_TEMPLATE_FILE_ID` (spreadsheet "Template COR") sudah diisi sesuai Shared Drive & template yang Anda berikan — pastikan akun yang jadi "Execute as" Web App (biasanya akun yang deploy, karena `executeAs: USER_DEPLOYING`) punya **akses edit** ke folder Shared Drive tersebut **dan** ke file "Template COR" itu sendiri (dipakai sebagai master yang di-copy tiap kali generate dokumen COR — lihat `CorGenerateService`).
    > File `appsscript.json` sudah mengaktifkan Advanced Service **Drive API v3** dan **Sheets API v4** (dibutuhkan untuk membuat/mengedit file di Shared Drive) — saat deploy pertama kali setelah ini, Google akan minta otorisasi ulang (scope baru) sekali di browser, itu normal.
 3. Dari dalam folder `src/`, buat project Apps Script yang terikat (bound) ke Spreadsheet tersebut:
    ```
