@@ -129,8 +129,9 @@
 
     <div class="drawer-section" id="docCorActionWrap" style="display:none;">
       <span class="taxonomy-label">Pengerjaan COR</span>
-      <div style="margin-top:8px;">
-        <button class="btn-save" id="docCorActionBtn" onclick="openCorCalculator()" style="width:100%;">🧮 Kerjakan COR</button>
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button class="btn-save" id="docCorActionBtn" onclick="openCorCalculator()" style="flex:1;">🧮 Kerjakan COR</button>
+        <button class="btn-outline" id="docCorViewBtn" onclick="openCorPreview()" style="display:none; flex:1;">👁️ Lihat COR</button>
       </div>
       <div class="placeholder-note" id="docCorActionNote">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
     </div>
@@ -191,6 +192,18 @@
 
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" id="corWizardCancelBtn" onclick="closeCorWizard()">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Preview cepat: Lihat COR (JSON) ================= -->
+<div class="confirm-overlay" id="corPreviewModal">
+  <div class="confirm-box" style="width:560px; max-width:92vw;">
+    <h3>Lihat COR</h3>
+    <p style="margin-bottom:8px;">Preview cepat data draft COR yang sudah tersimpan (mentah, belum termasuk hasil kalkulasi rumus).</p>
+    <pre id="corPreviewJson" style="max-height:60vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:12px; font-size:11px; white-space:pre-wrap; word-break:break-word;">Memuat...</pre>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeCorPreview()">Tutup</button>
     </div>
   </div>
 </div>
@@ -590,14 +603,39 @@
     wrap.style.display = '';
     var hasDraft = allCorHeaders.some(function (h) { return h.Doc_ID === doc.Doc_ID; });
     var btn = document.getElementById('docCorActionBtn');
+    var viewBtn = document.getElementById('docCorViewBtn');
     var note = document.getElementById('docCorActionNote');
     if (hasDraft) {
       btn.innerText = '▶️ Lanjutkan COR';
       note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
+      viewBtn.style.display = '';
     } else {
       btn.innerText = '🧮 Kerjakan COR';
       note.innerText = 'Anda akan ditanya metode & cara pengerjaan dulu, baru masuk ke halaman kalkulator.';
+      viewBtn.style.display = 'none';
     }
+  }
+
+  // ---- Preview cepat "Lihat COR" (JSON mentah, bukan hasil kalkulasi) ----
+  function openCorPreview() {
+    if (!currentDocDrawerId) return;
+    document.getElementById('corPreviewJson').innerText = 'Memuat...';
+    document.getElementById('corPreviewModal').classList.add('open');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          document.getElementById('corPreviewJson').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.');
+          return;
+        }
+        document.getElementById('corPreviewJson').innerText = JSON.stringify(res.data, null, 2);
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('corPreviewJson').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+      })
+      .cor_getDraft(currentDocDrawerId);
+  }
+  function closeCorPreview() {
+    document.getElementById('corPreviewModal').classList.remove('open');
   }
 
   function openCorCalculator() {

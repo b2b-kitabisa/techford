@@ -92,7 +92,8 @@
       <div class="sub" id="corDocSubDisplay">Memuat data dokumen...</div>
     </div>
     <div style="display:flex; gap:8px;">
-      <button class="btn-outline" id="corGenerateBtn" onclick="submitGenerateDocument()">📄 Generate Dokumen</button>
+      <button class="btn-outline" id="corPdfBtn" onclick="openPdfPreview()">🖨️ Download PDF</button>
+      <button class="btn-outline" id="corGenerateBtn" onclick="submitGenerateDocument()">📄 Generate Dokumen (Sheets)</button>
       <button class="btn-save" id="corSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
     </div>
   </div>
@@ -192,7 +193,7 @@
             <div class="drawer-field-label">Biaya pengeluaran SALSET <span style="font-weight:400; color:#188038;">(input manual)</span></div>
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-size:12px;">Rp</span>
-              <input type="number" id="corBiayaSalset" value="0" oninput="onBiayaSalsetChange()" style="max-width:200px;">
+              <input type="text" inputmode="numeric" id="corBiayaSalset" value="0" oninput="this.value=formatThousands(parseThousands(this))" onchange="onBiayaSalsetChange()" style="max-width:200px;">
             </div>
           </div>
           <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
@@ -659,7 +660,7 @@
     document.getElementById('corViaSalset').checked = isViaSalset;
     document.getElementById('corNgoRate').value = ngoRate;
     document.getElementById('corGuNgoRate').value = guNgoRate;
-    document.getElementById('corBiayaSalset').value = corState.CLIENT.biayaSalset;
+    document.getElementById('corBiayaSalset').value = formatThousands(corState.CLIENT.biayaSalset);
     populateVendorSelect();
     setCorMethod(currentMethod, true);
     applyFundLock();
@@ -796,7 +797,7 @@
     renderAll();
   }
   function onBiayaSalsetChange() {
-    corState.CLIENT.biayaSalset = Number(document.getElementById('corBiayaSalset').value) || 0;
+    corState.CLIENT.biayaSalset = parseThousands(document.getElementById('corBiayaSalset'));
     corState.CAMPAIGN.biayaSalset = corState.CLIENT.biayaSalset;
     renderAll();
   }
@@ -887,7 +888,13 @@
     var row = arr.filter(function (x) { return x.idx === idx; })[0];
     if (!row) return;
     row[field] = value;
-    if (field === 'kat') row.tipe = '';
+    // Kalau Kategori jadi 'Jasa', dropdown Tipe otomatis tampil dengan opsi
+    // pertama ("Lembaga") terpilih SECARA VISUAL (browser default kalau
+    // tidak ada option yang ditandai selected) — tapi kalau model row.tipe
+    // cuma direset ke '' (bukan disamakan ke 'Lembaga'), nilai % PPh telat
+    // ikut berubah sampai user memilih ulang Tipe secara manual. Samakan
+    // model dengan apa yang sudah tampil di layar dari awal.
+    if (field === 'kat') row.tipe = value === 'Jasa' ? 'Lembaga' : '';
     renderAll();
   }
 
@@ -1165,7 +1172,26 @@
       var el = document.getElementById('corGuMarginRows_n_' + c.key);
       if (el) el.innerText = fmtRp(ri(guMargin * pct));
     });
+
+    // Simpan seluruh angka hasil kalkulasi ke satu tempat — dipakai laporan
+    // PDF (buildPdfHtml) supaya tidak perlu hitung ulang/duplikasi logika,
+    // cukup ambil dari sini + state mentah (funds/corState/guState).
+    lastReport = {
+      ent: ent, pkp: pkp, pphOn: pphOn, isMix: isMix,
+      gd: {
+        totalMasuk: totalMasuk, cashGross: cashGross, ppnGd: ppnGd, pph23: pph23, cashNet: cashNet,
+        salFee: salFee, sisaDana: sisaDana, budSal: budSal, totalSal: totalSal, totalSalRaw: totalSalRaw,
+        availCost: availCost, totalBaa: totalBaa, totalBaaRaw: totalBaaRaw, profit: profit, totalMgnFrac: totalMgnFrac,
+        dpp: dpp, ppn11: ppn11, pphSpp: pphSpp, neto: neto, pmProfit: pmProfit, pmPct: pmPct
+      },
+      gu: {
+        totalGuSal: totalGuSal, totalGuBaa: totalGuBaa, salGu: salGu, guMargin: guMargin, guPph: guPph, guPpn: guPpn,
+        guBaa: guBaa, totalHasilGu: totalHasilGu, guAdmin: guAdmin, guFinal: guFinal, guTotalMgnFrac: guTotalMgnFrac,
+        guDpp: guDpp, guPpn11: guPpn11, guPphSpp: guPphSpp, guNeto: guNeto, guProfit: guProfit, guSalFee: guSalFee
+      }
+    };
   }
+  var lastReport = null;
 
   function renderAll() {
     if (!corDraftLoaded) return;
@@ -1299,5 +1325,206 @@
     alert(lines.join('\n'));
     if (data.urlClient) window.open(data.urlClient, '_blank');
     if (data.urlCampaign) window.open(data.urlCampaign, '_blank');
+  }
+
+  // ══════════════════════════ DOWNLOAD PDF (print browser) ══════════════════════════
+  // Tidak pakai konversi server (Drive/Sheets) sama sekali — dibuat sebagai
+  // halaman HTML rapi lalu diserahkan ke dialog print browser (user tinggal
+  // pilih "Save as PDF"), supaya sama sekali lepas dari fitur Generate ke
+  // Spreadsheet yang untuk sementara di-nonaktifkan dulu.
+  function pdfRow(label, value) {
+    return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
+  }
+  function pdfTableHead(headers) {
+    return '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>';
+  }
+
+  function buildFundRowsHtml(rows) {
+    if (!rows.length) return '<tr><td colspan="6" class="pdf-empty">Tidak ada data.</td></tr>';
+    return rows.map(function (f) {
+      var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
+      var tf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+      var af = f.nominal - pf - tf;
+      var adm = adminFee(Number(lastReport.ent.Biaya_Pencairan) || 0, af);
+      var tot = af - adm;
+      return '<tr><td>' + esc(f.linkCampaign || '-') + '</td><td class="r">' + fmtRp(f.nominal) + '</td>' +
+        '<td>' + (f.isZakat ? 'Ya' : '-') + '</td><td class="r">' + fmtRp(pf) + '</td>' +
+        '<td class="r">' + fmtRp(tf) + '</td><td class="r">' + fmtRp(tot) + '</td></tr>';
+    }).join('');
+  }
+
+  function buildCostRowsHtml(rows) {
+    if (!rows.length) return '<tr><td colspan="6" class="pdf-empty">Tidak ada data.</td></tr>';
+    return rows.map(function (r) {
+      var c = calcItemRow(r);
+      return '<tr><td>' + esc(r.ket || '-') + '</td><td>' + esc(r.kat) + '</td><td>' + esc(r.tipe || '-') + '</td>' +
+        '<td class="r">' + fmtRp(r.h) + ' &times; ' + r.q + ' &times; ' + r.p + '</td>' +
+        '<td class="r">' + fmtRp(c.total) + '</td><td class="r">' + fmtRp(c.tap) + '</td></tr>';
+    }).join('');
+  }
+
+  function buildMarginTableHtml(marginState) {
+    return (corTaxonomy.marginComponents || []).map(function (c) {
+      var m = marginState[c.key] || { subCategory: '-', percentage: 0 };
+      return '<tr><td>' + c.label + '</td><td>' + esc(m.subCategory) + '</td><td class="r">' + m.percentage + '%</td></tr>';
+    }).join('');
+  }
+
+  function buildPdfHtml() {
+    var r = lastReport;
+    var isGD = currentMethod === 'GROSS_DOWN';
+    var title = 'COST OF REVENUE — ' + (isGD ? 'Gross Down' : 'Gross Up');
+    var docLabel = (currentDoc ? currentDoc.Doc_ID : CALCULATOR_DOC_ID);
+    var projectLabel = document.getElementById('corDocSubDisplay').innerText;
+
+    var html = '<h1>' + title + '</h1>' +
+      '<table class="pdf-meta"><tbody>' +
+      pdfRow('Dokumen', docLabel) +
+      pdfRow('Project', projectLabel) +
+      pdfRow('Via SALSET', isViaSalset ? 'Ya' : 'Tidak') +
+      pdfRow('Vendor', vendorEntity || '-') +
+      pdfRow('Bank Aktif', r.ent.Entity_Name + ' (' + r.ent.Bank + ')') +
+      pdfRow('PKP', r.pkp ? 'Ya' : 'Tidak') +
+      '</tbody></table>';
+
+    if (getEffectiveMixFund()) {
+      html += '<p class="pdf-note">Catatan: dokumen ini Mix Fund (2 COR terpisah). Halaman ini menampilkan tab "COR Dana ' +
+        (activeCorTab === 'CLIENT' ? 'Client' : 'Campaign') + '" yang sedang aktif — pindah tab lalu Download PDF lagi untuk sisi lainnya.</p>';
+    }
+
+    if (isGD) {
+      var cor = getActiveCor();
+      html += '<h2>Source of Fund</h2>' +
+        '<h3>Dana Client</h3><table class="pdf-tbl">' + pdfTableHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk']) +
+        '<tbody>' + buildFundRowsHtml(funds.filter(function (f) { return f.type === 'CLIENT'; })) + '</tbody></table>' +
+        '<h3>Dana Campaign</h3><table class="pdf-tbl">' + pdfTableHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk']) +
+        '<tbody>' + buildFundRowsHtml(funds.filter(function (f) { return f.type === 'CAMPAIGN'; })) + '</tbody></table>' +
+        '<table class="pdf-meta"><tbody>' + pdfRow('Total Dana Masuk', fmtRp(r.gd.totalMasuk)) + '</tbody></table>';
+
+      if (isViaSalset) {
+        html += '<h2>Implementation Fund (via SALSET)</h2><table class="pdf-meta"><tbody>' +
+          pdfRow('SALSET Cash In (Gross)', fmtRp(r.gd.totalMasuk)) +
+          pdfRow('NGO Fee Rate', ngoRate + '%') +
+          pdfRow('SALSET Fee', fmtRp(r.gd.salFee)) +
+          pdfRow('Sisa Dana', fmtRp(r.gd.sisaDana)) +
+          '</tbody></table>';
+      }
+
+      html += '<h2>Fund Detail</h2><table class="pdf-meta"><tbody>' +
+        (isViaSalset ? pdfRow('Biaya Pengeluaran SALSET', fmtRp(cor.biayaSalset)) : '') +
+        pdfRow('Cash In ' + vendorEntity + ' (Gross)', fmtRp(r.gd.cashGross)) +
+        pdfRow('PPN Gross Down', fmtRp(r.gd.ppnGd)) +
+        pdfRow('PPh 23 (2%)', fmtRp(r.gd.pph23)) +
+        pdfRow('Cash In ' + vendorEntity + ' (Net)', fmtRp(r.gd.cashNet)) +
+        '</tbody></table>' +
+
+        '<h2>Default Margin</h2><table class="pdf-tbl">' + pdfTableHead(['Komponen', 'Kategori', '%']) +
+        '<tbody>' + buildMarginTableHtml(cor.margin) + '</tbody></table>' +
+        '<table class="pdf-meta"><tbody>' +
+        pdfRow('Total Margin', (r.gd.totalMgnFrac * 100).toFixed(0) + '%') +
+        pdfRow('Profit', fmtRp(r.gd.profit)) +
+        pdfRow('Available Cost ' + vendorEntity, fmtRp(r.gd.availCost)) +
+        '</tbody></table>';
+
+      if (isViaSalset) {
+        html += '<h2>Biaya Pengeluaran SALSET</h2><table class="pdf-tbl">' +
+          pdfTableHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+          '<tbody>' + buildCostRowsHtml(cor.salItems) + '</tbody></table>' +
+          '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(r.gd.totalSal)) + '</tbody></table>';
+      }
+
+      html += '<h2>Biaya Pengeluaran ' + vendorEntity + '</h2><table class="pdf-tbl">' +
+        pdfTableHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+        '<tbody>' + buildCostRowsHtml(cor.baaItems) + '</tbody></table>' +
+        '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(r.gd.totalBaa)) + '</tbody></table>' +
+
+        '<h2>SPP Amount</h2><table class="pdf-meta"><tbody>' +
+        pdfRow('DPP', fmtRp(r.gd.dpp)) + pdfRow('PPN (11%)', fmtRp(r.gd.ppn11)) +
+        pdfRow('PPh 23 (2%)', fmtRp(r.gd.pphSpp)) + pdfRow('Total Neto', fmtRp(r.gd.neto)) +
+        '</tbody></table>' +
+
+        '<h2>Profit Margin</h2><table class="pdf-meta"><tbody>' +
+        pdfRow('Revenue After Tax', fmtRp(r.gd.cashNet)) + pdfRow('Total Cost', fmtRp(r.gd.totalBaa)) +
+        pdfRow('Profit', fmtRp(r.gd.pmProfit)) + pdfRow('Persentase', (r.gd.pmPct * 100).toFixed(2) + '%') +
+        '</tbody></table>';
+    } else {
+      if (isViaSalset) {
+        html += '<h2>Cost SALSET</h2><table class="pdf-tbl">' +
+          pdfTableHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+          '<tbody>' + buildCostRowsHtml(guState.salItems) + '</tbody></table>' +
+          '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(r.gu.totalGuSal)) + '</tbody></table>';
+      }
+      html += '<h2>Cost ' + vendorEntity + '</h2><table class="pdf-tbl">' +
+        pdfTableHead(['Keterangan', 'Kategori', 'Tipe', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh']) +
+        '<tbody>' + buildCostRowsHtml(guState.baaItems) + '</tbody></table>' +
+        '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(r.gu.totalGuBaa)) + '</tbody></table>';
+
+      if (isViaSalset) {
+        html += '<h2>SALSET Gross Up</h2><table class="pdf-meta"><tbody>' +
+          pdfRow('Total Cost SALSET', fmtRp(r.gu.totalGuSal)) +
+          pdfRow('NGO Fee Rate', guNgoRate + '%') +
+          pdfRow('Gross Up SALSET', fmtRp(r.gu.salGu)) +
+          '</tbody></table>';
+      }
+
+      html += '<h2>Default Margin</h2><table class="pdf-tbl">' + pdfTableHead(['Komponen', 'Kategori', '%']) +
+        '<tbody>' + buildMarginTableHtml(guState.margin) + '</tbody></table>' +
+        '<table class="pdf-meta"><tbody>' + pdfRow('Total Margin', (r.gu.guTotalMgnFrac * 100).toFixed(0) + '%') + '</tbody></table>' +
+
+        '<h2>Gross Up Calculation</h2><table class="pdf-meta"><tbody>' +
+        (isViaSalset ? pdfRow('SALSET Gross Up', fmtRp(r.gu.salGu)) : '') +
+        pdfRow('Amount (Total Cost ' + vendorEntity + ')', fmtRp(r.gu.totalGuBaa)) +
+        pdfRow('Gross Up Margin', fmtRp(r.gu.guMargin)) +
+        pdfRow('Gross Up PPh 23', fmtRp(r.gu.guPph)) +
+        (isViaSalset ? pdfRow('Gross Up NGO Fee Vendor', fmtRp(r.gu.guBaa)) : '') +
+        pdfRow('Total Hasil Gross Up', fmtRp(r.gu.totalHasilGu)) +
+        '</tbody></table>' +
+
+        '<h2>Admin Pencairan</h2><table class="pdf-meta"><tbody>' +
+        pdfRow('Bank Aktif', r.ent.Entity_Name + ' (' + r.ent.Bank + ')') +
+        pdfRow('Rate / Pencairan', fmtRp(Number(r.ent.Biaya_Pencairan) || 0)) +
+        pdfRow('Biaya Admin', fmtRp(r.gu.guAdmin)) +
+        pdfRow('Link Campaign', (linkCampaigns.filter(function (l) { return l && l.trim(); }).join(', ') || '-')) +
+        pdfRow('Gross Up Platform &amp; Tech Fee', fmtRp(r.gu.guFinal)) +
+        '</tbody></table>' +
+
+        '<h2>SPP Amount</h2><table class="pdf-meta"><tbody>' +
+        pdfRow('DPP', fmtRp(r.gu.guDpp)) + pdfRow('PPN (11%)', fmtRp(r.gu.guPpn11)) +
+        pdfRow('PPh 23 (2%)', fmtRp(r.gu.guPphSpp)) + pdfRow('Total Neto', fmtRp(r.gu.guNeto)) +
+        '</tbody></table>' +
+
+        '<h2>Program Fee</h2><table class="pdf-meta"><tbody>' +
+        pdfRow('Profit ' + vendorEntity, fmtRp(r.gu.guProfit)) +
+        (isViaSalset ? pdfRow('Salset Fee', fmtRp(r.gu.guSalFee)) : '') +
+        pdfRow('Margin', (r.gu.guTotalMgnFrac * 100).toFixed(0) + '%') +
+        '</tbody></table>';
+    }
+
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + ' - ' + docLabel + '</title><style>' +
+      'body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:24px;max-width:900px;margin:0 auto;}' +
+      'h1{font-size:20px;margin-bottom:4px;}' +
+      'h2{font-size:14px;margin-top:24px;margin-bottom:6px;border-bottom:2px solid #333;padding-bottom:4px;}' +
+      'h3{font-size:12px;margin:10px 0 4px;color:#555;}' +
+      'table{width:100%;border-collapse:collapse;margin-bottom:6px;}' +
+      '.pdf-tbl th,.pdf-tbl td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;}' +
+      '.pdf-tbl th{background:#f2f2f2;}' +
+      '.pdf-tbl td.r,.pdf-meta td.r{text-align:right;}' +
+      '.pdf-meta td{padding:3px 6px;font-size:12px;}' +
+      '.pdf-label{font-weight:700;width:260px;color:#444;}' +
+      '.pdf-empty{color:#999;font-style:italic;text-align:center;}' +
+      '.pdf-note{background:#fff3cd;border:1px solid #ffe69c;padding:8px 10px;border-radius:6px;font-size:11px;}' +
+      '@media print{body{padding:0;}}' +
+      '</style></head><body>' + html + '</body></html>';
+  }
+
+  function openPdfPreview() {
+    if (!lastReport) { alert('Data belum selesai dihitung, coba lagi sesaat lagi.'); return; }
+    var win = window.open('', '_blank');
+    if (!win) { alert('Popup diblokir browser — izinkan popup untuk halaman ini lalu coba lagi.'); return; }
+    win.document.open();
+    win.document.write(buildPdfHtml());
+    win.document.close();
+    win.focus();
+    setTimeout(function () { win.print(); }, 300);
   }
 </script>

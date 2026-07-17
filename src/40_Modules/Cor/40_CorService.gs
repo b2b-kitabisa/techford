@@ -121,6 +121,22 @@ var CorService = (function (module) {
    *   - costs: [{ tab, group, keterangan, kategori, tipe, harga, qty, periode }]
    *   - margins: [{ tab, component, subCategory, percentage }]
    */
+  /**
+   * Dipanggil DocumentService — BUKAN endpoint RPC. Pengecualian arsitektur
+   * yang sama seperti LeadService.moveToClient() memanggil
+   * ClientService.createFromLead(): begitu draft COR pertama kali
+   * disimpan, Status dokumen otomatis maju dari "Not Started" ke
+   * "Drafting" (lihat Config.DOCUMENT_STATUS_MAP.COR) — TIDAK PERNAH
+   * mundur (kalau sudah "Approved" nanti, saveDraft tidak menurunkannya
+   * lagi ke Drafting).
+   */
+  function advanceStatusToDrafting(docId) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (doc && doc.Status === 'Not Started') {
+      DocumentService.updateStatus(docId, 'Drafting');
+    }
+  }
+
   module.saveDraft = function (docId, input, createdBy) {
     assertCorDocument(docId);
 
@@ -189,6 +205,8 @@ var CorService = (function (module) {
       };
     });
     CorMarginRepository.replaceForDoc(docId, marginRows);
+
+    advanceStatusToDrafting(docId);
 
     return module.getDraft(docId);
   };
