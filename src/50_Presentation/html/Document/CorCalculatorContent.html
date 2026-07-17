@@ -666,13 +666,28 @@
   // "Kerjakan COR" dan tidak bisa diubah lagi di halaman ini (cuma nama
   // Vendor yang masih bebas dipilih). Kalau CARA 3 (singleFundType terisi),
   // Source of Fund cuma boleh diisi utk satu jenis dana — yang lain dikunci.
+  // CARA 3 (singleFundType terisi): kunci tetap ke jenis dana yang dipilih
+  // di wizard. CARA 2/Mix Fund (isMixFund true, tanpa singleFundType):
+  // kunci mengikuti tab "COR Dana Client"/"COR Dana Campaign" yang aktif
+  // sekarang — tab Client cuma boleh isi/edit Dana Client, tab Campaign
+  // cuma boleh isi/edit Dana Campaign. CARA 1/4 (tidak ada lock): dua-duanya
+  // tetap bisa diisi bebas.
+  function getFundSectionLock() {
+    if (singleFundType) return singleFundType;
+    if (getEffectiveMixFund()) return activeCorTab;
+    return null;
+  }
   function applyFundLock() {
-    var showClient = singleFundType !== 'CAMPAIGN';
-    var showCampaign = singleFundType !== 'CLIENT';
+    var lock = getFundSectionLock();
+    var showClient = lock !== 'CAMPAIGN';
+    var showCampaign = lock !== 'CLIENT';
+    var lockReason = singleFundType ? 'sesuai pilihan wizard' : 'sesuai tab COR yang aktif';
     document.getElementById('corClientFundSection').style.display = showClient ? '' : 'none';
     document.getElementById('corClientFundLockedNote').style.display = showClient ? 'none' : '';
+    document.getElementById('corClientFundLockedNote').innerText = '🔒 Sumber dana ini terkunci (' + lockReason + ') — project ini pakai Dana Campaign.';
     document.getElementById('corCampaignFundSection').style.display = showCampaign ? '' : 'none';
     document.getElementById('corCampaignFundLockedNote').style.display = showCampaign ? 'none' : '';
+    document.getElementById('corCampaignFundLockedNote').innerText = '🔒 Sumber dana ini terkunci (' + lockReason + ') — project ini pakai Dana Client.';
     document.getElementById('corFundDivider').style.display = (showClient && showCampaign) ? '' : 'none';
   }
 
@@ -1151,6 +1166,7 @@
 
   function renderAll() {
     if (!corDraftLoaded) return;
+    applyFundLock();
     renderFunds();
     renderCostTable('GROSS_DOWN', 'SAL', 'corGdSalCostRows');
     renderCostTable('GROSS_DOWN', 'VENDOR', 'corGdVendorCostRows');
