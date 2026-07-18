@@ -338,35 +338,48 @@ var CorService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'Approver tidak valid — harus Employee dengan Role "Head of B2B".');
     }
 
-    var built = buildReportModel(docId);
-    var project = built.project;
-    var client = project.Client_ID ? ClientRepository.findById(project.Client_ID) : null;
+    // Dibungkus try/catch KHUSUS di sini (bukan pola umum di modul lain) —
+    // alur ini memakai beberapa layanan sensitif sekaligus (Drive lanjutan,
+    // MailApp, folder Shared Drive eksternal) yang gagalnya BUKAN karena
+    // input user salah, jadi pesan errornya sendiri (bukan cuma "Terjadi
+    // kesalahan internal" generik dari ErrorHandler) penting supaya admin
+    // tahu persis apa yang perlu diperbaiki (izin Drive, otorisasi scope
+    // baru, dst) tanpa harus buka Stackdriver.
+    try {
+      var built = buildReportModel(docId);
+      var project = built.project;
+      var client = project.Client_ID ? ClientRepository.findById(project.Client_ID) : null;
 
-    var pdf = generateAndStorePdf(docId, '');
-    var token = Utilities.getUuid();
+      var pdf = generateAndStorePdf(docId, '');
+      var token = Utilities.getUuid();
 
-    CorHeaderRepository.patchApprovalFields(docId, {
-      Approval_Token: token,
-      Approval_Requested_To: approver.Email,
-      Approval_Requested_Name: approver.Name,
-      Approval_Requested_At: new Date(),
-      Approved_By: '',
-      Approved_At: '',
-      Pdf_File_Id: pdf.fileId,
-      Pdf_File_Url: pdf.url
-    });
+      CorHeaderRepository.patchApprovalFields(docId, {
+        Approval_Token: token,
+        Approval_Requested_To: approver.Email,
+        Approval_Requested_Name: approver.Name,
+        Approval_Requested_At: new Date(),
+        Approved_By: '',
+        Approved_At: '',
+        Pdf_File_Id: pdf.fileId,
+        Pdf_File_Url: pdf.url
+      });
 
-    var subject = (project.Project_ID || docId) + ' — ' + (project.Project_Name || '-') + ' — ' +
-      (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
+      var subject = (project.Project_ID || docId) + ' — ' + (project.Project_Name || '-') + ' — ' +
+        (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
 
-    var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
+      var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
 
-    var body = (description ? description + '\n\n' : '') +
-      'Silakan review dokumen COR berikut:\n' + pdf.url + '\n\n' +
-      'Kalau sudah sesuai dan disetujui, klik link berikut:\n' + approveUrl + '\n\n' +
-      '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
+      var body = (description ? description + '\n\n' : '') +
+        'Silakan review dokumen COR berikut:\n' + pdf.url + '\n\n' +
+        'Kalau sudah sesuai dan disetujui, klik link berikut:\n' + approveUrl + '\n\n' +
+        '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
 
-    MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
+      MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      Log.error('CorService.requestApproval', 'Gagal mengirim approval', err);
+      throw new AppError('COR_APPROVAL_FAILED', 'Gagal mengirim approval: ' + (err && err.message ? err.message : err));
+    }
 
     return module.getDraft(docId);
   };
@@ -392,7 +405,13 @@ var CorService = (function (module) {
     var now = new Date();
     var footerNote = 'Approved by ' + approverName + ' — ' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd MMMM yyyy');
 
-    var pdf = generateAndStorePdf(docId, footerNote);
+    var pdf;
+    try {
+      pdf = generateAndStorePdf(docId, footerNote);
+    } catch (err) {
+      Log.error('CorService.approve', 'Gagal generate ulang PDF approved', err);
+      throw new AppError('COR_APPROVAL_FAILED', 'Gagal menyelesaikan approval: ' + (err && err.message ? err.message : err));
+    }
 
     CorHeaderRepository.patchApprovalFields(docId, {
       Approved_By: approverName,
