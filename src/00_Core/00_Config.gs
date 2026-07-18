@@ -148,6 +148,8 @@ var Config = (function (module) {
     COR: [
       { status: 'Not Started', stage: 'New Request' },
       { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Waiting Approval', stage: 'In Progress' },
+      { status: 'Revision', stage: 'In Progress' },
       { status: 'Approved', stage: 'Done' }
     ],
     RAB: [

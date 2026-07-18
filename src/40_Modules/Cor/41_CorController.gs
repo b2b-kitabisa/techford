@@ -39,5 +39,11 @@ var CorController = (function (module) {
     });
   };
 
+  module.reject = function (docId, token, wording) {
+    return ErrorHandler.handle('CorController.reject', function () {
+      return CorService.reject(docId, token, wording);
+    });
+  };
+
   return module;
 })(CorController || {});

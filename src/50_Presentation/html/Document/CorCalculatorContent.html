@@ -18,6 +18,15 @@
   .cor-docinfo h2 { margin: 0 0 2px; font-size: 18px; }
   .cor-docinfo .sub { font-size: 12px; color: var(--text-muted); }
 
+  /* Banner status Waiting Approval / Revision, dan lock seluruh area edit
+     selama menunggu keputusan approver (poin dari alur approval COR) —
+     dikunci di level wrapper supaya tidak perlu disable satu-satu semua
+     input/select/textarea/tombol di dalam kalkulator. */
+  .cor-status-banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; }
+  .cor-status-banner-wait { background: #fff3cd; border: 1px solid #ffe69c; color: #7a5c00; }
+  .cor-status-banner:not(.cor-status-banner-wait) { background: #fce8e6; border: 1px solid #f6aea9; color: #7a1a12; }
+  #corEditableWrap.cor-locked { pointer-events: none; opacity: 0.55; user-select: none; }
+
   .cor-mtabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
   .cor-mtab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
   .cor-mtab.on { background: var(--color-cerulean); color: var(--color-white); }
@@ -105,6 +114,10 @@
     </div>
   </div>
 
+  <div class="cor-status-banner" id="corRevisionBanner" style="display:none;"></div>
+  <div class="cor-status-banner cor-status-banner-wait" id="corWaitingBanner" style="display:none;"></div>
+
+  <div id="corEditableWrap">
   <div class="cor-mtabs">
     <button class="cor-mtab on" id="corTabGD">Gross Down</button>
     <button class="cor-mtab" id="corTabGU">Gross Up</button>
@@ -447,6 +460,7 @@
       </div>
     </div>
   </div>
+  </div>
 </div>
 
 <div class="confirm-overlay" id="corApprovalModal">
@@ -472,6 +486,7 @@
   // ══════════════════════════ STATE ══════════════════════════
   var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {} };
   var currentDoc = null;
+  var currentHeader = null;
   var allCorProjects = [];
   var allCorClients = [];
   var corDraftLoaded = false;
@@ -568,22 +583,59 @@
     document.getElementById('corDocIdDisplay').innerText = 'COR — ' + currentDoc.Doc_ID;
     document.getElementById('corDocSubDisplay').innerText =
       (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-');
-    renderApprovalButton();
+    renderApprovalState();
   }
 
   // Tombol "Request Approval" hanya aktif kalau COR sudah pernah disimpan
-  // sebagai draft (Status bukan lagi "Not Started") — approval tidak masuk
-  // akal untuk dokumen yang belum ada isinya sama sekali.
-  function renderApprovalButton() {
+  // sebagai draft (Status bukan lagi "Not Started"). Selama "Waiting
+  // Approval" (sudah dikirim, menunggu keputusan Head of B2B), seluruh
+  // area edit kalkulator DIKUNCI (lihat #corEditableWrap.cor-locked) supaya
+  // data tidak berubah diam-diam saat sedang direview — baru terbuka lagi
+  // kalau di-reject (Status jadi "Revision") atau di-approve.
+  function renderApprovalState() {
     var btn = document.getElementById('corRequestApprovalBtn');
-    if (!currentDoc || currentDoc.Status === 'Not Started') { btn.style.display = 'none'; return; }
+    var saveBtn = document.getElementById('corSaveDraftBtn');
+    var wrap = document.getElementById('corEditableWrap');
+    var waitBanner = document.getElementById('corWaitingBanner');
+    var revBanner = document.getElementById('corRevisionBanner');
+
+    if (!currentDoc || currentDoc.Status === 'Not Started') {
+      btn.style.display = 'none';
+      wrap.classList.remove('cor-locked');
+      saveBtn.disabled = false;
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
+      return;
+    }
+
     btn.style.display = '';
-    if (currentDoc.Status === 'Approved') {
+    var isWaiting = currentDoc.Status === 'Waiting Approval';
+    wrap.classList.toggle('cor-locked', isWaiting);
+    saveBtn.disabled = isWaiting;
+
+    if (isWaiting) {
+      btn.disabled = true;
+      btn.innerText = '⏳ Menunggu Approval';
+      var reqTo = (currentHeader && (currentHeader.Approval_Requested_Name || currentHeader.Approval_Requested_To)) || 'approver';
+      waitBanner.innerText = '⏳ COR ini sedang menunggu approval dari ' + reqTo + '. Kalkulator dikunci sampai ada keputusan (Approve/Reject).';
+      waitBanner.style.display = '';
+      revBanner.style.display = 'none';
+    } else if (currentDoc.Status === 'Revision') {
+      btn.disabled = false;
+      btn.innerText = '📨 Request Approval';
+      waitBanner.style.display = 'none';
+      revBanner.innerText = '⚠️ COR ini perlu direvisi — catatan dari approver: "' + ((currentHeader && currentHeader.Rejection_Note) || '-') + '"';
+      revBanner.style.display = '';
+    } else if (currentDoc.Status === 'Approved') {
       btn.disabled = true;
       btn.innerText = '✅ Sudah Disetujui';
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
     } else {
       btn.disabled = false;
       btn.innerText = '📨 Request Approval';
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
     }
   }
 
@@ -627,6 +679,9 @@
         btn.disabled = false;
         btn.innerText = 'Kirim';
         if (!res || !res.ok) { alert('Gagal mengirim: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
+        currentDoc = res.data.doc;
+        currentHeader = res.data.header;
+        renderApprovalState();
         closeRequestApproval();
         alert('Permintaan approval berhasil dikirim ke ' + document.getElementById('corApprovalApprover').selectedOptions[0].innerText + '.');
       })
@@ -689,6 +744,7 @@
 
   function loadDraftIntoState(draft) {
     currentDoc = draft.doc;
+    currentHeader = draft.header;
 
     if (draft.header) {
       currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';

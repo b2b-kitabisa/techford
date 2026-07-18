@@ -81,6 +81,12 @@ function doGet(e) {
   if (params.action === 'cor-approve') {
     return handleCorApprovalLink(params.docId, params.token);
   }
+  if (params.action === 'cor-reject') {
+    return renderCorRejectForm(params.docId, params.token);
+  }
+  if (params.action === 'cor-reject-submit') {
+    return handleCorRejectSubmit(params.docId, params.token, params.wording);
+  }
 
   var page = params.page || 'lead-capturing';
   var route = ROUTES[page];
@@ -134,10 +140,62 @@ function handleCorApprovalLink(docId, token) {
       html = '<h2>⚠️ Gagal approve</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
     } else {
       html = '<h2>✅ COR berhasil disetujui</h2>' +
-        '<p>Dokumen <strong>' + docId + '</strong> sudah ditandai <strong>Approved</strong> oleh <strong>' + result.data.approvedBy + '</strong>.</p>';
+        '<p>Dokumen <strong>' + escHtml(docId) + '</strong> sudah ditandai <strong>Approved</strong> oleh <strong>' + escHtml(result.data.approvedBy) + '</strong>.</p>';
     }
   } catch (err) {
     html = '<h2>⚠️ Gagal approve</h2><p>' + (err && err.message ? err.message : err) + '</p>';
+  }
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Form kecil TANPA login untuk link "Reject" di email approval COR
+ * (?action=cor-reject&docId=...&token=...) — approver mengisi alasan/
+ * catatan revisi, submit lewat form GET biasa (bukan google.script.run,
+ * halaman ini di luar konteks SPA) ke ?action=cor-reject-submit.
+ */
+function escHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderCorRejectForm(docId, token) {
+  var webAppUrl = ScriptApp.getService().getUrl();
+  var html =
+    '<h2>Tolak & Minta Revisi COR</h2>' +
+    '<p style="color:#555;">Dokumen <strong>' + escHtml(docId) + '</strong>. Tuliskan alasan/catatan revisi supaya consultant tahu apa yang perlu diperbaiki.</p>' +
+    '<form method="get" action="' + webAppUrl + '">' +
+    '<input type="hidden" name="action" value="cor-reject-submit">' +
+    '<input type="hidden" name="docId" value="' + escHtml(docId) + '">' +
+    '<input type="hidden" name="token" value="' + escHtml(token) + '">' +
+    '<textarea name="wording" rows="6" required placeholder="Contoh: Margin komponen Consulting terlalu tinggi, tolong disesuaikan lagi." ' +
+    'style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:10px;border:1px solid #ccc;border-radius:8px;"></textarea>' +
+    '<button type="submit" style="margin-top:14px;background:#c5221f;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;">Kirim Penolakan</button>' +
+    '</form>';
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:60px auto;padding:32px;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Diproses setelah form renderCorRejectForm di-submit.
+ */
+function handleCorRejectSubmit(docId, token, wording) {
+  var html;
+  try {
+    var result = CorController.reject(docId, token, wording);
+    if (!result || result.ok === false) {
+      html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
+    } else {
+      html = '<h2>✅ Catatan revisi terkirim</h2>' +
+        '<p>Dokumen <strong>' + escHtml(docId) + '</strong> dikembalikan ke consultant sebagai <strong>Revision</strong>.</p>';
+    }
+  } catch (err) {
+    html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + (err && err.message ? err.message : err) + '</p>';
   }
   return HtmlService.createHtmlOutput(
     '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +

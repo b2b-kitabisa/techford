@@ -133,12 +133,13 @@
         <span class="drawer-field-label" style="margin:0;">Status:</span>
         <span id="docCorStatusBadge" class="cor-status-badge">-</span>
       </div>
+      <div class="placeholder-note" id="docCorApprovalNote" style="display:none;"></div>
       <div style="margin-top:10px; display:flex; gap:8px;">
         <button class="btn-save" id="docCorActionBtn" onclick="openCorCalculator()" style="flex:1;">🧮 Kerjakan COR</button>
         <button class="btn-outline" id="docCorViewBtn" onclick="openCorPreview()" style="display:none; flex:1;">👁️ Lihat COR</button>
       </div>
       <div class="placeholder-note" id="docCorActionNote">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
-      <div class="placeholder-note">Status COR mengikuti progres pengerjaan secara otomatis (Not Started → Drafting → Approved) — tidak bisa diubah manual di sini.</div>
+      <div class="placeholder-note">Status COR mengikuti progres pengerjaan secara otomatis (Not Started → Drafting → Waiting Approval → Approved) — tidak bisa diubah manual di sini.</div>
     </div>
 
     <div class="drawer-section" id="docStatusUpdateSection">
@@ -626,17 +627,20 @@
   // menampilkan wizard (Metode -> Via SALSET? -> Mix Fund?) sesuai alur 4
   // CARA COR, baru masuk ke halaman kalkulator dengan konfigurasi awal
   // sesuai jawaban wizard.
-  var COR_STATUS_COLORS = { 'Not Started': '#9aa0a6', 'Drafting': '#c98a00', 'Approved': '#1a9c4b' };
+  var COR_STATUS_COLORS = {
+    'Not Started': '#9aa0a6', 'Drafting': '#c98a00', 'Waiting Approval': '#8a5cf6',
+    'Revision': '#c5221f', 'Approved': '#1a9c4b'
+  };
 
   function renderCorActionButton(doc) {
     var wrap = document.getElementById('docCorActionWrap');
     if (doc.Document_Type !== 'COR') { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
-    var hasDraft = allCorHeaders.some(function (h) { return h.Doc_ID === doc.Doc_ID; });
+    var header = allCorHeaders.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
     var btn = document.getElementById('docCorActionBtn');
     var viewBtn = document.getElementById('docCorViewBtn');
     var note = document.getElementById('docCorActionNote');
-    if (hasDraft) {
+    if (header) {
       btn.innerText = '▶️ Lanjutkan COR';
       note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
       viewBtn.style.display = '';
@@ -651,6 +655,17 @@
     badge.innerText = doc.Status || '-';
     badge.style.background = color + '22';
     badge.style.color = color;
+
+    var approvalNote = document.getElementById('docCorApprovalNote');
+    if (doc.Status === 'Waiting Approval' && header) {
+      approvalNote.innerText = '⏳ Menunggu approval dari ' + (header.Approval_Requested_Name || header.Approval_Requested_To || 'approver') + '.';
+      approvalNote.style.display = '';
+    } else if (doc.Status === 'Revision' && header && header.Rejection_Note) {
+      approvalNote.innerText = '⚠️ Catatan revisi dari approver: "' + header.Rejection_Note + '"';
+      approvalNote.style.display = '';
+    } else {
+      approvalNote.style.display = 'none';
+    }
   }
 
   // ---- Preview "Lihat COR" — merender ulang dokumen COR persis seperti

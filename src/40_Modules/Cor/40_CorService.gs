@@ -92,7 +92,14 @@ var CorService = (function (module) {
         Single_Fund_Type: header.Single_Fund_Type || null,
         Link_Campaigns: decodeJson(header.Link_Campaigns, []),
         Output_File_Id_Client: header.Output_File_Id_Client || '',
-        Output_File_Id_Campaign: header.Output_File_Id_Campaign || ''
+        Output_File_Id_Campaign: header.Output_File_Id_Campaign || '',
+        Approval_Requested_To: header.Approval_Requested_To || '',
+        Approval_Requested_Name: header.Approval_Requested_Name || '',
+        Approval_Requested_At: header.Approval_Requested_At || '',
+        Rejection_Note: header.Rejection_Note || '',
+        Approved_By: header.Approved_By || '',
+        Approved_At: header.Approved_At || '',
+        Pdf_File_Url: header.Pdf_File_Url || ''
       } : null,
       funds: CorFundRepository.findByDocId(docId),
       costs: CorCostRepository.findByDocId(docId),
@@ -358,6 +365,8 @@ var CorService = (function (module) {
         Approval_Requested_To: approver.Email,
         Approval_Requested_Name: approver.Name,
         Approval_Requested_At: new Date(),
+        Approval_Resolved_At: '',
+        Rejection_Note: '',
         Approved_By: '',
         Approved_At: '',
         Pdf_File_Id: pdf.fileId,
@@ -368,10 +377,12 @@ var CorService = (function (module) {
         (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
 
       var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
+      var rejectUrl = ScriptApp.getService().getUrl() + '?action=cor-reject&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
 
       var body = (description ? description + '\n\n' : '') +
         'Silakan review dokumen COR berikut:\n' + pdf.url + '\n\n' +
         'Kalau sudah sesuai dan disetujui, klik link berikut:\n' + approveUrl + '\n\n' +
+        'Kalau perlu revisi, klik link berikut untuk menolak & memberi catatan:\n' + rejectUrl + '\n\n' +
         '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
 
       MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
@@ -381,8 +392,25 @@ var CorService = (function (module) {
       throw new AppError('COR_APPROVAL_FAILED', 'Gagal mengirim approval: ' + (err && err.message ? err.message : err));
     }
 
+    // Stage tetap "In Progress" (lihat Config.DOCUMENT_STATUS_MAP.COR) —
+    // cuma Status yang maju ke "Waiting Approval", supaya kalkulator
+    // otomatis terkunci (lihat renderApprovalState di client) sampai
+    // approver Approve/Reject lewat magic link di email.
+    DocumentService.updateStatus(docId, 'Waiting Approval');
+
     return module.getDraft(docId);
   };
+
+  function assertApprovalToken(docId, token) {
+    var header = CorHeaderRepository.findByDocId(docId);
+    if (!header || !header.Approval_Token || String(header.Approval_Token) !== String(token)) {
+      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
+    }
+    if (header.Approval_Resolved_At) {
+      throw new AppError('VALIDATION_ERROR', 'Permintaan approval ini sudah diputuskan sebelumnya.');
+    }
+    return header;
+  }
 
   /**
    * Dipanggil dari doGet ?action=cor-approve (magic link di email, TIDAK
@@ -393,13 +421,7 @@ var CorService = (function (module) {
    */
   module.approve = function (docId, token) {
     assertCorDocument(docId);
-    var header = CorHeaderRepository.findByDocId(docId);
-    if (!header || !header.Approval_Token || String(header.Approval_Token) !== String(token)) {
-      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
-    }
-    if (header.Approved_At) {
-      throw new AppError('VALIDATION_ERROR', 'COR ini sudah disetujui sebelumnya.');
-    }
+    var header = assertApprovalToken(docId, token);
 
     var approverName = header.Approval_Requested_Name || 'Head of B2B';
     var now = new Date();
@@ -416,6 +438,7 @@ var CorService = (function (module) {
     CorHeaderRepository.patchApprovalFields(docId, {
       Approved_By: approverName,
       Approved_At: now,
+      Approval_Resolved_At: now,
       Pdf_File_Id: pdf.fileId,
       Pdf_File_Url: pdf.url
     });
@@ -423,6 +446,32 @@ var CorService = (function (module) {
     DocumentService.updateStatus(docId, 'Approved');
 
     return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
+  };
+
+  /**
+   * Dipanggil dari doGet ?action=cor-reject-submit (form kecil tanpa login
+   * yang dibuka lewat magic link ?action=cor-reject di email) — simpan
+   * alasan/wording penolakan, mundurkan Status ke "Revision" (Stage tetap
+   * In Progress) supaya consultant tahu harus revisi dulu sebelum bisa
+   * Request Approval lagi (kalkulator ke-unlock otomatis lewat
+   * renderApprovalState begitu Status bukan lagi Waiting Approval).
+   */
+  module.reject = function (docId, token, wording) {
+    assertCorDocument(docId);
+    var header = assertApprovalToken(docId, token);
+    if (Utils.isBlank(wording)) {
+      throw new AppError('VALIDATION_ERROR', 'Alasan/catatan revisi wajib diisi.');
+    }
+
+    var now = new Date();
+    CorHeaderRepository.patchApprovalFields(docId, {
+      Rejection_Note: wording,
+      Approval_Resolved_At: now
+    });
+
+    DocumentService.updateStatus(docId, 'Revision');
+
+    return { docId: docId, rejectedBy: header.Approval_Requested_Name || 'Head of B2B' };
   };
 
   return module;
