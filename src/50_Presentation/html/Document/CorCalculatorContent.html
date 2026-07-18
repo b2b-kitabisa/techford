@@ -126,9 +126,9 @@
 
   <div class="cor-route-bar">
     <label class="switch-wrap">Via SALSET
-      <span class="switch"><input type="checkbox" id="corViaSalset" disabled><span class="switch-slider"></span></span>
+      <span class="switch"><input type="checkbox" id="corViaSalset" onchange="onRouteChange()"><span class="switch-slider"></span></span>
     </label>
-    <span class="cor-route-locked-note">🔒 sesuai pilihan wizard</span>
+    <span class="cor-route-locked-note" id="corViaSalsetLockedNote">🔒 sesuai pilihan wizard</span>
     <span style="color:var(--text-faint);">&rarr;</span>
     <div>
       <span style="font-size:11px; color:var(--text-muted); margin-right:6px;">Via Vendor</span>
@@ -673,25 +673,53 @@
     btn.innerText = 'Mengirim...';
     TechfordLoading.show('Mengirim request approval...');
 
+    var approverLabel = document.getElementById('corApprovalApprover').selectedOptions[0].innerText;
+
     google.script.run
       .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = 'Kirim';
-        if (!res || !res.ok) { alert('Gagal mengirim: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
+        if (!res) { return recheckRequestApprovalOutcome(approverLabel); }
+        if (!res.ok) { alert('Gagal mengirim: ' + (res.error && res.error.message)); return; }
         currentDoc = res.data.doc;
         currentHeader = res.data.header;
         renderApprovalState();
         closeRequestApproval();
-        alert('Permintaan approval berhasil dikirim ke ' + document.getElementById('corApprovalApprover').selectedOptions[0].innerText + '.');
+        alert('Permintaan approval berhasil dikirim ke ' + approverLabel + '.');
       })
-      .withFailureHandler(function (err) {
+      .withFailureHandler(function () {
         TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = 'Kirim';
-        alert('Gagal mengirim: ' + (err && err.message ? err.message : err));
+        recheckRequestApprovalOutcome(approverLabel);
       })
       .cor_requestApproval(CALCULATOR_DOC_ID, approverId, description, requestedBy);
+  }
+
+  // google.script.run terbukti (di beberapa modul lain juga) kadang
+  // mengirim res=null WALAU proses di server sudah 100% selesai (email
+  // terkirim, PDF ter-generate) — untuk aksi kirim email begini, retry
+  // NAIF berisiko dobel kirim, jadi alih-alih retry, kita cek ULANG status
+  // draft (baca doang, aman diulang) untuk tahu apakah permintaan tadi
+  // sebenarnya sudah berhasil sebelum menampilkan pesan gagal ke user.
+  function recheckRequestApprovalOutcome(approverLabel) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok && res.data.doc && res.data.doc.Status === 'Waiting Approval') {
+          currentDoc = res.data.doc;
+          currentHeader = res.data.header;
+          renderApprovalState();
+          closeRequestApproval();
+          alert('Permintaan approval sudah terkirim ke ' + approverLabel + ' (tampilan sempat tidak sinkron, sekarang sudah update).');
+        } else {
+          alert('Gagal mengirim: tidak ada respons dari server. Silakan cek status dokumen ini sebelum mencoba lagi (supaya tidak dobel kirim email).');
+        }
+      })
+      .withFailureHandler(function () {
+        alert('Gagal mengirim: tidak ada respons dari server. Silakan refresh halaman untuk mengecek status dokumen ini.');
+      })
+      .cor_getDraft(CALCULATOR_DOC_ID);
   }
 
   function fetchCorTaxonomy() {
@@ -924,6 +952,14 @@
     document.getElementById('corGuView').style.display = method === 'GROSS_UP' ? '' : 'none';
     document.getElementById('corRpGd').style.display = method === 'GROSS_DOWN' ? '' : 'none';
     document.getElementById('corRpGu').style.display = method === 'GROSS_UP' ? '' : 'none';
+
+    // Via SALSET cuma dikunci untuk Gross Down (keputusan wizard 4 CARA COR
+    // — lihat wizard di DocumentPipelineContent). Gross Up tidak melalui
+    // wizard yang sama, jadi user bebas switch on/off kapan saja.
+    var isGD = method === 'GROSS_DOWN';
+    document.getElementById('corViaSalset').disabled = isGD;
+    document.getElementById('corViaSalsetLockedNote').style.display = isGD ? '' : 'none';
+
     if (!silent) renderAll();
   }
 
