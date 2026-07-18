@@ -9,15 +9,22 @@
  * yang tidak menyentuh Drive/Mail (seperti cor_getTaxonomy) TIDAK memicu
  * dialog itu, walau scope-nya sudah ditambahkan ke manifest.
  *
- * Fungsi ini sengaja menyentuh Drive & Mail TANPA efek samping (tidak
- * membuat/mengubah file apa pun, tidak mengirim email apa pun) — cuma
- * untuk memaksa Google menampilkan dialog izin sekali, supaya fitur
- * approval COR (kirim PDF ke Drive + email) bisa jalan setelah di-Allow.
+ * Fungsi ini menyentuh Drive (baca folder DAN buat file — dua level scope
+ * yang beda, "read" dan "write" ternyata diminta terpisah oleh Google) &
+ * Mail, dengan efek samping SEMINIMAL mungkin (file test langsung dihapus
+ * lagi ke trash, tidak ada email sungguhan terkirim) — cuma untuk memaksa
+ * Google menampilkan dialog izin sekali, supaya fitur approval COR (kirim
+ * PDF ke Drive + email) bisa jalan setelah di-Allow.
  */
 function authorizeNewScopes() {
   var folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
-  Logger.log('Akses folder OK: ' + folder.getName());
+  Logger.log('Akses baca folder OK: ' + folder.getName());
+
+  var testFile = folder.createFile('techford-auth-test.txt', 'File test otorisasi — aman dihapus.', MimeType.PLAIN_TEXT);
+  Logger.log('Akses tulis (buat file) OK: ' + testFile.getId());
+  testFile.setTrashed(true);
+  Logger.log('File test sudah dibuang ke trash.');
 
   var quota = MailApp.getRemainingDailyQuota();
-  Logger.log('Sisa kuota email hari ini: ' + quota);
+  Logger.log('Akses Mail OK — sisa kuota email hari ini: ' + quota);
 }
