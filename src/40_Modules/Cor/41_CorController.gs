@@ -27,5 +27,17 @@ var CorController = (function (module) {
     });
   };
 
+  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy) {
+    return ErrorHandler.handle('CorController.requestApproval', function () {
+      return CorService.requestApproval(docId, approverEmployeeId, description, requestedBy);
+    });
+  };
+
+  module.approve = function (docId, token) {
+    return ErrorHandler.handle('CorController.approve', function () {
+      return CorService.approve(docId, token);
+    });
+  };
+
   return module;
 })(CorController || {});

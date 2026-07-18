@@ -211,5 +211,200 @@ var CorService = (function (module) {
     return module.getDraft(docId);
   };
 
+  /**
+   * Rakit model laporan COR (bentuk yang sama seperti dipakai
+   * CorCalc.renderDocumentHtml di client, lihat DocumentPipelineContent's
+   * buildCorPreviewModel) dari data draft tersimpan — dipakai KHUSUS untuk
+   * generate PDF yang disimpan ke Drive (alur approval), bukan untuk
+   * preview interaktif (itu tetap di client).
+   */
+  function buildReportModel(docId) {
+    var doc = assertCorDocument(docId);
+    var header = CorHeaderRepository.findByDocId(docId);
+    if (!header) {
+      throw new AppError('VALIDATION_ERROR', 'Draft COR ini belum pernah disimpan.');
+    }
+
+    var funds = CorFundRepository.findByDocId(docId);
+    var costs = CorCostRepository.findByDocId(docId);
+    var margins = CorMarginRepository.findByDocId(docId);
+    var entities = CorEntityRepository.findAll();
+
+    var vendorEntity = header.Vendor_Entity || '';
+    var isViaSalset = !!header.Is_Via_Salset;
+    var method = header.Cor_Method || 'GROSS_DOWN';
+    var isMixFund = !!header.Is_Mix_Fund;
+    var ngoRate = Number(header.Ngo_Rate) || 10;
+    var biayaSalset = Number(header.Biaya_Salset) || 0;
+
+    var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
+    var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
+    var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
+      { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
+    var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+
+    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
+    function toCost(c) { return { label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '', harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1 }; }
+    function marginFor(tab) {
+      var m = {};
+      margins.filter(function (r) { return r.Cor_Tab === tab; }).forEach(function (r) {
+        m[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 };
+      });
+      return m;
+    }
+
+    var fundObjs = funds.map(toFund);
+    function salItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'SAL'; }).map(toCost); }
+    function baaItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'VENDOR'; }).map(toCost); }
+
+    var blocks;
+    if (isMixFund) {
+      blocks = [
+        { tabLabel: 'Client', funds: fundObjs.filter(function (f) { return f.fundType === 'CLIENT'; }), salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') },
+        { tabLabel: 'Campaign', funds: fundObjs.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), salItems: salItems('CAMPAIGN'), baaItems: baaItems('CAMPAIGN'), margin: marginFor('CAMPAIGN') }
+      ];
+    } else if (method === 'GROSS_DOWN') {
+      blocks = [{ tabLabel: null, funds: fundObjs, salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+    } else {
+      blocks = [{ tabLabel: null, funds: [], salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+    }
+
+    var project = ProjectRepository.findById(doc.Project_ID) || {};
+
+    return {
+      doc: doc,
+      project: project,
+      model: {
+        docLabel: doc.Doc_ID,
+        projectLabel: project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-',
+        method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
+        ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset, linkCampaigns: decodeJson(header.Link_Campaigns, []),
+        marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks
+      }
+    };
+  }
+
+  /**
+   * Render laporan COR ke PDF sungguhan & simpan/update di Shared Drive B2B
+   * (Config.ROOT_FOLDER_ID) — sekali dibuat, file yang SAMA (Pdf_File_Id)
+   * dipakai lagi (konten di-replace, bukan bikin file baru) supaya link
+   * yang sudah dikirim lewat email tetap sama setelah approval (footer
+   * "Approved by..." ditempel di file itu juga).
+   */
+  function generateAndStorePdf(docId, footerNote) {
+    var built = buildReportModel(docId);
+    var model = built.model;
+    model.footerNote = footerNote || '';
+    var html = CorReportRenderer.renderDocumentHtml(model);
+
+    var pdfBlob = Utilities.newBlob(html, 'text/html', docId + '.html').getAs('application/pdf');
+    pdfBlob.setName('COR - ' + docId + '.pdf');
+
+    var header = CorHeaderRepository.findByDocId(docId);
+    var file;
+    if (header && header.Pdf_File_Id) {
+      try {
+        Drive.Files.update({}, header.Pdf_File_Id, pdfBlob);
+        file = DriveApp.getFileById(header.Pdf_File_Id);
+      } catch (e) {
+        file = null;
+      }
+    }
+    if (!file) {
+      var folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
+      file = folder.createFile(pdfBlob);
+    }
+
+    return { fileId: file.getId(), url: file.getUrl() };
+  }
+
+  /**
+   * Ajukan approval COR ke salah satu Employee dengan Role "Head of B2B" —
+   * generate PDF (tanpa cap approval dulu), simpan ke Drive, lalu kirim
+   * email berisi link PDF + link approve satu-klik (magic link, token
+   * acak per pengajuan, TIDAK perlu login — lihat CorController.approve
+   * yang dipanggil dari doGet ?action=cor-approve).
+   */
+  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy) {
+    var doc = assertCorDocument(docId);
+    if (doc.Status === 'Not Started') {
+      throw new AppError('VALIDATION_ERROR', 'COR ini belum pernah disimpan sebagai draft.');
+    }
+
+    var approver = EmployeeRepository.findAll().filter(function (e) {
+      return String(e.Id) === String(approverEmployeeId) && e.Role === 'Head of B2B';
+    })[0];
+    if (!approver) {
+      throw new AppError('VALIDATION_ERROR', 'Approver tidak valid — harus Employee dengan Role "Head of B2B".');
+    }
+
+    var built = buildReportModel(docId);
+    var project = built.project;
+    var client = project.Client_ID ? ClientRepository.findById(project.Client_ID) : null;
+
+    var pdf = generateAndStorePdf(docId, '');
+    var token = Utilities.getUuid();
+
+    CorHeaderRepository.patchApprovalFields(docId, {
+      Approval_Token: token,
+      Approval_Requested_To: approver.Email,
+      Approval_Requested_Name: approver.Name,
+      Approval_Requested_At: new Date(),
+      Approved_By: '',
+      Approved_At: '',
+      Pdf_File_Id: pdf.fileId,
+      Pdf_File_Url: pdf.url
+    });
+
+    var subject = (project.Project_ID || docId) + ' — ' + (project.Project_Name || '-') + ' — ' +
+      (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
+
+    var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
+
+    var body = (description ? description + '\n\n' : '') +
+      'Silakan review dokumen COR berikut:\n' + pdf.url + '\n\n' +
+      'Kalau sudah sesuai dan disetujui, klik link berikut:\n' + approveUrl + '\n\n' +
+      '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
+
+    MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
+
+    return module.getDraft(docId);
+  };
+
+  /**
+   * Dipanggil dari doGet ?action=cor-approve (magic link di email, TIDAK
+   * ada login) — validasi token, cap PDF dengan "Approved by [Nama]", dan
+   * majukan Status dokumen ke Approved. Nama approver diambil dari nama
+   * Head of B2B yang DIPILIH saat requestApproval (bukan dari sesi login,
+   * karena memang tidak ada login di alur ini).
+   */
+  module.approve = function (docId, token) {
+    assertCorDocument(docId);
+    var header = CorHeaderRepository.findByDocId(docId);
+    if (!header || !header.Approval_Token || String(header.Approval_Token) !== String(token)) {
+      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
+    }
+    if (header.Approved_At) {
+      throw new AppError('VALIDATION_ERROR', 'COR ini sudah disetujui sebelumnya.');
+    }
+
+    var approverName = header.Approval_Requested_Name || 'Head of B2B';
+    var now = new Date();
+    var footerNote = 'Approved by ' + approverName + ' — ' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd MMMM yyyy');
+
+    var pdf = generateAndStorePdf(docId, footerNote);
+
+    CorHeaderRepository.patchApprovalFields(docId, {
+      Approved_By: approverName,
+      Approved_At: now,
+      Pdf_File_Id: pdf.fileId,
+      Pdf_File_Url: pdf.url
+    });
+
+    DocumentService.updateStatus(docId, 'Approved');
+
+    return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
+  };
+
   return module;
 })(CorService || {});

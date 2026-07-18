@@ -73,7 +73,16 @@ var ROUTES = {
 };
 
 function doGet(e) {
-  var page = (e.parameter && e.parameter.page) || 'lead-capturing';
+  var params = (e && e.parameter) || {};
+
+  // Link approval COR (magic link di email, TIDAK ada login) — ditangani
+  // TERPISAH dari routing Shell biasa karena diklik dari luar aplikasi
+  // (klien email), bukan navigasi sidebar/dalam-app.
+  if (params.action === 'cor-approve') {
+    return handleCorApprovalLink(params.docId, params.token);
+  }
+
+  var page = params.page || 'lead-capturing';
   var route = ROUTES[page];
 
   if (!route) {
@@ -109,6 +118,31 @@ function doGet(e) {
     .setTitle('Techford Platform - ' + route.title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Halaman konfirmasi sederhana untuk magic link approval COR di email
+ * (?action=cor-approve&docId=...&token=...) — TIDAK pakai Shell (bukan
+ * bagian dari SPA, diklik dari luar aplikasi/klien email, tidak perlu
+ * login sama sekali sesuai keputusan produk).
+ */
+function handleCorApprovalLink(docId, token) {
+  var html;
+  try {
+    var result = CorController.approve(docId, token);
+    if (!result || result.ok === false) {
+      html = '<h2>⚠️ Gagal approve</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
+    } else {
+      html = '<h2>✅ COR berhasil disetujui</h2>' +
+        '<p>Dokumen <strong>' + docId + '</strong> sudah ditandai <strong>Approved</strong> oleh <strong>' + result.data.approvedBy + '</strong>.</p>';
+    }
+  } catch (err) {
+    html = '<h2>⚠️ Gagal approve</h2><p>' + (err && err.message ? err.message : err) + '</p>';
+  }
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
 }
 
 /**

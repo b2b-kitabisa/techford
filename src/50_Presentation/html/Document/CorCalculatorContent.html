@@ -100,6 +100,7 @@
     </div>
     <div style="display:flex; gap:8px;">
       <button class="btn-outline" id="corPdfBtn" onclick="openPdfPreview()">🖨️ Download PDF</button>
+      <button class="btn-outline" id="corRequestApprovalBtn" onclick="openRequestApproval()" style="display:none;">📨 Request Approval</button>
       <button class="btn-save" id="corSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
     </div>
   </div>
@@ -448,6 +449,25 @@
   </div>
 </div>
 
+<div class="confirm-overlay" id="corApprovalModal">
+  <div class="confirm-box" style="width:460px; max-width:92vw;">
+    <h3>Request Approval</h3>
+    <p style="margin-bottom:8px;">COR akan dikirim untuk direview & disetujui oleh salah satu Head of B2B.</p>
+    <div style="margin-bottom:12px;">
+      <label class="taxonomy-label">Kirim ke (Head of B2B)</label>
+      <select id="corApprovalApprover" style="width:100%; margin-top:6px;"></select>
+    </div>
+    <div style="margin-bottom:4px;">
+      <label class="taxonomy-label">Catatan (opsional, isi body email)</label>
+      <textarea id="corApprovalDescription" rows="4" placeholder="Tuliskan catatan untuk approver..." style="width:100%; margin-top:6px; box-sizing:border-box; font-family:inherit; font-size:12px; resize:vertical;"></textarea>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeRequestApproval()">Batal</button>
+      <button class="btn-save" id="corApprovalSendBtn" onclick="submitRequestApproval()">Kirim</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // ══════════════════════════ STATE ══════════════════════════
   var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {} };
@@ -548,6 +568,75 @@
     document.getElementById('corDocIdDisplay').innerText = 'COR — ' + currentDoc.Doc_ID;
     document.getElementById('corDocSubDisplay').innerText =
       (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-');
+    renderApprovalButton();
+  }
+
+  // Tombol "Request Approval" hanya aktif kalau COR sudah pernah disimpan
+  // sebagai draft (Status bukan lagi "Not Started") — approval tidak masuk
+  // akal untuk dokumen yang belum ada isinya sama sekali.
+  function renderApprovalButton() {
+    var btn = document.getElementById('corRequestApprovalBtn');
+    if (!currentDoc || currentDoc.Status === 'Not Started') { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    if (currentDoc.Status === 'Approved') {
+      btn.disabled = true;
+      btn.innerText = '✅ Sudah Disetujui';
+    } else {
+      btn.disabled = false;
+      btn.innerText = '📨 Request Approval';
+    }
+  }
+
+  function openRequestApproval() {
+    if (!CALCULATOR_DOC_ID) return;
+    document.getElementById('corApprovalDescription').value = '';
+    var sel = document.getElementById('corApprovalApprover');
+    sel.innerHTML = '<option value="">Memuat...</option>';
+    document.getElementById('corApprovalModal').classList.add('open');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) { sel.innerHTML = '<option value="">Gagal memuat daftar approver.</option>'; return; }
+        var heads = res.data.filter(function (e) { return e.Role === 'Head of B2B'; });
+        if (!heads.length) {
+          sel.innerHTML = '<option value="">Belum ada Employee dengan Role "Head of B2B".</option>';
+          return;
+        }
+        sel.innerHTML = heads.map(function (e) { return '<option value="' + e.Id + '">' + e.Name + ' (' + e.Email + ')</option>'; }).join('');
+      })
+      .withFailureHandler(function () { sel.innerHTML = '<option value="">Gagal memuat daftar approver.</option>'; })
+      .employee_listActive();
+  }
+  function closeRequestApproval() {
+    document.getElementById('corApprovalModal').classList.remove('open');
+  }
+  function submitRequestApproval() {
+    var approverId = document.getElementById('corApprovalApprover').value;
+    if (!approverId) { alert('Pilih Head of B2B tujuan approval dulu.'); return; }
+    if (!techfordConfirm('Kirim permintaan approval COR ini?')) return;
+
+    var description = document.getElementById('corApprovalDescription').value;
+    var requestedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.getElementById('corApprovalSendBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengirim...';
+    TechfordLoading.show('Mengirim request approval...');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Kirim';
+        if (!res || !res.ok) { alert('Gagal mengirim: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
+        closeRequestApproval();
+        alert('Permintaan approval berhasil dikirim ke ' + document.getElementById('corApprovalApprover').selectedOptions[0].innerText + '.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Kirim';
+        alert('Gagal mengirim: ' + (err && err.message ? err.message : err));
+      })
+      .cor_requestApproval(CALCULATOR_DOC_ID, approverId, description, requestedBy);
   }
 
   function fetchCorTaxonomy() {

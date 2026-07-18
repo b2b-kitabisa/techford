@@ -56,5 +56,42 @@ var CorHeaderRepository = (function (module) {
     CacheHelper.invalidate('corHeader:all');
   };
 
+  /**
+   * Patch kolom approval (Approval_Token, Approved_By, Pdf_File_Id, dst) ke
+   * satu baris COR_Header, TANPA menyentuh field lain (beda dari upsert()
+   * yang selalu replace 1 baris penuh dari kalkulator). Kolom yang belum
+   * ada di sheet ditambahkan otomatis di akhir header row — supaya sheet
+   * yang sudah ada (dibuat sebelum fitur approval ini) tidak perlu diedit
+   * manual satu-satu oleh admin.
+   */
+  module.patchApprovalFields = function (docId, patch) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+      Object.keys(patch).forEach(function (key) {
+        if (headers.indexOf(key) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(key);
+          headers.push(key);
+        }
+      });
+
+      var rows = sheet.getDataRange().getValues();
+      var docIdCol = headers.indexOf('Doc_ID');
+      for (var r = 1; r < rows.length; r++) {
+        if (rows[r][docIdCol] === docId) {
+          Object.keys(patch).forEach(function (key) {
+            sheet.getRange(r + 1, headers.indexOf(key) + 1).setValue(patch[key]);
+          });
+          module.invalidateCache();
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+
   return module;
 })(CorHeaderRepository || {});
