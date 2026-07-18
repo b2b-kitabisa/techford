@@ -49,11 +49,15 @@ var ROUTES = {
   },
   'cor-calculator': {
     content: '50_Presentation/html/Document/CorCalculatorContent',
-    title: 'COR Calculator 🧮',
+    title: 'COR Calculator',
     // SENGAJA TIDAK didaftarkan di NavigationConfig.MENU — halaman ini
     // full-page (bukan drawer) tapi hanya bisa diakses lewat tombol
     // "Kerjakan COR" di drawer Document Pipeline (butuh ?docId=... di URL),
-    // bukan navigasi sidebar biasa.
+    // bukan navigasi sidebar biasa. Karena itu breadcrumb-nya di-override
+    // manual di sini (bukan dari NavigationConfig.MENU) supaya tetap
+    // menunjukkan hierarki asalnya: Operation Module › Document Pipeline.
+    breadcrumbGroup: 'Operation Module',
+    breadcrumbParent: 'Document Pipeline',
     headerActions: ''
   },
   'configure-account': {
@@ -90,7 +94,8 @@ function doGet(e) {
   shell.pageTitle = route.title;
   shell.activePage = page;
   shell.menu = buildMenuWithBadges();
-  shell.breadcrumbGroup = findBreadcrumbGroup(page);
+  shell.breadcrumbGroup = route.breadcrumbGroup || findBreadcrumbGroup(page);
+  shell.breadcrumbParent = route.breadcrumbParent || '';
   shell.helpText = route.helpText || '';
 
   // Link navigasi WAJIB pakai URL absolut, bukan relatif ("?page=...").
@@ -118,7 +123,8 @@ function buildMenuWithBadges() {
   var menu = JSON.parse(JSON.stringify(NavigationConfig.MENU));
   var badgeCounts = {
     'lead-capturing': LeadService.countNewLeads(),
-    'sales-pipeline': ProjectService.countDraftProjects()
+    'sales-pipeline': ProjectService.countDraftProjects(),
+    'document-pipeline': DocumentService.countNewRequests()
   };
 
   menu.forEach(function (group) {

@@ -720,32 +720,59 @@
     };
   }
 
+  // "Lihat COR" sering muncul "Gagal memuat" bukan karena datanya benar2
+  // error, tapi karena 2 penyebab yang sama2 transient: (1) jembatan
+  // google.script.run terbukti berkali2 di modul lain mengirim res=null
+  // walau tidak ada error sungguhan — di sini TIDAK ada retry sama sekali
+  // sebelumnya, jadi glitch sekali langsung dianggap gagal; (2) corTaxonomy
+  // (entities/marginComponents) di-fetch sekali saja saat bootstrap tanpa
+  // retry — kalau user buka drawer & langsung klik "Lihat COR" sebelum
+  // fetch itu selesai, modelnya dirakit dari taxonomy kosong. Diperbaiki
+  // dengan retry otomatis untuk keduanya.
   function openCorPreview() {
     if (!currentDocDrawerId) return;
     ensureCorReportStyle();
     document.getElementById('corPreviewContent').innerText = 'Memuat...';
     document.getElementById('corPreviewModal').classList.add('open');
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res || !res.ok) {
-          document.getElementById('corPreviewContent').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.');
-          return;
-        }
-        if (!res.data.header) {
-          document.getElementById('corPreviewContent').innerText = 'Draft COR ini belum pernah disimpan.';
-          return;
-        }
-        try {
-          var model = buildCorPreviewModel(res.data);
-          document.getElementById('corPreviewContent').innerHTML = CorCalc.renderDocumentHtml(model);
-        } catch (e) {
-          document.getElementById('corPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;
-        }
-      })
-      .withFailureHandler(function (err) {
-        document.getElementById('corPreviewContent').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
-      })
-      .cor_getDraft(currentDocDrawerId);
+    var docId = currentDocDrawerId;
+
+    function loadDraft(retriesLeft) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) {
+            if (!res && retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+            document.getElementById('corPreviewContent').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.');
+            return;
+          }
+          if (!res.data.header) {
+            document.getElementById('corPreviewContent').innerText = 'Draft COR ini belum pernah disimpan.';
+            return;
+          }
+          try {
+            var model = buildCorPreviewModel(res.data);
+            document.getElementById('corPreviewContent').innerHTML = CorCalc.renderDocumentHtml(model);
+          } catch (e) {
+            document.getElementById('corPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;
+          }
+        })
+        .withFailureHandler(function (err) {
+          if (retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+          document.getElementById('corPreviewContent').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+        })
+        .cor_getDraft(docId);
+    }
+
+    if (corTaxonomy.marginComponents && corTaxonomy.marginComponents.length) {
+      loadDraft(2);
+    } else {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) corTaxonomy = res.data;
+          loadDraft(2);
+        })
+        .withFailureHandler(function () { loadDraft(2); })
+        .cor_getTaxonomy();
+    }
   }
   function closeCorPreview() {
     document.getElementById('corPreviewModal').classList.remove('open');

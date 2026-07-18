@@ -43,6 +43,18 @@ var DocumentService = (function (module) {
     return DocumentPipelineRepository.findAll();
   };
 
+  /**
+   * Dipakai WebAppRouter untuk badge notifikasi jumlah dokumen yang masih
+   * di Stage "New Request" (belum mulai dikerjakan tim Operation) di
+   * sidebar — dipanggil langsung server-side saat render Shell, sama pola
+   * dengan ProjectService.countDraftProjects.
+   */
+  module.countNewRequests = function () {
+    return DocumentPipelineRepository.findAll().filter(function (d) {
+      return d.Stage === 'New Request';
+    }).length;
+  };
+
   module.getTaxonomy = function () {
     return {
       documentTypes: Config.DOCUMENT_TYPES,
