@@ -244,10 +244,23 @@
   // paralel), tampilan tidak telanjur "nyangkut" kosong/salah sampai ada
   // trigger lain (pelajaran dari bug serupa di Sales Pipeline & Client
   // Monitoring).
+  //
+  // BUG YANG DIPERBAIKI: sebelumnya loop retry di bawah cuma mengecek
+  // `allDocuments.length` untuk memutuskan berhenti retry — begitu FETCH
+  // DOKUMEN berhasil, retry berhenti sepenuhnya, walau fetchProjects/
+  // fetchClients/fetchCorHeaders/fetchCorTaxonomy lainnya BELUM TENTU ikut
+  // berhasil (masing-masing failure handler-nya kosong, tidak retry
+  // sendiri). Kalau salah satu dari fetch lain itu gagal sekali saja
+  // (glitch jaringan/eksekusi paralel Apps Script), datanya nyangkut
+  // kosong SELAMANYA sampai halaman di-reload manual — ini penyebab utama
+  // "kadang tabel/tombol/dropdown kosong, harus refresh". Sekarang SEMUA
+  // fetch harus melapor sukses (via flag *Loaded) sebelum retry berhenti.
   var docBootstrapAttempts = 0;
   var docBootstrapRetried = false;
-  var DOC_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var DOC_BOOTSTRAP_MAX_ATTEMPTS = 10;
   var DOC_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  var docsLoaded = false, projectsLoaded = false, clientsLoaded = false,
+    taxonomyLoaded = false, corHeadersLoaded = false, corTaxonomyLoaded = false;
 
   function bootstrapDocuments() {
     docBootstrapAttempts++;
@@ -258,12 +271,22 @@
     fetchCorHeaders();
     fetchCorTaxonomy();
     setTimeout(function () {
-      if (allDocuments.length || docBootstrapRetried) return;
+      var allLoaded = docsLoaded && projectsLoaded && clientsLoaded &&
+        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded;
+      if (allLoaded || docBootstrapRetried) return;
       if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapDocuments();
       } else {
+        // Percobaan terakhir — tandai retry selesai supaya failure handler
+        // masing-masing fetch (yang tadinya diam) akhirnya menampilkan
+        // error kalau memang masih gagal, alih-alih diam untuk selamanya.
         docBootstrapRetried = true;
         fetchDocuments();
+        fetchProjects();
+        fetchClients();
+        fetchTaxonomy();
+        fetchCorHeaders();
+        fetchCorTaxonomy();
       }
     }, DOC_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
@@ -282,6 +305,7 @@
           return;
         }
         docBootstrapRetried = true;
+        docsLoaded = true;
         allDocuments = res.data;
         renderDocPipeline();
       })
@@ -296,6 +320,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        corHeadersLoaded = true;
         allCorHeaders = res.data;
         // Kalau drawer detail COR sedang terbuka, tombol Kerjakan/Lanjutkan
         // perlu ikut ter-render ulang begitu data ini datang.
@@ -315,6 +340,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        corTaxonomyLoaded = true;
         corTaxonomy = res.data;
       })
       .withFailureHandler(function () {})
@@ -325,6 +351,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        projectsLoaded = true;
         allProjects = res.data;
         renderDocPipeline();
       })
@@ -336,6 +363,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        clientsLoaded = true;
         allClients = res.data;
         renderDocPipeline();
       })
@@ -347,6 +375,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        taxonomyLoaded = true;
         taxonomy = res.data;
         populateDocTypeFilter();
         renderDocStatusFilterDropdown();

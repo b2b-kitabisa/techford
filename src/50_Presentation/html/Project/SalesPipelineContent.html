@@ -384,10 +384,18 @@
   var editServiceRevenueItems = {};
 
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
+  // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allProjects.length`
+  // — begitu fetchProjects berhasil, retry berhenti walau salah satu dari 6
+  // fetch paralel lainnya (clients/employees/taxonomy/documents/
+  // documentTaxonomy/revenueBreakdown) belum tentu ikut berhasil (masing2
+  // failure handler-nya kosong, tidak retry sendiri). Sekarang SEMUA fetch
+  // harus melapor sukses (flag *Loaded) dulu sebelum retry berhenti.
   var pipelineBootstrapAttempts = 0;
   var pipelineBootstrapRetried = false;
-  var PIPELINE_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var PIPELINE_BOOTSTRAP_MAX_ATTEMPTS = 10;
   var PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  var pProjectsLoaded = false, pClientsLoaded = false, pEmployeesLoaded = false,
+    pTaxonomyLoaded = false, pDocumentsLoaded = false, pDocTaxonomyLoaded = false, pRevenueLoaded = false;
 
   function bootstrapPipeline() {
     pipelineBootstrapAttempts++;
@@ -399,12 +407,20 @@
     fetchDocumentTaxonomy();
     fetchRevenueBreakdown();
     setTimeout(function () {
-      if (allProjects.length || pipelineBootstrapRetried) return;
+      var allLoaded = pProjectsLoaded && pClientsLoaded && pEmployeesLoaded &&
+        pTaxonomyLoaded && pDocumentsLoaded && pDocTaxonomyLoaded && pRevenueLoaded;
+      if (allLoaded || pipelineBootstrapRetried) return;
       if (pipelineBootstrapAttempts < PIPELINE_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapPipeline();
       } else {
         pipelineBootstrapRetried = true;
         fetchProjects();
+        fetchClients();
+        fetchEmployees();
+        fetchTaxonomy();
+        fetchDocuments();
+        fetchDocumentTaxonomy();
+        fetchRevenueBreakdown();
       }
     }, PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
@@ -423,6 +439,7 @@
           return;
         }
         pipelineBootstrapRetried = true;
+        pProjectsLoaded = true;
         allProjects = res.data;
         renderPipeline();
       })
@@ -437,6 +454,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        pClientsLoaded = true;
         allClients = res.data;
         // fetchProjects() & fetchClients() jalan paralel saat bootstrap —
         // kalau tabel Project sudah lebih dulu ter-render sebelum daftar
@@ -454,6 +472,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok) {
+          pEmployeesLoaded = true;
           allEmployees = res.data;
           populateConsultantDropdowns();
         }
@@ -466,6 +485,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok) {
+          pTaxonomyLoaded = true;
           taxonomy = res.data;
           renderServiceButtonsInto('newServiceButtons', newProjectServices, 'toggleNewService');
           renderCategoryGridInto('newCategoryGrid', newProjectServices, newProjectCategories, 'toggleNewCategory');
@@ -498,6 +518,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        pDocumentsLoaded = true;
         allDocuments = res.data;
         // Kalau drawer detail sedang terbuka, box Document Request perlu
         // ikut ter-render ulang begitu data ini datang (bisa datang belakangan
@@ -513,6 +534,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        pDocTaxonomyLoaded = true;
         docTaxonomy = res.data;
         if (currentPipelineDrawerId) renderDocumentRequestRows(currentPipelineDrawerId);
       })
@@ -524,6 +546,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        pRevenueLoaded = true;
         allRevenueBreakdown = res.data;
         // Sama seperti fetchDocuments — data ini bisa datang belakangan
         // saat paralel bootstrap, jadi drawer yang sedang terbuka perlu

@@ -542,10 +542,22 @@
     window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
   }
 
+  // BUG YANG DIPERBAIKI (2 masalah sekaligus):
+  // 1. `corBootstrapDone` sebelumnya di-set true di DALAM success/failure
+  //    handler fetchCorDraft() begitu request itu selesai — APAPUN hasilnya
+  //    (termasuk kalau gagal di percobaan PERTAMA). Begitu itu terjadi,
+  //    SELURUH retry langsung berhenti walau baru 1 kali coba, jadi kalau
+  //    cor_getDraft gagal sekali saja (glitch transient), halaman langsung
+  //    nyerah selamanya sampai di-refresh manual.
+  // 2. Retry cuma mengecek corDraftLoaded, tidak mengecek apakah
+  //    fetchCorTaxonomy/fetchCorProjectsClients ikut berhasil.
+  // Sekarang corBootstrapDone HANYA jadi true setelah percobaan terakhir
+  // benar-benar habis, dan retry menunggu SEMUA fetch sukses.
   var corBootstrapAttempts = 0;
   var corBootstrapDone = false;
-  var COR_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var COR_BOOTSTRAP_MAX_ATTEMPTS = 10;
   var COR_BOOTSTRAP_RETRY_MS = 1500;
+  var corTaxonomyLoaded = false, corProjectsLoaded = false, corClientsLoaded = false;
 
   function bootstrapCor() {
     corBootstrapAttempts++;
@@ -553,11 +565,16 @@
     fetchCorDraft();
     fetchCorProjectsClients();
     setTimeout(function () {
-      if (corDraftLoaded || corBootstrapDone) return;
+      var allLoaded = corDraftLoaded && corTaxonomyLoaded && corProjectsLoaded && corClientsLoaded;
+      if (allLoaded || corBootstrapDone) return;
       if (corBootstrapAttempts < COR_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapCor();
       } else {
         corBootstrapDone = true;
+        // Percobaan terakhir — kalau draft dokumennya sendiri masih belum
+        // berhasil dimuat sampai sini, baru tampilkan errornya (lihat
+        // fetchCorDraft, yang tadinya langsung tampil di percobaan pertama).
+        if (!corDraftLoaded) fetchCorDraft();
       }
     }, COR_BOOTSTRAP_RETRY_MS);
   }
@@ -569,10 +586,10 @@
 
   function fetchCorProjectsClients() {
     google.script.run.withSuccessHandler(function (res) {
-      if (res && res.ok) { allCorProjects = res.data; renderDocInfo(); }
+      if (res && res.ok) { corProjectsLoaded = true; allCorProjects = res.data; renderDocInfo(); }
     }).withFailureHandler(function () {}).project_getAll();
     google.script.run.withSuccessHandler(function (res) {
-      if (res && res.ok) { allCorClients = res.data; renderDocInfo(); }
+      if (res && res.ok) { corClientsLoaded = true; allCorClients = res.data; renderDocInfo(); }
     }).withFailureHandler(function () {}).client_getAll();
   }
 
@@ -726,6 +743,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        corTaxonomyLoaded = true;
         corTaxonomy = res.data;
         populateVendorSelect();
         if (corDraftLoaded) { initDefaultsIfEmpty(); renderAll(); }
@@ -741,8 +759,8 @@
     }
     google.script.run
       .withSuccessHandler(function (res) {
-        corBootstrapDone = true;
         if (!res || !res.ok) {
+          if (!corBootstrapDone) return;
           document.getElementById('corDocSubDisplay').innerText = (res && res.error && res.error.message) || 'Gagal memuat dokumen.';
           return;
         }
@@ -752,7 +770,7 @@
         renderAll();
       })
       .withFailureHandler(function (err) {
-        corBootstrapDone = true;
+        if (!corBootstrapDone) return;
         document.getElementById('corDocSubDisplay').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
       })
       .cor_getDraft(CALCULATOR_DOC_ID);

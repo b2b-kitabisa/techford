@@ -279,9 +279,15 @@
   // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
   // respons. Retry sekali kadang tidak cukup, jadi diulang berkali-kali
   // sebelum benar-benar menyerah dan menampilkan pesan error.
+  //
+  // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allClients.length`
+  // — begitu fetchClients berhasil, retry berhenti walau fetchMasterData/
+  // fetchProjectsForPipelineCheck/fetchPics belum tentu ikut berhasil.
+  // Sekarang semua harus melapor sukses dulu sebelum retry berhenti.
   var clientBootstrapAttempts = 0;
-  var CLIENT_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var CLIENT_BOOTSTRAP_MAX_ATTEMPTS = 10;
   var CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  var cClientsLoaded = false, cMasterDataLoaded = false, cProjectsLoaded = false, cPicsLoaded = false;
 
   function bootstrapClients() {
     clientBootstrapAttempts++;
@@ -289,13 +295,15 @@
     fetchMasterData();
     fetchProjectsForPipelineCheck();
     setTimeout(function () {
-      if (allClients.length || clientBootstrapRetried) return;
+      var allLoaded = cClientsLoaded && cMasterDataLoaded && cProjectsLoaded && cPicsLoaded;
+      if (allLoaded || clientBootstrapRetried) return;
       if (clientBootstrapAttempts < CLIENT_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapClients();
       } else {
         clientBootstrapRetried = true;
         fetchClients();
         fetchMasterData();
+        fetchProjectsForPipelineCheck();
       }
     }, CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
@@ -314,6 +322,7 @@
           return;
         }
         clientBootstrapRetried = true;
+        cClientsLoaded = true;
         allClients = res.data;
         fetchPics();
       })
@@ -327,7 +336,7 @@
   function fetchPics() {
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok) allPics = res.data;
+        if (res && res.ok) { cPicsLoaded = true; allPics = res.data; }
         renderClients();
         if (currentClientDrawerId) renderPicCarousel('detailPicCarousel', currentClientDrawerId);
       })
@@ -339,6 +348,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok) {
+          cMasterDataLoaded = true;
           allMasterData = res.data;
           populateMasterDataDropdowns();
           // fetchClients()/fetchPics() jalan paralel dengan fetchMasterData()
@@ -359,7 +369,7 @@
   // dirender terus-menerus.
   function fetchProjectsForPipelineCheck() {
     google.script.run
-      .withSuccessHandler(function (res) { if (res && res.ok) allProjects = res.data; })
+      .withSuccessHandler(function (res) { if (res && res.ok) { cProjectsLoaded = true; allProjects = res.data; } })
       .withFailureHandler(function () {})
       .project_getAll();
   }

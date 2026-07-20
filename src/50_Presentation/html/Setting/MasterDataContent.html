@@ -38,22 +38,28 @@
   // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
   // respons. Di sini kita ulang otomatis sampai beberapa kali (bukan
   // cuma sekali) sebelum benar-benar menyerah dan menampilkan error.
+  // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allMasterData.length`
+  // — begitu fetchMasterData berhasil, retry berhenti walau fetchMarginGuides
+  // belum tentu ikut berhasil (failure handler-nya sendiri, tidak diperiksa
+  // di sini). Sekarang keduanya harus melapor sukses dulu.
   var masterDataBootstrapAttempts = 0;
   var masterDataBootstrapDone = false;
-  var MASTER_DATA_MAX_ATTEMPTS = 8;
+  var MASTER_DATA_MAX_ATTEMPTS = 10;
   var MASTER_DATA_RETRY_INTERVAL_MS = 1500;
+  var marginGuidesLoaded = false;
 
   function bootstrapMasterData() {
     masterDataBootstrapAttempts++;
     fetchMasterData();
     fetchMarginGuides();
     setTimeout(function () {
-      if (allMasterData.length || masterDataBootstrapDone) return;
+      if ((allMasterData.length && marginGuidesLoaded) || masterDataBootstrapDone) return;
       if (masterDataBootstrapAttempts < MASTER_DATA_MAX_ATTEMPTS) {
         bootstrapMasterData();
       } else {
         masterDataBootstrapDone = true;
         fetchMasterData();
+        fetchMarginGuides();
       }
     }, MASTER_DATA_RETRY_INTERVAL_MS);
   }
@@ -136,6 +142,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) return;
+        marginGuidesLoaded = true;
         document.getElementById('marginGuideError').innerText = '';
         allMarginGuides = res.data;
         renderMarginGuideSections();
