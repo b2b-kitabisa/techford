@@ -40,9 +40,11 @@
       <div class="sub" id="qoDocSubDisplay">Memuat data dokumen...</div>
     </div>
     <div style="display:flex; gap:8px;">
+      <button class="btn-outline" id="qoGenerateBtn" onclick="submitGenerateDocument()" style="display:none;">📄 Generate Dokumen (PDF)</button>
       <button class="btn-save" id="qoSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
     </div>
   </div>
+  <div id="qoPdfLinkNote" class="placeholder-note" style="display:none; margin-bottom:12px;"></div>
 
   <div class="qo-box">
     <div class="qo-box-hd">1. Informasi Umum</div>
@@ -99,6 +101,13 @@
         <label>Jabatan Penandatangan</label>
         <input type="text" id="qoTitleName">
       </div>
+    </div>
+    <div class="form-grid-2col" style="margin-top:12px;">
+      <div>
+        <label>Nama Layanan (judul di atas tabel Box Price)</label>
+        <input type="text" id="qoServiceName" placeholder="Misal: Digital Campaign Package">
+      </div>
+      <div></div>
     </div>
   </div>
 
@@ -277,6 +286,7 @@
       document.getElementById('qoPicPhone').value = header.Pic_Phone || '';
       document.getElementById('qoHeadName').value = header.Head_Name || '';
       document.getElementById('qoTitleName').value = header.Title_Name || '';
+      document.getElementById('qoServiceName').value = header.Service_Name || '';
       document.getElementById('qoFirstStatement').value = header.First_Statement || '';
       document.getElementById('qoImportantRemarks').value = header.Important_Remarks || '';
       qoSavedAgencyFeeRate = Number(header.Agency_Fee_Rate) || null;
@@ -286,6 +296,7 @@
     if (!categories.length) categories.push(emptyCategory());
     renderCategories();
     onValidDaysChange();
+    renderGenerateState(header);
   }
 
   function buildCategoriesFromItems(items) {
@@ -463,6 +474,7 @@
       picPhone: document.getElementById('qoPicPhone').value,
       headName: document.getElementById('qoHeadName').value,
       titleName: document.getElementById('qoTitleName').value,
+      serviceName: document.getElementById('qoServiceName').value,
       firstStatement: document.getElementById('qoFirstStatement').value,
       importantRemarks: document.getElementById('qoImportantRemarks').value,
       agencyFeeRate: document.getElementById('qoAgencyFeeRate') ? Number(document.getElementById('qoAgencyFeeRate').value) : qoTaxonomy.kaiDefaultFeeRate,
@@ -483,22 +495,19 @@
     google.script.run
       .withSuccessHandler(function (res) {
         TechfordLoading.hide();
-        if (!res) { return recheckQoSaveOutcome(btn); }
-        if (!res.ok) {
-          btn.disabled = false;
-          btn.innerText = '💾 Simpan Draft';
-          alert('Gagal menyimpan: ' + (res.error && res.error.message));
-          return;
-        }
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        if (!res) { return recheckQoSaveOutcome(); }
+        if (!res.ok) { alert('Gagal menyimpan: ' + (res.error && res.error.message)); return; }
         loadDraftIntoState(res.data);
         renderDocInfo();
-        btn.disabled = false;
-        btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
-        btn.onclick = goBackToDocumentPipeline;
+        alert('Draft Quotation berhasil disimpan.');
       })
       .withFailureHandler(function () {
         TechfordLoading.hide();
-        recheckQoSaveOutcome(btn);
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        recheckQoSaveOutcome();
       })
       .quotation_saveDraft(CALCULATOR_DOC_ID, buildSavePayload(), createdBy);
   }
@@ -506,25 +515,90 @@
   // google.script.run kadang mengirim res=null walau proses di server sudah
   // berhasil — cek ulang draft (baca doang, aman diulang) sebelum
   // menampilkan pesan gagal (pelajaran sama dari bug serupa di COR).
-  function recheckQoSaveOutcome(btn) {
+  function recheckQoSaveOutcome() {
     google.script.run
       .withSuccessHandler(function (res) {
-        btn.disabled = false;
         if (res && res.ok && res.data.header) {
           loadDraftIntoState(res.data);
           renderDocInfo();
-          btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
-          btn.onclick = goBackToDocumentPipeline;
+          alert('Draft Quotation sudah tersimpan (tampilan sempat tidak sinkron, sekarang sudah update).');
         } else {
-          btn.innerText = '💾 Simpan Draft';
           alert('Gagal menyimpan: tidak ada respons dari server, silakan cek lagi sebelum coba ulang.');
         }
       })
       .withFailureHandler(function () {
-        btn.disabled = false;
-        btn.innerText = '💾 Simpan Draft';
         alert('Gagal menyimpan: tidak ada respons dari server, silakan refresh halaman untuk mengecek status.');
       })
       .quotation_getDraft(CALCULATOR_DOC_ID);
+  }
+
+  // ---- Generate Dokumen (PDF) ----
+  function renderGenerateState(header) {
+    var btn = document.getElementById('qoGenerateBtn');
+    var note = document.getElementById('qoPdfLinkNote');
+    if (!header) { btn.style.display = 'none'; note.style.display = 'none'; return; }
+    btn.style.display = '';
+    if (header.Pdf_File_Url) {
+      note.innerHTML = '📄 Dokumen terakhir: <a href="' + header.Pdf_File_Url + '" target="_blank">buka PDF</a>';
+      note.style.display = '';
+    } else {
+      note.style.display = 'none';
+    }
+  }
+
+  function submitGenerateDocument() {
+    if (!CALCULATOR_DOC_ID) return;
+    if (!categories.some(function (c) { return c.items.some(function (i) { return i.label; }); })) {
+      alert('Tambahkan minimal 1 item layanan dulu sebelum generate dokumen.');
+      return;
+    }
+    if (!techfordConfirm('Simpan draft ini dulu (kalau ada perubahan) lalu generate dokumen PDF?')) return;
+
+    var btn = document.getElementById('qoGenerateBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan & generate...';
+    TechfordLoading.show('Menyimpan draft & generate dokumen...');
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    google.script.run
+      .withSuccessHandler(function (saveRes) {
+        if (!saveRes || !saveRes.ok) {
+          TechfordLoading.hide();
+          btn.disabled = false;
+          btn.innerText = '📄 Generate Dokumen (PDF)';
+          alert('Gagal menyimpan draft sebelum generate: ' + ((saveRes && saveRes.error && saveRes.error.message) || 'tidak ada respons dari server.'));
+          return;
+        }
+        loadDraftIntoState(saveRes.data);
+        renderDocInfo();
+
+        google.script.run
+          .withSuccessHandler(function (res) {
+            TechfordLoading.hide();
+            btn.disabled = false;
+            btn.innerText = '📄 Generate Dokumen (PDF)';
+            if (!res || !res.ok) {
+              alert('Gagal generate dokumen: ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server, silakan coba lagi.'));
+              return;
+            }
+            document.getElementById('qoPdfLinkNote').innerHTML = '📄 Dokumen terakhir: <a href="' + res.data.pdfUrl + '" target="_blank">buka PDF</a>';
+            document.getElementById('qoPdfLinkNote').style.display = '';
+            window.open(res.data.pdfUrl, '_blank');
+          })
+          .withFailureHandler(function (err) {
+            TechfordLoading.hide();
+            btn.disabled = false;
+            btn.innerText = '📄 Generate Dokumen (PDF)';
+            alert('Gagal generate dokumen: ' + (err && err.message ? err.message : err));
+          })
+          .quotation_generateDocument(CALCULATOR_DOC_ID);
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = '📄 Generate Dokumen (PDF)';
+        alert('Gagal menyimpan draft sebelum generate: ' + (err && err.message ? err.message : err));
+      })
+      .quotation_saveDraft(CALCULATOR_DOC_ID, buildSavePayload(), createdBy);
   }
 </script>

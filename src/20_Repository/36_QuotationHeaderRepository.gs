@@ -27,12 +27,34 @@ var QuotationHeaderRepository = (function (module) {
     })[0] || null;
   };
 
-  /** Sama seperti CorHeaderRepository.upsert — 1 baris per Doc_ID, selalu replace penuh. */
+  /**
+   * Sama seperti CorHeaderRepository.upsert — 1 baris per Doc_ID, selalu
+   * replace penuh. Kolom yang belum ada di sheet (misal field baru yang
+   * ditambahkan belakangan, lihat Service_Name/Pdf_File_Id) ditambahkan
+   * otomatis ke header row — supaya penambahan field baru di kode tidak
+   * pernah butuh admin mengedit sheet secara manual.
+   */
   module.upsert = function (docId, row) {
+    ensureColumns(Object.keys(row));
     base.deleteWhere(function (r) { return r.Doc_ID === docId; });
     base.insert(row);
     module.invalidateCache();
   };
+
+  function ensureColumns(columnNames) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      columnNames.forEach(function (name) {
+        if (headers.indexOf(name) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(name);
+          headers.push(name);
+        }
+      });
+    });
+  }
 
   module.invalidateCache = function () {
     CacheHelper.invalidate('quotationHeader:all');

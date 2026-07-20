@@ -203,6 +203,15 @@ var Config = (function (module) {
   // supaya revisi teks default cukup di 1 tempat.
   module.QUOTATION_TEMPLATE_FILE_ID = '1REWfagi4r-VMcIUzVPHCSnsFAGKiZCm36Ase_qJPLIc';
 
+  // Teks heading H1 PERSIS seperti di dokumen master — dipakai
+  // QuotationReportRenderer untuk menemukan & memotong ke section yang
+  // sesuai. Kalau admin mengganti teks heading ini di dokumen master,
+  // WAJIB disamakan juga di sini.
+  module.QUOTATION_SECTION_HEADINGS = {
+    YKB: { EN: 'QUOTATION YKB ENG', ID: 'QUOTATION YKB BHS' },
+    KAI: { EN: 'QUOTATION KAI ENG', ID: 'QUOTATION KAI BHS' }
+  };
+
   module.QUOTATION_ENTITY_CODE = { YKB: 'YKB', KAI: 'KAI' };
   module.QUOTATION_LANGUAGE = { EN: 'EN', ID: 'ID' };
   module.QUOTATION_DEFAULT_VALID_DAYS = 30;
