@@ -1,0 +1,530 @@
+<script>
+  var CALCULATOR_DOC_ID = '<?= queryParams.docId || "" ?>';
+</script>
+
+<style>
+  .qo-page { max-width: 1200px; }
+  .qo-back { font-size: 12px; color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 8px; }
+  .qo-back:hover { color: var(--color-cerulean); }
+  .qo-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .qo-docinfo h2 { margin: 0 0 2px; font-size: 18px; }
+  .qo-docinfo .sub { font-size: 12px; color: var(--text-muted); }
+
+  .qo-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .qo-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
+
+  .qo-lang-toggle { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; }
+  .qo-lang-toggle button { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
+  .qo-lang-toggle button.on { background: var(--color-cerulean); color: var(--color-white); }
+
+  .qo-cat-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--bg-tint); }
+  .qo-cat-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .qo-cat-hd input { flex: 1; font-weight: 700; }
+  .qo-item-row { display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: start; }
+  .qo-item-row input, .qo-item-row textarea { font-size: 12px; box-sizing: border-box; width: 100%; }
+  .qo-item-row textarea { resize: vertical; min-height: 32px; }
+  .qo-item-remove { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 16px; font-weight: 700; padding: 4px 8px; }
+  .qo-item-remove:hover { color: #c5221f; }
+  .qo-item-labels { display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto; gap: 8px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 4px; }
+
+  .qo-totals { border-top: 1px solid var(--border-soft); margin-top: 10px; padding-top: 10px; }
+  .qo-total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+  .qo-total-row.grand { font-weight: 700; font-size: 15px; border-top: 1px solid var(--border-soft); margin-top: 4px; padding-top: 8px; }
+</style>
+
+<div class="qo-page">
+  <a class="qo-back" href="#" onclick="goBackToDocumentPipeline();return false;">&larr; Kembali ke Document Pipeline</a>
+  <div class="qo-docinfo">
+    <div>
+      <h2 id="qoDocIdDisplay">Quotation Composer</h2>
+      <div class="sub" id="qoDocSubDisplay">Memuat data dokumen...</div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-save" id="qoSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
+    </div>
+  </div>
+
+  <div class="qo-box">
+    <div class="qo-box-hd">1. Informasi Umum</div>
+    <div class="form-grid-2col">
+      <div>
+        <div class="drawer-field-label">Bahasa Dokumen</div>
+        <div class="qo-lang-toggle">
+          <button type="button" class="on" id="qoLangIdBtn" onclick="setLanguage('ID')">Bahasa Indonesia</button>
+          <button type="button" id="qoLangEnBtn" onclick="setLanguage('EN')">English</button>
+        </div>
+      </div>
+      <div>
+        <div class="drawer-field-label">Nomor Quotation</div>
+        <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
+      </div>
+    </div>
+    <div class="form-grid-2col" style="margin-top:12px;">
+      <div>
+        <label>Berlaku Selama (hari)</label>
+        <input type="number" id="qoValidDays" value="30" min="1" oninput="onValidDaysChange()">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Valid Date: <strong id="qoValidDateDisplay">-</strong></div>
+      </div>
+      <div>
+        <label>Entity Name (nama PT/Brand pada dokumen)</label>
+        <input type="text" id="qoEntityName" placeholder="Nama PT/Brand client...">
+      </div>
+    </div>
+    <div class="form-grid-2col" style="margin-top:12px;">
+      <div>
+        <label>Pilih PIC Client</label>
+        <select id="qoPicSelect" onchange="onPicSelectChange()"></select>
+      </div>
+      <div></div>
+      <div>
+        <label>Nama PIC</label>
+        <input type="text" id="qoPicName">
+      </div>
+      <div>
+        <label>Email PIC</label>
+        <input type="text" id="qoPicEmail">
+      </div>
+      <div>
+        <label>Nomor Telepon PIC</label>
+        <input type="text" id="qoPicPhone">
+      </div>
+      <div></div>
+    </div>
+    <div class="form-grid-2col" style="margin-top:12px;">
+      <div>
+        <label>Nama Penandatangan (Head)</label>
+        <input type="text" id="qoHeadName">
+      </div>
+      <div>
+        <label>Jabatan Penandatangan</label>
+        <input type="text" id="qoTitleName">
+      </div>
+    </div>
+  </div>
+
+  <div class="qo-box">
+    <div class="qo-box-hd">2. First Statement <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(paragraf pembuka — bisa diedit, default sudah terisi)</span></div>
+    <textarea id="qoFirstStatement" rows="10" style="width:100%; box-sizing:border-box; font-family:inherit; font-size:12px;"></textarea>
+  </div>
+
+  <div class="qo-box">
+    <div class="qo-box-hd">3. Service / Box Price</div>
+    <div id="qoCategoriesContainer"></div>
+    <button class="btn-outline" onclick="addCategory()">+ Tambah Kategori</button>
+
+    <div class="qo-totals" id="qoTotalsBox"></div>
+  </div>
+
+  <div class="qo-box">
+    <div class="qo-box-hd">4. Important Remarks <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(bisa diedit, default sudah terisi)</span></div>
+    <textarea id="qoImportantRemarks" rows="14" style="width:100%; box-sizing:border-box; font-family:inherit; font-size:12px;"></textarea>
+  </div>
+</div>
+
+<script>
+  var qoTaxonomy = { entities: [], languages: {}, defaultValidDays: 30, kaiDefaultFeeRate: 10, ppnRate: 11, defaults: {} };
+  var currentDoc = null;
+  var entityCode = 'YKB';
+  var currentLanguage = 'ID';
+  var allQoProjects = [];
+  var allQoClients = [];
+  var allQoPics = [];
+  var categories = []; // [{ idx, label, items: [{ idx, label, value, qty, remarksDetail }] }]
+  var qoIdxCounter = 1;
+  function nextQoIdx() { return qoIdxCounter++; }
+  var qoDraftHasHeader = false;
+  var qoSavedAgencyFeeRate = null;
+
+  function goBackToDocumentPipeline() {
+    window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+  }
+
+  // ---- Bootstrap dengan retry otomatis (lihat pola yang sama & bug yang
+  // diperbaiki di modul lain — semua fetch harus sukses dulu sebelum retry
+  // berhenti, bukan cuma salah satu). ----
+  var qoBootstrapAttempts = 0;
+  var qoBootstrapDone = false;
+  var QO_BOOTSTRAP_MAX_ATTEMPTS = 10;
+  var QO_BOOTSTRAP_RETRY_MS = 1500;
+  var qoDraftLoaded = false, qoTaxonomyLoaded = false, qoProjectsLoaded = false, qoClientsLoaded = false, qoPicsLoaded = false;
+
+  function bootstrapQuotation() {
+    qoBootstrapAttempts++;
+    fetchQoTaxonomy();
+    fetchQoDraft();
+    fetchQoProjectsClientsPics();
+    setTimeout(function () {
+      var allLoaded = qoDraftLoaded && qoTaxonomyLoaded && qoProjectsLoaded && qoClientsLoaded && qoPicsLoaded;
+      if (allLoaded || qoBootstrapDone) return;
+      if (qoBootstrapAttempts < QO_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapQuotation();
+      } else {
+        qoBootstrapDone = true;
+        if (!qoDraftLoaded) fetchQoDraft();
+      }
+    }, QO_BOOTSTRAP_RETRY_MS);
+  }
+  if (document.readyState === 'complete') {
+    bootstrapQuotation();
+  } else {
+    window.addEventListener('load', bootstrapQuotation);
+  }
+
+  function fetchQoTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        qoTaxonomyLoaded = true;
+        qoTaxonomy = res.data;
+        if (!qoDraftHasHeader) document.getElementById('qoValidDays').value = qoTaxonomy.defaultValidDays;
+        // Taxonomy (berisi teks default First Statement/Important Remarks)
+        // dan draft dokumen di-fetch PARALEL — kalau draft ini BARU (belum
+        // ada header) dan taxonomy datang BELAKANGAN, teks default perlu
+        // di-isi ulang di sini, bukan cuma sekali di loadDraftIntoState.
+        if (qoDraftLoaded && !qoDraftHasHeader) { setLanguage(currentLanguage); renderTotals(); }
+      })
+      .withFailureHandler(function () {})
+      .quotation_getTaxonomy();
+  }
+
+  function fetchQoProjectsClientsPics() {
+    google.script.run.withSuccessHandler(function (res) {
+      if (res && res.ok) { qoProjectsLoaded = true; allQoProjects = res.data; renderDocInfo(); }
+    }).withFailureHandler(function () {}).project_getAll();
+    google.script.run.withSuccessHandler(function (res) {
+      if (res && res.ok) { qoClientsLoaded = true; allQoClients = res.data; renderDocInfo(); }
+    }).withFailureHandler(function () {}).client_getAll();
+    google.script.run.withSuccessHandler(function (res) {
+      if (res && res.ok) { qoPicsLoaded = true; allQoPics = res.data; renderDocInfo(); }
+    }).withFailureHandler(function () {}).client_getAllPics();
+  }
+
+  function fetchQoDraft() {
+    if (!CALCULATOR_DOC_ID) {
+      document.getElementById('qoDocSubDisplay').innerText = 'Doc ID tidak ditemukan di URL.';
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          if (!qoBootstrapDone) return;
+          document.getElementById('qoDocSubDisplay').innerText = (res && res.error && res.error.message) || 'Gagal memuat dokumen.';
+          return;
+        }
+        qoDraftLoaded = true;
+        loadDraftIntoState(res.data);
+        renderDocInfo();
+      })
+      .withFailureHandler(function (err) {
+        if (!qoBootstrapDone) return;
+        document.getElementById('qoDocSubDisplay').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+      })
+      .quotation_getDraft(CALCULATOR_DOC_ID);
+  }
+
+  function renderDocInfo() {
+    if (!currentDoc) return;
+    var project = allQoProjects.filter(function (p) { return p.Project_ID === currentDoc.Project_ID; })[0] || {};
+    var client = allQoClients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] || {};
+    document.getElementById('qoDocIdDisplay').innerText = 'Quotation — ' + currentDoc.Doc_ID;
+    document.getElementById('qoDocSubDisplay').innerText =
+      (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-') + ' [' + entityCode + ']';
+
+    // Isi default awal HANYA kalau field terkait masih kosong (draft baru) —
+    // jangan menimpa data yang sudah pernah disimpan/diedit admin.
+    if (!document.getElementById('qoEntityName').value && client.Entity_Name) {
+      document.getElementById('qoEntityName').value = client.Entity_Name;
+    }
+    renderPicSelect(project.Client_ID);
+  }
+
+  function renderPicSelect(clientId) {
+    var sel = document.getElementById('qoPicSelect');
+    var pics = allQoPics.filter(function (p) { return p.Client_ID === clientId; });
+    var currentValue = sel.value;
+    sel.innerHTML = '<option value="">-- pilih PIC --</option>' + pics.map(function (p) {
+      return '<option value="' + p.PIC_ID + '">' + p.PIC_Name + (p.Title ? ' (' + p.Title + ')' : '') + '</option>';
+    }).join('');
+    if (currentValue) sel.value = currentValue;
+  }
+
+  function onPicSelectChange() {
+    var picId = document.getElementById('qoPicSelect').value;
+    var pic = allQoPics.filter(function (p) { return p.PIC_ID === picId; })[0];
+    if (!pic) return;
+    document.getElementById('qoPicName').value = pic.PIC_Name || '';
+    document.getElementById('qoPicEmail').value = pic.Email || '';
+    document.getElementById('qoPicPhone').value = pic.Phone || '';
+  }
+
+  function loadDraftIntoState(draft) {
+    currentDoc = draft.doc;
+    entityCode = draft.entityCode;
+
+    var header = draft.header;
+    qoDraftHasHeader = !!header;
+    currentLanguage = header ? header.Language : 'ID';
+    setLanguage(currentLanguage, true);
+
+    if (header) {
+      document.getElementById('qoValidDays').value = header.Valid_Days;
+      document.getElementById('qoValidDateDisplay').innerText = formatQoDate(header.Valid_Date);
+      document.getElementById('qoNumberDisplay').innerText = header.Quotation_Number;
+      document.getElementById('qoEntityName').value = header.Entity_Name || '';
+      document.getElementById('qoPicSelect').value = header.Pic_Client_Id || '';
+      document.getElementById('qoPicName').value = header.Pic_Name || '';
+      document.getElementById('qoPicEmail').value = header.Pic_Email || '';
+      document.getElementById('qoPicPhone').value = header.Pic_Phone || '';
+      document.getElementById('qoHeadName').value = header.Head_Name || '';
+      document.getElementById('qoTitleName').value = header.Title_Name || '';
+      document.getElementById('qoFirstStatement').value = header.First_Statement || '';
+      document.getElementById('qoImportantRemarks').value = header.Important_Remarks || '';
+      qoSavedAgencyFeeRate = Number(header.Agency_Fee_Rate) || null;
+    }
+
+    categories = buildCategoriesFromItems(draft.items || []);
+    if (!categories.length) categories.push(emptyCategory());
+    renderCategories();
+    onValidDaysChange();
+  }
+
+  function buildCategoriesFromItems(items) {
+    var byCat = {};
+    var order = [];
+    items.forEach(function (it) {
+      var key = it.Category_Sort_Order + '::' + it.Category_Label;
+      if (!byCat[key]) { byCat[key] = { idx: nextQoIdx(), label: it.Category_Label, items: [] }; order.push(key); }
+      byCat[key].items.push({
+        idx: nextQoIdx(), label: it.Item_Label, value: Number(it.Value) || 0, qty: Number(it.Qty) || 0,
+        remarksDetail: it.Remarks_Detail || ''
+      });
+    });
+    return order.map(function (key) { return byCat[key]; });
+  }
+
+  function emptyCategory() {
+    return { idx: nextQoIdx(), label: '', items: [emptyItem()] };
+  }
+  function emptyItem() {
+    return { idx: nextQoIdx(), label: '', value: 0, qty: 1, remarksDetail: '' };
+  }
+
+  // ---- Bahasa: ganti default First Statement/Important Remarks/Head/Title
+  // HANYA kalau field itu masih kosong ATAU masih persis sama dengan
+  // default bahasa SEBELUMNYA (belum diedit admin) — supaya tidak menimpa
+  // hasil edit manual admin.
+  function setLanguage(lang, silent) {
+    var prevLang = currentLanguage;
+    currentLanguage = lang;
+    document.getElementById('qoLangIdBtn').className = lang === 'ID' ? 'on' : '';
+    document.getElementById('qoLangEnBtn').className = lang === 'EN' ? 'on' : '';
+
+    var defaults = (qoTaxonomy.defaults[entityCode] || {})[lang];
+    if (!defaults) return;
+    var prevDefaults = (qoTaxonomy.defaults[entityCode] || {})[prevLang] || {};
+
+    var fsEl = document.getElementById('qoFirstStatement');
+    if (!fsEl.value || fsEl.value === prevDefaults.firstStatement) fsEl.value = defaults.firstStatement;
+    var irEl = document.getElementById('qoImportantRemarks');
+    if (!irEl.value || irEl.value === prevDefaults.importantRemarks) irEl.value = defaults.importantRemarks;
+    var headEl = document.getElementById('qoHeadName');
+    if (!headEl.value || headEl.value === prevDefaults.headName) headEl.value = defaults.headName;
+    var titleEl = document.getElementById('qoTitleName');
+    if (!titleEl.value || titleEl.value === prevDefaults.titleName) titleEl.value = defaults.titleName;
+
+    if (!silent) { /* no-op, placeholder kalau nanti perlu render ulang lain */ }
+  }
+
+  // ---- Kategori & item layanan ----
+  function renderCategories() {
+    var container = document.getElementById('qoCategoriesContainer');
+    container.innerHTML = categories.map(function (cat, ci) {
+      return '<div class="qo-cat-card">' +
+        '<div class="qo-cat-hd">' +
+          '<input type="text" placeholder="Nama kategori (misal: Digital Campaign)..." value="' + escQo(cat.label) + '" oninput="updateCategoryLabel(' + ci + ', this.value)">' +
+          '<button type="button" class="btn-outline" onclick="removeCategory(' + ci + ')" title="Hapus kategori">Hapus Kategori</button>' +
+        '</div>' +
+        '<div class="qo-item-labels"><span>Item</span><span>Nilai (Rp)</span><span>Qty</span><span>Remarks Detail</span><span></span></div>' +
+        cat.items.map(function (item, ii) {
+          return '<div class="qo-item-row">' +
+            '<input type="text" placeholder="Nama item..." value="' + escQo(item.label) + '" oninput="updateItemField(' + ci + ',' + ii + ',\'label\',this.value)">' +
+            '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">' +
+            '<input type="number" min="0" value="' + item.qty + '" oninput="updateItemField(' + ci + ',' + ii + ',\'qty\',this.value); onCategoriesChanged();">' +
+            '<textarea placeholder="Detail remarks (opsional)..." oninput="updateItemField(' + ci + ',' + ii + ',\'remarksDetail\',this.value)">' + escQo(item.remarksDetail) + '</textarea>' +
+            '<button type="button" class="qo-item-remove" onclick="removeItem(' + ci + ',' + ii + ')" title="Hapus item">&times;</button>' +
+            '</div>';
+        }).join('') +
+        '<button class="btn-outline" onclick="addItem(' + ci + ')" style="margin-top:4px;">+ Tambah Item</button>' +
+        '</div>';
+    }).join('');
+    renderTotals();
+  }
+
+  function escQo(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function formatQoThousands(n) { n = Number(n) || 0; return n ? n.toLocaleString('id-ID') : ''; }
+  function parseQoThousands(el) { return Number(String(el.value).replace(/[^0-9]/g, '')) || 0; }
+
+  function onItemValueInput(el, ci, ii) {
+    el.value = formatQoThousands(parseQoThousands(el));
+    categories[ci].items[ii].value = parseQoThousands(el);
+    renderTotals();
+  }
+
+  // Field TEKS (label/remarksDetail) di-update TANPA render ulang penuh —
+  // supaya kursor tidak lepas tiap ketik (pelajaran sama dari bug kursor di
+  // Kalkulator COR).
+  function updateCategoryLabel(ci, value) { categories[ci].label = value; }
+  function updateItemField(ci, ii, field, value) {
+    categories[ci].items[ii][field] = field === 'qty' ? (Number(value) || 0) : value;
+  }
+  function onCategoriesChanged() { renderTotals(); }
+
+  function addCategory() { categories.push(emptyCategory()); renderCategories(); }
+  function removeCategory(ci) {
+    if (categories.length <= 1) { alert('Minimal harus ada 1 kategori.'); return; }
+    categories.splice(ci, 1);
+    renderCategories();
+  }
+  function addItem(ci) { categories[ci].items.push(emptyItem()); renderCategories(); }
+  function removeItem(ci, ii) {
+    if (categories[ci].items.length <= 1) { alert('Minimal harus ada 1 item per kategori.'); return; }
+    categories[ci].items.splice(ii, 1);
+    renderCategories();
+  }
+
+  function fmtRpQo(n) { n = Math.round(Number(n) || 0); return 'Rp' + n.toLocaleString('id-ID'); }
+
+  function computeSubtotal() {
+    var sum = 0;
+    categories.forEach(function (cat) {
+      cat.items.forEach(function (item) { sum += (Number(item.value) || 0) * (Number(item.qty) || 0); });
+    });
+    return sum;
+  }
+
+  function renderTotals() {
+    var subtotal = computeSubtotal();
+    var box = document.getElementById('qoTotalsBox');
+    if (entityCode === 'KAI') {
+      var existingRateEl = document.getElementById('qoAgencyFeeRate');
+      var rate = existingRateEl ? (Number(existingRateEl.value) || 0) : (qoSavedAgencyFeeRate || qoTaxonomy.kaiDefaultFeeRate);
+      var fee = Math.round(subtotal * (rate / 100));
+      var total = subtotal + fee;
+      var ppn = Math.round(total * (qoTaxonomy.ppnRate / 100));
+      var grandTotal = total + ppn;
+      box.innerHTML =
+        '<div class="qo-total-row"><span>Subtotal</span><span>' + fmtRpQo(subtotal) + '</span></div>' +
+        '<div class="qo-total-row"><span>Agency Service Fee Rate</span><span><input type="number" id="qoAgencyFeeRate" min="0" max="100" step="0.5" value="' + rate + '" style="width:70px; text-align:right;" oninput="renderTotals()">%</span></div>' +
+        '<div class="qo-total-row"><span>Agency Service Fee</span><span>' + fmtRpQo(fee) + '</span></div>' +
+        '<div class="qo-total-row"><span>Total</span><span>' + fmtRpQo(total) + '</span></div>' +
+        '<div class="qo-total-row"><span>PPN ' + qoTaxonomy.ppnRate + '%</span><span>' + fmtRpQo(ppn) + '</span></div>' +
+        '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span>' + fmtRpQo(grandTotal) + '</span></div>';
+    } else {
+      box.innerHTML = '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span>' + fmtRpQo(subtotal) + '</span></div>';
+    }
+  }
+
+  function formatQoDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function onValidDaysChange() {
+    var days = Number(document.getElementById('qoValidDays').value) || qoTaxonomy.defaultValidDays;
+    var base = currentDoc && currentDoc.Requested_Date ? new Date(currentDoc.Requested_Date) : new Date();
+    var validDate = new Date(base);
+    validDate.setDate(validDate.getDate() + days);
+    document.getElementById('qoValidDateDisplay').innerText = formatQoDate(validDate);
+  }
+
+  // ---- Simpan Draft ----
+  function buildSavePayload() {
+    var itemsPayload = [];
+    categories.forEach(function (cat, ci) {
+      cat.items.forEach(function (item, ii) {
+        itemsPayload.push({
+          categoryLabel: cat.label, categorySortOrder: ci,
+          itemLabel: item.label, itemSortOrder: ii,
+          value: item.value, qty: item.qty, remarksDetail: item.remarksDetail
+        });
+      });
+    });
+
+    return {
+      language: currentLanguage,
+      validDays: Number(document.getElementById('qoValidDays').value) || qoTaxonomy.defaultValidDays,
+      entityName: document.getElementById('qoEntityName').value,
+      picClientId: document.getElementById('qoPicSelect').value,
+      picName: document.getElementById('qoPicName').value,
+      picEmail: document.getElementById('qoPicEmail').value,
+      picPhone: document.getElementById('qoPicPhone').value,
+      headName: document.getElementById('qoHeadName').value,
+      titleName: document.getElementById('qoTitleName').value,
+      firstStatement: document.getElementById('qoFirstStatement').value,
+      importantRemarks: document.getElementById('qoImportantRemarks').value,
+      agencyFeeRate: document.getElementById('qoAgencyFeeRate') ? Number(document.getElementById('qoAgencyFeeRate').value) : qoTaxonomy.kaiDefaultFeeRate,
+      items: itemsPayload
+    };
+  }
+
+  function submitSaveDraft() {
+    if (!CALCULATOR_DOC_ID) return;
+    if (!techfordConfirm('Simpan draft Quotation ini?')) return;
+
+    var btn = document.getElementById('qoSaveDraftBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Menyimpan draft Quotation...');
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (!res) { return recheckQoSaveOutcome(btn); }
+        if (!res.ok) {
+          btn.disabled = false;
+          btn.innerText = '💾 Simpan Draft';
+          alert('Gagal menyimpan: ' + (res.error && res.error.message));
+          return;
+        }
+        loadDraftIntoState(res.data);
+        renderDocInfo();
+        btn.disabled = false;
+        btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
+        btn.onclick = goBackToDocumentPipeline;
+      })
+      .withFailureHandler(function () {
+        TechfordLoading.hide();
+        recheckQoSaveOutcome(btn);
+      })
+      .quotation_saveDraft(CALCULATOR_DOC_ID, buildSavePayload(), createdBy);
+  }
+
+  // google.script.run kadang mengirim res=null walau proses di server sudah
+  // berhasil — cek ulang draft (baca doang, aman diulang) sebelum
+  // menampilkan pesan gagal (pelajaran sama dari bug serupa di COR).
+  function recheckQoSaveOutcome(btn) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        if (res && res.ok && res.data.header) {
+          loadDraftIntoState(res.data);
+          renderDocInfo();
+          btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
+          btn.onclick = goBackToDocumentPipeline;
+        } else {
+          btn.innerText = '💾 Simpan Draft';
+          alert('Gagal menyimpan: tidak ada respons dari server, silakan cek lagi sebelum coba ulang.');
+        }
+      })
+      .withFailureHandler(function () {
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        alert('Gagal menyimpan: tidak ada respons dari server, silakan refresh halaman untuk mengecek status.');
+      })
+      .quotation_getDraft(CALCULATOR_DOC_ID);
+  }
+</script>

@@ -60,6 +60,15 @@ var ROUTES = {
     breadcrumbParent: 'Document Pipeline',
     headerActions: ''
   },
+  'quotation-composer': {
+    content: '50_Presentation/html/Document/QuotationComposerContent',
+    title: 'Quotation Composer',
+    // Sama seperti cor-calculator — hanya bisa diakses lewat tombol
+    // "Kerjakan Quotation" di drawer Document Pipeline (butuh ?docId=...).
+    breadcrumbGroup: 'Operation Module',
+    breadcrumbParent: 'Document Pipeline',
+    headerActions: ''
+  },
   'configure-account': {
     content: '50_Presentation/html/Setting/ConfigureAccountContent',
     title: 'Configure Account',

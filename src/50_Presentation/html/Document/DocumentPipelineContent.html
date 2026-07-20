@@ -142,6 +142,14 @@
       <div class="placeholder-note">Status COR mengikuti progres pengerjaan secara otomatis (Not Started → Drafting → Waiting Approval → Approved) — tidak bisa diubah manual di sini.</div>
     </div>
 
+    <div class="drawer-section" id="docQuotationActionWrap" style="display:none;">
+      <span class="taxonomy-label">Pengerjaan Quotation</span>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn-save" id="docQuotationActionBtn" onclick="openQuotationComposer()" style="flex:1;">📝 Kerjakan Quotation</button>
+      </div>
+      <div class="placeholder-note" id="docQuotationActionNote">Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
+    </div>
+
     <div class="drawer-section" id="docStatusUpdateSection">
       <span class="taxonomy-label">Update Status</span>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
@@ -230,6 +238,7 @@
   var allProjects = [];
   var allClients = [];
   var allCorHeaders = [];
+  var allQuotationHeaders = [];
   var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [] };
   var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [] };
 
@@ -260,7 +269,8 @@
   var DOC_BOOTSTRAP_MAX_ATTEMPTS = 10;
   var DOC_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
   var docsLoaded = false, projectsLoaded = false, clientsLoaded = false,
-    taxonomyLoaded = false, corHeadersLoaded = false, corTaxonomyLoaded = false;
+    taxonomyLoaded = false, corHeadersLoaded = false, corTaxonomyLoaded = false,
+    quotationHeadersLoaded = false;
 
   function bootstrapDocuments() {
     docBootstrapAttempts++;
@@ -270,9 +280,10 @@
     fetchTaxonomy();
     fetchCorHeaders();
     fetchCorTaxonomy();
+    fetchQuotationHeaders();
     setTimeout(function () {
       var allLoaded = docsLoaded && projectsLoaded && clientsLoaded &&
-        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded;
+        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded && quotationHeadersLoaded;
       if (allLoaded || docBootstrapRetried) return;
       if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapDocuments();
@@ -287,6 +298,7 @@
         fetchTaxonomy();
         fetchCorHeaders();
         fetchCorTaxonomy();
+        fetchQuotationHeaders();
       }
     }, DOC_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
@@ -331,6 +343,21 @@
       })
       .withFailureHandler(function () {})
       .cor_getAllHeaders();
+  }
+
+  function fetchQuotationHeaders() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        quotationHeadersLoaded = true;
+        allQuotationHeaders = res.data;
+        if (currentDocDrawerId) {
+          var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+          if (doc) renderQuotationActionButton(doc);
+        }
+      })
+      .withFailureHandler(function () {})
+      .quotation_getAllHeaders();
   }
 
   // Taxonomy khusus COR (entitas vendor/PKP/biaya pencairan & komponen
@@ -635,6 +662,7 @@
     document.getElementById('docEntityDisplay').innerText = doc.Entity || '-';
 
     renderCorActionButton(doc);
+    renderQuotationActionButton(doc);
 
     // Dokumen COR: status otomatis mengikuti progres pengerjaan (badge di
     // atas), jadi kontrol Update Status manual disembunyikan sama sekali.
@@ -842,6 +870,30 @@
   // window.top supaya benar-benar pindah halaman penuh.
   function goToCorCalculatorUrl(url) {
     window.top.location.href = url;
+  }
+
+  function renderQuotationActionButton(doc) {
+    var wrap = document.getElementById('docQuotationActionWrap');
+    if (doc.Document_Type !== 'QUOTATION') { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    var header = allQuotationHeaders.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
+    var btn = document.getElementById('docQuotationActionBtn');
+    var note = document.getElementById('docQuotationActionNote');
+    if (header) {
+      btn.innerText = '▶️ Lanjutkan Quotation (' + header.Quotation_Number + ')';
+      note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
+    } else {
+      btn.innerText = '📝 Kerjakan Quotation';
+      note.innerText = 'Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
+    }
+  }
+
+  function openQuotationComposer() {
+    if (!currentDocDrawerId) return;
+    var btn = document.getElementById('docQuotationActionBtn');
+    btn.disabled = true;
+    btn.innerText = '⏳ Membuka...';
+    goToCorCalculatorUrl(TECHFORD_WEB_APP_URL + '?page=quotation-composer&docId=' + encodeURIComponent(currentDocDrawerId));
   }
 
   var corWizardDocId = null;
