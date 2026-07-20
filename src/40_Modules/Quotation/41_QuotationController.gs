@@ -9,9 +9,9 @@ var QuotationController = (function (module) {
     });
   };
 
-  module.getLogo = function () {
-    return ErrorHandler.handle('QuotationController.getLogo', function () {
-      return QuotationService.getLogo();
+  module.getLogos = function () {
+    return ErrorHandler.handle('QuotationController.getLogos', function () {
+      return QuotationService.getLogos();
     });
   };
 

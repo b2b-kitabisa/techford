@@ -5,8 +5,8 @@ function quotation_getTaxonomy() {
   return QuotationController.getTaxonomy();
 }
 
-function quotation_getLogo() {
-  return QuotationController.getLogo();
+function quotation_getLogos() {
+  return QuotationController.getLogos();
 }
 
 function quotation_getAllHeaders() {

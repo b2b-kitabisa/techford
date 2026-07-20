@@ -25,6 +25,7 @@
   .qo-item-row textarea { resize: vertical; min-height: 32px; }
   .qo-item-remove { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 16px; font-weight: 700; padding: 4px 8px; }
   .qo-item-remove:hover { color: #c5221f; }
+  .qo-item-nopricing { text-align: center; color: var(--text-faint); font-size: 12px; padding: 6px 0; }
   .qo-item-labels { display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto; gap: 8px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 4px; }
 
   .qo-totals { border-top: 1px solid var(--border-soft); margin-top: 10px; padding-top: 10px; }
@@ -142,7 +143,7 @@
   function nextQoIdx() { return qoIdxCounter++; }
   var qoDraftHasHeader = false;
   var qoSavedAgencyFeeRate = null;
-  var qoLogoDataUri = '';
+  var qoLogos = { YKB: '', KAI: '' };
 
   function goBackToDocumentPipeline() {
     window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
@@ -185,9 +186,9 @@
   // logo, bukan blocking seluruh halaman.
   function fetchQoLogo() {
     google.script.run
-      .withSuccessHandler(function (res) { if (res && res.ok) qoLogoDataUri = res.data; })
+      .withSuccessHandler(function (res) { if (res && res.ok) qoLogos = res.data; })
       .withFailureHandler(function () {})
-      .quotation_getLogo();
+      .quotation_getLogos();
   }
 
   function fetchQoTaxonomy() {
@@ -309,12 +310,29 @@
     onValidDaysChange();
   }
 
+  // 3 tipe Box Price (lihat tab EXAMPLE di dokumen master):
+  // - grouped: tiap item harga & qty SENDIRI-SENDIRI (dijumlah semua).
+  // - standalone_with_item: satu kategori, banyak baris item deskriptif,
+  //   tapi HANYA SATU harga & qty untuk seluruh kategori (ditaruh di item
+  //   pertama, item lain murni deskripsi tanpa harga).
+  // - standalone_without_item: satu kategori = TEPAT SATU item, satu harga.
+  var QO_MODE_GROUPED = 'grouped';
+  var QO_MODE_WITH_ITEM = 'standalone_with_item';
+  var QO_MODE_WITHOUT_ITEM = 'standalone_without_item';
+
+  // Kategori mode !== grouped HANYA item pertama yang punya harga — item
+  // lain di kategori itu murni deskripsi (harga/qty tidak dipakai sama
+  // sekali, walau nilainya kebetulan tersimpan bukan nol).
+  function itemHasPricing(cat, itemIndex) {
+    return cat.mode === QO_MODE_GROUPED || itemIndex === 0;
+  }
+
   function buildCategoriesFromItems(items) {
     var byCat = {};
     var order = [];
     items.forEach(function (it) {
       var key = it.Category_Sort_Order + '::' + it.Category_Label;
-      if (!byCat[key]) { byCat[key] = { idx: nextQoIdx(), label: it.Category_Label, items: [] }; order.push(key); }
+      if (!byCat[key]) { byCat[key] = { idx: nextQoIdx(), label: it.Category_Label, mode: it.Category_Mode || QO_MODE_GROUPED, items: [] }; order.push(key); }
       byCat[key].items.push({
         idx: nextQoIdx(), label: it.Item_Label, value: Number(it.Value) || 0, qty: Number(it.Qty) || 0,
         remarksDetail: it.Remarks_Detail || ''
@@ -324,7 +342,7 @@
   }
 
   function emptyCategory() {
-    return { idx: nextQoIdx(), label: '', items: [emptyItem()] };
+    return { idx: nextQoIdx(), label: '', mode: QO_MODE_GROUPED, items: [emptyItem()] };
   }
   function emptyItem() {
     return { idx: nextQoIdx(), label: '', value: 0, qty: 1, remarksDetail: '' };
@@ -360,25 +378,52 @@
   function renderCategories() {
     var container = document.getElementById('qoCategoriesContainer');
     container.innerHTML = categories.map(function (cat, ci) {
+      var canAddItem = cat.mode !== QO_MODE_WITHOUT_ITEM;
       return '<div class="qo-cat-card">' +
         '<div class="qo-cat-hd">' +
           '<input type="text" placeholder="Nama kategori (misal: Digital Campaign)..." value="' + escQo(cat.label) + '" oninput="updateCategoryLabel(' + ci + ', this.value)">' +
+          '<select onchange="updateCategoryMode(' + ci + ', this.value)" style="max-width:260px;">' +
+            '<option value="' + QO_MODE_GROUPED + '"' + (cat.mode === QO_MODE_GROUPED ? ' selected' : '') + '>Grouped (tiap item harga sendiri)</option>' +
+            '<option value="' + QO_MODE_WITH_ITEM + '"' + (cat.mode === QO_MODE_WITH_ITEM ? ' selected' : '') + '>Standalone dengan Item (1 harga utk semua item)</option>' +
+            '<option value="' + QO_MODE_WITHOUT_ITEM + '"' + (cat.mode === QO_MODE_WITHOUT_ITEM ? ' selected' : '') + '>Standalone tanpa Item (1 item, 1 harga)</option>' +
+          '</select>' +
           '<button type="button" class="btn-outline" onclick="removeCategory(' + ci + ')" title="Hapus kategori">Hapus Kategori</button>' +
         '</div>' +
         '<div class="qo-item-labels"><span>Item</span><span>Nilai (Rp)</span><span>Qty</span><span>Remarks Detail</span><span></span></div>' +
         cat.items.map(function (item, ii) {
+          var hasPricing = itemHasPricing(cat, ii);
           return '<div class="qo-item-row">' +
             '<input type="text" placeholder="Nama item..." value="' + escQo(item.label) + '" oninput="updateItemField(' + ci + ',' + ii + ',\'label\',this.value)">' +
-            '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">' +
-            '<input type="number" min="0" value="' + item.qty + '" oninput="updateItemField(' + ci + ',' + ii + ',\'qty\',this.value); onCategoriesChanged();">' +
+            (hasPricing
+              ? '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">' +
+                '<input type="number" min="0" value="' + item.qty + '" oninput="updateItemField(' + ci + ',' + ii + ',\'qty\',this.value); onCategoriesChanged();">'
+              : '<div class="qo-item-nopricing" title="Kategori mode ini cuma pakai 1 harga (di item pertama)">—</div><div class="qo-item-nopricing">—</div>') +
             '<textarea placeholder="Detail remarks (opsional)..." oninput="updateItemField(' + ci + ',' + ii + ',\'remarksDetail\',this.value)">' + escQo(item.remarksDetail) + '</textarea>' +
-            '<button type="button" class="qo-item-remove" onclick="removeItem(' + ci + ',' + ii + ')" title="Hapus item">&times;</button>' +
+            (canAddItem || ii > 0
+              ? '<button type="button" class="qo-item-remove" onclick="removeItem(' + ci + ',' + ii + ')" title="Hapus item">&times;</button>'
+              : '<span></span>') +
             '</div>';
         }).join('') +
-        '<button class="btn-outline" onclick="addItem(' + ci + ')" style="margin-top:4px;">+ Tambah Item</button>' +
+        (canAddItem ? '<button class="btn-outline" onclick="addItem(' + ci + ')" style="margin-top:4px;">+ Tambah Item</button>' : '') +
         '</div>';
     }).join('');
     renderTotals();
+  }
+
+  function updateCategoryMode(ci, mode) {
+    categories[ci].mode = mode;
+    if (mode === QO_MODE_WITHOUT_ITEM) {
+      // Tepat 1 item — buang item lain (kalau ada) supaya tidak ambigu.
+      categories[ci].items = [categories[ci].items[0] || emptyItem()];
+    }
+    if (mode !== QO_MODE_GROUPED) {
+      // Item selain yang pertama tidak boleh punya harga di mode ini —
+      // nolkan supaya tidak nyangkut jadi kontribusi hantu ke total.
+      categories[ci].items.forEach(function (item, ii) {
+        if (ii > 0) { item.value = 0; item.qty = 0; }
+      });
+    }
+    renderCategories();
   }
 
   function escQo(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -406,7 +451,11 @@
     categories.splice(ci, 1);
     renderCategories();
   }
-  function addItem(ci) { categories[ci].items.push(emptyItem()); renderCategories(); }
+  function addItem(ci) {
+    if (categories[ci].mode === QO_MODE_WITHOUT_ITEM) return; // mode ini tepat 1 item
+    categories[ci].items.push(emptyItem());
+    renderCategories();
+  }
   function removeItem(ci, ii) {
     if (categories[ci].items.length <= 1) { alert('Minimal harus ada 1 item per kategori.'); return; }
     categories[ci].items.splice(ii, 1);
@@ -415,10 +464,16 @@
 
   function fmtRpQo(n) { n = Math.round(Number(n) || 0); return 'Rp' + n.toLocaleString('id-ID'); }
 
+  // Item yang tidak "punya harga" (lihat itemHasPricing) TIDAK ikut
+  // dihitung sama sekali, walau value/qty-nya kebetulan bukan nol —
+  // mencegah kontribusi hantu dari field yang disembunyikan di UI.
   function computeSubtotal() {
     var sum = 0;
     categories.forEach(function (cat) {
-      cat.items.forEach(function (item) { sum += (Number(item.value) || 0) * (Number(item.qty) || 0); });
+      cat.items.forEach(function (item, ii) {
+        if (!itemHasPricing(cat, ii)) return;
+        sum += (Number(item.value) || 0) * (Number(item.qty) || 0);
+      });
     });
     return sum;
   }
@@ -467,7 +522,7 @@
     categories.forEach(function (cat, ci) {
       cat.items.forEach(function (item, ii) {
         itemsPayload.push({
-          categoryLabel: cat.label, categorySortOrder: ci,
+          categoryLabel: cat.label, categorySortOrder: ci, categoryMode: cat.mode,
           itemLabel: item.label, itemSortOrder: ii,
           value: item.value, qty: item.qty, remarksDetail: item.remarksDetail
         });
@@ -564,9 +619,9 @@
   // DocumentApp yang belum terotorisasi DAN hasilnya cuma salinan kosong.
   var QO_REPORT_CSS =
     '.qo-report{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:24px;max-width:900px;margin:0 auto;}' +
-    '.qo-report .qo-header{display:flex;align-items:center;gap:14px;margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:12px;}' +
-    '.qo-report .qo-header img{height:48px;width:auto;}' +
-    '.qo-report .qo-header-text{font-size:11px;color:#555;line-height:1.5;}' +
+    '.qo-report .qo-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:12px;}' +
+    '.qo-report .qo-header img{height:48px;width:auto;flex-shrink:0;}' +
+    '.qo-report .qo-header-text{font-size:10px;color:#333;line-height:1.5;text-align:right;}' +
     '.qo-report h1{font-size:18px;margin:0 0 14px;text-align:center;}' +
     '.qo-report h2{font-size:14px;margin:20px 0 8px;border-bottom:2px solid #333;padding-bottom:4px;}' +
     '.qo-report h3{font-size:13px;margin:16px 0 6px;}' +
@@ -588,8 +643,10 @@
     '@media print{.qo-report{padding:0;}}';
 
   function entityDisplayName(code) {
-    return code === 'KAI' ? 'PT KOLABORASI AKSI INDONESIA' : 'YAYASAN KITABISA';
+    return code === 'KAI' ? 'PT KOLABORASI AKSI INDONESIA' : 'YAYASAN KITA BISA';
   }
+  var QO_HEADER_ADDRESS = 'Jl. Ciputat Raya No. 27D, Desa/Kelurahan Pondok Pinang Kec. Kebayoran Lama Kota Adm. Jakarta Selatan, Provinsi DKI Jakarta, Kode Pos: 12310';
+  var QO_HEADER_CONTACT = 'brandbusiness@kitabisa.com | +6285174241306 | kitabisa.org';
   function qoLabel(en, id) {
     return currentLanguage === 'EN' ? en : id;
   }
@@ -616,12 +673,14 @@
 
     var itemRows = categories.map(function (cat) {
       return cat.items.map(function (item, i) {
-        var hasPrice = item.value > 0 && item.qty > 0;
+        var pricedRow = itemHasPricing(cat, i) && item.value > 0 && item.qty > 0;
+        var showValue = itemHasPricing(cat, i) && item.value > 0;
+        var showQty = itemHasPricing(cat, i) && item.qty > 0;
         return '<tr><td>' + (i === 0 ? escQo(cat.label || '-') : '') + '</td>' +
           '<td>' + escQo(item.label || '-') + '</td>' +
-          '<td class="r">' + (item.value > 0 ? fmtRpQo(item.value) : '') + '</td>' +
-          '<td class="r">' + (item.qty > 0 ? item.qty : '') + '</td>' +
-          '<td class="r">' + (hasPrice ? fmtRpQo(item.value * item.qty) : '') + '</td></tr>';
+          '<td class="r">' + (showValue ? fmtRpQo(item.value) : '') + '</td>' +
+          '<td class="r">' + (showQty ? item.qty : '') + '</td>' +
+          '<td class="r">' + (pricedRow ? fmtRpQo(item.value * item.qty) : '') + '</td></tr>';
       }).join('');
     }).join('');
 
@@ -656,7 +715,10 @@
 
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quotation - ' + escQo(quotationNumber) + '</title>' +
       '<style>' + QO_REPORT_CSS + '</style></head><body><div class="qo-report">' +
-      (qoLogoDataUri ? '<div class="qo-header"><img src="' + qoLogoDataUri + '" alt="Kitabisa"><div class="qo-header-text"><strong>' + entityDisplayName(entityCode) + '</strong></div></div>' : '') +
+      '<div class="qo-header">' +
+      (qoLogos[entityCode] ? '<img src="' + qoLogos[entityCode] + '" alt="Logo">' : '<span></span>') +
+      '<div class="qo-header-text"><strong>' + entityDisplayName(entityCode) + '</strong><br>' + QO_HEADER_ADDRESS + '<br>' + QO_HEADER_CONTACT + '</div>' +
+      '</div>' +
       '<h1>QUOTATION FOR ' + escQo(entityName) + '</h1>' +
       '<table class="meta"><tbody>' +
       '<tr><td class="label">' + qoLabel('Quotation Number', 'Nomor Quotation') + '</td><td class="colon">:</td><td>' + escQo(quotationNumber) + '</td></tr>' +
