@@ -491,43 +491,56 @@
     btn.innerText = 'Menyimpan...';
     TechfordLoading.show('Menyimpan draft Quotation...');
 
+    saveQoDraft(
+      function (draft) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        loadDraftIntoState(draft);
+        renderDocInfo();
+        alert('Draft Quotation berhasil disimpan.');
+      },
+      function (message) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = '💾 Simpan Draft';
+        alert('Gagal menyimpan: ' + message);
+      }
+    );
+  }
+
+  // Simpan draft, TAHAN terhadap glitch google.script.run yang kadang
+  // mengirim res=null walau prosesnya di server sudah 100% berhasil —
+  // sebelum menyerah, cek ulang draft (baca doang, aman diulang) untuk
+  // konfirmasi apakah simpanan tadi sebenarnya sudah masuk (pelajaran sama
+  // dari bug serupa di COR/DocumentPipeline). Dipakai bersama oleh
+  // submitSaveDraft dan submitGenerateDocument (generate WAJIB simpan
+  // draft dulu supaya PDF selalu berdasarkan data terbaru).
+  function saveQoDraft(onDraftReady, onFail) {
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     google.script.run
       .withSuccessHandler(function (res) {
-        TechfordLoading.hide();
-        btn.disabled = false;
-        btn.innerText = '💾 Simpan Draft';
-        if (!res) { return recheckQoSaveOutcome(); }
-        if (!res.ok) { alert('Gagal menyimpan: ' + (res.error && res.error.message)); return; }
-        loadDraftIntoState(res.data);
-        renderDocInfo();
-        alert('Draft Quotation berhasil disimpan.');
+        if (!res) { return recheckQoSaveOutcome(onDraftReady, onFail); }
+        if (!res.ok) { onFail((res.error && res.error.message) || 'Terjadi kesalahan.'); return; }
+        onDraftReady(res.data);
       })
       .withFailureHandler(function () {
-        TechfordLoading.hide();
-        btn.disabled = false;
-        btn.innerText = '💾 Simpan Draft';
-        recheckQoSaveOutcome();
+        recheckQoSaveOutcome(onDraftReady, onFail);
       })
       .quotation_saveDraft(CALCULATOR_DOC_ID, buildSavePayload(), createdBy);
   }
 
-  // google.script.run kadang mengirim res=null walau proses di server sudah
-  // berhasil — cek ulang draft (baca doang, aman diulang) sebelum
-  // menampilkan pesan gagal (pelajaran sama dari bug serupa di COR).
-  function recheckQoSaveOutcome() {
+  function recheckQoSaveOutcome(onDraftReady, onFail) {
     google.script.run
       .withSuccessHandler(function (res) {
         if (res && res.ok && res.data.header) {
-          loadDraftIntoState(res.data);
-          renderDocInfo();
-          alert('Draft Quotation sudah tersimpan (tampilan sempat tidak sinkron, sekarang sudah update).');
+          onDraftReady(res.data);
         } else {
-          alert('Gagal menyimpan: tidak ada respons dari server, silakan cek lagi sebelum coba ulang.');
+          onFail('tidak ada respons dari server, silakan cek lagi sebelum coba ulang.');
         }
       })
       .withFailureHandler(function () {
-        alert('Gagal menyimpan: tidak ada respons dari server, silakan refresh halaman untuk mengecek status.');
+        onFail('tidak ada respons dari server, silakan refresh halaman untuk mengecek status.');
       })
       .quotation_getDraft(CALCULATOR_DOC_ID);
   }
@@ -559,17 +572,9 @@
     btn.innerText = 'Menyimpan & generate...';
     TechfordLoading.show('Menyimpan draft & generate dokumen...');
 
-    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
-    google.script.run
-      .withSuccessHandler(function (saveRes) {
-        if (!saveRes || !saveRes.ok) {
-          TechfordLoading.hide();
-          btn.disabled = false;
-          btn.innerText = '📄 Generate Dokumen (PDF)';
-          alert('Gagal menyimpan draft sebelum generate: ' + ((saveRes && saveRes.error && saveRes.error.message) || 'tidak ada respons dari server.'));
-          return;
-        }
-        loadDraftIntoState(saveRes.data);
+    saveQoDraft(
+      function (draft) {
+        loadDraftIntoState(draft);
         renderDocInfo();
 
         google.script.run
@@ -578,7 +583,7 @@
             btn.disabled = false;
             btn.innerText = '📄 Generate Dokumen (PDF)';
             if (!res || !res.ok) {
-              alert('Gagal generate dokumen: ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server, silakan coba lagi.'));
+              alert('Gagal generate dokumen: ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server, silakan cek dulu apakah PDF-nya sudah terbuat sebelum coba lagi (supaya tidak generate dobel).'));
               return;
             }
             document.getElementById('qoPdfLinkNote').innerHTML = '📄 Dokumen terakhir: <a href="' + res.data.pdfUrl + '" target="_blank">buka PDF</a>';
@@ -592,13 +597,13 @@
             alert('Gagal generate dokumen: ' + (err && err.message ? err.message : err));
           })
           .quotation_generateDocument(CALCULATOR_DOC_ID);
-      })
-      .withFailureHandler(function (err) {
+      },
+      function (message) {
         TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '📄 Generate Dokumen (PDF)';
-        alert('Gagal menyimpan draft sebelum generate: ' + (err && err.message ? err.message : err));
-      })
-      .quotation_saveDraft(CALCULATOR_DOC_ID, buildSavePayload(), createdBy);
+        alert('Gagal menyimpan draft sebelum generate: ' + message);
+      }
+    );
   }
 </script>
