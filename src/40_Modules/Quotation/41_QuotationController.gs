@@ -27,11 +27,5 @@ var QuotationController = (function (module) {
     });
   };
 
-  module.generateDocument = function (docId) {
-    return ErrorHandler.handle('QuotationController.generateDocument', function () {
-      return QuotationService.generateDocument(docId);
-    });
-  };
-
   return module;
 })(QuotationController || {});

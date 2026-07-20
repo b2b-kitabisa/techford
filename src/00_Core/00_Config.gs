@@ -195,22 +195,13 @@ var Config = (function (module) {
   module.QUOTATION_ENTITIES = ['YKB (Yayasan Kita Bisa)', 'PT KAI (PT Kolaborasi Aksi Indonesia)'];
 
   // ---- Quotation Composer ----
-  // Dokumen MASTER (1 file, JANGAN dipindah/dihapus) berisi 4 section
-  // (YKB-EN, YKB-ID, KAI-EN, KAI-ID) dipisah heading H1 — QuotationService
-  // menyalin section yang sesuai (entitas+bahasa dipilih admin) ke dokumen
-  // sementara, isi placeholder + tabel item, export PDF, baru hapus salinan
-  // sementaranya. Satu file ini sengaja TIDAK dipecah jadi 4 file terpisah
-  // supaya revisi teks default cukup di 1 tempat.
+  // Dokumen master Google Docs yang pernah dipakai untuk mencoba generate
+  // dokumen via DocumentApp (butuh scope documents yang gagal diotorisasi,
+  // dan hasilnya cuma salinan kosong) — pendekatan itu DIBATALKAN, sekarang
+  // "Download PDF" murni HTML + print browser (persis pola COR), tidak
+  // menyentuh Drive/DocumentApp sama sekali. ID ini dibiarkan (tidak
+  // dipakai kode mana pun) sebagai referensi kalau nanti mau dicoba lagi.
   module.QUOTATION_TEMPLATE_FILE_ID = '1REWfagi4r-VMcIUzVPHCSnsFAGKiZCm36Ase_qJPLIc';
-
-  // Teks heading H1 PERSIS seperti di dokumen master — dipakai
-  // QuotationReportRenderer untuk menemukan & memotong ke section yang
-  // sesuai. Kalau admin mengganti teks heading ini di dokumen master,
-  // WAJIB disamakan juga di sini.
-  module.QUOTATION_SECTION_HEADINGS = {
-    YKB: { EN: 'QUOTATION YKB ENG', ID: 'QUOTATION YKB BHS' },
-    KAI: { EN: 'QUOTATION KAI ENG', ID: 'QUOTATION KAI BHS' }
-  };
 
   module.QUOTATION_ENTITY_CODE = { YKB: 'YKB', KAI: 'KAI' };
   module.QUOTATION_LANGUAGE = { EN: 'EN', ID: 'ID' };

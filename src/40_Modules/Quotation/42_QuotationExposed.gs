@@ -16,7 +16,3 @@ function quotation_getDraft(docId) {
 function quotation_saveDraft(docId, input, createdBy) {
   return QuotationController.saveDraft(docId, input, createdBy);
 }
-
-function quotation_generateDocument(docId) {
-  return QuotationController.generateDocument(docId);
-}

@@ -40,11 +40,10 @@
       <div class="sub" id="qoDocSubDisplay">Memuat data dokumen...</div>
     </div>
     <div style="display:flex; gap:8px;">
-      <button class="btn-outline" id="qoGenerateBtn" onclick="submitGenerateDocument()" style="display:none;">📄 Generate Dokumen (PDF)</button>
+      <button class="btn-outline" id="qoPdfBtn" onclick="openPdfPreview()">🖨️ Download PDF</button>
       <button class="btn-save" id="qoSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
     </div>
   </div>
-  <div id="qoPdfLinkNote" class="placeholder-note" style="display:none; margin-bottom:12px;"></div>
 
   <div class="qo-box">
     <div class="qo-box-hd">1. Informasi Umum</div>
@@ -296,7 +295,6 @@
     if (!categories.length) categories.push(emptyCategory());
     renderCategories();
     onValidDaysChange();
-    renderGenerateState(header);
   }
 
   function buildCategoriesFromItems(items) {
@@ -545,65 +543,139 @@
       .quotation_getDraft(CALCULATOR_DOC_ID);
   }
 
-  // ---- Generate Dokumen (PDF) ----
-  function renderGenerateState(header) {
-    var btn = document.getElementById('qoGenerateBtn');
-    var note = document.getElementById('qoPdfLinkNote');
-    if (!header) { btn.style.display = 'none'; note.style.display = 'none'; return; }
-    btn.style.display = '';
-    if (header.Pdf_File_Url) {
-      note.innerHTML = '📄 Dokumen terakhir: <a href="' + header.Pdf_File_Url + '" target="_blank">buka PDF</a>';
-      note.style.display = '';
-    } else {
-      note.style.display = 'none';
-    }
+  // ══════════════════════════ DOWNLOAD PDF (print browser) ══════════════════════════
+  // Sama persis pola COR: TIDAK ada round-trip ke server/Drive sama sekali
+  // — dibuat HTML rapi dari state yang sedang diedit (live, termasuk
+  // perubahan yang belum di-Simpan Draft), lalu diserahkan ke dialog print
+  // browser (user tinggal pilih "Save as PDF"). Menggantikan pendekatan
+  // generate-ke-Google-Doc sebelumnya yang gagal karena butuh scope
+  // DocumentApp yang belum terotorisasi DAN hasilnya cuma salinan kosong.
+  var QO_REPORT_CSS =
+    '.qo-report{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:24px;max-width:900px;margin:0 auto;}' +
+    '.qo-report h1{font-size:18px;margin:0 0 14px;text-align:center;}' +
+    '.qo-report h2{font-size:14px;margin:20px 0 8px;border-bottom:2px solid #333;padding-bottom:4px;}' +
+    '.qo-report h3{font-size:13px;margin:16px 0 6px;}' +
+    '.qo-report table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
+    '.qo-report table.meta td{padding:3px 6px;font-size:12px;}' +
+    '.qo-report table.meta td.label{font-weight:700;width:180px;}' +
+    '.qo-report table.sign{table-layout:fixed;}' +
+    '.qo-report table.sign td{border:1px solid #ccc;padding:6px 10px;font-size:12px;width:50%;}' +
+    '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
+    '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;}' +
+    '.qo-report table.price th{background:#f2f2f2;}' +
+    '.qo-report table.price td.r{text-align:right;}' +
+    '.qo-report .qo-freetext{white-space:pre-wrap;margin-bottom:12px;}' +
+    '.qo-report .qo-remark-detail{font-size:11px;color:#555;margin-top:2px;}' +
+    '@media print{.qo-report{padding:0;}}';
+
+  function entityDisplayName(code) {
+    return code === 'KAI' ? 'PT KOLABORASI AKSI INDONESIA' : 'YAYASAN KITABISA';
+  }
+  function qoLabel(en, id) {
+    return currentLanguage === 'EN' ? en : id;
   }
 
-  function submitGenerateDocument() {
-    if (!CALCULATOR_DOC_ID) return;
+  function buildQuotationHtml() {
+    var subtotal = computeSubtotal();
+
+    var entityName = document.getElementById('qoEntityName').value || '-';
+    var picName = document.getElementById('qoPicName').value || '-';
+    var picEmail = document.getElementById('qoPicEmail').value || '-';
+    var picPhone = document.getElementById('qoPicPhone').value || '-';
+    var headName = document.getElementById('qoHeadName').value || '-';
+    var titleName = document.getElementById('qoTitleName').value || '-';
+    var serviceName = document.getElementById('qoServiceName').value || '-';
+    var firstStatement = document.getElementById('qoFirstStatement').value || '';
+    var importantRemarks = document.getElementById('qoImportantRemarks').value || '';
+    var quotationNumber = document.getElementById('qoNumberDisplay').innerText;
+    var createdDateText = currentDoc && currentDoc.Requested_Date ? formatQoDate(currentDoc.Requested_Date) : formatQoDate(new Date());
+    var validDateText = document.getElementById('qoValidDateDisplay').innerText;
+
+    var priceHeaders = currentLanguage === 'EN'
+      ? ['INVESTMENT', 'REMARK', 'VALUE', 'QTY', 'TOTAL VALUE']
+      : ['KATEGORI', 'ITEM', 'NILAI', 'QTY', 'TOTAL NILAI'];
+
+    var itemRows = categories.map(function (cat) {
+      return cat.items.map(function (item, i) {
+        var hasPrice = item.value > 0 && item.qty > 0;
+        return '<tr><td>' + (i === 0 ? escQo(cat.label || '-') : '') + '</td>' +
+          '<td>' + escQo(item.label || '-') + '</td>' +
+          '<td class="r">' + (item.value > 0 ? fmtRpQo(item.value) : '') + '</td>' +
+          '<td class="r">' + (item.qty > 0 ? item.qty : '') + '</td>' +
+          '<td class="r">' + (hasPrice ? fmtRpQo(item.value * item.qty) : '') + '</td></tr>';
+      }).join('');
+    }).join('');
+
+    var summaryRows;
+    if (entityCode === 'KAI') {
+      var rateEl = document.getElementById('qoAgencyFeeRate');
+      var rate = rateEl ? (Number(rateEl.value) || 0) : qoTaxonomy.kaiDefaultFeeRate;
+      var fee = Math.round(subtotal * (rate / 100));
+      var total = subtotal + fee;
+      var ppn = Math.round(total * (qoTaxonomy.ppnRate / 100));
+      var grandTotal = total + ppn;
+      summaryRows =
+        '<tr><td colspan="2"><strong>SUBTOTAL</strong></td><td class="r">' + fmtRpQo(subtotal) + '</td><td></td><td></td></tr>' +
+        '<tr><td colspan="2">AGENCY SERVICE FEE RATE</td><td class="r">' + rate + '%</td><td></td><td></td></tr>' +
+        '<tr><td colspan="2">AGENCY SERVICE FEE</td><td class="r">' + fmtRpQo(fee) + '</td><td></td><td></td></tr>' +
+        '<tr><td colspan="2">TOTAL</td><td class="r">' + fmtRpQo(total) + '</td><td></td><td></td></tr>' +
+        '<tr><td colspan="2">PPN ' + qoTaxonomy.ppnRate + '%</td><td class="r">' + fmtRpQo(ppn) + '</td><td></td><td></td></tr>' +
+        '<tr><td colspan="2"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRpQo(grandTotal) + '</strong></td><td></td><td></td></tr>';
+    } else {
+      summaryRows = '<tr><td colspan="2"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRpQo(subtotal) + '</strong></td><td></td><td></td></tr>';
+    }
+
+    var remarksDetailHtml = categories.map(function (cat) {
+      if (!cat.label && !cat.items.some(function (it) { return it.remarksDetail; })) return '';
+      return '<p><strong>' + escQo(cat.label || '-') + ' Remarks Detail:</strong></p><ol>' +
+        cat.items.map(function (item) {
+          return '<li>' + escQo(item.label || '-') +
+            (item.remarksDetail ? '<div class="qo-remark-detail">' + escQo(item.remarksDetail) + '</div>' : '') +
+            '</li>';
+        }).join('') + '</ol>';
+    }).join('');
+
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quotation - ' + escQo(quotationNumber) + '</title>' +
+      '<style>' + QO_REPORT_CSS + '</style></head><body><div class="qo-report">' +
+      '<h1>QUOTATION FOR ' + escQo(entityName) + '</h1>' +
+      '<table class="meta"><tbody>' +
+      '<tr><td class="label">' + qoLabel('Quotation Number', 'Nomor Quotation') + '</td><td>' + escQo(quotationNumber) + '</td></tr>' +
+      '<tr><td class="label">' + qoLabel('Quotation Date', 'Tanggal Quotation') + '</td><td>' + createdDateText + '</td></tr>' +
+      '<tr><td class="label">' + qoLabel('Valid Date', 'Berlaku Hingga') + '</td><td>' + validDateText + '</td></tr>' +
+      '</tbody></table>' +
+      '<p><strong>' + qoLabel('Billed to', 'Ditagihkan Kepada') + '</strong> :<br><strong>' + escQo(entityName) + '</strong><br>' +
+      escQo(picName) + ' | ' + escQo(picEmail) + ' | ' + escQo(picPhone) + '</p>' +
+      '<p>Dear Bapak/Ibu ' + escQo(picName) + ',</p>' +
+      '<div class="qo-freetext">' + escQo(firstStatement).replace(/\n/g, '<br>') + '</div>' +
+      '<table class="sign"><tbody>' +
+      '<tr><td><strong>' + entityDisplayName(entityCode) + '</strong></td><td><strong>' + escQo(entityName) + '</strong></td></tr>' +
+      '<tr><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+      '<tr><td>' + escQo(headName) + '</td><td>' + (entityCode === 'KAI' ? escQo(picName) : '') + '</td></tr>' +
+      '<tr><td>' + escQo(titleName) + '</td><td></td></tr>' +
+      '<tr><td>' + entityDisplayName(entityCode) + '</td><td>' + escQo(entityName) + '</td></tr>' +
+      '<tr><td>Date: ' + createdDateText + '</td><td>Date:</td></tr>' +
+      '</tbody></table>' +
+      '<h2>' + escQo(serviceName) + '</h2>' +
+      '<table class="price"><thead><tr>' + priceHeaders.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>' +
+      '<tbody>' + itemRows + summaryRows + '</tbody></table>' +
+      '<h3>Remarks Detail</h3>' + remarksDetailHtml +
+      '<h2>' + qoLabel('IMPORTANT REMARKS', 'CATATAN PENTING') + '</h2>' +
+      '<div class="qo-freetext">' + escQo(importantRemarks).replace(/\n/g, '<br>') + '</div>' +
+      '</div></body></html>';
+  }
+
+  function openPdfPreview() {
     if (!categories.some(function (c) { return c.items.some(function (i) { return i.label; }); })) {
-      alert('Tambahkan minimal 1 item layanan dulu sebelum generate dokumen.');
+      alert('Tambahkan minimal 1 item layanan dulu sebelum download PDF.');
       return;
     }
-    if (!techfordConfirm('Simpan draft ini dulu (kalau ada perubahan) lalu generate dokumen PDF?')) return;
-
-    var btn = document.getElementById('qoGenerateBtn');
-    btn.disabled = true;
-    btn.innerText = 'Menyimpan & generate...';
-    TechfordLoading.show('Menyimpan draft & generate dokumen...');
-
-    saveQoDraft(
-      function (draft) {
-        loadDraftIntoState(draft);
-        renderDocInfo();
-
-        google.script.run
-          .withSuccessHandler(function (res) {
-            TechfordLoading.hide();
-            btn.disabled = false;
-            btn.innerText = '📄 Generate Dokumen (PDF)';
-            if (!res || !res.ok) {
-              alert('Gagal generate dokumen: ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server, silakan cek dulu apakah PDF-nya sudah terbuat sebelum coba lagi (supaya tidak generate dobel).'));
-              return;
-            }
-            document.getElementById('qoPdfLinkNote').innerHTML = '📄 Dokumen terakhir: <a href="' + res.data.pdfUrl + '" target="_blank">buka PDF</a>';
-            document.getElementById('qoPdfLinkNote').style.display = '';
-            window.open(res.data.pdfUrl, '_blank');
-          })
-          .withFailureHandler(function (err) {
-            TechfordLoading.hide();
-            btn.disabled = false;
-            btn.innerText = '📄 Generate Dokumen (PDF)';
-            alert('Gagal generate dokumen: ' + (err && err.message ? err.message : err));
-          })
-          .quotation_generateDocument(CALCULATOR_DOC_ID);
-      },
-      function (message) {
-        TechfordLoading.hide();
-        btn.disabled = false;
-        btn.innerText = '📄 Generate Dokumen (PDF)';
-        alert('Gagal menyimpan draft sebelum generate: ' + message);
-      }
-    );
+    var html = buildQuotationHtml();
+    var win = window.open('', '_blank');
+    if (!win) { alert('Popup diblokir browser — izinkan popup untuk halaman ini lalu coba lagi.'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(function () { win.print(); }, 300);
   }
 </script>
