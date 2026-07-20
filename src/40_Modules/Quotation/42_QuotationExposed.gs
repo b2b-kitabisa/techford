@@ -5,6 +5,10 @@ function quotation_getTaxonomy() {
   return QuotationController.getTaxonomy();
 }
 
+function quotation_getLogo() {
+  return QuotationController.getLogo();
+}
+
 function quotation_getAllHeaders() {
   return QuotationController.getAllHeaders();
 }

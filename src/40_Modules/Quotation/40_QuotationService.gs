@@ -81,6 +81,20 @@ var QuotationService = (function (module) {
   };
 
   /**
+   * Logo Kitabisa untuk header preview/PDF — dibaca lewat DriveApp (scope
+   * yang sama sudah dipakai fitur lain, tidak butuh scope DocumentApp
+   * seperti percobaan generate dokumen sebelumnya) lalu dikirim sebagai
+   * data URI base64 supaya client tidak bergantung pada setting share
+   * link file itu di Drive.
+   */
+  module.getLogo = function () {
+    return CacheHelper.getOrSet('quotationLogoDataUri', 21600, function () {
+      var blob = DriveApp.getFileById(Config.QUOTATION_LOGO_FILE_ID).getBlob();
+      return 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+    });
+  };
+
+  /**
    * Bulk-fetch semua header Quotation — dipakai Document Pipeline (Load
    * Once, Filter Local) untuk tahu dokumen Quotation mana yang SUDAH punya
    * draft tersimpan, sama pola dengan CorService.getAllHeaders.

@@ -203,6 +203,12 @@ var Config = (function (module) {
   // dipakai kode mana pun) sebagai referensi kalau nanti mau dicoba lagi.
   module.QUOTATION_TEMPLATE_FILE_ID = '1REWfagi4r-VMcIUzVPHCSnsFAGKiZCm36Ase_qJPLIc';
 
+  // Logo Kitabisa (PNG) yang ditampilkan di header preview/PDF Quotation —
+  // dibaca lewat DriveApp (scope yang sama sudah dipakai fitur lain,
+  // TIDAK butuh otorisasi scope baru) lalu dikirim ke client sebagai data
+  // URI base64, supaya tidak bergantung pada setting share link Drive.
+  module.QUOTATION_LOGO_FILE_ID = '11OFYe-5oDl2TXrnJpXzJIOPjp3qhS32X';
+
   module.QUOTATION_ENTITY_CODE = { YKB: 'YKB', KAI: 'KAI' };
   module.QUOTATION_LANGUAGE = { EN: 'EN', ID: 'ID' };
   module.QUOTATION_DEFAULT_VALID_DAYS = 30;
