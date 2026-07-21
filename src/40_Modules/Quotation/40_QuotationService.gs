@@ -128,6 +128,7 @@ var QuotationService = (function (module) {
         Pic_Name: header.Pic_Name || '',
         Pic_Email: header.Pic_Email || '',
         Pic_Phone: header.Pic_Phone || '',
+        Pic_Title: header.Pic_Title || '',
         Head_Name: header.Head_Name || '',
         Title_Name: header.Title_Name || '',
         Service_Name: header.Service_Name || '',
@@ -191,6 +192,7 @@ var QuotationService = (function (module) {
       Pic_Name: input.picName || '',
       Pic_Email: input.picEmail || '',
       Pic_Phone: input.picPhone || '',
+      Pic_Title: input.picTitle || '',
       Head_Name: input.headName || '',
       Title_Name: input.titleName || '',
       Service_Name: input.serviceName || '',
@@ -275,6 +277,7 @@ var QuotationService = (function (module) {
         picName: header.Pic_Name || '',
         picEmail: header.Pic_Email || '',
         picPhone: header.Pic_Phone || '',
+        picTitle: header.Pic_Title || '',
         headName: header.Head_Name || '',
         titleName: header.Title_Name || '',
         serviceName: header.Service_Name || '',
@@ -415,8 +418,13 @@ var QuotationService = (function (module) {
    * ?action=quotation-approve, TIDAK ada login) — validasi token, tempel
    * tanda tangan yang diupload approver ke box tanda tangan sisi YKB/KAI,
    * cap PDF dengan "Approved by [Nama]", dan majukan Status dokumen ke
-   * "Signed" (status YANG SUDAH ADA, bukan status baru — sesuai keputusan
-   * produk: approval Quotation menggantikan alur tanda tangan manual).
+   * "Approved" — lihat alur di Config.DOCUMENT_STATUS_MAP.QUOTATION:
+   * Approved BUKAN status akhir (bukan "Signed"), ini baru approval
+   * INTERNAL dari Head of B2B. Setelah ini dokumen "Sent to Client" dan
+   * proses tanda tangan client dilakukan manual lewat email (di luar
+   * sistem) — Status "Signed"/"LOSS" hanya bisa menyusul lewat langkah lain
+   * (LOSS lewat tombol manual admin, lihat DocumentController.updateStatus
+   * dengan whitelist khusus di DocumentPipelineContent.html).
    *
    * @param signatureBase64 string base64 (TANPA prefix data:...;base64,)
    * @param signatureMimeType misal 'image/png'
@@ -461,7 +469,7 @@ var QuotationService = (function (module) {
       Pdf_File_Url: pdf.url
     });
 
-    DocumentService.updateStatus(docId, 'Signed');
+    DocumentService.updateStatus(docId, 'Approved');
 
     return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
   };

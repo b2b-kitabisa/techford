@@ -12,8 +12,9 @@
  * di ProjectService.updateStage):
  * - DECK/COR/RAB/PRODCOST: begitu SALAH SATU Done -> Negotiation.
  * - QUOTATION: Deal (Won) baru terjadi begitu SEMUA Quotation yang diminta
- *   untuk project ini Done (kalau consultant minta YKB & PT KAI dua-duanya,
- *   dua-duanya harus Signed).
+ *   untuk project ini Done DAN statusnya bukan "LOSS" (kalau consultant
+ *   minta YKB & PT KAI dua-duanya, dua-duanya harus Done/bukan LOSS —
+ *   lihat checkAndAdvanceProjectStage).
  * - PKS/TRANSFER_REQUEST/BAST: dokumen pasca-Deal, statusnya dilacak tapi
  *   TIDAK PERNAH memengaruhi Stage.
  * Lihat checkAndAdvanceProjectStage() & ProjectService.autoAdvanceStageFromDocument
@@ -126,12 +127,18 @@ var DocumentService = (function (module) {
     var dealType = Config.DOCUMENT_DEAL_TYPE;
     var negotiationTypes = Config.DOCUMENT_NEGOTIATION_TYPES;
     var quotationDocs = docs.filter(function (d) { return d.Document_Type === dealType; });
+    // Quotation dengan Status "LOSS" TETAP Stage "Done" (tugas sistemnya
+    // selesai — lihat Config.DOCUMENT_STATUS_MAP.QUOTATION) tapi jelas
+    // bukan sinyal "Deal Won" — dikeluarkan dulu dari daftar sebelum cek
+    // "semua Done", supaya 1 Quotation yang LOSS tidak salah memicu Sales
+    // Pipeline project ini otomatis maju ke Won.
+    var wonEligibleQuotationDocs = quotationDocs.filter(function (d) { return d.Status !== 'LOSS'; });
     var target = null;
 
     // Deal (Won) HANYA lewat Quotation — kalau tidak pernah diminta sama
     // sekali, project ini tidak bisa otomatis Won lewat dokumen (perlu
     // Allow_Manual_Deal, lihat ProjectService.updateStage).
-    if (quotationDocs.length && quotationDocs.every(function (d) { return d.Stage === 'Done'; })) {
+    if (wonEligibleQuotationDocs.length && wonEligibleQuotationDocs.every(function (d) { return d.Stage === 'Done'; })) {
       target = 'Won';
     } else if (docs.some(function (d) { return negotiationTypes.indexOf(d.Document_Type) !== -1 && d.Stage === 'Done'; })) {
       target = 'Negotiation';

@@ -151,8 +151,13 @@
       <div class="placeholder-note" id="docQuotationApprovalNote" style="display:none;"></div>
       <div style="margin-top:10px; display:flex; gap:8px;">
         <button class="btn-save" id="docQuotationActionBtn" onclick="openQuotationComposer()" style="flex:1;">📝 Kerjakan Quotation</button>
+        <button class="btn-outline" id="docQuotationViewBtn" onclick="openQuotationPreview()" style="display:none; flex:1;">👁️ Lihat Quotation</button>
       </div>
       <div class="placeholder-note" id="docQuotationActionNote">Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn-outline" id="docQuotationLossBtn" onclick="submitQuotationMarkLoss()" style="flex:1; color:#c5221f; border-color:#f09595;">❌ Tandai LOSS</button>
+      </div>
+      <div class="placeholder-note">Status Quotation mengikuti aktivitas sistem secara otomatis (Drafting → Waiting Approval → Revision/Approved). Setelah disetujui, dokumen dikirim &amp; ditindaklanjuti manual lewat email ke client — satu-satunya status yang bisa diubah manual di sini adalah LOSS (kalau deal batal).</div>
     </div>
 
     <div class="drawer-section" id="docStatusUpdateSection">
@@ -230,6 +235,17 @@
   </div>
 </div>
 
+<!-- ================= Preview Quotation: tampilan sama seperti hasil download PDF ================= -->
+<div class="confirm-overlay" id="quotationPreviewModal">
+  <div class="confirm-box" style="width:880px; max-width:96vw;">
+    <h3>Lihat Quotation</h3>
+    <div id="quotationPreviewContent" class="qo-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;">Memuat...</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeQuotationPreview()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <div class="success-overlay" id="docSuccessModal" onclick="if (event.target === this) closeDocSuccessModal();">
   <div class="success-box">
     <div class="success-icon">✓</div>
@@ -246,6 +262,7 @@
   var allQuotationHeaders = [];
   var taxonomy = { documentTypes: [], statusMap: {}, stageList: [], quotationEntities: [] };
   var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [] };
+  var quotationTaxonomy = { ppnRate: 11 };
 
   var docPage = 1;
   var currentDocDrawerId = null;
@@ -275,7 +292,7 @@
   var DOC_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
   var docsLoaded = false, projectsLoaded = false, clientsLoaded = false,
     taxonomyLoaded = false, corHeadersLoaded = false, corTaxonomyLoaded = false,
-    quotationHeadersLoaded = false;
+    quotationHeadersLoaded = false, quotationTaxonomyLoaded = false;
 
   function bootstrapDocuments() {
     docBootstrapAttempts++;
@@ -286,9 +303,10 @@
     fetchCorHeaders();
     fetchCorTaxonomy();
     fetchQuotationHeaders();
+    fetchQuotationTaxonomy();
     setTimeout(function () {
       var allLoaded = docsLoaded && projectsLoaded && clientsLoaded &&
-        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded && quotationHeadersLoaded;
+        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded && quotationHeadersLoaded && quotationTaxonomyLoaded;
       if (allLoaded || docBootstrapRetried) return;
       if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
         bootstrapDocuments();
@@ -304,6 +322,7 @@
         fetchCorHeaders();
         fetchCorTaxonomy();
         fetchQuotationHeaders();
+        fetchQuotationTaxonomy();
       }
     }, DOC_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
@@ -311,6 +330,23 @@
     bootstrapDocuments();
   } else {
     window.addEventListener('load', bootstrapDocuments);
+  }
+
+  // Drawer detail bisa terbuka SEBELUM semua fetch di atas selesai (user
+  // klik cepat) — kalau begitu, field project/client/entity/action button
+  // di drawer ke-render dengan data yang masih kosong dan SEBELUMNYA tidak
+  // pernah di-render ulang lagi begitu data itu akhirnya datang (beda dari
+  // tabel utama, yang re-render lewat renderDocPipeline() di semua fetch).
+  // Itu sebabnya kadang muncul kolom Client "-" di tabel (transient, sembuh
+  // sendiri) TAPI drawer-nya nyangkut salah (misal tombol "Kerjakan COR"
+  // padahal seharusnya "Lihat COR") karena tidak ada re-render pemicu.
+  // Helper ini dipanggil dari SEMUA fetch success handler supaya drawer
+  // yang sedang terbuka selalu ikut di-refresh penuh begitu data terbaru
+  // datang, bukan cuma tabel.
+  function refreshOpenDrawerIfNeeded() {
+    if (!currentDocDrawerId) return;
+    var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+    if (doc) renderDocDetailDrawer(doc);
   }
 
   function fetchDocuments() {
@@ -339,12 +375,10 @@
         if (!res || !res.ok) return;
         corHeadersLoaded = true;
         allCorHeaders = res.data;
-        // Kalau drawer detail COR sedang terbuka, tombol Kerjakan/Lanjutkan
-        // perlu ikut ter-render ulang begitu data ini datang.
-        if (currentDocDrawerId) {
-          var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
-          if (doc) renderCorActionButton(doc);
-        }
+        // Kalau drawer detail sedang terbuka, seluruh drawer (bukan cuma
+        // tombol Kerjakan/Lanjutkan COR) perlu ikut di-render ulang begitu
+        // data ini datang — lihat refreshOpenDrawerIfNeeded.
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function () {})
       .cor_getAllHeaders();
@@ -356,13 +390,23 @@
         if (!res || !res.ok) return;
         quotationHeadersLoaded = true;
         allQuotationHeaders = res.data;
-        if (currentDocDrawerId) {
-          var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
-          if (doc) renderQuotationActionButton(doc);
-        }
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function () {})
       .quotation_getAllHeaders();
+  }
+
+  // Taxonomy Quotation (PPN rate) — dipakai preview "Lihat Quotation" di
+  // drawer supaya angka Grand Total-nya konsisten dengan Composer.
+  function fetchQuotationTaxonomy() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        quotationTaxonomyLoaded = true;
+        quotationTaxonomy = res.data;
+      })
+      .withFailureHandler(function () {})
+      .quotation_getTaxonomy();
   }
 
   // Taxonomy khusus COR (entitas vendor/PKP/biaya pencairan & komponen
@@ -386,6 +430,7 @@
         projectsLoaded = true;
         allProjects = res.data;
         renderDocPipeline();
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function () {})
       .project_getAll();
@@ -398,6 +443,7 @@
         clientsLoaded = true;
         allClients = res.data;
         renderDocPipeline();
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function () {})
       .client_getAll();
@@ -413,6 +459,7 @@
         renderDocStatusFilterDropdown();
         renderDocStageFilterDropdown();
         renderDocPipeline();
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function () {})
       .document_getTaxonomy();
@@ -669,11 +716,14 @@
     renderCorActionButton(doc);
     renderQuotationActionButton(doc);
 
-    // Dokumen COR: status otomatis mengikuti progres pengerjaan (badge di
-    // atas), jadi kontrol Update Status manual disembunyikan sama sekali.
+    // Dokumen COR & Quotation: status otomatis mengikuti aktivitas sistem
+    // (badge/aksi khusus di atas), jadi kontrol Update Status manual bebas
+    // disembunyikan sama sekali. Quotation TETAP dapat 1 kontrol manual
+    // terbatas ("Tandai LOSS" di docQuotationActionWrap, lihat
+    // submitQuotationMarkLoss) — bukan dropdown bebas seperti dokumen lain.
     var isCor = doc.Document_Type === 'COR';
-    document.getElementById('docStatusUpdateSection').style.display = isCor ? 'none' : '';
-    if (!isCor) {
+    document.getElementById('docStatusUpdateSection').style.display = (isCor || isQuotation) ? 'none' : '';
+    if (!isCor && !isQuotation) {
       var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];
       document.getElementById('docStatusSelect').innerHTML = statusOptions.map(function (entry) {
         return '<option value="' + entry.status + '">' + entry.status + '</option>';
@@ -879,7 +929,7 @@
 
   var QUOTATION_STATUS_COLORS = {
     'Not Started': '#9aa0a6', 'Drafting': '#c98a00', 'Waiting Approval': '#8a5cf6',
-    'Revision': '#c5221f', 'Sent': '#1a73e8', 'Signed': '#1a9c4b'
+    'Revision': '#c5221f', 'Approved': '#1a9c4b', 'Signed': '#1a9c4b', 'LOSS': '#c5221f'
   };
 
   function renderQuotationActionButton(doc) {
@@ -888,13 +938,16 @@
     wrap.style.display = '';
     var header = allQuotationHeaders.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
     var btn = document.getElementById('docQuotationActionBtn');
+    var viewBtn = document.getElementById('docQuotationViewBtn');
     var note = document.getElementById('docQuotationActionNote');
     if (header) {
       btn.innerText = '▶️ Lanjutkan Quotation (' + header.Quotation_Number + ')';
       note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
+      viewBtn.style.display = '';
     } else {
       btn.innerText = '📝 Kerjakan Quotation';
       note.innerText = 'Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
+      viewBtn.style.display = 'none';
     }
 
     var badge = document.getElementById('docQuotationStatusBadge');
@@ -910,9 +963,123 @@
     } else if (doc.Status === 'Revision' && header && header.Rejection_Note) {
       approvalNote.innerText = '⚠️ Catatan revisi dari approver: "' + header.Rejection_Note + '"';
       approvalNote.style.display = '';
+    } else if (doc.Status === 'Approved' && header && header.Approved_By) {
+      approvalNote.innerText = '✅ Disetujui oleh ' + header.Approved_By + ' — siap dikirim &amp; ditindaklanjuti ke client.';
+      approvalNote.style.display = '';
     } else {
       approvalNote.style.display = 'none';
     }
+
+    var lossBtn = document.getElementById('docQuotationLossBtn');
+    lossBtn.disabled = doc.Status === 'LOSS';
+    lossBtn.innerText = doc.Status === 'LOSS' ? '❌ Sudah LOSS' : '❌ Tandai LOSS';
+  }
+
+  // "Tandai LOSS" — SATU-SATUNYA kontrol status manual yang tersisa untuk
+  // Quotation (lihat Config.DOCUMENT_STATUS_MAP.QUOTATION & diagram alur
+  // yang dikirim user) — proses "Client Email" (kirim ke client, tunggu
+  // tanda tangan balik) dilakukan manual di luar sistem oleh admin; kalau
+  // deal itu batal, admin menandainya LOSS lewat sini.
+  function submitQuotationMarkLoss() {
+    if (!currentDocDrawerId) return;
+    if (!techfordConfirm('Tandai Quotation ini sebagai LOSS? Deal untuk dokumen ini dianggap tidak berlanjut.')) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) { alert('Gagal update status: ' + ((res && res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        allDocuments = res.data;
+        var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+        if (doc) renderDocDetailDrawer(doc);
+        renderDocPipeline();
+      })
+      .withFailureHandler(function (err) { alert('Gagal update status: ' + (err && err.message ? err.message : err)); })
+      .document_updateStatus(currentDocDrawerId, 'LOSS');
+  }
+
+  // ---- Preview "Lihat Quotation" — dirender lewat QoCalc (Shell.html),
+  // sama library yang dipakai "Download PDF" di Quotation Composer, supaya
+  // satu sumber logika (sama pola dengan "Lihat COR"/CorCalc). ----
+  var quotationReportStyleInjected = false;
+  function ensureQuotationReportStyle() {
+    if (quotationReportStyleInjected) return;
+    quotationReportStyleInjected = true;
+    var s = document.createElement('style');
+    s.innerHTML = QoCalc.REPORT_CSS;
+    document.head.appendChild(s);
+  }
+
+  var quotationLogosCache = null;
+  function openQuotationPreview() {
+    if (!currentDocDrawerId) return;
+    ensureQuotationReportStyle();
+    document.getElementById('quotationPreviewContent').innerText = 'Memuat...';
+    document.getElementById('quotationPreviewModal').classList.add('open');
+    var docId = currentDocDrawerId;
+
+    function render(draft, logos) {
+      if (!draft.header) {
+        document.getElementById('quotationPreviewContent').innerText = 'Draft Quotation ini belum pernah disimpan.';
+        return;
+      }
+      try {
+        var header = draft.header;
+        var model = {
+          entityCode: draft.entityCode,
+          language: header.Language,
+          entityName: header.Entity_Name,
+          picName: header.Pic_Name,
+          picEmail: header.Pic_Email,
+          picPhone: header.Pic_Phone,
+          picTitle: header.Pic_Title,
+          headName: header.Head_Name,
+          titleName: header.Title_Name,
+          serviceName: header.Service_Name,
+          firstStatementHtml: header.First_Statement,
+          importantRemarksHtml: header.Important_Remarks,
+          quotationNumber: header.Quotation_Number,
+          createdDateText: formatDate(header.Created_Date),
+          validDateText: formatDate(header.Valid_Date),
+          agencyFeeRate: header.Agency_Fee_Rate,
+          ppnRate: quotationTaxonomy.ppnRate || 11,
+          categories: QoCalc.buildCategoriesFromItems(draft.items || []),
+          logoDataUri: (logos && logos[draft.entityCode]) || ''
+        };
+        document.getElementById('quotationPreviewContent').innerHTML = QoCalc.renderDocumentHtml(model);
+      } catch (e) {
+        document.getElementById('quotationPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;
+      }
+    }
+
+    function loadDraft(retriesLeft) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) {
+            if (!res && retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+            document.getElementById('quotationPreviewContent').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.');
+            return;
+          }
+          render(res.data, quotationLogosCache);
+        })
+        .withFailureHandler(function (err) {
+          if (retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+          document.getElementById('quotationPreviewContent').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+        })
+        .quotation_getDraft(docId);
+    }
+
+    if (quotationLogosCache) {
+      loadDraft(2);
+    } else {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) quotationLogosCache = res.data;
+          loadDraft(2);
+        })
+        .withFailureHandler(function () { loadDraft(2); })
+        .quotation_getLogos();
+    }
+  }
+  function closeQuotationPreview() {
+    document.getElementById('quotationPreviewModal').classList.remove('open');
   }
 
   function openQuotationComposer() {

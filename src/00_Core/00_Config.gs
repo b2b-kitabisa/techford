@@ -140,13 +140,24 @@ var Config = (function (module) {
       { status: 'Drafting', stage: 'In Progress' },
       { status: 'Sent', stage: 'Done' }
     ],
+    // Alur Quotation (lihat diagram yang dikirim user): seluruh Status
+    // digerakkan oleh AKTIVITAS sistem (Simpan Draft/Request Approval/
+    // Approve/Reject magic-link), KECUALI "LOSS" yang murni tombol manual
+    // admin (proses "Client Email" — kirim ke client & tunggu tanda tangan
+    // balik — dilakukan manual di luar sistem). "Approved" adalah approval
+    // INTERNAL dari Head of B2B (BUKAN client sudah tanda tangan) — Stage
+    // sudah "Done" di titik ini karena tugas sistem selesai, sisanya proses
+    // manual admin. "Signed" tetap ada di daftar untuk kompatibilitas data
+    // lama/masa depan, tapi TIDAK ADA tombol yang men-set status ini secara
+    // otomatis saat ini.
     QUOTATION: [
       { status: 'Not Started', stage: 'New Request' },
       { status: 'Drafting', stage: 'In Progress' },
       { status: 'Waiting Approval', stage: 'In Progress' },
-      { status: 'Revision', stage: 'Client Review' },
-      { status: 'Sent', stage: 'Client Review' },
-      { status: 'Signed', stage: 'Done' }
+      { status: 'Revision', stage: 'In Progress' },
+      { status: 'Approved', stage: 'Done' },
+      { status: 'Signed', stage: 'Done' },
+      { status: 'LOSS', stage: 'Done' }
     ],
     COR: [
       { status: 'Not Started', stage: 'New Request' },

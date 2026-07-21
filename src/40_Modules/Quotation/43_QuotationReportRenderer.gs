@@ -37,18 +37,24 @@ var QuotationReportRenderer = (function (module) {
     '.qo-report table.meta td{padding:3px 6px;font-size:12px;vertical-align:top;text-align:left;}' +
     '.qo-report table.meta td.label{font-weight:700;width:170px;}' +
     '.qo-report table.meta td.colon{width:14px;}' +
+    '.qo-report .qo-divider{border:none;border-top:1px solid #ccc;margin:14px 0;}' +
     '.qo-report table.sign{table-layout:fixed;}' +
     '.qo-report table.sign td{border:1px solid #fff;padding:6px 10px;font-size:12px;width:50%;text-align:center;}' +
     '.qo-report table.sign tr.qo-sign-space td{height:70px;vertical-align:middle;}' +
     '.qo-report table.sign tr.qo-sign-space img{max-height:64px;max-width:90%;}' +
     '.qo-report .qo-price-section{page-break-before:always;}' +
+    '.qo-report .qo-remarks-section{page-break-before:always;}' +
     '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
     '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;vertical-align:top;}' +
     '.qo-report table.price th{background:#f2f2f2;}' +
     '.qo-report table.price td.r{text-align:right;}' +
     '.qo-report table.price td[rowspan]{vertical-align:middle;}' +
     '.qo-report .qo-freetext{margin-bottom:12px;}' +
-    '.qo-report .qo-freetext p{margin:0 0 10px;}' +
+    '.qo-report .qo-freetext p,.qo-report .qo-freetext div{display:block;margin:0 0 10px;}' +
+    '.qo-report .qo-freetext ol,.qo-report .qo-freetext ul{display:block;margin:0 0 10px;padding-left:26px;}' +
+    '.qo-report .qo-freetext ol{list-style-type:decimal;}' +
+    '.qo-report .qo-freetext ul{list-style-type:disc;}' +
+    '.qo-report .qo-freetext li{display:list-item;margin-bottom:4px;}' +
     '.qo-report .qo-remark-detail{font-size:11px;color:#555;margin-top:2px;text-align:left;}' +
     '.qo-report .qo-footer-note{margin-top:20px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#333;font-style:italic;}';
 
@@ -179,13 +185,14 @@ var QuotationReportRenderer = (function (module) {
       '</tbody></table>' +
       '<p><strong>' + label('Billed to', 'Ditagihkan Kepada') + '</strong> :<br><strong>' + esc(entityName) + '</strong><br>' +
       esc(picName) + ' | ' + esc(model.picEmail || '-') + ' | ' + esc(model.picPhone || '-') + '</p>' +
+      '<hr class="qo-divider">' +
       '<p>Dear Bapak/Ibu ' + esc(picName) + ',</p>' +
       '<div class="qo-freetext">' + (model.firstStatementHtml || '') + '</div>' +
       '<table class="sign"><tbody>' +
       '<tr><td><strong>' + entityDisplayName(model.entityCode) + '</strong></td><td><strong>' + esc(entityName) + '</strong></td></tr>' +
       '<tr class="qo-sign-space"><td>' + signatureCell + '</td><td>&nbsp;</td></tr>' +
       '<tr><td>' + esc(model.headName || '-') + '</td><td>' + (model.entityCode === 'KAI' ? esc(picName) : '') + '</td></tr>' +
-      '<tr><td>' + esc(model.titleName || '-') + '</td><td></td></tr>' +
+      '<tr><td>' + esc(model.titleName || '-') + '</td><td>' + esc(model.picTitle || '') + '</td></tr>' +
       '<tr><td>' + entityDisplayName(model.entityCode) + '</td><td>' + esc(entityName) + '</td></tr>' +
       '<tr><td>Date: ' + esc(model.createdDateText) + '</td><td>Date:</td></tr>' +
       '</tbody></table>' +
@@ -193,10 +200,12 @@ var QuotationReportRenderer = (function (module) {
       '<h2>' + esc(model.serviceName || '-') + '</h2>' +
       '<table class="price"><thead><tr>' + priceHeaders.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>' +
       '<tbody>' + buildItemRows(categories) + summaryRows + '</tbody></table>' +
-      '</div>' +
       '<h3>Remarks Detail</h3>' + remarksDetailHtml +
+      '</div>' +
+      '<div class="qo-remarks-section">' +
       '<h2>' + label('IMPORTANT REMARKS', 'CATATAN PENTING') + '</h2>' +
       '<div class="qo-freetext">' + (model.importantRemarksHtml || '') + '</div>' +
+      '</div>' +
       (model.footerNote ? '<div class="qo-footer-note">' + esc(model.footerNote) + '</div>' : '') +
       '</div></body></html>';
   }
