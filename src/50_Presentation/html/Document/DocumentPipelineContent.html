@@ -144,6 +144,11 @@
 
     <div class="drawer-section" id="docQuotationActionWrap" style="display:none;">
       <span class="taxonomy-label">Pengerjaan Quotation</span>
+      <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+        <span class="drawer-field-label" style="margin:0;">Status:</span>
+        <span id="docQuotationStatusBadge" class="cor-status-badge">-</span>
+      </div>
+      <div class="placeholder-note" id="docQuotationApprovalNote" style="display:none;"></div>
       <div style="margin-top:10px; display:flex; gap:8px;">
         <button class="btn-save" id="docQuotationActionBtn" onclick="openQuotationComposer()" style="flex:1;">📝 Kerjakan Quotation</button>
       </div>
@@ -872,6 +877,11 @@
     window.top.location.href = url;
   }
 
+  var QUOTATION_STATUS_COLORS = {
+    'Not Started': '#9aa0a6', 'Drafting': '#c98a00', 'Waiting Approval': '#8a5cf6',
+    'Revision': '#c5221f', 'Sent': '#1a73e8', 'Signed': '#1a9c4b'
+  };
+
   function renderQuotationActionButton(doc) {
     var wrap = document.getElementById('docQuotationActionWrap');
     if (doc.Document_Type !== 'QUOTATION') { wrap.style.display = 'none'; return; }
@@ -885,6 +895,23 @@
     } else {
       btn.innerText = '📝 Kerjakan Quotation';
       note.innerText = 'Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
+    }
+
+    var badge = document.getElementById('docQuotationStatusBadge');
+    var color = QUOTATION_STATUS_COLORS[doc.Status] || QUOTATION_STATUS_COLORS['Not Started'];
+    badge.innerText = doc.Status || '-';
+    badge.style.background = color + '22';
+    badge.style.color = color;
+
+    var approvalNote = document.getElementById('docQuotationApprovalNote');
+    if (doc.Status === 'Waiting Approval' && header) {
+      approvalNote.innerText = '⏳ Menunggu approval dari ' + (header.Approval_Requested_Name || header.Approval_Requested_To || 'approver') + '.';
+      approvalNote.style.display = '';
+    } else if (doc.Status === 'Revision' && header && header.Rejection_Note) {
+      approvalNote.innerText = '⚠️ Catatan revisi dari approver: "' + header.Rejection_Note + '"';
+      approvalNote.style.display = '';
+    } else {
+      approvalNote.style.display = 'none';
     }
   }
 

@@ -143,6 +143,7 @@ var Config = (function (module) {
     QUOTATION: [
       { status: 'Not Started', stage: 'New Request' },
       { status: 'Drafting', stage: 'In Progress' },
+      { status: 'Waiting Approval', stage: 'In Progress' },
       { status: 'Revision', stage: 'Client Review' },
       { status: 'Sent', stage: 'Client Review' },
       { status: 'Signed', stage: 'Done' }

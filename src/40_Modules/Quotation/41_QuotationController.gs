@@ -33,5 +33,23 @@ var QuotationController = (function (module) {
     });
   };
 
+  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy) {
+    return ErrorHandler.handle('QuotationController.requestApproval', function () {
+      return QuotationService.requestApproval(docId, approverEmployeeId, description, requestedBy);
+    });
+  };
+
+  module.approve = function (docId, token, signatureBase64, signatureMimeType) {
+    return ErrorHandler.handle('QuotationController.approve', function () {
+      return QuotationService.approve(docId, token, signatureBase64, signatureMimeType);
+    });
+  };
+
+  module.reject = function (docId, token, wording) {
+    return ErrorHandler.handle('QuotationController.reject', function () {
+      return QuotationService.reject(docId, token, wording);
+    });
+  };
+
   return module;
 })(QuotationController || {});

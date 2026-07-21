@@ -31,6 +31,36 @@
   .qo-totals { border-top: 1px solid var(--border-soft); margin-top: 10px; padding-top: 10px; }
   .qo-total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
   .qo-total-row.grand { font-weight: 700; font-size: 15px; border-top: 1px solid var(--border-soft); margin-top: 4px; padding-top: 8px; }
+
+  /* Box "Informasi Umum" dirapikan jadi 3 sub-bagian bersekat, bukan satu
+     tumpukan field panjang. */
+  .qo-subsection { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border-softer); }
+  .qo-subsection:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .qo-subsection-label { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 10px; }
+  .qo-grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 24px; }
+  .qo-grid-3col label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .qo-grid-3col input, .qo-grid-3col select { width: 100%; box-sizing: border-box; }
+
+  /* Rich-text editor First Statement/Important Remarks — resize CSS hanya
+     diberi arah vertical (bukan "both" default), jadi tidak bisa diperbesar
+     ke samping seperti textarea biasa. */
+  .qo-rte-toolbar { display: flex; gap: 4px; margin-bottom: 6px; }
+  .qo-rte-toolbar button { border: 1px solid var(--border-soft); background: var(--bg-tint); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--color-mineshaft); }
+  .qo-rte-toolbar button:hover { background: var(--bg-hover); }
+  .qo-rte {
+    width: 100%; box-sizing: border-box; font-family: inherit; font-size: 12px; min-height: 180px;
+    border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px;
+    resize: vertical; overflow: auto;
+  }
+  .qo-rte:focus { outline: 2px solid var(--color-cerulean); outline-offset: -1px; }
+  .qo-rte ol, .qo-rte ul { padding-left: 22px; margin: 6px 0; }
+
+  /* Banner status Waiting Approval/Revision & lock seluruh area edit
+     selama menunggu keputusan approver — sama pola persis dengan COR. */
+  .qo-status-banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; }
+  .qo-status-banner-wait { background: #fff3cd; border: 1px solid #ffe69c; color: #7a5c00; }
+  .qo-status-banner:not(.qo-status-banner-wait) { background: #fce8e6; border: 1px solid #f6aea9; color: #7a1a12; }
+  #qoEditableWrap.qo-locked { pointer-events: none; opacity: 0.55; user-select: none; }
 </style>
 
 <div class="qo-page">
@@ -42,78 +72,105 @@
     </div>
     <div style="display:flex; gap:8px;">
       <button class="btn-outline" id="qoPdfBtn" onclick="openPdfPreview()">🖨️ Download PDF</button>
+      <button class="btn-outline" id="qoRequestApprovalBtn" onclick="openRequestApproval()" style="display:none;">📨 Request Approval</button>
       <button class="btn-save" id="qoSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
     </div>
   </div>
 
+  <div class="qo-status-banner" id="qoRevisionBanner" style="display:none;"></div>
+  <div class="qo-status-banner qo-status-banner-wait" id="qoWaitingBanner" style="display:none;"></div>
+
+  <div id="qoEditableWrap">
   <div class="qo-box">
     <div class="qo-box-hd">1. Informasi Umum</div>
-    <div class="form-grid-2col">
-      <div>
-        <div class="drawer-field-label">Bahasa Dokumen</div>
-        <div class="qo-lang-toggle">
-          <button type="button" class="on" id="qoLangIdBtn" onclick="setLanguage('ID')">Bahasa Indonesia</button>
-          <button type="button" id="qoLangEnBtn" onclick="setLanguage('EN')">English</button>
+
+    <div class="qo-subsection">
+      <div class="qo-subsection-label">Dokumen</div>
+      <div class="qo-grid-3col">
+        <div>
+          <label>Bahasa Dokumen</label>
+          <div class="qo-lang-toggle">
+            <button type="button" class="on" id="qoLangIdBtn" onclick="setLanguage('ID')">Bahasa Indonesia</button>
+            <button type="button" id="qoLangEnBtn" onclick="setLanguage('EN')">English</button>
+          </div>
+        </div>
+        <div>
+          <label>Nomor Quotation</label>
+          <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
+        </div>
+        <div>
+          <label>Nama Layanan (judul tabel Box Price)</label>
+          <input type="text" id="qoServiceName" placeholder="Misal: Digital Campaign Package">
         </div>
       </div>
-      <div>
-        <div class="drawer-field-label">Nomor Quotation</div>
-        <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
+      <div class="qo-grid-3col" style="margin-top:12px;">
+        <div>
+          <label>Berlaku Selama (hari)</label>
+          <input type="number" id="qoValidDays" value="30" min="1" oninput="onValidDaysChange()">
+        </div>
+        <div>
+          <label>Valid Date</label>
+          <div class="drawer-field-value" id="qoValidDateDisplay">-</div>
+        </div>
+        <div></div>
       </div>
     </div>
-    <div class="form-grid-2col" style="margin-top:12px;">
-      <div>
-        <label>Berlaku Selama (hari)</label>
-        <input type="number" id="qoValidDays" value="30" min="1" oninput="onValidDaysChange()">
-        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Valid Date: <strong id="qoValidDateDisplay">-</strong></div>
+
+    <div class="qo-subsection">
+      <div class="qo-subsection-label">Client &amp; PIC</div>
+      <div class="qo-grid-3col">
+        <div>
+          <label>Entity Name (nama PT/Brand pada dokumen)</label>
+          <input type="text" id="qoEntityName" placeholder="Nama PT/Brand client...">
+        </div>
+        <div>
+          <label>Pilih PIC Client</label>
+          <select id="qoPicSelect" onchange="onPicSelectChange()"></select>
+        </div>
+        <div></div>
       </div>
-      <div>
-        <label>Entity Name (nama PT/Brand pada dokumen)</label>
-        <input type="text" id="qoEntityName" placeholder="Nama PT/Brand client...">
-      </div>
-    </div>
-    <div class="form-grid-2col" style="margin-top:12px;">
-      <div>
-        <label>Pilih PIC Client</label>
-        <select id="qoPicSelect" onchange="onPicSelectChange()"></select>
-      </div>
-      <div></div>
-      <div>
-        <label>Nama PIC</label>
-        <input type="text" id="qoPicName">
-      </div>
-      <div>
-        <label>Email PIC</label>
-        <input type="text" id="qoPicEmail">
-      </div>
-      <div>
-        <label>Nomor Telepon PIC</label>
-        <input type="text" id="qoPicPhone">
-      </div>
-      <div></div>
-    </div>
-    <div class="form-grid-2col" style="margin-top:12px;">
-      <div>
-        <label>Nama Penandatangan (Head)</label>
-        <input type="text" id="qoHeadName">
-      </div>
-      <div>
-        <label>Jabatan Penandatangan</label>
-        <input type="text" id="qoTitleName">
+      <div class="qo-grid-3col" style="margin-top:12px;">
+        <div>
+          <label>Nama PIC</label>
+          <input type="text" id="qoPicName">
+        </div>
+        <div>
+          <label>Email PIC</label>
+          <input type="text" id="qoPicEmail">
+        </div>
+        <div>
+          <label>Nomor Telepon PIC</label>
+          <input type="text" id="qoPicPhone">
+        </div>
       </div>
     </div>
-    <div class="form-grid-2col" style="margin-top:12px;">
-      <div>
-        <label>Nama Layanan (judul di atas tabel Box Price)</label>
-        <input type="text" id="qoServiceName" placeholder="Misal: Digital Campaign Package">
+
+    <div class="qo-subsection">
+      <div class="qo-subsection-label">Penandatangan</div>
+      <div class="qo-grid-3col">
+        <div>
+          <label>Nama Penandatangan (Head)</label>
+          <input type="text" id="qoHeadName">
+        </div>
+        <div>
+          <label>Jabatan Penandatangan</label>
+          <input type="text" id="qoTitleName">
+        </div>
+        <div></div>
       </div>
-      <div></div>
     </div>
   </div>
 
   <div class="qo-box">
     <div class="qo-box-hd">2. First Statement <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(paragraf pembuka — bisa diedit, default sudah terisi)</span></div>
-    <textarea id="qoFirstStatement" rows="10" style="width:100%; box-sizing:border-box; font-family:inherit; font-size:12px;"></textarea>
+    <div class="qo-rte-toolbar">
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
+    </div>
+    <div id="qoFirstStatement" class="qo-rte" contenteditable="true"></div>
   </div>
 
   <div class="qo-box">
@@ -126,7 +183,34 @@
 
   <div class="qo-box">
     <div class="qo-box-hd">4. Important Remarks <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(bisa diedit, default sudah terisi)</span></div>
-    <textarea id="qoImportantRemarks" rows="14" style="width:100%; box-sizing:border-box; font-family:inherit; font-size:12px;"></textarea>
+    <div class="qo-rte-toolbar">
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
+    </div>
+    <div id="qoImportantRemarks" class="qo-rte" contenteditable="true"></div>
+  </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="qoApprovalModal">
+  <div class="confirm-box" style="width:460px; max-width:92vw;">
+    <h3>Request Approval</h3>
+    <p style="margin-bottom:8px;">Quotation akan dikirim untuk direview & disetujui oleh salah satu Head of B2B. Approver akan diminta upload tanda tangan lewat link di email.</p>
+    <div style="margin-bottom:12px;">
+      <label class="taxonomy-label">Kirim ke (Head of B2B)</label>
+      <select id="qoApprovalApprover" style="width:100%; margin-top:6px;"></select>
+    </div>
+    <div style="margin-bottom:4px;">
+      <label class="taxonomy-label">Catatan (opsional, isi body email)</label>
+      <textarea id="qoApprovalDescription" rows="4" placeholder="Tuliskan catatan untuk approver..." style="width:100%; margin-top:6px; box-sizing:border-box; font-family:inherit; font-size:12px; resize:vertical;"></textarea>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeRequestApproval()">Batal</button>
+      <button class="btn-save" id="qoApprovalSendBtn" onclick="submitRequestApproval()">Kirim</button>
+    </div>
   </div>
 </div>
 
@@ -143,10 +227,19 @@
   function nextQoIdx() { return qoIdxCounter++; }
   var qoDraftHasHeader = false;
   var qoSavedAgencyFeeRate = null;
+  var qoCurrentHeader = null;
   var qoLogos = { YKB: '', KAI: '' };
 
   function goBackToDocumentPipeline() {
     window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+  }
+
+  // Toolbar rich-text First Statement/Important Remarks — mousedown di
+  // tombol toolbar di-preventDefault (lihat markup) supaya selection di
+  // area contenteditable TIDAK hilang saat tombol diklik, jadi execCommand
+  // ini tetap kena ke box yang sedang fokus/di-select sebelumnya.
+  function qoExec(cmd) {
+    document.execCommand(cmd, false, null);
   }
 
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama & bug yang
@@ -257,6 +350,142 @@
       document.getElementById('qoEntityName').value = client.Entity_Name;
     }
     renderPicSelect(project.Client_ID);
+    renderApprovalState();
+  }
+
+  // Tombol "Request Approval" hanya aktif kalau Quotation sudah pernah
+  // disimpan sebagai draft (Status bukan lagi "Not Started"). Selama
+  // "Waiting Approval" (sudah dikirim, menunggu keputusan Head of B2B),
+  // seluruh area edit composer DIKUNCI (lihat #qoEditableWrap.qo-locked) —
+  // sama pola persis dengan renderApprovalState di Kalkulator COR.
+  function renderApprovalState() {
+    var btn = document.getElementById('qoRequestApprovalBtn');
+    var saveBtn = document.getElementById('qoSaveDraftBtn');
+    var wrap = document.getElementById('qoEditableWrap');
+    var waitBanner = document.getElementById('qoWaitingBanner');
+    var revBanner = document.getElementById('qoRevisionBanner');
+    var header = currentDoc && currentDoc.Doc_ID ? qoCurrentHeader : null;
+
+    if (!currentDoc || currentDoc.Status === 'Not Started') {
+      btn.style.display = 'none';
+      wrap.classList.remove('qo-locked');
+      saveBtn.disabled = false;
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
+      return;
+    }
+
+    btn.style.display = '';
+    var isWaiting = currentDoc.Status === 'Waiting Approval';
+    wrap.classList.toggle('qo-locked', isWaiting);
+    saveBtn.disabled = isWaiting;
+
+    if (isWaiting) {
+      btn.disabled = true;
+      btn.innerText = '⏳ Menunggu Approval';
+      var reqTo = (header && (header.Approval_Requested_Name || header.Approval_Requested_To)) || 'approver';
+      waitBanner.innerText = '⏳ Quotation ini sedang menunggu approval dari ' + reqTo + '. Composer dikunci sampai ada keputusan (Approve/Reject).';
+      waitBanner.style.display = '';
+      revBanner.style.display = 'none';
+    } else if (currentDoc.Status === 'Revision') {
+      btn.disabled = false;
+      btn.innerText = '📨 Request Approval';
+      waitBanner.style.display = 'none';
+      revBanner.innerText = '⚠️ Quotation ini perlu direvisi — catatan dari approver: "' + ((header && header.Rejection_Note) || '-') + '"';
+      revBanner.style.display = '';
+    } else if (currentDoc.Status === 'Signed') {
+      btn.disabled = true;
+      btn.innerText = '✅ Sudah Disetujui';
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
+    } else {
+      btn.disabled = false;
+      btn.innerText = '📨 Request Approval';
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
+    }
+  }
+
+  function openRequestApproval() {
+    if (!CALCULATOR_DOC_ID) return;
+    document.getElementById('qoApprovalDescription').value = '';
+    var sel = document.getElementById('qoApprovalApprover');
+    sel.innerHTML = '<option value="">Memuat...</option>';
+    document.getElementById('qoApprovalModal').classList.add('open');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) { sel.innerHTML = '<option value="">Gagal memuat daftar approver.</option>'; return; }
+        var heads = res.data.filter(function (e) { return e.Role === 'Head of B2B'; });
+        if (!heads.length) {
+          sel.innerHTML = '<option value="">Belum ada Employee dengan Role "Head of B2B".</option>';
+          return;
+        }
+        sel.innerHTML = heads.map(function (e) { return '<option value="' + e.Id + '">' + e.Name + ' (' + e.Email + ')</option>'; }).join('');
+      })
+      .withFailureHandler(function () { sel.innerHTML = '<option value="">Gagal memuat daftar approver.</option>'; })
+      .employee_listActive();
+  }
+  function closeRequestApproval() {
+    document.getElementById('qoApprovalModal').classList.remove('open');
+  }
+  function submitRequestApproval() {
+    var approverId = document.getElementById('qoApprovalApprover').value;
+    if (!approverId) { alert('Pilih Head of B2B tujuan approval dulu.'); return; }
+    if (!techfordConfirm('Kirim permintaan approval Quotation ini?')) return;
+
+    var description = document.getElementById('qoApprovalDescription').value;
+    var requestedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.getElementById('qoApprovalSendBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengirim...';
+    TechfordLoading.show('Mengirim request approval...');
+
+    var approverLabel = document.getElementById('qoApprovalApprover').selectedOptions[0].innerText;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Kirim';
+        if (!res) { return recheckRequestApprovalOutcome(approverLabel); }
+        if (!res.ok) { alert('Gagal mengirim: ' + (res.error && res.error.message)); return; }
+        currentDoc = res.data.doc;
+        qoCurrentHeader = res.data.header;
+        renderApprovalState();
+        closeRequestApproval();
+        alert('Permintaan approval berhasil dikirim ke ' + approverLabel + '.');
+      })
+      .withFailureHandler(function () {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Kirim';
+        recheckRequestApprovalOutcome(approverLabel);
+      })
+      .quotation_requestApproval(CALCULATOR_DOC_ID, approverId, description, requestedBy);
+  }
+
+  // google.script.run terbukti kadang mengirim res=null WALAU proses di
+  // server sudah 100% selesai (email terkirim, PDF ter-generate) — retry
+  // NAIF berisiko dobel kirim, jadi cek ULANG status draft (baca doang,
+  // aman diulang) dulu sebelum menampilkan pesan gagal (sama pola dengan
+  // COR).
+  function recheckRequestApprovalOutcome(approverLabel) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok && res.data.doc && res.data.doc.Status === 'Waiting Approval') {
+          currentDoc = res.data.doc;
+          qoCurrentHeader = res.data.header;
+          renderApprovalState();
+          closeRequestApproval();
+          alert('Permintaan approval sudah terkirim ke ' + approverLabel + ' (tampilan sempat tidak sinkron, sekarang sudah update).');
+        } else {
+          alert('Gagal mengirim: tidak ada respons dari server. Silakan cek status dokumen ini sebelum mencoba lagi (supaya tidak dobel kirim email).');
+        }
+      })
+      .withFailureHandler(function () {
+        alert('Gagal mengirim: tidak ada respons dari server. Silakan refresh halaman untuk mengecek status dokumen ini.');
+      })
+      .quotation_getDraft(CALCULATOR_DOC_ID);
   }
 
   function renderPicSelect(clientId) {
@@ -283,6 +512,7 @@
     entityCode = draft.entityCode;
 
     var header = draft.header;
+    qoCurrentHeader = header;
     qoDraftHasHeader = !!header;
     currentLanguage = header ? header.Language : 'ID';
     setLanguage(currentLanguage, true);
@@ -299,8 +529,8 @@
       document.getElementById('qoHeadName').value = header.Head_Name || '';
       document.getElementById('qoTitleName').value = header.Title_Name || '';
       document.getElementById('qoServiceName').value = header.Service_Name || '';
-      document.getElementById('qoFirstStatement').value = header.First_Statement || '';
-      document.getElementById('qoImportantRemarks').value = header.Important_Remarks || '';
+      document.getElementById('qoFirstStatement').innerHTML = valueToHtml(header.First_Statement);
+      document.getElementById('qoImportantRemarks').innerHTML = valueToHtml(header.Important_Remarks);
       qoSavedAgencyFeeRate = Number(header.Agency_Fee_Rate) || null;
     }
 
@@ -363,9 +593,11 @@
     var prevDefaults = (qoTaxonomy.defaults[entityCode] || {})[prevLang] || {};
 
     var fsEl = document.getElementById('qoFirstStatement');
-    if (!fsEl.value || fsEl.value === prevDefaults.firstStatement) fsEl.value = defaults.firstStatement;
+    var fsDefaultHtml = plainToHtml(defaults.firstStatement);
+    if (!fsEl.innerHTML || fsEl.innerHTML === plainToHtml(prevDefaults.firstStatement || '')) fsEl.innerHTML = fsDefaultHtml;
     var irEl = document.getElementById('qoImportantRemarks');
-    if (!irEl.value || irEl.value === prevDefaults.importantRemarks) irEl.value = defaults.importantRemarks;
+    var irDefaultHtml = plainToHtml(defaults.importantRemarks);
+    if (!irEl.innerHTML || irEl.innerHTML === plainToHtml(prevDefaults.importantRemarks || '')) irEl.innerHTML = irDefaultHtml;
     var headEl = document.getElementById('qoHeadName');
     if (!headEl.value || headEl.value === prevDefaults.headName) headEl.value = defaults.headName;
     var titleEl = document.getElementById('qoTitleName');
@@ -427,6 +659,26 @@
   }
 
   function escQo(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // First Statement/Important Remarks BARU jadi rich-text (HTML, lewat
+  // contenteditable innerHTML) — teks default di Config.QUOTATION_DEFAULTS
+  // masih plain text (\n\n antar-paragraf) supaya tidak perlu tulis ulang
+  // seluruh teks panjang jadi HTML manual. plainToHtml() mengonversinya
+  // saat diisi ke box rich-text. valueToHtml() dipakai waktu memuat draft
+  // TERSIMPAN — kalau isinya masih plain text lama (belum pernah disimpan
+  // ulang sejak fitur rich-text ini ada, jadi belum mengandung tag HTML),
+  // dikonversi juga; kalau sudah HTML (hasil edit rich-text), dipakai apa
+  // adanya.
+  function plainToHtml(text) {
+    if (!text) return '';
+    return String(text).split(/\n\n+/).map(function (para) {
+      return '<p>' + escQo(para).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
+  function valueToHtml(value) {
+    if (!value) return '';
+    return /<[a-z][\s\S]*>/i.test(value) ? value : plainToHtml(value);
+  }
   function formatQoThousands(n) { n = Number(n) || 0; return n ? n.toLocaleString('id-ID') : ''; }
   function parseQoThousands(el) { return Number(String(el.value).replace(/[^0-9]/g, '')) || 0; }
 
@@ -540,8 +792,8 @@
       headName: document.getElementById('qoHeadName').value,
       titleName: document.getElementById('qoTitleName').value,
       serviceName: document.getElementById('qoServiceName').value,
-      firstStatement: document.getElementById('qoFirstStatement').value,
-      importantRemarks: document.getElementById('qoImportantRemarks').value,
+      firstStatement: document.getElementById('qoFirstStatement').innerHTML,
+      importantRemarks: document.getElementById('qoImportantRemarks').innerHTML,
       agencyFeeRate: document.getElementById('qoAgencyFeeRate') ? Number(document.getElementById('qoAgencyFeeRate').value) : qoTaxonomy.kaiDefaultFeeRate,
       items: itemsPayload
     };
@@ -618,28 +870,30 @@
   // generate-ke-Google-Doc sebelumnya yang gagal karena butuh scope
   // DocumentApp yang belum terotorisasi DAN hasilnya cuma salinan kosong.
   var QO_REPORT_CSS =
-    '.qo-report{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:24px;max-width:900px;margin:0 auto;}' +
-    '.qo-report .qo-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:12px;}' +
+    '.qo-report{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:24px;max-width:900px;margin:0 auto;text-align:justify;}' +
+    '.qo-report .qo-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:12px;text-align:left;}' +
     '.qo-report .qo-header img{height:48px;width:auto;flex-shrink:0;}' +
     '.qo-report .qo-header-text{font-size:10px;color:#333;line-height:1.5;text-align:right;}' +
     '.qo-report h1{font-size:18px;margin:0 0 14px;text-align:center;}' +
-    '.qo-report h2{font-size:14px;margin:20px 0 8px;border-bottom:2px solid #333;padding-bottom:4px;}' +
-    '.qo-report h3{font-size:13px;margin:16px 0 6px;}' +
+    '.qo-report h2{font-size:14px;margin:20px 0 8px;border-bottom:2px solid #333;padding-bottom:4px;text-align:left;}' +
+    '.qo-report h3{font-size:13px;margin:16px 0 6px;text-align:left;}' +
     '.qo-report table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
     '.qo-report table.meta{table-layout:fixed;}' +
-    '.qo-report table.meta td{padding:3px 6px;font-size:12px;vertical-align:top;}' +
+    '.qo-report table.meta td{padding:3px 6px;font-size:12px;vertical-align:top;text-align:left;}' +
     '.qo-report table.meta td.label{font-weight:700;width:170px;}' +
     '.qo-report table.meta td.colon{width:14px;}' +
     '.qo-report table.sign{table-layout:fixed;}' +
-    '.qo-report table.sign td{border:1px solid #ccc;padding:6px 10px;font-size:12px;width:50%;}' +
+    '.qo-report table.sign td{border:1px solid #fff;padding:6px 10px;font-size:12px;width:50%;text-align:center;}' +
     '.qo-report table.sign tr.qo-sign-space td{height:70px;vertical-align:top;}' +
     '.qo-report .qo-price-section{page-break-before:always;}' +
     '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
-    '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;}' +
+    '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;vertical-align:top;}' +
     '.qo-report table.price th{background:#f2f2f2;}' +
     '.qo-report table.price td.r{text-align:right;}' +
-    '.qo-report .qo-freetext{white-space:pre-wrap;margin-bottom:12px;}' +
-    '.qo-report .qo-remark-detail{font-size:11px;color:#555;margin-top:2px;}' +
+    '.qo-report table.price td[rowspan]{vertical-align:middle;}' +
+    '.qo-report .qo-freetext{margin-bottom:12px;}' +
+    '.qo-report .qo-freetext p{margin:0 0 10px;}' +
+    '.qo-report .qo-remark-detail{font-size:11px;color:#555;margin-top:2px;text-align:left;}' +
     '@media print{.qo-report{padding:0;}}';
 
   function entityDisplayName(code) {
@@ -661,8 +915,8 @@
     var headName = document.getElementById('qoHeadName').value || '-';
     var titleName = document.getElementById('qoTitleName').value || '-';
     var serviceName = document.getElementById('qoServiceName').value || '-';
-    var firstStatement = document.getElementById('qoFirstStatement').value || '';
-    var importantRemarks = document.getElementById('qoImportantRemarks').value || '';
+    var firstStatement = document.getElementById('qoFirstStatement').innerHTML || '';
+    var importantRemarks = document.getElementById('qoImportantRemarks').innerHTML || '';
     var quotationNumber = document.getElementById('qoNumberDisplay').innerText;
     var createdDateText = currentDoc && currentDoc.Requested_Date ? formatQoDate(currentDoc.Requested_Date) : formatQoDate(new Date());
     var validDateText = document.getElementById('qoValidDateDisplay').innerText;
@@ -671,16 +925,46 @@
       ? ['INVESTMENT', 'REMARK', 'VALUE', 'QTY', 'TOTAL VALUE']
       : ['KATEGORI', 'ITEM', 'NILAI', 'QTY', 'TOTAL NILAI'];
 
+    // Rowspan (merge cell) beda per mode Box Price (lihat tab EXAMPLE):
+    // - grouped: kategori di-merge ke bawah, tapi Nilai/Qty/Total NILAI
+    //   tetap per-item (masing-masing item harga sendiri).
+    // - standalone_with_item: kategori DAN Nilai/Qty/Total NILAI sama-sama
+    //   di-merge ke bawah (satu harga untuk seluruh item, diambil dari
+    //   item pertama — item lain murni baris deskripsi).
+    // - standalone_without_item: tidak ada yang perlu di-merge (selalu
+    //   tepat 1 item per kategori).
     var itemRows = categories.map(function (cat) {
-      return cat.items.map(function (item, i) {
-        var pricedRow = itemHasPricing(cat, i) && item.value > 0 && item.qty > 0;
-        var showValue = itemHasPricing(cat, i) && item.value > 0;
-        var showQty = itemHasPricing(cat, i) && item.qty > 0;
-        return '<tr><td>' + (i === 0 ? escQo(cat.label || '-') : '') + '</td>' +
-          '<td>' + escQo(item.label || '-') + '</td>' +
-          '<td class="r">' + (showValue ? fmtRpQo(item.value) : '') + '</td>' +
-          '<td class="r">' + (showQty ? item.qty : '') + '</td>' +
-          '<td class="r">' + (pricedRow ? fmtRpQo(item.value * item.qty) : '') + '</td></tr>';
+      var n = cat.items.length;
+      if (cat.mode === QO_MODE_WITH_ITEM) {
+        var first = cat.items[0] || {};
+        var firstTotal = (Number(first.value) || 0) * (Number(first.qty) || 0);
+        return cat.items.map(function (item, i) {
+          var catCell = i === 0 ? '<td rowspan="' + n + '">' + escQo(cat.label || '-') + '</td>' : '';
+          var priceCells = i === 0
+            ? '<td class="r" rowspan="' + n + '">' + (first.value > 0 ? fmtRpQo(first.value) : '') + '</td>' +
+              '<td class="r" rowspan="' + n + '">' + (first.qty > 0 ? first.qty : '') + '</td>' +
+              '<td class="r" rowspan="' + n + '">' + (firstTotal > 0 ? fmtRpQo(firstTotal) : '') + '</td>'
+            : '';
+          return '<tr>' + catCell + '<td>' + escQo(item.label || '-') + '</td>' + priceCells + '</tr>';
+        }).join('');
+      }
+      if (cat.mode === QO_MODE_GROUPED) {
+        return cat.items.map(function (item, i) {
+          var catCell = i === 0 ? '<td rowspan="' + n + '">' + escQo(cat.label || '-') + '</td>' : '';
+          var itemTotal = (Number(item.value) || 0) * (Number(item.qty) || 0);
+          return '<tr>' + catCell + '<td>' + escQo(item.label || '-') + '</td>' +
+            '<td class="r">' + (item.value > 0 ? fmtRpQo(item.value) : '') + '</td>' +
+            '<td class="r">' + (item.qty > 0 ? item.qty : '') + '</td>' +
+            '<td class="r">' + (itemTotal > 0 ? fmtRpQo(itemTotal) : '') + '</td></tr>';
+        }).join('');
+      }
+      // standalone_without_item — tepat 1 item, tidak ada yang di-merge.
+      return cat.items.map(function (item) {
+        var itemTotal = (Number(item.value) || 0) * (Number(item.qty) || 0);
+        return '<tr><td>' + escQo(cat.label || '-') + '</td><td>' + escQo(item.label || '-') + '</td>' +
+          '<td class="r">' + (item.value > 0 ? fmtRpQo(item.value) : '') + '</td>' +
+          '<td class="r">' + (item.qty > 0 ? item.qty : '') + '</td>' +
+          '<td class="r">' + (itemTotal > 0 ? fmtRpQo(itemTotal) : '') + '</td></tr>';
       }).join('');
     }).join('');
 
@@ -728,7 +1012,7 @@
       '<p><strong>' + qoLabel('Billed to', 'Ditagihkan Kepada') + '</strong> :<br><strong>' + escQo(entityName) + '</strong><br>' +
       escQo(picName) + ' | ' + escQo(picEmail) + ' | ' + escQo(picPhone) + '</p>' +
       '<p>Dear Bapak/Ibu ' + escQo(picName) + ',</p>' +
-      '<div class="qo-freetext">' + escQo(firstStatement).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="qo-freetext">' + firstStatement + '</div>' +
       '<table class="sign"><tbody>' +
       '<tr><td><strong>' + entityDisplayName(entityCode) + '</strong></td><td><strong>' + escQo(entityName) + '</strong></td></tr>' +
       '<tr class="qo-sign-space"><td>&nbsp;</td><td>&nbsp;</td></tr>' +
@@ -744,7 +1028,7 @@
       '</div>' +
       '<h3>Remarks Detail</h3>' + remarksDetailHtml +
       '<h2>' + qoLabel('IMPORTANT REMARKS', 'CATATAN PENTING') + '</h2>' +
-      '<div class="qo-freetext">' + escQo(importantRemarks).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="qo-freetext">' + importantRemarks + '</div>' +
       '</div></body></html>';
   }
 

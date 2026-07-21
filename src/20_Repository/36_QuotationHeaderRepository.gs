@@ -56,6 +56,41 @@ var QuotationHeaderRepository = (function (module) {
     });
   }
 
+  /**
+   * Patch kolom approval (Approval_Token, Approved_By, Signature_File_Id,
+   * dst) ke satu baris Quotation_Header TANPA menyentuh field lain — sama
+   * persis pola CorHeaderRepository.patchApprovalFields. Kolom yang belum
+   * ada di sheet ditambahkan otomatis (self-migrating).
+   */
+  module.patchApprovalFields = function (docId, patch) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+      Object.keys(patch).forEach(function (key) {
+        if (headers.indexOf(key) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(key);
+          headers.push(key);
+        }
+      });
+
+      var rows = sheet.getDataRange().getValues();
+      var docIdCol = headers.indexOf('Doc_ID');
+      for (var r = 1; r < rows.length; r++) {
+        if (rows[r][docIdCol] === docId) {
+          Object.keys(patch).forEach(function (key) {
+            sheet.getRange(r + 1, headers.indexOf(key) + 1).setValue(patch[key]);
+          });
+          module.invalidateCache();
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+
   module.invalidateCache = function () {
     CacheHelper.invalidate('quotationHeader:all');
   };

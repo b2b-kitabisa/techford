@@ -97,6 +97,21 @@ function doGet(e) {
     return handleCorRejectSubmit(params.docId, params.token, params.wording);
   }
 
+  // Link approval Quotation (magic link di email, TIDAK ada login) — sama
+  // pola dengan COR, DITAMBAH halaman approve-nya (quotation-approve)
+  // berisi form upload tanda tangan (bukan langsung approve begitu link
+  // diklik seperti COR), disubmit lewat doPost (lihat handler doPost di
+  // bawah) karena butuh mengirim isi file gambar.
+  if (params.action === 'quotation-approve') {
+    return renderQuotationApproveForm(params.docId, params.token);
+  }
+  if (params.action === 'quotation-reject') {
+    return renderQuotationRejectForm(params.docId, params.token);
+  }
+  if (params.action === 'quotation-reject-submit') {
+    return handleQuotationRejectSubmit(params.docId, params.token, params.wording);
+  }
+
   var page = params.page || 'lead-capturing';
   var route = ROUTES[page];
 
@@ -210,6 +225,142 @@ function handleCorRejectSubmit(docId, token, wording) {
     '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
     'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
   );
+}
+
+/**
+ * Halaman form approve Quotation (?action=quotation-approve&docId=...&
+ * token=...) — TIDAK pakai Shell, TIDAK ada login, dibuka dari link di
+ * email. Beda dari COR (yang approve-nya langsung sekali klik), di sini
+ * approver WAJIB upload file tanda tangan dulu — file itu dibaca client-side
+ * lewat FileReader jadi base64 (BUKAN dikirim sebagai file/blob mentah,
+ * supaya tidak bergantung pada parsing multipart di doPost GAS yang belum
+ * pernah dicoba/diverifikasi sebelumnya di codebase ini), ditaruh di field
+ * form tersembunyi, baru form-nya di-submit biasa (POST) ke doPost di bawah.
+ */
+function renderQuotationApproveForm(docId, token) {
+  var webAppUrl = ScriptApp.getService().getUrl();
+  var html =
+    '<h2>Setujui Quotation</h2>' +
+    '<p style="color:#555;">Dokumen <strong>' + escHtml(docId) + '</strong>. Upload tanda tangan Anda (gambar PNG/JPG) untuk menyetujui — tanda tangan ini akan ditempel ke box tanda tangan dokumen.</p>' +
+    '<form id="qoApproveForm" method="post" action="' + webAppUrl + '" onsubmit="return prepQoApproveSubmit(event)">' +
+    '<input type="hidden" name="action" value="quotation-approve-submit">' +
+    '<input type="hidden" name="docId" value="' + escHtml(docId) + '">' +
+    '<input type="hidden" name="token" value="' + escHtml(token) + '">' +
+    '<input type="hidden" name="signatureBase64" id="qoSignatureBase64">' +
+    '<input type="hidden" name="signatureMimeType" id="qoSignatureMimeType">' +
+    '<input type="file" id="qoSignatureFile" accept="image/png,image/jpeg" required ' +
+    'style="display:block;width:100%;box-sizing:border-box;font-size:13px;padding:10px;border:1px solid #ccc;border-radius:8px;margin-bottom:14px;">' +
+    '<button type="submit" id="qoApproveSubmitBtn" style="background:#1a9c4b;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;">✅ Setujui &amp; Kirim Tanda Tangan</button>' +
+    '</form>' +
+    '<script>' +
+    'function prepQoApproveSubmit(ev) {' +
+    '  ev.preventDefault();' +
+    '  var fileInput = document.getElementById("qoSignatureFile");' +
+    '  var file = fileInput.files[0];' +
+    '  if (!file) { alert("Pilih file tanda tangan dulu."); return false; }' +
+    '  var btn = document.getElementById("qoApproveSubmitBtn");' +
+    '  btn.disabled = true; btn.innerText = "Mengirim...";' +
+    '  var reader = new FileReader();' +
+    '  reader.onload = function () {' +
+    '    var dataUrl = String(reader.result);' +
+    '    var base64 = dataUrl.split(",")[1] || "";' +
+    '    document.getElementById("qoSignatureBase64").value = base64;' +
+    '    document.getElementById("qoSignatureMimeType").value = file.type || "image/png";' +
+    '    document.getElementById("qoApproveForm").submit();' +
+    '  };' +
+    '  reader.onerror = function () { alert("Gagal membaca file, coba lagi."); btn.disabled = false; btn.innerText = "✅ Setujui & Kirim Tanda Tangan"; };' +
+    '  reader.readAsDataURL(file);' +
+    '  return false;' +
+    '}' +
+    '</script>';
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:60px auto;padding:32px;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Diproses setelah form renderQuotationApproveForm di-submit — lihat doPost.
+ */
+function handleQuotationApproveSubmit(docId, token, signatureBase64, signatureMimeType) {
+  var html;
+  try {
+    var result = QuotationController.approve(docId, token, signatureBase64, signatureMimeType);
+    if (!result || result.ok === false) {
+      html = '<h2>⚠️ Gagal approve</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
+    } else {
+      html = '<h2>✅ Quotation berhasil disetujui</h2>' +
+        '<p>Dokumen <strong>' + escHtml(docId) + '</strong> sudah ditandai <strong>Signed</strong> oleh <strong>' + escHtml(result.data.approvedBy) + '</strong>.</p>';
+    }
+  } catch (err) {
+    html = '<h2>⚠️ Gagal approve</h2><p>' + (err && err.message ? err.message : err) + '</p>';
+  }
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Form kecil TANPA login untuk link "Reject" di email approval Quotation
+ * (?action=quotation-reject&docId=...&token=...) — sama persis pola
+ * renderCorRejectForm.
+ */
+function renderQuotationRejectForm(docId, token) {
+  var webAppUrl = ScriptApp.getService().getUrl();
+  var html =
+    '<h2>Tolak & Minta Revisi Quotation</h2>' +
+    '<p style="color:#555;">Dokumen <strong>' + escHtml(docId) + '</strong>. Tuliskan alasan/catatan revisi supaya consultant tahu apa yang perlu diperbaiki.</p>' +
+    '<form method="get" action="' + webAppUrl + '">' +
+    '<input type="hidden" name="action" value="quotation-reject-submit">' +
+    '<input type="hidden" name="docId" value="' + escHtml(docId) + '">' +
+    '<input type="hidden" name="token" value="' + escHtml(token) + '">' +
+    '<textarea name="wording" rows="6" required placeholder="Contoh: Harga di kategori Digital Campaign perlu disesuaikan lagi." ' +
+    'style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:10px;border:1px solid #ccc;border-radius:8px;"></textarea>' +
+    '<button type="submit" style="margin-top:14px;background:#c5221f;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;">Kirim Penolakan</button>' +
+    '</form>';
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:60px auto;padding:32px;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Diproses setelah form renderQuotationRejectForm di-submit.
+ */
+function handleQuotationRejectSubmit(docId, token, wording) {
+  var html;
+  try {
+    var result = QuotationController.reject(docId, token, wording);
+    if (!result || result.ok === false) {
+      html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
+    } else {
+      html = '<h2>✅ Catatan revisi terkirim</h2>' +
+        '<p>Dokumen <strong>' + escHtml(docId) + '</strong> dikembalikan ke consultant sebagai <strong>Revision</strong>.</p>';
+    }
+  } catch (err) {
+    html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + (err && err.message ? err.message : err) + '</p>';
+  }
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
+    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
+  );
+}
+
+/**
+ * Entry point POST — SATU-SATUNYA pemakainya (untuk sekarang) adalah form
+ * upload tanda tangan approve Quotation (lihat renderQuotationApproveForm),
+ * karena payload base64 gambar terlalu besar untuk query string GET biasa.
+ * Field dikirim sebagai form field teks biasa (application/x-www-form-
+ * urlencoded, BUKAN multipart file blob) supaya parsing-nya sederhana &
+ * dapat diandalkan di e.parameter — TIDAK menyentuh e.postData sama sekali.
+ */
+function doPost(e) {
+  var params = (e && e.parameter) || {};
+  if (params.action === 'quotation-approve-submit') {
+    return handleQuotationApproveSubmit(params.docId, params.token, params.signatureBase64, params.signatureMimeType);
+  }
+  return HtmlService.createHtmlOutput('Aksi tidak dikenal.');
 }
 
 /**

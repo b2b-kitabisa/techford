@@ -136,7 +136,13 @@ var QuotationService = (function (module) {
         Agency_Fee_Rate: Number(header.Agency_Fee_Rate) || Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
         Pdf_File_Id: header.Pdf_File_Id || '',
         Pdf_File_Url: header.Pdf_File_Url || '',
-        Created_Date: header.Created_Date
+        Created_Date: header.Created_Date,
+        Approval_Requested_To: header.Approval_Requested_To || '',
+        Approval_Requested_Name: header.Approval_Requested_Name || '',
+        Approval_Requested_At: header.Approval_Requested_At || '',
+        Rejection_Note: header.Rejection_Note || '',
+        Approved_By: header.Approved_By || '',
+        Approved_At: header.Approved_At || ''
       } : null,
       items: QuotationItemRepository.findByDocId(docId)
     };
@@ -217,6 +223,273 @@ var QuotationService = (function (module) {
     advanceStatusToDrafting(docId);
 
     return module.getDraft(docId);
+  };
+
+  /**
+   * Rakit model laporan Quotation (bentuk yang sama seperti dipakai
+   * buildQuotationHtml() di client) dari data draft tersimpan — dipakai
+   * KHUSUS untuk generate PDF yang disimpan ke Drive (alur approval),
+   * bukan untuk preview/print interaktif (itu tetap di client).
+   */
+  function buildCategoriesFromItems(items) {
+    var byCat = {};
+    var order = [];
+    items.forEach(function (it) {
+      var key = it.Category_Sort_Order + '::' + it.Category_Label;
+      if (!byCat[key]) {
+        byCat[key] = { label: it.Category_Label, mode: it.Category_Mode || 'grouped', items: [] };
+        order.push(key);
+      }
+      byCat[key].items.push({
+        label: it.Item_Label,
+        value: Number(it.Value) || 0,
+        qty: Number(it.Qty) || 0,
+        remarksDetail: it.Remarks_Detail || ''
+      });
+    });
+    return order.map(function (key) { return byCat[key]; });
+  }
+
+  function formatQoDate(value) {
+    if (!value) return '-';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'd MMM yyyy');
+  }
+
+  function buildReportModel(docId) {
+    var doc = assertQuotationDocument(docId);
+    var header = QuotationHeaderRepository.findByDocId(docId);
+    if (!header) {
+      throw new AppError('VALIDATION_ERROR', 'Draft Quotation ini belum pernah disimpan.');
+    }
+    var items = QuotationItemRepository.findByDocId(docId);
+    var validDays = Number(header.Valid_Days) || Config.QUOTATION_DEFAULT_VALID_DAYS;
+
+    return {
+      doc: doc,
+      model: {
+        entityCode: header.Entity_Code,
+        language: header.Language || Config.QUOTATION_LANGUAGE.ID,
+        entityName: header.Entity_Name || '',
+        picName: header.Pic_Name || '',
+        picEmail: header.Pic_Email || '',
+        picPhone: header.Pic_Phone || '',
+        headName: header.Head_Name || '',
+        titleName: header.Title_Name || '',
+        serviceName: header.Service_Name || '',
+        firstStatementHtml: header.First_Statement || '',
+        importantRemarksHtml: header.Important_Remarks || '',
+        quotationNumber: header.Quotation_Number || '',
+        createdDateText: formatQoDate(header.Created_Date),
+        validDateText: formatQoDate(header.Valid_Date),
+        agencyFeeRate: Number(header.Agency_Fee_Rate) || Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
+        ppnRate: Config.QUOTATION_PPN_RATE,
+        categories: buildCategoriesFromItems(items),
+        logoDataUri: module.getLogos()[header.Entity_Code] || ''
+      }
+    };
+  }
+
+  /**
+   * Render laporan Quotation ke PDF sungguhan & simpan/update di Shared
+   * Drive B2B (Config.ROOT_FOLDER_ID) — sekali dibuat, file yang SAMA
+   * (Pdf_File_Id) dipakai lagi (konten di-replace) supaya link yang sudah
+   * dikirim lewat email tetap sama setelah approval. Sama pola persis
+   * dengan CorService.generateAndStorePdf.
+   */
+  function generateAndStorePdf(docId, footerNote, signatureDataUri) {
+    var built = buildReportModel(docId);
+    var model = built.model;
+    model.footerNote = footerNote || '';
+    model.signatureDataUri = signatureDataUri || '';
+    var html = QuotationReportRenderer.renderQuotationHtml(model);
+
+    var pdfBlob = Utilities.newBlob(html, 'text/html', docId + '.html').getAs('application/pdf');
+    pdfBlob.setName('Quotation - ' + docId + '.pdf');
+
+    var header = QuotationHeaderRepository.findByDocId(docId);
+    var file;
+    if (header && header.Pdf_File_Id) {
+      try {
+        Drive.Files.update({}, header.Pdf_File_Id, pdfBlob);
+        file = DriveApp.getFileById(header.Pdf_File_Id);
+      } catch (e) {
+        file = null;
+      }
+    }
+    if (!file) {
+      var folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
+      file = folder.createFile(pdfBlob);
+    }
+
+    return { fileId: file.getId(), url: file.getUrl() };
+  }
+
+  /**
+   * Ajukan approval Quotation ke salah satu Employee dengan Role "Head of
+   * B2B" — generate PDF (tanpa tanda tangan dulu), simpan ke Drive, lalu
+   * kirim email berisi link PDF + link approve (approver akan diminta
+   * upload tanda tangan di halaman approve itu, lihat WebAppRouter
+   * ?action=quotation-approve) + link reject (magic link, token acak per
+   * pengajuan, TIDAK perlu login). Sama pola persis dengan
+   * CorService.requestApproval.
+   */
+  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy) {
+    var doc = assertQuotationDocument(docId);
+    if (doc.Status === 'Not Started') {
+      throw new AppError('VALIDATION_ERROR', 'Quotation ini belum pernah disimpan sebagai draft.');
+    }
+
+    var approver = EmployeeRepository.findAll().filter(function (e) {
+      return String(e.Id) === String(approverEmployeeId) && e.Role === 'Head of B2B';
+    })[0];
+    if (!approver) {
+      throw new AppError('VALIDATION_ERROR', 'Approver tidak valid — harus Employee dengan Role "Head of B2B".');
+    }
+
+    // Try/catch KHUSUS di sini (bukan pola umum modul lain) — alur ini
+    // memakai beberapa layanan sensitif sekaligus (Drive, MailApp) yang
+    // gagalnya penting ditampilkan detail ke admin, sama alasan dengan
+    // CorService.requestApproval.
+    try {
+      var project = ProjectRepository.findById(doc.Project_ID);
+      var client = project && project.Client_ID ? ClientRepository.findById(project.Client_ID) : null;
+
+      var pdf = generateAndStorePdf(docId, '', '');
+      var token = Utilities.getUuid();
+
+      QuotationHeaderRepository.patchApprovalFields(docId, {
+        Approval_Token: token,
+        Approval_Requested_To: approver.Email,
+        Approval_Requested_Name: approver.Name,
+        Approval_Requested_At: new Date(),
+        Approval_Resolved_At: '',
+        Rejection_Note: '',
+        Approved_By: '',
+        Approved_At: '',
+        Pdf_File_Id: pdf.fileId,
+        Pdf_File_Url: pdf.url
+      });
+
+      var subject = (project ? (project.Project_ID || docId) : docId) + ' — ' + (project ? (project.Project_Name || '-') : '-') + ' — ' +
+        (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
+
+      var approveUrl = ScriptApp.getService().getUrl() + '?action=quotation-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
+      var rejectUrl = ScriptApp.getService().getUrl() + '?action=quotation-reject&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
+
+      var body = (description ? description + '\n\n' : '') +
+        'Silakan review dokumen Quotation berikut:\n' + pdf.url + '\n\n' +
+        'Kalau sudah sesuai dan disetujui, klik link berikut untuk approve & upload tanda tangan:\n' + approveUrl + '\n\n' +
+        'Kalau perlu revisi, klik link berikut untuk menolak & memberi catatan:\n' + rejectUrl + '\n\n' +
+        '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
+
+      MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      Log.error('QuotationService.requestApproval', 'Gagal mengirim approval', err);
+      throw new AppError('QUOTATION_APPROVAL_FAILED', 'Gagal mengirim approval: ' + (err && err.message ? err.message : err));
+    }
+
+    // Stage tetap "In Progress" (lihat Config.DOCUMENT_STATUS_MAP.QUOTATION)
+    // — cuma Status yang maju ke "Waiting Approval", supaya composer
+    // otomatis terkunci sampai approver Approve/Reject lewat magic link.
+    DocumentService.updateStatus(docId, 'Waiting Approval');
+
+    return module.getDraft(docId);
+  };
+
+  function assertApprovalToken(docId, token) {
+    var header = QuotationHeaderRepository.findByDocId(docId);
+    if (!header || !header.Approval_Token || String(header.Approval_Token) !== String(token)) {
+      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
+    }
+    if (header.Approval_Resolved_At) {
+      throw new AppError('VALIDATION_ERROR', 'Permintaan approval ini sudah diputuskan sebelumnya.');
+    }
+    return header;
+  }
+
+  /**
+   * Dipanggil dari doPost (form upload tanda tangan di halaman
+   * ?action=quotation-approve, TIDAK ada login) — validasi token, tempel
+   * tanda tangan yang diupload approver ke box tanda tangan sisi YKB/KAI,
+   * cap PDF dengan "Approved by [Nama]", dan majukan Status dokumen ke
+   * "Signed" (status YANG SUDAH ADA, bukan status baru — sesuai keputusan
+   * produk: approval Quotation menggantikan alur tanda tangan manual).
+   *
+   * @param signatureBase64 string base64 (TANPA prefix data:...;base64,)
+   * @param signatureMimeType misal 'image/png'
+   */
+  module.approve = function (docId, token, signatureBase64, signatureMimeType) {
+    assertQuotationDocument(docId);
+    var header = assertApprovalToken(docId, token);
+
+    if (Utils.isBlank(signatureBase64)) {
+      throw new AppError('VALIDATION_ERROR', 'Tanda tangan wajib diupload untuk menyetujui Quotation ini.');
+    }
+
+    var approverName = header.Approval_Requested_Name || 'Head of B2B';
+    var now = new Date();
+    var footerNote = 'Approved by ' + approverName + ' — ' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd MMMM yyyy');
+    var mimeType = signatureMimeType || 'image/png';
+    var signatureDataUri = 'data:' + mimeType + ';base64,' + signatureBase64;
+
+    var pdf;
+    var signatureFile;
+    try {
+      // Simpan file tanda tangan asli juga ke Drive (arsip/jejak audit) —
+      // TIDAK memengaruhi PDF (yang dibaca dari signatureDataUri langsung),
+      // murni supaya file mentahnya tersimpan kalau suatu saat dibutuhkan.
+      var bytes = Utilities.base64Decode(signatureBase64);
+      var blob = Utilities.newBlob(bytes, mimeType, 'Signature - ' + docId);
+      var folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
+      signatureFile = folder.createFile(blob);
+
+      pdf = generateAndStorePdf(docId, footerNote, signatureDataUri);
+    } catch (err) {
+      Log.error('QuotationService.approve', 'Gagal menyelesaikan approval', err);
+      throw new AppError('QUOTATION_APPROVAL_FAILED', 'Gagal menyelesaikan approval: ' + (err && err.message ? err.message : err));
+    }
+
+    QuotationHeaderRepository.patchApprovalFields(docId, {
+      Approved_By: approverName,
+      Approved_At: now,
+      Approval_Resolved_At: now,
+      Signature_File_Id: signatureFile ? signatureFile.getId() : '',
+      Pdf_File_Id: pdf.fileId,
+      Pdf_File_Url: pdf.url
+    });
+
+    DocumentService.updateStatus(docId, 'Signed');
+
+    return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
+  };
+
+  /**
+   * Dipanggil dari doGet ?action=quotation-reject-submit (form kecil tanpa
+   * login yang dibuka lewat magic link ?action=quotation-reject di email)
+   * — simpan alasan/wording penolakan, mundurkan Status ke "Revision"
+   * (status yang SUDAH ADA di Config.DOCUMENT_STATUS_MAP.QUOTATION) supaya
+   * consultant tahu harus revisi dulu sebelum bisa Request Approval lagi.
+   * Sama pola persis dengan CorService.reject.
+   */
+  module.reject = function (docId, token, wording) {
+    assertQuotationDocument(docId);
+    var header = assertApprovalToken(docId, token);
+    if (Utils.isBlank(wording)) {
+      throw new AppError('VALIDATION_ERROR', 'Alasan/catatan revisi wajib diisi.');
+    }
+
+    var now = new Date();
+    QuotationHeaderRepository.patchApprovalFields(docId, {
+      Rejection_Note: wording,
+      Approval_Resolved_At: now
+    });
+
+    DocumentService.updateStatus(docId, 'Revision');
+
+    return { docId: docId, rejectedBy: header.Approval_Requested_Name || 'Head of B2B' };
   };
 
   return module;
