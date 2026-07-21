@@ -54,6 +54,7 @@
   </select>
 
   <button class="filter-reset" onclick="resetDocFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="docRefreshBtn" onclick="refreshAllDocumentData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
 </div>
 
 <div id="docTableError" class="error"></div>
@@ -361,6 +362,7 @@
         docsLoaded = true;
         allDocuments = res.data;
         renderDocPipeline();
+        refreshOpenDrawerIfNeeded();
       })
       .withFailureHandler(function (err) {
         if (!docBootstrapRetried) return;
@@ -554,6 +556,28 @@
     renderDocPipeline();
   }
 
+  // Jaring pengaman manual — halaman ini "Load Once, Filter Local" (lihat
+  // catatan di openDocDetail), jadi kalau tab sudah lama terbuka sementara
+  // ada Project/Client/Dokumen baru dari tempat lain, snapshot di memori
+  // tab ini basi sampai di-reload. Tombol ini menembak ulang SEMUA fetch
+  // tanpa perlu reload browser (filter/scroll/drawer yang sedang terbuka
+  // tidak ikut ke-reset).
+  function refreshAllDocumentData() {
+    var btn = document.getElementById('docRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    fetchDocuments();
+    fetchProjects();
+    fetchClients();
+    fetchTaxonomy();
+    fetchCorHeaders();
+    fetchCorTaxonomy();
+    fetchQuotationHeaders();
+    fetchQuotationTaxonomy();
+    setTimeout(function () {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh Data'; }
+    }, 1200);
+  }
+
   function paginateDocuments(list) {
     var pageSize = Number(document.getElementById('docPageSize').value);
     var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
@@ -683,6 +707,22 @@
   });
 
   // ---- Document Detail Drawer ----
+  // Halaman ini pakai pola "Load Once, Filter Local" — allDocuments/
+  // allProjects/allClients/allCorHeaders/allQuotationHeaders di-fetch SEKALI
+  // saat halaman dibuka, lalu semua render murni dari array itu di memori
+  // browser (tidak pernah sync ulang sendiri). Kalau tab ini sudah lama
+  // terbuka sementara ada Project/Client/dokumen BARU dibuat di tempat lain
+  // (tab lain, sesi lain), array di memori tab ini jadi snapshot basi — join
+  // project/client gagal (nama Client tampil "-") dan tombol aksi
+  // COR/Quotation ikut salah karena header-nya juga belum ada di snapshot.
+  // Reload browser (F5) memperbaikinya karena itu memaksa fetch ulang dari
+  // nol — jadi solusinya di sini: SETIAP kali drawer detail dibuka, tembak
+  // ulang fetch yang relevan di latar belakang (bukan cuma andalkan array
+  // lama). Begitu hasilnya datang, refreshOpenDrawerIfNeeded() yang sudah
+  // ter-pasang di masing-masing fetch success handler otomatis me-render
+  // ulang drawer ini dengan data terbaru — drawer langsung tampil dulu pakai
+  // data yang ada (instan, tidak nunggu), lalu "menyusul" akurat begitu
+  // fetch ulang ini selesai.
   function openDocDetail(docId) {
     var doc = allDocuments.filter(function (d) { return d.Doc_ID === docId; })[0];
     if (!doc) return;
@@ -690,6 +730,12 @@
     renderDocDetailDrawer(doc);
     document.getElementById('docDetailDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
+
+    fetchDocuments();
+    fetchProjects();
+    fetchClients();
+    fetchCorHeaders();
+    fetchQuotationHeaders();
   }
   function closeDocDetail() {
     document.getElementById('docDetailDrawer').classList.remove('open');
