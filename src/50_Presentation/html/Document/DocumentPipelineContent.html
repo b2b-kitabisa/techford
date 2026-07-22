@@ -145,9 +145,10 @@
 
     <div class="drawer-section" id="docQuotationActionWrap" style="display:none;">
       <span class="taxonomy-label">Pengerjaan Quotation</span>
-      <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+      <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <span class="drawer-field-label" style="margin:0;">Status:</span>
         <span id="docQuotationStatusBadge" class="cor-status-badge">-</span>
+        <span style="font-size:11px; color:var(--text-faint);" id="docQuotationNumberDisplay"></span>
       </div>
       <div class="placeholder-note" id="docQuotationApprovalNote" style="display:none;"></div>
       <div style="margin-top:10px; display:flex; gap:8px;">
@@ -155,10 +156,12 @@
         <button class="btn-outline" id="docQuotationViewBtn" onclick="openQuotationPreview()" style="display:none; flex:1;">👁️ Lihat Quotation</button>
       </div>
       <div class="placeholder-note" id="docQuotationActionNote">Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
-      <div style="margin-top:10px; display:flex; gap:8px;">
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-outline" id="docQuotationSignedBtn" onclick="submitQuotationMarkSigned()" style="display:none; flex:1; color:#1a9c4b; border-color:#a8cebc;">✅ Tandai Signed</button>
+        <button class="btn-outline" id="docQuotationRevisionBtn" onclick="submitQuotationMarkRevision()" style="display:none; flex:1; color:#c98a00; border-color:#ffe69c;">🔁 Tandai Revision</button>
         <button class="btn-outline" id="docQuotationLossBtn" onclick="submitQuotationMarkLoss()" style="flex:1; color:#c5221f; border-color:#f09595;">❌ Tandai LOSS</button>
       </div>
-      <div class="placeholder-note">Status Quotation mengikuti aktivitas sistem secara otomatis (Drafting → Waiting Approval → Revision/Approved). Setelah disetujui, dokumen dikirim &amp; ditindaklanjuti manual lewat email ke client — satu-satunya status yang bisa diubah manual di sini adalah LOSS (kalau deal batal).</div>
+      <div class="placeholder-note">Status Quotation mengikuti aktivitas sistem secara otomatis sampai "Approved" (Drafting → Waiting Approval → Revision/Approved). Setelah itu, admin mengirim dokumen ke client secara manual di luar sistem — 3 tombol di atas dipakai untuk mencatat hasilnya: <strong>Signed</strong> (client sudah tanda tangan), <strong>Revision</strong> (client minta revisi di luar sistem), atau <strong>LOSS</strong> (deal batal).</div>
     </div>
 
     <div class="drawer-section" id="docStatusUpdateSection">
@@ -987,7 +990,7 @@
     var viewBtn = document.getElementById('docQuotationViewBtn');
     var note = document.getElementById('docQuotationActionNote');
     if (header) {
-      btn.innerText = '▶️ Lanjutkan Quotation (' + header.Quotation_Number + ')';
+      btn.innerText = '▶️ Lanjutkan Quotation';
       note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
       viewBtn.style.display = '';
     } else {
@@ -995,6 +998,10 @@
       note.innerText = 'Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
       viewBtn.style.display = 'none';
     }
+
+    // Nomor Quotation dipindah ke sini (info saja) — tidak lagi ikut nempel
+    // di teks tombol supaya tombolnya tetap ringkas.
+    document.getElementById('docQuotationNumberDisplay').innerText = header && header.Quotation_Number ? ('No: ' + header.Quotation_Number) : '';
 
     var badge = document.getElementById('docQuotationStatusBadge');
     var color = QUOTATION_STATUS_COLORS[doc.Status] || QUOTATION_STATUS_COLORS['Not Started'];
@@ -1016,16 +1023,57 @@
       approvalNote.style.display = 'none';
     }
 
+    // "Tandai Signed" hanya muncul begitu Head of B2B sudah Approved —
+    // client menandatangani di luar sistem (email manual), admin yang
+    // mencatat hasilnya di sini begitu dokumen tanda tangan balik diterima.
+    var signedBtn = document.getElementById('docQuotationSignedBtn');
+    signedBtn.style.display = doc.Status === 'Approved' ? '' : 'none';
+
+    // "Tandai Revision" muncul setelah Approved ATAU Signed — dipakai kalau
+    // client (di luar sistem) menolak/minta revisi SETELAH internal approval
+    // Head of B2B selesai (beda dari reject lewat magic-link email, yang
+    // hanya berlaku SEBELUM Approved, selama masih Waiting Approval).
+    var revisionBtn = document.getElementById('docQuotationRevisionBtn');
+    revisionBtn.style.display = (doc.Status === 'Approved' || doc.Status === 'Signed') ? '' : 'none';
+
     var lossBtn = document.getElementById('docQuotationLossBtn');
     lossBtn.disabled = doc.Status === 'LOSS';
     lossBtn.innerText = doc.Status === 'LOSS' ? '❌ Sudah LOSS' : '❌ Tandai LOSS';
   }
 
-  // "Tandai LOSS" — SATU-SATUNYA kontrol status manual yang tersisa untuk
-  // Quotation (lihat Config.DOCUMENT_STATUS_MAP.QUOTATION & diagram alur
-  // yang dikirim user) — proses "Client Email" (kirim ke client, tunggu
-  // tanda tangan balik) dilakukan manual di luar sistem oleh admin; kalau
-  // deal itu batal, admin menandainya LOSS lewat sini.
+  function submitQuotationMarkSigned() {
+    if (!currentDocDrawerId) return;
+    if (!techfordConfirm('Tandai Quotation ini sebagai Signed? Pastikan dokumen tanda tangan dari client sudah benar-benar diterima.')) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) { alert('Gagal update status: ' + ((res && res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        allDocuments = res.data;
+        var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+        if (doc) renderDocDetailDrawer(doc);
+        renderDocPipeline();
+      })
+      .withFailureHandler(function (err) { alert('Gagal update status: ' + (err && err.message ? err.message : err)); })
+      .document_updateStatus(currentDocDrawerId, 'Signed');
+  }
+
+  function submitQuotationMarkRevision() {
+    if (!currentDocDrawerId) return;
+    if (!techfordConfirm('Tandai Quotation ini sebagai Revision? Consultant akan bisa mengedit draft & Request Approval lagi.')) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) { alert('Gagal update status: ' + ((res && res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        allDocuments = res.data;
+        var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
+        if (doc) renderDocDetailDrawer(doc);
+        renderDocPipeline();
+      })
+      .withFailureHandler(function (err) { alert('Gagal update status: ' + (err && err.message ? err.message : err)); })
+      .document_updateStatus(currentDocDrawerId, 'Revision');
+  }
+
+  // "Tandai LOSS" — proses "Client Email" (kirim ke client, tunggu tanda
+  // tangan balik) dilakukan manual di luar sistem oleh admin; kalau deal
+  // itu batal, admin menandainya LOSS lewat sini.
   function submitQuotationMarkLoss() {
     if (!currentDocDrawerId) return;
     if (!techfordConfirm('Tandai Quotation ini sebagai LOSS? Deal untuk dokumen ini dianggap tidak berlanjut.')) return;

@@ -679,10 +679,39 @@
   // ulang sejak fitur rich-text ini ada, jadi belum mengandung tag HTML),
   // dikonversi juga; kalau sudah HTML (hasil edit rich-text), dipakai apa
   // adanya.
+  // Teks default (Config.QUOTATION_DEFAULTS) menandai daftar bernomor
+  // dengan baris "1. ...", "2. ..." dst secara manual (plain text) —
+  // supaya begitu masuk ke rich-text editor benar-benar jadi <ol><li> asli
+  // (bukan cuma angka yang diketik manual di tengah paragraf), setiap blok
+  // (dipisah baris kosong) di-scan baris demi baris: baris yang cocok pola
+  // "N. ..." memulai <li> baru, baris SESUDAHNYA (sampai baris bernomor
+  // berikutnya) dianggap kelanjutan/deskripsi <li> itu (lihat pola "1. Judul
+  // \nDeskripsi" di firstStatement). Baris di awal blok yang belum bernomor
+  // (misal judul section "Payment Scheme:") tetap jadi paragraf biasa di
+  // atas <ol>-nya.
   function plainToHtml(text) {
     if (!text) return '';
-    return String(text).split(/\n\n+/).map(function (para) {
-      return '<p>' + escQo(para).replace(/\n/g, '<br>') + '</p>';
+    return String(text).split(/\n\n+/).map(function (block) {
+      var lines = block.split('\n');
+      var preLines = [];
+      var listItems = [];
+      var inList = false;
+      lines.forEach(function (line) {
+        var m = line.match(/^\d+\.\s+(.*)$/);
+        if (m) {
+          inList = true;
+          listItems.push(escQo(m[1]));
+        } else if (inList && listItems.length) {
+          listItems[listItems.length - 1] += '<br>' + escQo(line);
+        } else {
+          preLines.push(escQo(line));
+        }
+      });
+      var html = preLines.length ? '<p>' + preLines.join('<br>') + '</p>' : '';
+      if (listItems.length) {
+        html += '<ol>' + listItems.map(function (li) { return '<li>' + li + '</li>'; }).join('') + '</ol>';
+      }
+      return html;
     }).join('');
   }
   function valueToHtml(value) {
