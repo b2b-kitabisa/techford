@@ -202,6 +202,10 @@
   .btn-sync:disabled { opacity: 0.6; cursor: default; }
 
   .content-area { padding: 24px; }
+  /* Dipasang sebentar oleh TechfordNav (router SPA, lihat Shell.html) saat
+     pindah section — konten lama meredup halus sambil fragment baru
+     di-fetch, bukan langsung kosong/berkedip. */
+  .content-area.spa-loading { opacity: 0.4; pointer-events: none; transition: opacity 0.15s ease; }
 
   /* ---- Stat cards ---- */
   .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }

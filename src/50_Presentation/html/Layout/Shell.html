@@ -33,7 +33,7 @@
                    var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
               ?>
                 <? if (item.enabled) { ?>
-                  <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>">
+                  <a class="<?= classes ?>" data-page="<?= item.page ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>" onclick="return TechfordNav.onSidebarClick(event, '<?= item.page ?>');">
                     <span><?= item.label ?></span>
                     <? if (item.badge) { ?><span class="nav-badge"><?= item.badge ?></span><? } ?>
                   </a>
@@ -55,20 +55,18 @@
       <header class="topbar">
         <div class="topbar-left">
           <button class="icon-btn" onclick="toggleSidebar()" title="Tampilkan/sembunyikan menu">☰</button>
-          <div class="breadcrumb">
+          <div class="breadcrumb" id="topbarBreadcrumb">
             <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
             <? if (breadcrumbParent) { ?><span class="breadcrumb-muted"><?= breadcrumbParent ?></span><span class="breadcrumb-sep">›</span><? } ?>
             <span class="breadcrumb-current"><?= pageTitle ?></span>
           </div>
         </div>
         <div class="topbar-right">
-          <div class="topbar-actions"><?!= headerActions ?></div>
-          <? if (helpText) { ?>
-            <div class="help-tooltip-wrap">
-              <button class="icon-btn">?</button>
-              <div class="help-tooltip"><?!= helpText ?></div>
-            </div>
-          <? } ?>
+          <div class="topbar-actions" id="topbarActions"><?!= headerActions ?></div>
+          <div class="help-tooltip-wrap" id="topbarHelpWrap" <? if (!helpText) { ?>style="display:none;"<? } ?>>
+            <button class="icon-btn">?</button>
+            <div class="help-tooltip" id="topbarHelpText"><?!= helpText ?></div>
+          </div>
           <button class="icon-btn" title="Notifikasi">🔔</button>
           <div class="user-menu-wrap">
             <div class="avatar-circle" id="currentUserAvatar" onclick="toggleUserMenu()">U</div>
@@ -79,7 +77,7 @@
           </div>
         </div>
       </header>
-      <main class="content-area"><?!= content ?></main>
+      <main class="content-area" id="mainContent"><?!= content ?></main>
     </div>
   </div>
 
@@ -181,6 +179,139 @@
         });
       runner[fnName].apply(runner, args || []);
     }
+
+    /**
+     * TechfordNav — router SPA client-side. Dulu tiap klik menu sidebar
+     * (atau navigasi antar halaman lewat tombol, mis. "Kerjakan COR") selalu
+     * full browser reload (doGet render ulang Shell+Content dari nol).
+     * Sekarang klik sidebar cukup fetch FRAGMENT (app_getPageFragment) lewat
+     * google.script.run dan menukar isi #mainContent — sidebar/topbar/Shell
+     * tidak pernah ikut ke-render ulang, sehingga pindah section terasa
+     * instan tanpa reload URL (lihat app_getPageFragment di WebAppRouter.gs).
+     *
+     * Sengaja TIDAK mengurus history.pushState/popstate (tombol Back/Forward
+     * browser tidak perlu bisa dipakai untuk pindah antar section — sudah
+     * dikonfirmasi ke user) — history.replaceState hanya dipakai supaya URL
+     * di address bar tetap mencerminkan halaman yang sedang dibuka (untuk
+     * copy-paste/refresh manual), TANPA menambah entri history baru.
+     */
+    var TechfordNav = (function () {
+      var navigating = false;
+
+      // Script yang disuntik lewat innerHTML TIDAK otomatis dieksekusi
+      // browser — harus dibuat ulang sebagai elemen <script> baru di posisi
+      // yang sama supaya benar-benar jalan. Semua halaman Content di app ini
+      // konsisten pakai pola "if (document.readyState==='complete') initFn();
+      // else window.addEventListener('load', initFn)" untuk bootstrap-nya —
+      // karena readyState SELALU 'complete' di titik ini (dokumen utama sudah
+      // lama selesai load), re-exec script itu otomatis men-trigger ulang
+      // bootstrap halaman tanpa perlu convention/hook baru sama sekali.
+      function execScripts(container) {
+        var oldScripts = container.querySelectorAll('script');
+        for (var i = 0; i < oldScripts.length; i++) {
+          var oldScript = oldScripts[i];
+          var newScript = document.createElement('script');
+          for (var a = 0; a < oldScript.attributes.length; a++) {
+            newScript.setAttribute(oldScript.attributes[a].name, oldScript.attributes[a].value);
+          }
+          newScript.text = oldScript.text;
+          oldScript.parentNode.replaceChild(newScript, oldScript);
+        }
+      }
+
+      function setActiveSidebarLink(page) {
+        document.querySelectorAll('.sidebar-nav .nav-item').forEach(function (a) {
+          a.classList.toggle('nav-item-active', a.getAttribute('data-page') === page);
+        });
+      }
+
+      // Badge notifikasi (mis. jumlah New Leads) dihitung server-side setiap
+      // fragment di-fetch (lihat buildMenuWithBadges) — kalau tidak
+      // disinkronkan lagi ke sidebar di sini, angkanya akan tertinggal/stale
+      // setelah navigasi SPA (dulu selalu ikut ter-render ulang karena
+      // seluruh Shell reload tiap pindah halaman).
+      function syncSidebarBadges(menu) {
+        (menu || []).forEach(function (group) {
+          (group.items || []).forEach(function (item) {
+            var link = document.querySelector('.sidebar-nav .nav-item[data-page="' + item.page + '"]');
+            if (!link) return;
+            var badgeEl = link.querySelector('.nav-badge');
+            if (item.badge) {
+              if (!badgeEl) {
+                badgeEl = document.createElement('span');
+                badgeEl.className = 'nav-badge';
+                link.appendChild(badgeEl);
+              }
+              badgeEl.innerText = item.badge;
+            } else if (badgeEl) {
+              badgeEl.remove();
+            }
+          });
+        });
+      }
+
+      function applyFragment(page, params, res) {
+        var mainContent = document.getElementById('mainContent');
+        mainContent.innerHTML = res.data.contentHtml;
+        execScripts(mainContent);
+
+        document.title = 'Techford Platform - ' + res.data.pageTitle;
+        var breadcrumbHtml = '';
+        if (res.data.breadcrumbGroup) breadcrumbHtml += '<span class="breadcrumb-muted">' + res.data.breadcrumbGroup + '</span><span class="breadcrumb-sep">›</span>';
+        if (res.data.breadcrumbParent) breadcrumbHtml += '<span class="breadcrumb-muted">' + res.data.breadcrumbParent + '</span><span class="breadcrumb-sep">›</span>';
+        breadcrumbHtml += '<span class="breadcrumb-current">' + res.data.pageTitle + '</span>';
+        document.getElementById('topbarBreadcrumb').innerHTML = breadcrumbHtml;
+        document.getElementById('topbarActions').innerHTML = res.data.headerActions || '';
+        var helpWrap = document.getElementById('topbarHelpWrap');
+        helpWrap.style.display = res.data.helpText ? '' : 'none';
+        document.getElementById('topbarHelpText').innerHTML = res.data.helpText || '';
+
+        setActiveSidebarLink(page);
+        syncSidebarBadges(res.data.menu);
+
+        // Cosmetic saja (lihat catatan class TechfordNav) — tidak membuat
+        // entri history baru, jadi tidak mengubah perilaku tombol Back.
+        try {
+          var qs = Object.keys(params || {}).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); });
+          qs.unshift('page=' + encodeURIComponent(page));
+          history.replaceState(null, '', TECHFORD_WEB_APP_URL + '?' + qs.join('&'));
+        } catch (e) {}
+
+        mainContent.classList.remove('spa-loading');
+        navigating = false;
+      }
+
+      function navigateTo(page, params) {
+        if (navigating) return;
+        navigating = true;
+        var mainContent = document.getElementById('mainContent');
+        mainContent.classList.add('spa-loading');
+        gsRunWithRetry('app_getPageFragment', [page, params || {}], function (res) {
+          if (!res || !res.ok) {
+            mainContent.classList.remove('spa-loading');
+            navigating = false;
+            alert('Gagal memuat halaman: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.'));
+            return;
+          }
+          applyFragment(page, params, res);
+        }, function (err) {
+          mainContent.classList.remove('spa-loading');
+          navigating = false;
+          alert('Gagal memuat halaman: ' + (err && err.message ? err.message : err));
+        });
+      }
+
+      function onSidebarClick(event, page) {
+        // Klik dengan modifier (buka tab baru dst) atau klik kanan tetap
+        // pakai perilaku link normal (href), tidak dicegat router.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) return true;
+        event.preventDefault();
+        navigateTo(page, {});
+        return false;
+      }
+
+      return { navigateTo: navigateTo, onSidebarClick: onSidebarClick };
+    })();
 
     // Freeze halaman selama proses save/update/request ke server sedang
     // berjalan (dipanggil di setiap aksi tulis, sebelum google.script.run

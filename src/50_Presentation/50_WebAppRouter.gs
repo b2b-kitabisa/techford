@@ -151,6 +151,37 @@ function doGet(e) {
 }
 
 /**
+ * SPA fragment endpoint — dipanggil client (router di Shell.html) lewat
+ * google.script.run setiap kali pindah menu sidebar, MENGGANTIKAN full page
+ * reload doGet biasa. Merender ULANG persis logika yang sama dengan doGet
+ * (lookup ROUTES, evaluate content template dengan queryParams) tapi TANPA
+ * bungkus Shell — shell (sidebar/topbar) sudah ada di browser dan tidak
+ * perlu dirender ulang, cukup metadata yang dipasang ulang oleh client
+ * (title, breadcrumb, headerActions, badge menu terbaru).
+ */
+function app_getPageFragment(page, queryParams) {
+  return ErrorHandler.handle('WebAppRouter.getPageFragment', function () {
+    var route = ROUTES[page];
+    if (!route) throw new AppError('NOT_FOUND', 'Halaman tidak ditemukan: ' + page);
+
+    var contentTemplate = HtmlService.createTemplateFromFile(route.content);
+    contentTemplate.queryParams = queryParams || {};
+    var contentHtml = contentTemplate.evaluate().getContent();
+
+    return {
+      page: page,
+      contentHtml: contentHtml,
+      pageTitle: route.title,
+      headerActions: route.headerActions || '',
+      helpText: route.helpText || '',
+      breadcrumbGroup: route.breadcrumbGroup || findBreadcrumbGroup(page),
+      breadcrumbParent: route.breadcrumbParent || '',
+      menu: buildMenuWithBadges()
+    };
+  });
+}
+
+/**
  * Halaman konfirmasi sederhana untuk magic link approval COR di email
  * (?action=cor-approve&docId=...&token=...) — TIDAK pakai Shell (bukan
  * bagian dari SPA, diklik dari luar aplikasi/klien email, tidak perlu
