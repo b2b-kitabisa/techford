@@ -541,6 +541,16 @@
   .techford-loading-text { font-size: 13px; font-weight: 600; color: var(--text-muted); }
   @keyframes techford-spin { to { transform: rotate(360deg); } }
 
+  /* ---- Inline loading indicator (dipakai di baris "Memuat data..." tabel,
+     preview panel, dst — supaya keliatan JELAS sedang loading, bukan cuma
+     teks polos yang gampang kelewat/terlihat seperti state kosong). ---- */
+  .inline-spinner {
+    display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid var(--border-soft); border-top-color: var(--color-cerulean);
+    animation: techford-spin 0.7s linear infinite; vertical-align: middle; margin-right: 7px;
+  }
+  .empty-row.loading-row td { color: var(--text-muted); }
+
   /* ---- Success Popup ---- */
   .success-overlay {
     position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);

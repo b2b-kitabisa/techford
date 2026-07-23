@@ -197,6 +197,16 @@
      */
     var TechfordNav = (function () {
       var navigating = false;
+      // Cache fragment HTML per halaman (HANYA untuk navigasi sidebar biasa
+      // tanpa param tambahan, mis. bukan cor-calculator/quotation-composer
+      // yang isinya beda-beda per docId) — supaya kunjungan ULANG ke
+      // halaman yang sama terasa instan (skip RPC round-trip sepenuhnya,
+      // yang sebelumnya membuat perpindahan section masih terasa lebih
+      // lambat dari referensi video walau sudah tanpa reload). Data di
+      // dalam halaman itu SENDIRI tetap selalu di-fetch ulang segar setiap
+      // kunjungan (lihat catatan execScripts) — yang di-cache cuma
+      // shell/skeleton HTML-nya, bukan datanya.
+      var fragmentCache = {};
 
       // Script yang disuntik lewat innerHTML TIDAK otomatis dieksekusi
       // browser — harus dibuat ulang sebagai elemen <script> baru di posisi
@@ -281,23 +291,46 @@
         navigating = false;
       }
 
+      function fetchFragment(page, params, onSuccess, onFailure) {
+        gsRunWithRetry('app_getPageFragment', [page, params || {}], function (res) {
+          if (!res || !res.ok) { onFailure((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.'); return; }
+          onSuccess(res);
+        }, function (err) {
+          onFailure(err && err.message ? err.message : err);
+        });
+      }
+
       function navigateTo(page, params) {
         if (navigating) return;
-        navigating = true;
+        params = params || {};
+        var cacheKey = Object.keys(params).length === 0 ? page : null;
         var mainContent = document.getElementById('mainContent');
+
+        if (cacheKey && fragmentCache[cacheKey]) {
+          // Instan — langsung pakai HTML shell yang sudah pernah di-fetch,
+          // tanpa nunggu RPC sama sekali. Bootstrap halaman (execScripts)
+          // tetap jalan seperti biasa jadi datanya tetap selalu segar.
+          applyFragment(page, params, { data: fragmentCache[cacheKey] });
+          // Refresh cache + badge sidebar diam-diam di background — TIDAK
+          // menyentuh #mainContent lagi (supaya tidak menimpa input yang
+          // sedang diketik user kalau mereka masih di halaman ini saat
+          // respons ini datang balik).
+          fetchFragment(page, params, function (res) {
+            fragmentCache[cacheKey] = res.data;
+            syncSidebarBadges(res.data.menu);
+          }, function () {});
+          return;
+        }
+
+        navigating = true;
         mainContent.classList.add('spa-loading');
-        gsRunWithRetry('app_getPageFragment', [page, params || {}], function (res) {
-          if (!res || !res.ok) {
-            mainContent.classList.remove('spa-loading');
-            navigating = false;
-            alert('Gagal memuat halaman: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.'));
-            return;
-          }
+        fetchFragment(page, params, function (res) {
+          if (cacheKey) fragmentCache[cacheKey] = res.data;
           applyFragment(page, params, res);
-        }, function (err) {
+        }, function (message) {
           mainContent.classList.remove('spa-loading');
           navigating = false;
-          alert('Gagal memuat halaman: ' + (err && err.message ? err.message : err));
+          alert('Gagal memuat halaman: ' + message);
         });
       }
 

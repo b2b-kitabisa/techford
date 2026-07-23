@@ -71,7 +71,7 @@
       </tr>
     </thead>
     <tbody id="docTableBody">
-      <tr class="empty-row"><td colspan="5">Memuat data...</td></tr>
+      <tr class="empty-row loading-row"><td colspan="5"><span class="inline-spinner"></span>Memuat data...</td></tr>
     </tbody>
   </table>
 </div>
@@ -232,7 +232,7 @@
 <div class="confirm-overlay" id="corPreviewModal">
   <div class="confirm-box" style="width:880px; max-width:96vw;">
     <h3>Lihat COR</h3>
-    <div id="corPreviewContent" class="cor-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;">Memuat...</div>
+    <div id="corPreviewContent" class="cor-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;"><span class="inline-spinner"></span>Memuat...</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeCorPreview()">Tutup</button>
     </div>
@@ -243,7 +243,7 @@
 <div class="confirm-overlay" id="quotationPreviewModal">
   <div class="confirm-box" style="width:880px; max-width:96vw;">
     <h3>Lihat Quotation</h3>
-    <div id="quotationPreviewContent" class="qo-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;">Memuat...</div>
+    <div id="quotationPreviewContent" class="qo-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;"><span class="inline-spinner"></span>Memuat...</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeQuotationPreview()">Tutup</button>
     </div>
@@ -914,7 +914,7 @@
   function openCorPreview() {
     if (!currentDocDrawerId) return;
     ensureCorReportStyle();
-    document.getElementById('corPreviewContent').innerText = 'Memuat...';
+    document.getElementById('corPreviewContent').innerHTML = '<span class="inline-spinner"></span>Memuat...';
     document.getElementById('corPreviewModal').classList.add('open');
     var docId = currentDocDrawerId;
 
@@ -1111,7 +1111,7 @@
   function openQuotationPreview() {
     if (!currentDocDrawerId) return;
     ensureQuotationReportStyle();
-    document.getElementById('quotationPreviewContent').innerText = 'Memuat...';
+    document.getElementById('quotationPreviewContent').innerHTML = '<span class="inline-spinner"></span>Memuat...';
     document.getElementById('quotationPreviewModal').classList.add('open');
     var docId = currentDocDrawerId;
 
