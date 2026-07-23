@@ -99,7 +99,9 @@ var CorService = (function (module) {
         Rejection_Note: header.Rejection_Note || '',
         Approved_By: header.Approved_By || '',
         Approved_At: header.Approved_At || '',
-        Pdf_File_Url: header.Pdf_File_Url || ''
+        Pdf_File_Url: header.Pdf_File_Url || '',
+        Gross_Up_Snapshot: header.Gross_Up_Snapshot || '',
+        Converted_At: header.Converted_At || ''
       } : null,
       funds: CorFundRepository.findByDocId(docId),
       costs: CorCostRepository.findByDocId(docId),
@@ -166,6 +168,23 @@ var CorService = (function (module) {
       Link_Campaigns: JSON.stringify((input.linkCampaigns || []).filter(function (l) { return l && String(l).trim(); })),
       Output_File_Id_Client: existing ? existing.Output_File_Id_Client : '',
       Output_File_Id_Campaign: existing ? existing.Output_File_Id_Campaign : '',
+      // upsert() mengganti SELURUH baris header (bukan patch sebagian
+      // seperti patchApprovalFields) — field approval & Gross_Up_Snapshot/
+      // Converted_At (diisi convertToGrossDown) WAJIB dibawa terus dari
+      // existing di sini, kalau tidak akan tertimpa kosong setiap kali
+      // "Simpan Draft" diklik lagi setelah approval/konversi pernah terjadi.
+      Approval_Token: existing ? existing.Approval_Token : '',
+      Approval_Requested_To: existing ? existing.Approval_Requested_To : '',
+      Approval_Requested_Name: existing ? existing.Approval_Requested_Name : '',
+      Approval_Requested_At: existing ? existing.Approval_Requested_At : '',
+      Approval_Resolved_At: existing ? existing.Approval_Resolved_At : '',
+      Rejection_Note: existing ? existing.Rejection_Note : '',
+      Approved_By: existing ? existing.Approved_By : '',
+      Approved_At: existing ? existing.Approved_At : '',
+      Pdf_File_Id: existing ? existing.Pdf_File_Id : '',
+      Pdf_File_Url: existing ? existing.Pdf_File_Url : '',
+      Gross_Up_Snapshot: existing ? existing.Gross_Up_Snapshot : '',
+      Converted_At: existing ? existing.Converted_At : '',
       Created_By: existing ? existing.Created_By : (createdBy || ''),
       Created_Date: existing ? existing.Created_Date : now,
       Last_Updated: now
@@ -214,6 +233,86 @@ var CorService = (function (module) {
     CorMarginRepository.replaceForDoc(docId, marginRows);
 
     advanceStatusToDrafting(docId);
+
+    return module.getDraft(docId);
+  };
+
+  /**
+   * Konversi COR Gross Up (estimasi) -> Gross Down (final, yang benar-benar
+   * dipakai). Keputusan produk: Gross Up HANYA alat bantu consultant
+   * menghitung angka penawaran ke client — begitu client setuju satu angka,
+   * COR sungguhan yang jalan lewat approval Head of B2B WAJIB Gross Down.
+   *
+   * Mekanisme (SATU dokumen, Doc_ID sama — Cor_Method di-flip, bukan bikin
+   * dokumen baru):
+   * 1. Hitung ulang di server (bukan percaya angka client) hasil akhir
+   *    Gross Up ("Gross Up Platform & Tech Fee" / guFinal) dari cost/margin/
+   *    routing yang SUDAH tersimpan — pakai CorReportRenderer.computeGU,
+   *    SATU sumber rumus yang sama dipakai buat PDF.
+   * 2. Simpan snapshot lengkap (cost, margin, routing, & seluruh angka hasil
+   *    Gross Up) ke Gross_Up_Snapshot (JSON, arsip/riwayat "dulu ditawarkan
+   *    berapa ke client") + Converted_At, sebelum apa pun berubah.
+   * 3. Cor_Method -> GROSS_DOWN, Single_Fund_Type -> 'CLIENT' (dana tunggal,
+   *    bukan Mix Fund).
+   * 4. Buat SATU baris COR_Fund baru: Fund_Type CLIENT, Nominal = guFinal.
+   *
+   * COR_Cost & COR_Margin SENGAJA TIDAK disentuh/disalin — itu tabel yang
+   * SAMA dipakai kedua metode (baris Cost/Margin Gross Up sudah tersimpan
+   * dengan Cor_Tab=CLIENT), begitu Cor_Method jadi GROSS_DOWN baris itu
+   * otomatis terbaca kalkulator Gross Down. Ini juga yang membuat pilihan
+   * margin ikut terbawa otomatis tanpa kode tambahan.
+   */
+  module.convertToGrossDown = function (docId) {
+    assertCorDocument(docId);
+    var header = CorHeaderRepository.findByDocId(docId);
+    if (!header) {
+      throw new AppError('VALIDATION_ERROR', 'Draft COR ini belum pernah disimpan.');
+    }
+    if (header.Cor_Method !== Config.COR_METHOD.GROSS_UP) {
+      throw new AppError('VALIDATION_ERROR', 'Konversi cuma berlaku untuk COR yang masih bermetode Gross Up.');
+    }
+
+    var built = buildReportModel(docId);
+    var model = built.model;
+    var block = model.blocks[0];
+    var gu = CorReportRenderer.computeGU({
+      salItems: block.salItems,
+      baaItems: block.baaItems,
+      margin: block.margin,
+      marginComponents: model.marginComponents,
+      isViaSalset: model.isViaSalset,
+      ngoRatePct: model.guNgoRatePct,
+      pkp: model.pkp,
+      biayaPencairan: Number(model.entity.Biaya_Pencairan) || 0
+    });
+
+    var snapshot = {
+      convertedAt: new Date().toISOString(),
+      isViaSalset: model.isViaSalset,
+      vendorEntity: model.vendorEntity,
+      ngoRatePct: model.guNgoRatePct,
+      salItems: block.salItems,
+      baaItems: block.baaItems,
+      margin: block.margin,
+      result: gu
+    };
+
+    CorHeaderRepository.patchApprovalFields(docId, {
+      Cor_Method: Config.COR_METHOD.GROSS_DOWN,
+      Single_Fund_Type: 'CLIENT',
+      Gross_Up_Snapshot: JSON.stringify(snapshot),
+      Converted_At: new Date()
+    });
+
+    CorFundRepository.replaceForDoc(docId, [{
+      Fund_ID: Utils.generateId('FUND'),
+      Doc_ID: docId,
+      Fund_Type: Config.COR_FUND_TYPE.CLIENT,
+      Link_Campaign: '',
+      Nominal: Math.round(gu.guFinal) || 0,
+      Is_Zakat: false,
+      Sort_Order: 0
+    }]);
 
     return module.getDraft(docId);
   };
@@ -336,6 +435,16 @@ var CorService = (function (module) {
     var doc = assertCorDocument(docId);
     if (doc.Status === 'Not Started') {
       throw new AppError('VALIDATION_ERROR', 'COR ini belum pernah disimpan sebagai draft.');
+    }
+
+    // Gross Up murni alat estimasi buat nego consultant ke client — belum
+    // ada apa pun yang perlu disetujui Head of B2B di titik ini. Hanya COR
+    // Gross Down (baik yang dibuat langsung, atau hasil convertToGrossDown)
+    // yang boleh diajukan approval. Validasi ganda dengan UI (yang sudah
+    // menyembunyikan tombolnya) — server tetap menolak kalau somehow dipanggil.
+    var headerForMethodCheck = CorHeaderRepository.findByDocId(docId);
+    if (headerForMethodCheck && headerForMethodCheck.Cor_Method === Config.COR_METHOD.GROSS_UP) {
+      throw new AppError('VALIDATION_ERROR', 'COR ini masih Gross Up (estimasi) — convert ke Gross Down dulu sebelum Request Approval.');
     }
 
     var approver = EmployeeRepository.findAll().filter(function (e) {

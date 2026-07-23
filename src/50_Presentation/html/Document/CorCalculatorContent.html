@@ -108,6 +108,8 @@
       <div class="sub" id="corDocSubDisplay">Memuat data dokumen...</div>
     </div>
     <div style="display:flex; gap:8px;">
+      <button class="btn-outline" id="corGuArchiveBtn" onclick="openGrossUpArchive()" style="display:none;">📄 Lihat Estimasi Gross Up</button>
+      <button class="btn-outline" id="corConvertBtn" onclick="openConvertToGrossDown()" style="display:none;">🔁 Convert ke Gross Down</button>
       <button class="btn-outline" id="corPdfBtn" onclick="openPdfPreview()">🖨️ Download PDF</button>
       <button class="btn-outline" id="corRequestApprovalBtn" onclick="openRequestApproval()" style="display:none;">📨 Request Approval</button>
       <button class="btn-save" id="corSaveDraftBtn" onclick="submitSaveDraft()">💾 Simpan Draft</button>
@@ -116,6 +118,7 @@
 
   <div class="cor-status-banner" id="corRevisionBanner" style="display:none;"></div>
   <div class="cor-status-banner cor-status-banner-wait" id="corWaitingBanner" style="display:none;"></div>
+  <div class="cor-status-banner" id="corGuEstimateBanner" style="display:none; background:#e8f0fe; border:1px solid #aecbfa; color:#1a4ea8;"></div>
 
   <div id="corEditableWrap">
   <div class="cor-mtabs">
@@ -482,6 +485,35 @@
   </div>
 </div>
 
+<div class="confirm-overlay" id="corConvertModal">
+  <div class="confirm-box" style="width:480px; max-width:92vw;">
+    <h3>Convert ke Gross Down</h3>
+    <p style="margin-bottom:8px; font-size:13px; color:var(--text-muted);">Gross Up cuma alat estimasi nego ke client — begitu client setuju satu angka, COR sungguhan yang jalan lewat approval Head of B2B harus Gross Down. Klik convert kalau client SUDAH setuju angka ini.</p>
+    <p style="font-size:13px;">Yang akan terjadi:</p>
+    <ul style="font-size:13px; color:var(--text-muted); padding-left:20px; margin:0 0 10px;">
+      <li>Angka <strong>"Gross Up Platform &amp; Tech Fee"</strong> jadi nominal <strong>Dana Client</strong> di Gross Down.</li>
+      <li>Semua baris Cost &amp; pilihan Margin yang sudah diisi tetap dipakai (tidak perlu isi ulang).</li>
+      <li>Estimasi Gross Up saat ini disimpan sebagai arsip (bisa dilihat lagi lewat "📄 Lihat Estimasi Gross Up").</li>
+      <li>Tombol Request Approval baru aktif setelah ini.</li>
+    </ul>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeConvertToGrossDown()">Batal</button>
+      <button class="btn-save" id="corConvertSendBtn" onclick="submitConvertToGrossDown()">Ya, Convert</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="corGuArchiveModal">
+  <div class="confirm-box" style="width:520px; max-width:94vw;">
+    <h3>Estimasi Gross Up (Arsip)</h3>
+    <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Snapshot angka yang ditawarkan ke client SEBELUM dikonversi ke Gross Down — tidak berubah lagi walau data Gross Down direvisi setelahnya.</p>
+    <div id="corGuArchiveContent" style="max-height:60vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:14px; font-size:12.5px;">Memuat...</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeGrossUpArchive()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // ══════════════════════════ STATE ══════════════════════════
   var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {} };
@@ -615,9 +647,18 @@
     var wrap = document.getElementById('corEditableWrap');
     var waitBanner = document.getElementById('corWaitingBanner');
     var revBanner = document.getElementById('corRevisionBanner');
+    var guBanner = document.getElementById('corGuEstimateBanner');
+    var convertBtn = document.getElementById('corConvertBtn');
+    var archiveBtn = document.getElementById('corGuArchiveBtn');
+
+    // "📄 Lihat Estimasi Gross Up" tersedia begitu dokumen ini PERNAH
+    // dikonversi (arsipnya ada), terlepas dari status sekarang.
+    archiveBtn.style.display = (currentHeader && currentHeader.Gross_Up_Snapshot) ? '' : 'none';
 
     if (!currentDoc || currentDoc.Status === 'Not Started') {
       btn.style.display = 'none';
+      convertBtn.style.display = 'none';
+      guBanner.style.display = 'none';
       wrap.classList.remove('cor-locked');
       saveBtn.disabled = false;
       waitBanner.style.display = 'none';
@@ -625,6 +666,23 @@
       return;
     }
 
+    // Gross Up murni alat estimasi — Request Approval belum relevan sama
+    // sekali sampai dikonversi ke Gross Down (lihat convertToGrossDown di
+    // CorService). Tombol Convert muncul di sini, bukan Request Approval.
+    if (currentMethod === 'GROSS_UP') {
+      btn.style.display = 'none';
+      convertBtn.style.display = '';
+      guBanner.innerText = '🧮 Ini masih mode ESTIMASI (Gross Up) — belum bisa Request Approval. Kalau client sudah setuju angka ini, klik "Convert ke Gross Down" dulu.';
+      guBanner.style.display = '';
+      wrap.classList.remove('cor-locked');
+      saveBtn.disabled = false;
+      waitBanner.style.display = 'none';
+      revBanner.style.display = 'none';
+      return;
+    }
+
+    convertBtn.style.display = 'none';
+    guBanner.style.display = 'none';
     btn.style.display = '';
     var isWaiting = currentDoc.Status === 'Waiting Approval';
     wrap.classList.toggle('cor-locked', isWaiting);
@@ -654,6 +712,99 @@
       waitBanner.style.display = 'none';
       revBanner.style.display = 'none';
     }
+  }
+
+  // ══════════════════════════ CONVERT GROSS UP -> GROSS DOWN ══════════════════════════
+  function openConvertToGrossDown() {
+    if (!CALCULATOR_DOC_ID || !currentHeader) return;
+    document.getElementById('corConvertModal').classList.add('open');
+  }
+  function closeConvertToGrossDown() {
+    document.getElementById('corConvertModal').classList.remove('open');
+  }
+  function submitConvertToGrossDown() {
+    var btn = document.getElementById('corConvertSendBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengonversi...';
+    TechfordLoading.show('Mengonversi ke Gross Down...');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Ya, Convert';
+        if (!res) { return recheckConvertOutcome(); }
+        if (!res.ok) { alert('Gagal convert: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        applyConvertedDraft(res.data);
+      })
+      .withFailureHandler(function () {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Ya, Convert';
+        recheckConvertOutcome();
+      })
+      .cor_convertToGrossDown(CALCULATOR_DOC_ID);
+  }
+  // google.script.run kadang mengirim res=null walau server sudah 100%
+  // berhasil (pelajaran sama dari bug serupa di modul lain) — cek ulang
+  // draft (baca doang, aman diulang) dulu sebelum menyerah.
+  function recheckConvertOutcome() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok && res.data.header && res.data.header.Cor_Method === 'GROSS_DOWN') {
+          applyConvertedDraft(res.data);
+        } else {
+          alert('Gagal convert: tidak ada respons dari server. Silakan cek lagi sebelum coba ulang.');
+        }
+      })
+      .withFailureHandler(function () {
+        alert('Gagal convert: tidak ada respons dari server. Silakan refresh halaman untuk mengecek status.');
+      })
+      .cor_getDraft(CALCULATOR_DOC_ID);
+  }
+  function applyConvertedDraft(draft) {
+    closeConvertToGrossDown();
+    loadDraftIntoState(draft);
+    renderDocInfo();
+    setCorMethod('GROSS_DOWN');
+    alert('Berhasil dikonversi ke Gross Down — Dana Client sudah terisi otomatis dari hasil estimasi Gross Up.');
+  }
+
+  function openGrossUpArchive() {
+    var el = document.getElementById('corGuArchiveContent');
+    el.innerHTML = renderGrossUpArchive();
+    document.getElementById('corGuArchiveModal').classList.add('open');
+  }
+  function closeGrossUpArchive() {
+    document.getElementById('corGuArchiveModal').classList.remove('open');
+  }
+  function renderGrossUpArchive() {
+    if (!currentHeader || !currentHeader.Gross_Up_Snapshot) return '<em>Belum ada arsip.</em>';
+    var snap;
+    try { snap = JSON.parse(currentHeader.Gross_Up_Snapshot); } catch (e) { return '<em>Arsip rusak/tidak terbaca.</em>'; }
+    var costRows = [].concat(snap.salItems || [], snap.baaItems || []);
+    var costHtml = costRows.length
+      ? '<table style="width:100%; border-collapse:collapse; font-size:12px;">' +
+        '<tr><th style="text-align:left; border-bottom:1px solid var(--border-soft); padding:4px;">Keterangan</th>' +
+        '<th style="text-align:right; border-bottom:1px solid var(--border-soft); padding:4px;">Harga &times; Qty &times; Periode</th></tr>' +
+        costRows.map(function (r) {
+          return '<tr><td style="padding:4px; border-bottom:1px solid var(--border-softer);">' + escHtmlCor(r.label || '-') + '</td>' +
+            '<td style="padding:4px; text-align:right; border-bottom:1px solid var(--border-softer);">' + fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode + '</td></tr>';
+        }).join('') + '</table>'
+      : '<em>Tidak ada baris cost.</em>';
+
+    var result = snap.result || {};
+    return '<div style="margin-bottom:10px; font-size:11px; color:var(--text-faint);">Dikonversi pada ' + (snap.convertedAt ? new Date(snap.convertedAt).toLocaleString('id-ID') : '-') + '</div>' +
+      '<div class="cor-rrow"><span>Via SALSET</span><span class="v">' + (snap.isViaSalset ? 'Ya' : 'Tidak') + '</span></div>' +
+      '<div class="cor-rrow"><span>Vendor</span><span class="v">' + escHtmlCor(snap.vendorEntity || '-') + '</span></div>' +
+      '<div class="cor-rrow"><span>NGO Rate</span><span class="v">' + (snap.ngoRatePct || 0) + '%</span></div>' +
+      '<div class="cor-rrow"><span>Total Hasil Gross Up</span><span class="v">' + fmtRp(result.totalHasilGu) + '</span></div>' +
+      '<div class="cor-rrow"><span>Biaya Admin</span><span class="v">' + fmtRp(result.guAdmin) + '</span></div>' +
+      '<div class="cor-rrow" style="font-weight:700;"><span>Gross Up Platform &amp; Tech Fee</span><span class="v">' + fmtRp(result.guFinal) + '</span></div>' +
+      '<h4 style="margin:14px 0 6px; font-size:12px;">Cost</h4>' + costHtml;
+  }
+  function escHtmlCor(str) {
+    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function openRequestApproval() {

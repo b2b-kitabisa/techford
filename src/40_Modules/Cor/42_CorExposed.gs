@@ -20,3 +20,7 @@ function cor_saveDraft(docId, input, createdBy) {
 function cor_requestApproval(docId, approverEmployeeId, description, requestedBy) {
   return CorController.requestApproval(docId, approverEmployeeId, description, requestedBy);
 }
+
+function cor_convertToGrossDown(docId) {
+  return CorController.convertToGrossDown(docId);
+}

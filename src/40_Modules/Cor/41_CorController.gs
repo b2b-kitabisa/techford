@@ -45,5 +45,11 @@ var CorController = (function (module) {
     });
   };
 
+  module.convertToGrossDown = function (docId) {
+    return ErrorHandler.handle('CorController.convertToGrossDown', function () {
+      return CorService.convertToGrossDown(docId);
+    });
+  };
+
   return module;
 })(CorController || {});
