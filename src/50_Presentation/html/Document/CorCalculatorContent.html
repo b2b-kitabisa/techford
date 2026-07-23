@@ -1053,7 +1053,7 @@
     }
 
     funds = (draft.funds || []).map(function (f) {
-      return { idx: nextIdx(), type: f.Fund_Type, nominal: Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '' };
+      return { idx: nextIdx(), type: f.Fund_Type, nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '' };
     });
 
     var gdCosts = (draft.costs || []);
