@@ -36,6 +36,23 @@
   .container { max-width: 720px; margin: 0 auto; padding: 24px; }
   .error { color: #c5221f; }
 
+  /* ---- Textarea (base, elemen polos) ---- */
+  /* Banyak <textarea> tersebar di berbagai halaman (COR, Quotation, Sales
+     Pipeline, dst) tidak dibungkus class khusus sama sekali, jadi selama ini
+     tampil polos bawaan browser (kotak persegi, tanpa border-radius/focus
+     state) — beda jauh dari input/select yang semuanya sudah di-style per
+     konteks. Aturan berbasis elemen (bukan class) ini otomatis menjangkau
+     SEMUA textarea polos itu tanpa perlu ubah tiap file; textarea yang sudah
+     punya style scoped sendiri (mis. .drawer-edit-form textarea) tetap
+     menang karena selector class lebih spesifik. */
+  textarea {
+    font-family: inherit; font-size: 13px; padding: 9px 10px; color: var(--color-mineshaft);
+    border: 1px solid var(--border-soft); border-radius: 6px; resize: vertical;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  textarea:focus { outline: none; border-color: var(--color-cerulean); box-shadow: 0 0 0 3px var(--accent-tint-strong); }
+  textarea::placeholder { color: var(--text-faint); }
+
   /* ---- App Shell layout ---- */
   .app-shell { display: flex; min-height: 100vh; }
 
@@ -62,8 +79,23 @@
   .nav-group-label {
     font-size: 15px; font-weight: 800; color: var(--color-mineshaft);
     margin: 12px 16px 6px; padding: 0;
+    display: flex; align-items: center; justify-content: space-between; cursor: pointer;
   }
   .nav-group-divider { height: 1px; background: var(--border-softer); margin: 4px 16px 0; }
+  /* Klik label modul buat collapse/expand grup-nya (lihat toggleNavGroup di
+     Shell.html) — supaya sidebar tidak penuh kalau modulnya banyak. Status
+     collapse disimpan di localStorage per grup, dan grup yang berisi menu
+     yang sedang aktif tidak pernah otomatis di-collapse saat halaman dibuka
+     (lihat restoreNavGroupState), supaya user tidak kehilangan jejak. */
+  .nav-group-chevron {
+    font-size: 11px; color: var(--text-faint); transition: transform 0.18s ease; flex-shrink: 0;
+  }
+  .nav-group.collapsed .nav-group-chevron { transform: rotate(-90deg); }
+  .nav-group-items {
+    max-height: 800px; overflow: hidden;
+    transition: max-height 0.22s ease;
+  }
+  .nav-group.collapsed .nav-group-items { max-height: 0; }
   .nav-item {
     display: flex;
     align-items: center;
@@ -304,15 +336,27 @@
   body.drawer-open { overflow: hidden; }
 
   /* ---- Detail Drawer (side panel dari kanan) ---- */
+  /* display:none diganti opacity/visibility supaya bisa dikasih transisi —
+     overlay fade-in, panel slide-in dari kanan (translateX) — trigger-nya
+     tetap classList.add/remove('open') yang sama seperti sebelumnya, tidak
+     ada JS yang perlu diubah. */
   .drawer-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.4); z-index: 200;
+    position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.4); z-index: 200;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0s linear 0.2s;
   }
-  .drawer-overlay.open { display: block; }
+  .drawer-overlay.open {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transition: opacity 0.2s ease, visibility 0s linear 0s;
+  }
   .drawer-panel {
     position: absolute; top: 0; right: 0; height: 100%; width: 620px; max-width: 95vw;
     background: var(--color-white); box-shadow: -4px 0 16px rgba(var(--color-mineshaft-rgb), 0.2);
     display: flex; flex-direction: column; overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  .drawer-overlay.open .drawer-panel { transform: translateX(0); }
   .drawer-panel-wide { width: 820px; }
   .section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .form-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
@@ -453,12 +497,23 @@
   .btn-save:disabled { opacity: 0.6; cursor: default; }
 
   /* ---- Save Confirmation Dialog ---- */
+  /* Sama seperti drawer — display:none diganti opacity/visibility supaya
+     bisa dikasih animasi scale+fade masuk, trigger tetap classList.open. */
   .confirm-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);
+    position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);
     align-items: center; justify-content: center; z-index: 300;
+    display: flex; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.18s ease, visibility 0s linear 0.18s;
   }
-  .confirm-overlay.open { display: flex; }
-  .confirm-box { background: var(--color-white); border-radius: 8px; width: 360px; max-width: 90vw; padding: 24px; }
+  .confirm-overlay.open {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transition: opacity 0.18s ease, visibility 0s linear 0s;
+  }
+  .confirm-box {
+    background: var(--color-white); border-radius: 8px; width: 360px; max-width: 90vw; padding: 24px;
+    transform: scale(0.94); transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .confirm-overlay.open .confirm-box { transform: scale(1); }
   .confirm-box h3 { margin: 0 0 8px; }
   .confirm-box p { margin: 0 0 20px; font-size: 13px; color: var(--text-muted); }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
@@ -484,14 +539,21 @@
 
   /* ---- Success Popup ---- */
   .success-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);
+    position: fixed; inset: 0; background: rgba(var(--color-mineshaft-rgb), 0.5);
     align-items: center; justify-content: center; z-index: 500;
+    display: flex; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.18s ease, visibility 0s linear 0.18s;
   }
-  .success-overlay.open { display: flex; }
+  .success-overlay.open {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transition: opacity 0.18s ease, visibility 0s linear 0s;
+  }
   .success-box {
     background: var(--color-white); border-radius: 8px; width: 320px; max-width: 90vw;
     padding: 28px 24px; text-align: center;
+    transform: scale(0.94); transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  .success-overlay.open .success-box { transform: scale(1); }
   .success-icon {
     width: 48px; height: 48px; border-radius: 50%; background: var(--accent-tint-strong); color: var(--color-cerulean);
     font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center;

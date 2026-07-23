@@ -21,21 +21,28 @@
       <nav class="sidebar-nav">
         <? for (var g = 0; g < menu.length; g++) { ?>
           <? if (g > 0) { ?><div class="nav-group-divider"></div><? } ?>
-          <div class="nav-group-label"><?= menu[g].group ?></div>
-          <? for (var i = 0; i < menu[g].items.length; i++) {
-               var item = menu[g].items[i];
-               var isActive = item.page === activePage;
-               var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
-          ?>
-            <? if (item.enabled) { ?>
-              <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>">
-                <span><?= item.label ?></span>
-                <? if (item.badge) { ?><span class="nav-badge"><?= item.badge ?></span><? } ?>
-              </a>
-            <? } else { ?>
-              <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
-            <? } ?>
-          <? } ?>
+          <div class="nav-group" data-group="<?= menu[g].group ?>">
+            <div class="nav-group-label" onclick="toggleNavGroup(this)">
+              <span><?= menu[g].group ?></span>
+              <span class="nav-group-chevron">▾</span>
+            </div>
+            <div class="nav-group-items">
+              <? for (var i = 0; i < menu[g].items.length; i++) {
+                   var item = menu[g].items[i];
+                   var isActive = item.page === activePage;
+                   var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
+              ?>
+                <? if (item.enabled) { ?>
+                  <a class="<?= classes ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>">
+                    <span><?= item.label ?></span>
+                    <? if (item.badge) { ?><span class="nav-badge"><?= item.badge ?></span><? } ?>
+                  </a>
+                <? } else { ?>
+                  <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
+                <? } ?>
+              <? } ?>
+            </div>
+          </div>
         <? } ?>
       </nav>
 
@@ -108,6 +115,30 @@
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
     }
+
+    // Collapse/expand per grup modul di sidebar — status disimpan per grup
+    // (key = nama grup) di localStorage supaya tetap collapse/expand yang
+    // sama begitu pindah halaman (arsitektur app ini masih full-page-reload,
+    // jadi state JS biasa akan hilang tiap navigasi kalau tidak disimpan).
+    function navGroupStorageKey(groupName) { return 'techfordNavCollapsed:' + groupName; }
+    function toggleNavGroup(labelEl) {
+      var group = labelEl.parentElement;
+      var collapsed = group.classList.toggle('collapsed');
+      try { localStorage.setItem(navGroupStorageKey(group.getAttribute('data-group')), collapsed ? '1' : '0'); } catch (e) {}
+    }
+    (function restoreNavGroupState() {
+      document.querySelectorAll('.nav-group').forEach(function (group) {
+        // Grup yang sedang berisi menu aktif TIDAK di-collapse otomatis,
+        // walau tersimpan collapsed di localStorage — supaya user selalu
+        // langsung lihat halaman yang sedang dibuka di sidebar.
+        if (group.querySelector('.nav-item-active')) return;
+        try {
+          if (localStorage.getItem(navGroupStorageKey(group.getAttribute('data-group'))) === '1') {
+            group.classList.add('collapsed');
+          }
+        } catch (e) {}
+      });
+    })();
 
     // Pengaman terakhir sebelum aksi tulis (save/request/update) benar-benar
     // dikirim ke server — dipanggil dari halaman manapun (Sales Pipeline,
