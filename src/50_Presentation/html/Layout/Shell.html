@@ -118,6 +118,39 @@
       return window.confirm(message);
     }
 
+    // google.script.run kadang memanggil withSuccessHandler dengan res===null
+    // walau server-nya sendiri sukses & tidak melempar error sama sekali —
+    // glitch transport HtmlService, makin sering muncul kalau banyak
+    // google.script.run ditembak paralel bersamaan (lihat bootstrap tiap
+    // halaman yang fetch >5 hal sekaligus). Sebelumnya tiap halaman cuma
+    // punya retry manual utk fetch PERTAMA saat bootstrap — begitu bootstrap
+    // dianggap selesai, fetch berikutnya (refresh manual, sesudah simpan,
+    // dsb) langsung nyerah di percobaan pertama begitu kena glitch ini,
+    // sehingga tabel yang tadinya sudah terisi malah ditimpa pesan error.
+    // Helper generik ini dipakai di SEMUA pemanggilan google.script.run
+    // (bukan cuma bootstrap) supaya konsisten retry dulu sebelum benar2
+    // dianggap gagal.
+    function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, delayMs) {
+      if (retriesLeft == null) retriesLeft = 2;
+      if (delayMs == null) delayMs = 700;
+      var runner = google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res && retriesLeft > 0) {
+            setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+            return;
+          }
+          onSuccess(res);
+        })
+        .withFailureHandler(function (err) {
+          if (retriesLeft > 0) {
+            setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+            return;
+          }
+          onFailure(err);
+        });
+      runner[fnName].apply(runner, args || []);
+    }
+
     // Freeze halaman selama proses save/update/request ke server sedang
     // berjalan (dipanggil di setiap aksi tulis, sebelum google.script.run
     // dikirim, lalu di-hide lagi di success/failure handler-nya) — pakai

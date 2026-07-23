@@ -432,23 +432,27 @@
   }
 
   function fetchProjects() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res || !res.ok) {
-          if (!pipelineBootstrapRetried) return;
-          showPipelineTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
-          return;
-        }
-        pipelineBootstrapRetried = true;
-        pProjectsLoaded = true;
-        allProjects = res.data;
-        renderPipeline();
-      })
-      .withFailureHandler(function (err) {
+    gsRunWithRetry('project_getAll', [], function (res) {
+      if (!res || !res.ok) {
         if (!pipelineBootstrapRetried) return;
-        showPipelineTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .project_getAll();
+        // Kalau sudah pernah berhasil load sebelumnya, JANGAN timpa tabel
+        // yang sudah terisi dengan pesan error hanya karena 1 kali gagal
+        // (glitch google.script.run) — cukup tampilkan banner, data lama
+        // tetap terlihat. Tabel baru ditimpa error kalau memang belum
+        // pernah ada data sama sekali.
+        if (pProjectsLoaded) { showPipelineTableError('Gagal memuat ulang data terbaru: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.'), true); return; }
+        showPipelineTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+        return;
+      }
+      pipelineBootstrapRetried = true;
+      pProjectsLoaded = true;
+      allProjects = res.data;
+      renderPipeline();
+    }, function (err) {
+      if (!pipelineBootstrapRetried) return;
+      if (pProjectsLoaded) { showPipelineTableError('Gagal memuat ulang data terbaru: ' + (err && err.message ? err.message : err), true); return; }
+      showPipelineTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+    });
   }
 
   function fetchClients() {
@@ -581,8 +585,13 @@
     }, 1200);
   }
 
-  function showPipelineTableError(message) {
+  function showPipelineTableError(message, soft) {
     document.getElementById('pipelineTableError').innerText = message;
+    // soft=true: data yang sudah tampil sebelumnya JANGAN ditimpa — cukup
+    // tampilkan banner error di atas tabel, baris tabel yang sudah ada
+    // dibiarkan apa adanya (lihat catatan di fetchProjects soal glitch
+    // google.script.run yang bisa gagal transient walau sukses di server).
+    if (soft) return;
     document.getElementById('pipelineTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
   }
 

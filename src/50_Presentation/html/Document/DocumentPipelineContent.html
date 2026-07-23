@@ -354,24 +354,26 @@
   }
 
   function fetchDocuments() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res || !res.ok) {
-          if (!docBootstrapRetried) return;
-          showDocTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
-          return;
-        }
-        docBootstrapRetried = true;
-        docsLoaded = true;
-        allDocuments = res.data;
-        renderDocPipeline();
-        refreshOpenDrawerIfNeeded();
-      })
-      .withFailureHandler(function (err) {
+    gsRunWithRetry('document_getAll', [], function (res) {
+      if (!res || !res.ok) {
         if (!docBootstrapRetried) return;
-        showDocTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .document_getAll();
+        // Kalau sebelumnya sudah pernah berhasil, jangan timpa tabel yang
+        // sudah terisi hanya gara2 1 kali glitch google.script.run — cukup
+        // banner, data lama tetap tampil.
+        if (docsLoaded) { showDocTableError('Gagal memuat ulang data terbaru: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.'), true); return; }
+        showDocTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+        return;
+      }
+      docBootstrapRetried = true;
+      docsLoaded = true;
+      allDocuments = res.data;
+      renderDocPipeline();
+      refreshOpenDrawerIfNeeded();
+    }, function (err) {
+      if (!docBootstrapRetried) return;
+      if (docsLoaded) { showDocTableError('Gagal memuat ulang data terbaru: ' + (err && err.message ? err.message : err), true); return; }
+      showDocTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+    });
   }
 
   function fetchCorHeaders() {
@@ -470,8 +472,12 @@
       .document_getTaxonomy();
   }
 
-  function showDocTableError(message) {
+  function showDocTableError(message, soft) {
     document.getElementById('docTableError').innerText = message;
+    // soft=true: data yang sudah tampil JANGAN ditimpa, cukup banner error
+    // (lihat catatan di fetchDocuments soal glitch google.script.run yang
+    // bisa "gagal" transient walau server-nya sukses).
+    if (soft) return;
     document.getElementById('docTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
   }
 
