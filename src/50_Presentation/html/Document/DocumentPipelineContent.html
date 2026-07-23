@@ -599,10 +599,10 @@
   }
 
   function stageBadgeClass(stage) {
-    if (stage === 'Done') return 'badge-contacted';
-    if (stage === 'Client Review') return 'badge-spam';
-    if (stage === 'In Progress') return 'badge-other';
-    return 'badge-new';
+    if (stage === 'Done') return 'stage-badge-done';
+    if (stage === 'Client Review') return 'stage-badge-client-review';
+    if (stage === 'In Progress') return 'stage-badge-in-progress';
+    return 'stage-badge-new-request';
   }
 
   function renderDocTable(paged) {

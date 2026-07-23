@@ -195,11 +195,17 @@
 
   /* ---- Filter bar ---- */
   .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; row-gap: 10px; }
-  .filter-bar input, .filter-bar select {
+  /* :not([type="checkbox"]) SENGAJA ditambahkan — sebelumnya rule ini ikut
+     memaksa checkbox (misal "Retainer" di Sales Pipeline, atau checkbox di
+     dalam dropdown filter Stage) jadi setinggi 40px dengan border/padding
+     kotak input teks, bukan checkbox ukuran normal. */
+  .filter-bar input:not([type="checkbox"]), .filter-bar select {
     padding: 10px; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 14px; font-family: inherit;
     height: 40px; box-sizing: border-box;
   }
-  .filter-bar input { flex: 1; min-width: 200px; }
+  .filter-bar input:not([type="checkbox"]) { flex: 1; min-width: 200px; }
+  .filter-bar input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+  .filter-checkbox-label { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }
   .filter-reset { background: none; border: none; color: var(--text-muted); cursor: pointer; font-family: inherit; white-space: nowrap; }
 
   .status-filter-wrap { position: relative; }
@@ -258,6 +264,13 @@
   .badge-moved { background: var(--accent-tint-strong); color: var(--color-cerulean); }
   .badge-other { background: #fef7e0; color: #b8860b; }
   .badge-spam { background: #fce8e6; color: #c5221f; }
+  /* Dipakai khusus Stage badge di Document Pipeline — disamakan warnanya
+     dengan score card .pipeline-bucket-* (bukan reuse .badge-new dkk yang
+     dipakai status Lead/Client Monitoring dengan makna warna berbeda). */
+  .stage-badge-new-request { background: #fef7e0; color: #b8860b; }
+  .stage-badge-in-progress { background: var(--accent-tint-strong); color: var(--color-cerulean); }
+  .stage-badge-client-review { background: #fce8e6; color: #c5221f; }
+  .stage-badge-done { background: #e6f4ea; color: #188038; }
   /* Tag kecil penanda project Retainer di tabel Sales Pipeline — sengaja
      badge, bukan warna row, supaya tidak bertabrakan kalau baris lain nanti
      juga perlu diwarnai (misal status Loss). */

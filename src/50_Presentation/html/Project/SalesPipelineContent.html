@@ -69,11 +69,12 @@
     </div>
   </div>
 
-  <label style="display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:13px;">
+  <label class="filter-checkbox-label">
     <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
   </label>
 
   <button class="filter-reset" onclick="resetPipelineFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="pipelineRefreshBtn" onclick="refreshAllPipelineData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
 </div>
 
 <div id="pipelineTableError" class="error"></div>
@@ -558,6 +559,26 @@
       })
       .withFailureHandler(function () {})
       .project_getRevenueBreakdown();
+  }
+
+  // Jaring pengaman manual — halaman ini "Load Once, Filter Local" (fetch
+  // sekali saat dibuka, tidak auto-sync) sama seperti Document Pipeline,
+  // jadi kalau tab sudah lama terbuka sementara ada Project/Client/Dokumen
+  // baru dari tempat lain, tombol ini menembak ulang SEMUA fetch tanpa
+  // perlu reload browser.
+  function refreshAllPipelineData() {
+    var btn = document.getElementById('pipelineRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    fetchProjects();
+    fetchClients();
+    fetchEmployees();
+    fetchTaxonomy();
+    fetchDocuments();
+    fetchDocumentTaxonomy();
+    fetchRevenueBreakdown();
+    setTimeout(function () {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh Data'; }
+    }, 1200);
   }
 
   function showPipelineTableError(message) {

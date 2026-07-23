@@ -12,6 +12,19 @@
 
 <style>
   .cor-page { max-width: 1400px; }
+
+  /* Wizard routing Gross Down saat "Convert ke Gross Down" — style sama
+     persis dengan wizard "Kerjakan COR" di DocumentPipelineContent.html
+     (diduplikasi di sini karena CSS itu didefinisikan lokal, bukan di
+     Style.html global). */
+  .cor-wizard-choice {
+    display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px;
+    border: 1px solid var(--border-soft); border-radius: 8px; background: var(--color-white);
+    color: var(--color-mineshaft); font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;
+  }
+  .cor-wizard-choice:last-of-type { margin-bottom: 0; }
+  .cor-wizard-choice:hover { background: var(--bg-hover); border-color: var(--accent-border); }
+  .cor-wizard-loading { text-align: center; padding: 20px 0; font-size: 13px; color: var(--text-muted); }
   .cor-back { font-size: 12px; color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 8px; }
   .cor-back:hover { color: var(--color-cerulean); }
   .cor-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
@@ -81,6 +94,10 @@
 
   .cor-margin-row { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; }
   .cor-margin-hd { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; margin-bottom: 4px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
+  /* Gross Up cuma menentukan %, TIDAK perlu nominal Rp (beda dari Gross
+     Down yang butuh nominal karena ada Dana Client sungguhan) — 3 kolom
+     tanpa "Nominal". */
+  .cor-margin-row.cor-margin-row-3col, .cor-margin-hd.cor-margin-hd-3col { grid-template-columns: minmax(0,1.4fr) 120px 45px; }
 
   .cor-saldo { border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; border: 1px solid; }
   .cor-saldo-pos { background: #e6f4ea; border-color: #a8cebc; }
@@ -348,8 +365,8 @@
           </div>
           <div class="cor-box">
             <div class="cor-box-hd">Default Margin <span class="sub">estimasi — independen dari Gross Down</span></div>
-            <div class="cor-margin-hd">
-              <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
+            <div class="cor-margin-hd cor-margin-hd-3col">
+              <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div>
             </div>
             <div id="corGuMarginRows"></div>
             <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
@@ -488,17 +505,45 @@
 <div class="confirm-overlay" id="corConvertModal">
   <div class="confirm-box" style="width:480px; max-width:92vw;">
     <h3>Convert ke Gross Down</h3>
-    <p style="margin-bottom:8px; font-size:13px; color:var(--text-muted);">Gross Up cuma alat estimasi nego ke client — begitu client setuju satu angka, COR sungguhan yang jalan lewat approval Head of B2B harus Gross Down. Klik convert kalau client SUDAH setuju angka ini.</p>
-    <p style="font-size:13px;">Yang akan terjadi:</p>
-    <ul style="font-size:13px; color:var(--text-muted); padding-left:20px; margin:0 0 10px;">
-      <li>Angka <strong>"Gross Up Platform &amp; Tech Fee"</strong> jadi nominal <strong>Dana Client</strong> di Gross Down.</li>
-      <li>Semua baris Cost &amp; pilihan Margin yang sudah diisi tetap dipakai (tidak perlu isi ulang).</li>
-      <li>Estimasi Gross Up saat ini disimpan sebagai arsip (bisa dilihat lagi lewat "📄 Lihat Estimasi Gross Up").</li>
-      <li>Tombol Request Approval baru aktif setelah ini.</li>
-    </ul>
-    <div class="confirm-actions" style="margin-top:14px;">
+
+    <div id="corConvertStepIntro">
+      <p style="margin-bottom:8px; font-size:13px; color:var(--text-muted);">Gross Up cuma alat estimasi nego ke client — begitu client setuju satu angka, COR sungguhan yang jalan lewat approval Head of B2B harus Gross Down. Klik lanjut kalau client SUDAH setuju angka ini.</p>
+      <p style="font-size:13px;">Yang akan terjadi:</p>
+      <ul style="font-size:13px; color:var(--text-muted); padding-left:20px; margin:0 0 10px;">
+        <li>Angka <strong>"Gross Up Platform &amp; Tech Fee"</strong> jadi nominal <strong>Dana Client</strong> di Gross Down.</li>
+        <li>Semua baris Cost &amp; pilihan Margin yang sudah diisi tetap dipakai (tidak perlu isi ulang).</li>
+        <li>Estimasi Gross Up saat ini disimpan sebagai arsip (bisa dilihat lagi lewat "📄 Lihat Estimasi Gross Up").</li>
+        <li>Anda akan ditanya routing Gross Down (Via SALSET?/Mix Fund?/Sumber Dana) dulu, sama seperti awal "Kerjakan COR" — supaya form kalkulator langsung sesuai kebutuhan.</li>
+        <li>Tombol Request Approval baru aktif setelah ini.</li>
+      </ul>
+      <div class="confirm-actions" style="margin-top:14px;">
+        <button class="btn-outline" onclick="closeConvertToGrossDown()">Batal</button>
+        <button class="btn-save" onclick="showConvertWizardStep('salset')">Lanjut</button>
+      </div>
+    </div>
+
+    <div id="corConvertStepSalset" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah dana project ini lewat SALSET?</p>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseSalset(true)">Ya, Via SALSET</button>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseSalset(false)">Tidak</button>
+    </div>
+
+    <div id="corConvertStepMixFund" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah project ini Mix Fund — dana Client DAN Campaign sekaligus (jadi 2 blok terpisah)?</p>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseMixFund(true)">Ya, Mix Fund (2 blok)</button>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseMixFund(false)">Tidak, satu sumber dana saja</button>
+    </div>
+
+    <div id="corConvertStepFundType" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Dana project ini dari sumber apa?</p>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseFundType('CLIENT')">Dana Client</button>
+      <button class="cor-wizard-choice" onclick="convertWizardChooseFundType('CAMPAIGN')">Dana Campaign</button>
+    </div>
+
+    <div id="corConvertLoading" class="cor-wizard-loading" style="display:none;">⏳ Mengonversi ke Gross Down...</div>
+
+    <div class="confirm-actions" style="margin-top:14px; display:none;" id="corConvertCancelWrap">
       <button class="btn-outline" onclick="closeConvertToGrossDown()">Batal</button>
-      <button class="btn-save" id="corConvertSendBtn" onclick="submitConvertToGrossDown()">Ya, Convert</button>
     </div>
   </div>
 </div>
@@ -715,32 +760,66 @@
   }
 
   // ══════════════════════════ CONVERT GROSS UP -> GROSS DOWN ══════════════════════════
+  // Sebelum benar-benar convert (panggil server), tampilkan dulu wizard
+  // routing Gross Down (Via SALSET?/Mix Fund?/Sumber Dana) — SAMA persis
+  // pola wizard "Kerjakan COR" (step method dilewati karena Gross Down
+  // sudah pasti) — supaya admin bisa menyesuaikan form kalkulator begitu
+  // convert selesai, bukan cuma dapat setting default (Single_Fund_Type
+  // CLIENT, Via SALSET off) dari server.
+  var convertWizardAnswers = {};
   function openConvertToGrossDown() {
     if (!CALCULATOR_DOC_ID || !currentHeader) return;
+    convertWizardAnswers = {};
+    showConvertWizardStep('intro');
     document.getElementById('corConvertModal').classList.add('open');
   }
   function closeConvertToGrossDown() {
     document.getElementById('corConvertModal').classList.remove('open');
   }
-  function submitConvertToGrossDown() {
-    var btn = document.getElementById('corConvertSendBtn');
-    btn.disabled = true;
-    btn.innerText = 'Mengonversi...';
-    TechfordLoading.show('Mengonversi ke Gross Down...');
+  function showConvertWizardStep(step) {
+    ['Intro', 'Salset', 'MixFund', 'FundType'].forEach(function (name) {
+      document.getElementById('corConvertStep' + name).style.display = name.toLowerCase() === step ? '' : 'none';
+    });
+    document.getElementById('corConvertLoading').style.display = 'none';
+    document.getElementById('corConvertCancelWrap').style.display = step === 'intro' ? 'none' : '';
+  }
+  function convertWizardChooseSalset(viaSalset) {
+    convertWizardAnswers.isViaSalset = viaSalset;
+    if (viaSalset) {
+      convertWizardAnswers.isMixFund = false;
+      convertWizardAnswers.singleFundType = null;
+      runConvertToGrossDown();
+      return;
+    }
+    showConvertWizardStep('mixfund');
+  }
+  function convertWizardChooseMixFund(mixFund) {
+    convertWizardAnswers.isMixFund = mixFund;
+    if (mixFund) {
+      convertWizardAnswers.singleFundType = null;
+      runConvertToGrossDown();
+      return;
+    }
+    showConvertWizardStep('fundtype');
+  }
+  function convertWizardChooseFundType(fundType) {
+    convertWizardAnswers.singleFundType = fundType;
+    runConvertToGrossDown();
+  }
+  function runConvertToGrossDown() {
+    ['Intro', 'Salset', 'MixFund', 'FundType'].forEach(function (name) {
+      document.getElementById('corConvertStep' + name).style.display = 'none';
+    });
+    document.getElementById('corConvertCancelWrap').style.display = 'none';
+    document.getElementById('corConvertLoading').style.display = '';
 
     google.script.run
       .withSuccessHandler(function (res) {
-        TechfordLoading.hide();
-        btn.disabled = false;
-        btn.innerText = 'Ya, Convert';
         if (!res) { return recheckConvertOutcome(); }
-        if (!res.ok) { alert('Gagal convert: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        if (!res.ok) { alert('Gagal convert: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); closeConvertToGrossDown(); return; }
         applyConvertedDraft(res.data);
       })
       .withFailureHandler(function () {
-        TechfordLoading.hide();
-        btn.disabled = false;
-        btn.innerText = 'Ya, Convert';
         recheckConvertOutcome();
       })
       .cor_convertToGrossDown(CALCULATOR_DOC_ID);
@@ -755,19 +834,31 @@
           applyConvertedDraft(res.data);
         } else {
           alert('Gagal convert: tidak ada respons dari server. Silakan cek lagi sebelum coba ulang.');
+          closeConvertToGrossDown();
         }
       })
       .withFailureHandler(function () {
         alert('Gagal convert: tidak ada respons dari server. Silakan refresh halaman untuk mengecek status.');
+        closeConvertToGrossDown();
       })
       .cor_getDraft(CALCULATOR_DOC_ID);
   }
+  // loadDraftIntoState() HANYA memakai WIZARD_METHOD/WIZARD_VIA_SALSET/dst
+  // kalau draft.header belum ada (lihat komentar di atasnya) — begitu
+  // convert selesai, header SUDAH ADA (Cor_Method sudah GROSS_DOWN dari
+  // server), jadi jawaban wizard di sini WAJIB diterapkan manual sesudahnya,
+  // bukan lewat WIZARD_* yang otomatis diabaikan.
   function applyConvertedDraft(draft) {
     closeConvertToGrossDown();
     loadDraftIntoState(draft);
+    if (typeof convertWizardAnswers.isViaSalset === 'boolean') isViaSalset = convertWizardAnswers.isViaSalset;
+    if (typeof convertWizardAnswers.isMixFund === 'boolean') isMixFund = convertWizardAnswers.isMixFund;
+    if (convertWizardAnswers.hasOwnProperty('singleFundType')) singleFundType = convertWizardAnswers.singleFundType;
+    document.getElementById('corViaSalset').checked = isViaSalset;
     renderDocInfo();
     setCorMethod('GROSS_DOWN');
-    alert('Berhasil dikonversi ke Gross Down — Dana Client sudah terisi otomatis dari hasil estimasi Gross Up.');
+    applyFundLock();
+    alert('Berhasil dikonversi ke Gross Down — Dana Client sudah terisi otomatis dari hasil estimasi Gross Up. Sesuaikan lagi kalau perlu, lalu Simpan Draft.');
   }
 
   function openGrossUpArchive() {
@@ -1297,7 +1388,7 @@
   }
 
   // ══════════════════════════ MARGIN ══════════════════════════
-  function renderMarginRows(marginState, rowsContainerId, onChangeFnName) {
+  function renderMarginRows(marginState, rowsContainerId, onChangeFnName, showNominal) {
     var container = document.getElementById(rowsContainerId);
     container.innerHTML = (corTaxonomy.marginComponents || []).map(function (comp) {
       var guideRows = corTaxonomy.marginGuide
@@ -1307,11 +1398,11 @@
       var options = guideRows.map(function (g) {
         return '<option value="' + g.Sub_Category + '" data-pct="' + g.Percentage + '" ' + (g.Sub_Category === current.subCategory ? 'selected' : '') + '>' + g.Sub_Category + '</option>';
       }).join('');
-      return '<div class="cor-margin-row">' +
+      return '<div class="cor-margin-row' + (showNominal ? '' : ' cor-margin-row-3col') + '">' +
         '<span>' + comp.label + '</span>' +
         '<select onchange="' + onChangeFnName + '(\'' + comp.key + '\',this)">' + options + '</select>' +
         '<span style="font-family:monospace; text-align:right; color:var(--color-cerulean);">' + current.percentage + '%</span>' +
-        '<span style="font-family:monospace; text-align:right; color:var(--text-muted);" id="' + rowsContainerId + '_n_' + comp.key + '">Rp0</span>' +
+        (showNominal ? '<span style="font-family:monospace; text-align:right; color:var(--text-muted);" id="' + rowsContainerId + '_n_' + comp.key + '">Rp0</span>' : '') +
         '</div>';
     }).join('');
   }
@@ -1469,7 +1560,7 @@
     document.getElementById('corRrSppPph').innerText = fmtRp(pphSpp);
     document.getElementById('corRrSppNeto').innerText = fmtRp(neto);
 
-    renderMarginRows(cor.margin, 'corGdMarginRows', 'onGdMarginChange');
+    renderMarginRows(cor.margin, 'corGdMarginRows', 'onGdMarginChange', true);
     (corTaxonomy.marginComponents || []).forEach(function (c) {
       var pct = (cor.margin[c.key] ? cor.margin[c.key].percentage : 0) / 100;
       var el = document.getElementById('corGdMarginRows_n_' + c.key);
@@ -1537,12 +1628,7 @@
     document.getElementById('corRrGuSalfRow').style.display = isViaSalset ? '' : 'none';
     document.getElementById('corRrGuSalf').innerText = fmtRp(guSalFee);
 
-    renderMarginRows(guState.margin, 'corGuMarginRows', 'onGuMarginChange');
-    (corTaxonomy.marginComponents || []).forEach(function (c) {
-      var pct = (guState.margin[c.key] ? guState.margin[c.key].percentage : 0) / 100;
-      var el = document.getElementById('corGuMarginRows_n_' + c.key);
-      if (el) el.innerText = fmtRp(ri(guMargin * pct));
-    });
+    renderMarginRows(guState.margin, 'corGuMarginRows', 'onGuMarginChange', false);
 
     // Simpan seluruh angka hasil kalkulasi ke satu tempat — dipakai laporan
     // PDF (buildPdfHtml) supaya tidak perlu hitung ulang/duplikasi logika,
