@@ -37,6 +37,7 @@ var Config = (function (module) {
     COR_FUND: 'COR_Fund',
     COR_COST: 'COR_Cost',
     COR_MARGIN: 'COR_Margin',
+    COR_RESULT: 'COR_Result',
     MARGIN_GUIDE: 'Margin_Guide',
     QUOTATION_HEADER: 'Quotation_Header',
     QUOTATION_ITEM: 'Quotation_Item',

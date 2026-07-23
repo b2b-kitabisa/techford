@@ -330,12 +330,14 @@ var CorReportRenderer = (function (module) {
   }
 
   module.renderDocumentHtml = renderDocumentHtml;
-  // Diekspos supaya CorService.convertToGrossDown bisa menghitung ulang
-  // "Gross Up Platform & Tech Fee" (guFinal) di server tanpa menduplikasi
-  // rumus gross-up untuk ketiga kalinya (client CorCalculatorContent.html
-  // punya salinannya sendiri untuk live-preview — itu dibiarkan, tapi
-  // konversi WAJIB dihitung di server supaya angka yang dipersist konsisten
-  // & tidak bisa dimanipulasi dari client).
+  // Diekspos supaya CorService (convertToGrossDown & ledger COR_Result)
+  // bisa menghitung ulang rantai Gross Up/Gross Down di server tanpa
+  // menduplikasi rumusnya untuk ketiga kalinya (client
+  // CorCalculatorContent.html punya salinannya sendiri untuk live-preview
+  // — itu dibiarkan, tapi angka yang benar-benar dipersist ke sheet WAJIB
+  // dihitung di server supaya konsisten & tidak bisa dimanipulasi client).
   module.computeGU = computeGU;
+  module.computeGD = computeGD;
+  module.fundCalc = fundCalc;
   return module;
 })(CorReportRenderer || {});

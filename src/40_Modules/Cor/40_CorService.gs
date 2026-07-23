@@ -12,12 +12,14 @@
  * Revenue_Breakdown — SETIAP KALI "Simpan Draft" diklik, semua baris lama
  * milik Doc_ID itu dihapus lalu ditulis ulang dengan baris baru.
  *
- * PENTING: fungsi di sini HANYA menyimpan/mengambil raw input kalkulator
- * (bukan hasil kalkulasi). Kalkulasi (Platform Fee, Tech Fee, PPh, PPN,
- * margin, gross-up chain) dilakukan di client-side (JS halaman kalkulator)
- * untuk live-preview, dan NANTI (tahap generate file) direplikasi sebagai
- * rumus asli di file Google Sheets hasil copy dari Template COR — supaya
- * Finance menerima spreadsheet dengan rumus hidup, bukan angka statis.
+ * Kalkulasi interaktif (live-preview) tetap dilakukan client-side (JS
+ * halaman kalkulator). TAPI sejak fitur ledger COR_Result & kolom turunan
+ * COR_Fund (Platform_Fee/Tech_Fee/NDV/Disbursement_Fee/Implementation_Fund)
+ * ditambahkan, saveDraft & convertToGrossDown JUGA menghitung ulang rumus
+ * yang sama DI SERVER (lewat CorReportRenderer.computeGD/fundCalc — satu
+ * sumber rumus yang sama dipakai generate PDF) dan mempersist hasilnya —
+ * supaya dashboard/laporan bisa langsung baca angka jadi dari sheet tanpa
+ * perlu menghitung ulang seluruh rantai rumus COR tiap kali.
  *
  * Admin memilih SALAH SATU Cor_Method per dokumen (Gross Down ATAU Gross
  * Up, tidak wajib dua-duanya) — lihat Config.COR_METHOD.
@@ -42,6 +44,23 @@ var CorService = (function (module) {
     } catch (e) {
       return fallback;
     }
+  }
+
+  /**
+   * Entitas/bank AKTIF (dipakai buat PPN/PKP & Biaya Pencairan) — Salam
+   * Setara kalau Via SALSET, kalau tidak ya Vendor yang dipilih. Dipakai
+   * bareng oleh buildReportModel, saveDraft (hitung kolom turunan
+   * COR_Fund), dan convertToGrossDown — satu sumber supaya tidak ada
+   * logic pencarian entity yang diduplikasi di 3 tempat berbeda.
+   */
+  function resolveActiveEntity(vendorEntity, isViaSalset) {
+    var entities = CorEntityRepository.findAll();
+    var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
+    var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
+    var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
+      { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
+    var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+    return { entity: activeEntity, pkp: pkp, biayaPencairan: Number(activeEntity.Biaya_Pencairan) || 0 };
   }
 
   /**
@@ -190,13 +209,25 @@ var CorService = (function (module) {
       Last_Updated: now
     });
 
+    // Kolom turunan (Platform_Fee/Tech_Fee/NDV/Disbursement_Fee/
+    // Implementation_Fund) dihitung di sini pakai rumus yang SAMA dengan
+    // PDF (CorReportRenderer.fundCalc) — bukan cuma menyimpan GDV mentah —
+    // supaya jadi acuan dashboard tanpa perlu hitung ulang.
+    var activeInfoForFund = resolveActiveEntity(input.vendorEntity || '', !!input.isViaSalset);
     var fundRows = (input.funds || []).map(function (f, i) {
+      var gdv = Number(f.nominal) || 0;
+      var calc = CorReportRenderer.fundCalc({ fundType: f.fundType, nominal: gdv, isZakat: !!f.isZakat }, activeInfoForFund.biayaPencairan);
       return {
         Fund_ID: Utils.generateId('FUND'),
         Doc_ID: docId,
         Fund_Type: f.fundType,
         Link_Campaign: String(f.linkCampaign || '').trim(),
-        Nominal: Number(f.nominal) || 0,
+        GDV: gdv,
+        Platform_Fee: calc.pf,
+        Tech_Fee: calc.tf,
+        NDV: calc.af,
+        Disbursement_Fee: calc.adm,
+        Implementation_Fund: calc.total,
         Is_Zakat: !!f.isZakat,
         Sort_Order: i
       };
@@ -231,6 +262,15 @@ var CorService = (function (module) {
       };
     });
     CorMarginRepository.replaceForDoc(docId, marginRows);
+
+    // Ledger COR_Result — dibungkus try/catch SENGAJA supaya penyimpanan
+    // data mentah di atas (yang sudah pasti berhasil) tidak ikut gagal
+    // kalau sheet COR_Result belum dibuat admin (lihat CorResultRepository).
+    try {
+      computeAndPersistCorResult(docId);
+    } catch (err) {
+      Log.warn('CorService.saveDraft', 'Gagal menghitung/menyimpan COR_Result: ' + (err && err.message ? err.message : err));
+    }
 
     advanceStatusToDrafting(docId);
 
@@ -304,15 +344,31 @@ var CorService = (function (module) {
       Converted_At: new Date()
     });
 
+    var gdv = Math.round(gu.guFinal) || 0;
+    var fundCalcResult = CorReportRenderer.fundCalc(
+      { fundType: Config.COR_FUND_TYPE.CLIENT, nominal: gdv, isZakat: false },
+      Number(model.entity.Biaya_Pencairan) || 0
+    );
     CorFundRepository.replaceForDoc(docId, [{
       Fund_ID: Utils.generateId('FUND'),
       Doc_ID: docId,
       Fund_Type: Config.COR_FUND_TYPE.CLIENT,
       Link_Campaign: '',
-      Nominal: Math.round(gu.guFinal) || 0,
+      GDV: gdv,
+      Platform_Fee: fundCalcResult.pf,
+      Tech_Fee: fundCalcResult.tf,
+      NDV: fundCalcResult.af,
+      Disbursement_Fee: fundCalcResult.adm,
+      Implementation_Fund: fundCalcResult.total,
       Is_Zakat: false,
       Sort_Order: 0
     }]);
+
+    try {
+      computeAndPersistCorResult(docId);
+    } catch (err) {
+      Log.warn('CorService.convertToGrossDown', 'Gagal menghitung/menyimpan COR_Result: ' + (err && err.message ? err.message : err));
+    }
 
     return module.getDraft(docId);
   };
@@ -334,7 +390,6 @@ var CorService = (function (module) {
     var funds = CorFundRepository.findByDocId(docId);
     var costs = CorCostRepository.findByDocId(docId);
     var margins = CorMarginRepository.findByDocId(docId);
-    var entities = CorEntityRepository.findAll();
 
     var vendorEntity = header.Vendor_Entity || '';
     var isViaSalset = !!header.Is_Via_Salset;
@@ -343,13 +398,13 @@ var CorService = (function (module) {
     var ngoRate = Number(header.Ngo_Rate) || 10;
     var biayaSalset = Number(header.Biaya_Salset) || 0;
 
-    var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
-    var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
-    var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
-      { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
-    var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+    var activeInfo = resolveActiveEntity(vendorEntity, isViaSalset);
+    var pkp = activeInfo.pkp;
+    var activeEntity = activeInfo.entity;
 
-    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
+    // GDV (dulu bernama Nominal) — fallback ke Nominal utk baris lama yang
+    // sheet-nya belum di-rename manual (lihat CorFundRepository).
+    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
     function toCost(c) { return { label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '', harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1 }; }
     function marginFor(tab) {
       var m = {};
@@ -388,6 +443,60 @@ var CorService = (function (module) {
         marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks
       }
     };
+  }
+
+  /**
+   * Hitung ulang rantai Gross Down (computeGD, SATU sumber rumus yang sama
+   * dipakai buat PDF) per blok (Client/Campaign kalau Mix Fund) dan simpan
+   * sebagai ledger di COR_Result — dipanggil setiap saveDraft/
+   * convertToGrossDown untuk dokumen ber-Cor_Method GROSS_DOWN, supaya
+   * dashboard bisa langsung baca angka jadi tanpa hitung ulang. Gross Up
+   * (belum ada apa pun yang final) sengaja mengosongkan ledger ini.
+   *
+   * SENGAJA tidak melempar error kalau sheet COR_Result belum dibuat admin
+   * — pemanggil (saveDraft/convertToGrossDown) yang membungkus try/catch,
+   * supaya penyimpanan data mentah (funds/costs/margins) tidak pernah gagal
+   * gara-gara ledger turunan ini.
+   */
+  function computeAndPersistCorResult(docId) {
+    var built = buildReportModel(docId);
+    var model = built.model;
+
+    if (model.method !== Config.COR_METHOD.GROSS_DOWN) {
+      CorResultRepository.replaceForDoc(docId, []);
+      return;
+    }
+
+    var biayaPencairan = Number(model.entity.Biaya_Pencairan) || 0;
+    var now = new Date();
+    var rows = model.blocks.map(function (block) {
+      var pphOn = model.isViaSalset || block.funds.some(function (f) { return f.fundType === 'CLIENT'; });
+      var gd = CorReportRenderer.computeGD({
+        funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
+        margin: block.margin, marginComponents: model.marginComponents,
+        isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
+        pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
+      });
+
+      return {
+        Result_ID: Utils.generateId('CORRES'),
+        Doc_ID: docId,
+        Cor_Tab: block.tabLabel ? block.tabLabel.toUpperCase() : Config.COR_TAB.CLIENT,
+        Total_Implementation_Fund: gd.totalMasuk,
+        Salset_Gross: model.isViaSalset ? gd.totalMasuk : 0,
+        Salset_NGO_Fee: gd.salFee,
+        Gross_Vendor: gd.cashGross,
+        PPN_Gross_Down: gd.ppnGd,
+        Pph_23_Vendor: gd.pph23,
+        Net_Vendor: gd.cashNet,
+        Cost_Estimate_Vendor: gd.totalBaa,
+        Profit_Estimate_Vendor: gd.pmProfit,
+        Margin_Estimate_Vendor: Math.round(gd.pmPct * 10000) / 100,
+        Last_Updated: now
+      };
+    });
+
+    CorResultRepository.replaceForDoc(docId, rows);
   }
 
   /**
