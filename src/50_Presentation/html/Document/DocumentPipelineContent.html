@@ -969,17 +969,19 @@
       var btn = document.getElementById('docCorActionBtn');
       btn.disabled = true;
       btn.innerText = '⏳ Membuka...';
-      goToCorCalculatorUrl(TECHFORD_WEB_APP_URL + '?page=cor-calculator&docId=' + encodeURIComponent(currentDocDrawerId));
+      goToPage('cor-calculator', { docId: currentDocDrawerId });
       return;
     }
     openCorWizard(currentDocDrawerId);
   }
 
-  // Halaman GAS Web App dirender di dalam iframe sandbox — window.location
-  // hanya menavigasi iframe itu sendiri (jadi blank/nyangkut), harus lewat
-  // window.top supaya benar-benar pindah halaman penuh.
-  function goToCorCalculatorUrl(url) {
-    window.top.location.href = url;
+  // Dulu ini navigasi window.top.location.href (full reload, WAJIB lewat
+  // window.top karena halaman GAS Web App dirender di iframe sandbox).
+  // Sekarang cukup lewat router SPA (TechfordNav, di Shell.html) supaya
+  // buka COR Calculator/Quotation Composer dari drawer ini juga instan
+  // tanpa reload, konsisten dengan navigasi sidebar.
+  function goToPage(page, params) {
+    TechfordNav.navigateTo(page, params || {});
   }
 
   var QUOTATION_STATUS_COLORS = {
@@ -1187,7 +1189,7 @@
     var btn = document.getElementById('docQuotationActionBtn');
     btn.disabled = true;
     btn.innerText = '⏳ Membuka...';
-    goToCorCalculatorUrl(TECHFORD_WEB_APP_URL + '?page=quotation-composer&docId=' + encodeURIComponent(currentDocDrawerId));
+    goToPage('quotation-composer', { docId: currentDocDrawerId });
   }
 
   var corWizardDocId = null;
@@ -1243,13 +1245,13 @@
     document.getElementById('corWizardLoading').style.display = '';
     document.getElementById('corWizardCancelBtn').disabled = true;
 
-    var url = TECHFORD_WEB_APP_URL + '?page=cor-calculator' +
-      '&docId=' + encodeURIComponent(corWizardDocId) +
-      '&method=' + encodeURIComponent(opts.method) +
-      '&viaSalset=' + (opts.viaSalset ? '1' : '0') +
-      '&mixFund=' + (opts.mixFund ? '1' : '0') +
-      (opts.fundType ? '&fundType=' + encodeURIComponent(opts.fundType) : '');
-    goToCorCalculatorUrl(url);
+    goToPage('cor-calculator', {
+      docId: corWizardDocId,
+      method: opts.method,
+      viaSalset: opts.viaSalset ? '1' : '0',
+      mixFund: opts.mixFund ? '1' : '0',
+      fundType: opts.fundType || ''
+    });
   }
 
   function submitDocStatusUpdate() {

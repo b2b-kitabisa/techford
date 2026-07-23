@@ -282,6 +282,15 @@
       '<tr class="empty-row"><td colspan="6">' + message + '</td></tr>';
   }
 
+  // Render skeleton score card SEGERA (angka 0, sebelum data datang) supaya
+  // box-nya langsung kelihatan begitu halaman/section ini tampil — sama
+  // seperti Sales Pipeline & Document Pipeline yang score card-nya sudah
+  // statis di HTML. Di sini score card dibangun lewat JS (bukan HTML statis)
+  // karena butuh class "active" dari filter, jadi cukup dipanggil sekali di
+  // sini dengan data kosong, nanti ditimpa angka asli begitu fetchLeads()
+  // selesai lewat render() biasa.
+  renderStats(computeStats(allLeads));
+
   if (document.readyState === 'complete') {
     bootstrap();
   } else {

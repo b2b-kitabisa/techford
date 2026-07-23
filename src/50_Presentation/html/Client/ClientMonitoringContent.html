@@ -307,6 +307,13 @@
       }
     }, CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
+  // Render skeleton score card SEGERA (sebelum data/taxonomy datang) supaya
+  // area ini langsung punya tinggi & tampil, tidak collapse-lalu-muncul-
+  // tiba-tiba begitu fetch selesai (yang bikin filter bar di bawahnya ikut
+  // kelihatan "menunggu load") — sama seperti Sales Pipeline & Document
+  // Pipeline yang score card-nya sudah statis di HTML sejak awal.
+  renderClientStats(allClients);
+
   if (document.readyState === 'complete') {
     bootstrapClients();
   } else {
@@ -437,6 +444,17 @@
 
     var sources = optionsForCategory('Client_Source');
     if (!sources.length) sources = Object.keys(counts).map(function (v) { return { Value: v }; });
+
+    if (!sources.length) {
+      // Taxonomy (nama kategori Client_Source) & data client SAMA-SAMA
+      // belum datang — daripada box kosong total (bikin filter bar di
+      // bawahnya kelihatan "ikut nunggu load" karena box ini collapse ke
+      // tinggi 0 lalu tiba-tiba muncul), tampilkan 1 kartu placeholder
+      // dengan spinner supaya tinggi area tetap terjaga dari awal.
+      document.getElementById('clientStats').innerHTML =
+        '<div class="stat-card"><div class="stat-label"><span class="inline-spinner"></span>Memuat ringkasan...</div></div>';
+      return;
+    }
 
     document.getElementById('clientStats').innerHTML = sources.map(function (s) {
       return '<div class="stat-card"><div class="stat-label">' + s.Value + '</div>' +
@@ -969,10 +987,13 @@
           btn.innerText = '🚀 Buat Project di Sales Pipeline';
           return alert(res.error.message);
         }
-        // window.location.href biasa hanya menavigasi iframe sandbox GAS
-        // (halaman jadi nyangkut/blank) — wajib lewat window.top supaya
-        // benar-benar pindah halaman penuh ke Sales Pipeline.
-        window.top.location.href = TECHFORD_WEB_APP_URL + '?page=sales-pipeline';
+        // Dulu window.top.location.href (full reload). Sekarang lewat
+        // router SPA (TechfordNav) supaya pindah ke Sales Pipeline instan
+        // — TechfordLoading WAJIB di-hide dulu di sini karena beda dari
+        // reload penuh (yang otomatis membuang overlay bersama halaman
+        // lama), navigasi SPA tetap di dokumen yang sama.
+        TechfordLoading.hide();
+        TechfordNav.navigateTo('sales-pipeline', {});
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();

@@ -238,8 +238,11 @@
   var qoCurrentHeader = null;
   var qoLogos = { YKB: '', KAI: '' };
 
+  // Dulu window.top.location.href (full reload). Sekarang lewat router SPA
+  // (TechfordNav, di Shell.html) supaya balik ke Document Pipeline instan
+  // tanpa reload.
   function goBackToDocumentPipeline() {
-    window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+    TechfordNav.navigateTo('document-pipeline', {});
   }
 
   // Toolbar rich-text First Statement/Important Remarks — mousedown di

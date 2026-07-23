@@ -261,6 +261,14 @@
       }
 
       function applyFragment(page, params, res) {
+        // Beberapa halaman menandai <body class="drawer-open"> saat drawer-nya
+        // terbuka (supaya body tidak ikut scroll) — <body> milik Shell, BUKAN
+        // bagian dari #mainContent yang ditukar, jadi TIDAK ikut ter-reset
+        // otomatis seperti dulu (full page reload). Kalau user pindah section
+        // sementara drawer masih terbuka, class ini harus dilepas manual di
+        // sini supaya halaman berikutnya tidak "kebawa" body terkunci scroll.
+        document.body.classList.remove('drawer-open');
+
         var mainContent = document.getElementById('mainContent');
         mainContent.innerHTML = res.data.contentHtml;
         execScripts(mainContent);

@@ -612,11 +612,11 @@
   var guState = { salItems: [], baaItems: [], margin: {} };
 
   // ══════════════════════════ BOOTSTRAP ══════════════════════════
-  // Halaman GAS Web App dirender di dalam iframe sandbox — window.location
-  // hanya menavigasi iframe itu sendiri (jadi blank/nyangkut), harus lewat
-  // window.top supaya benar-benar pindah halaman penuh.
+  // Dulu window.top.location.href (full reload). Sekarang lewat router SPA
+  // (TechfordNav, di Shell.html) supaya balik ke Document Pipeline instan
+  // tanpa reload.
   function goBackToDocumentPipeline() {
-    window.top.location.href = TECHFORD_WEB_APP_URL + '?page=document-pipeline';
+    TechfordNav.navigateTo('document-pipeline', {});
   }
 
   // BUG YANG DIPERBAIKI (2 masalah sekaligus):
@@ -1732,14 +1732,12 @@
     saveDraft(
       function () {
         TechfordLoading.hide();
-        // window.top.location.href yang dipanggil di sini (async, setelah
-        // round-trip ke server) kadang DITAHAN diam-diam oleh browser —
-        // sandbox iframe GAS cuma izinkan navigasi top-level selama masih
-        // dalam jendela "user activation", dan itu bisa sudah lewat saat
-        // callback save selesai. Makanya tetap coba redirect otomatis DULU,
-        // tapi tombolnya juga diubah jadi tombol klik manual (fresh user
-        // gesture, dijamin jalan) sebagai fallback kalau auto-redirect diam
-        // gagal.
+        // goBackToDocumentPipeline() sekarang lewat router SPA (bukan
+        // window.top.location.href lagi), jadi selalu langsung jalan tanpa
+        // tergantung timing "user activation" browser — tombol tetap
+        // diubah jadi klik-manual (dengan onclick yang sama) sebagai
+        // fallback murah kalau suatu saat ada error tak terduga sebelum
+        // baris navigasi di bawah ini sempat jalan.
         btn.disabled = false;
         btn.innerText = '✓ Tersimpan — Klik untuk kembali ke Document Pipeline';
         btn.onclick = goBackToDocumentPipeline;
