@@ -1,0 +1,460 @@
+<style>
+  .cm-summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .cm-summary-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; background: var(--bg-tint); }
+  .cm-summary-label { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
+  .cm-summary-value { font-family: monospace; font-size: 18px; font-weight: 700; margin-top: 4px; }
+  .cm-summary-value.bad { color: #c5221f; }
+  .cm-summary-value.good { color: #188038; }
+  .cm-status-pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .cm-status-none { background: var(--bg-hover); color: var(--text-muted); }
+  .cm-status-progress { background: var(--accent-tint-strong); color: var(--color-cerulean); }
+  .cm-status-pending { background: #fef7e0; color: #b8860b; }
+  .cm-status-done-ok { background: #e6f4ea; color: #188038; }
+  .cm-status-done-over { background: #fce8e6; color: #c5221f; }
+
+  .cm-section-hd { font-size: 14px; font-weight: 800; margin: 18px 0 8px; }
+  .cm-item-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .cm-item-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .cm-item-title { font-weight: 700; font-size: 13px; }
+  .cm-item-tag { font-size: 10px; color: var(--text-faint); font-weight: 700; text-transform: uppercase; margin-left: 6px; }
+  .cm-item-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; font-size: 12px; }
+  .cm-item-num-label { color: var(--text-faint); font-size: 10px; text-transform: uppercase; font-weight: 700; }
+  .cm-item-num-value { font-family: monospace; font-weight: 700; }
+  .cm-item-num-value.bad { color: #c5221f; }
+  .cm-item-num-value.good { color: #188038; }
+  .cm-item-actions { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+  .cm-history-toggle { font-size: 12px; color: var(--color-cerulean); cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; }
+  .cm-history-list { margin-top: 8px; border-top: 1px solid var(--border-softer); padding-top: 8px; display: none; }
+  .cm-history-list.open { display: block; }
+  .cm-history-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border-softer); }
+  .cm-history-row:last-child { border-bottom: none; }
+  .cm-history-note { color: var(--text-muted); font-size: 11px; }
+</style>
+
+<div class="filter-bar">
+  <input id="cmSearch" placeholder="Search Doc_ID, Project, Client...." oninput="onCmFilterChange()">
+  <button class="filter-reset" onclick="resetCmFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="cmRefreshBtn" onclick="refreshCmData()" title="Ambil ulang data dari server">🔄 Refresh</button>
+</div>
+
+<div id="cmTableError" class="error"></div>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Doc_ID</th>
+        <th>Project &amp; Client</th>
+        <th>Total Anggaran</th>
+        <th>Total Realisasi</th>
+        <th>Selisih</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="cmTableBody">
+      <tr class="empty-row loading-row"><td colspan="7"><span class="inline-spinner"></span>Memuat data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════ DRAWER "Kelola Cost" ══════════════════════════ -->
+<div class="drawer-overlay" id="cmDrawer" onclick="if (event.target === this) closeCmDrawer();">
+  <div class="drawer-panel drawer-panel-wide">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <h2>Kelola Cost — <span id="cmDrawerDocId">-</span></h2>
+        <button class="drawer-close" onclick="closeCmDrawer()">&times;</button>
+      </div>
+      <div class="drawer-entity-type" id="cmDrawerProjectClient">-</div>
+    </div>
+
+    <div style="padding:16px 24px;">
+      <div id="cmDrawerBanner"></div>
+
+      <div class="cm-summary-row">
+        <div class="cm-summary-card">
+          <div class="cm-summary-label">Total Anggaran</div>
+          <div class="cm-summary-value" id="cmDrawerTotalBudget">Rp0</div>
+        </div>
+        <div class="cm-summary-card">
+          <div class="cm-summary-label">Total Realisasi</div>
+          <div class="cm-summary-value" id="cmDrawerTotalRealized">Rp0</div>
+        </div>
+        <div class="cm-summary-card">
+          <div class="cm-summary-label">Selisih (Margin)</div>
+          <div class="cm-summary-value" id="cmDrawerVariance">Rp0</div>
+        </div>
+      </div>
+
+      <div class="cm-section-hd">💰 Cost SALSET</div>
+      <div id="cmSalsetItems"><p style="font-size:12px; color:var(--text-faint);">Tidak ada item.</p></div>
+
+      <div class="cm-section-hd">🏢 Cost Vendor</div>
+      <div id="cmVendorItems"><p style="font-size:12px; color:var(--text-faint);">Tidak ada item.</p></div>
+    </div>
+
+    <div class="drawer-footer" id="cmDrawerFooter">
+      <button class="btn-outline" onclick="closeCmDrawer()">Tutup</button>
+      <button class="btn-save" id="cmCloseBtn" onclick="submitCloseCostMonitoring()">✅ Tandai Selesai</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal kecil "Catat Realisasi" — dipakai untuk SEMUA item (budgetItemId
+     aktif disimpan di cmActiveBudgetItemId), supaya tidak perlu 1 modal
+     per item. -->
+<div class="confirm-overlay" id="cmDisburseModal">
+  <div class="confirm-box" style="width:420px; max-width:92vw;">
+    <h3>Catat Realisasi</h3>
+    <p style="margin-bottom:8px; font-size:12px; color:var(--text-muted);" id="cmDisburseItemInfo">-</p>
+    <div style="margin-bottom:10px;">
+      <label class="taxonomy-label">Nominal Realisasi</label>
+      <input id="cmDisburseAmount" type="text" inputmode="numeric" placeholder="0"
+        oninput="this.value=formatThousands(parseThousands(this)); onCmDisburseAmountChange();"
+        style="width:100%; margin-top:6px; box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="taxonomy-label">Catatan (opsional)</label>
+      <textarea id="cmDisburseNote" rows="3" placeholder="Contoh: Pencairan tahap 1..." style="width:100%; margin-top:6px; box-sizing:border-box;"></textarea>
+    </div>
+    <div id="cmDisburseOverBudgetWrap" style="display:none; margin-bottom:6px;">
+      <p style="font-size:12px; color:#b8860b; margin-bottom:6px;">⚠️ Nominal ini melebihi sisa anggaran item — perlu approval Head of B2B sebelum dihitung resmi.</p>
+      <label class="taxonomy-label">Kirim approval ke (Head of B2B)</label>
+      <select id="cmDisburseApprover" style="width:100%; margin-top:6px;"></select>
+    </div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeCmDisburseModal()">Batal</button>
+      <button class="btn-save" id="cmDisburseSendBtn" onclick="submitDisbursement()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="success-overlay" id="cmSuccessModal" onclick="if (event.target === this) closeCmSuccessModal();">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3 id="cmSuccessMessage">Berhasil.</h3>
+    <button class="btn-save" onclick="closeCmSuccessModal()">OK</button>
+  </div>
+</div>
+
+<script>
+  var allCmRows = [];
+  var currentCmDrawerDocId = null;
+  var currentCmDetail = null;
+  var cmActiveBudgetItemId = null;
+  var allCmEmployees = [];
+
+  // ══════════════════════════ BOOTSTRAP ══════════════════════════
+  var cmBootstrapAttempts = 0;
+  var cmBootstrapRetried = false;
+  var CM_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var CM_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapCm() {
+    cmBootstrapAttempts++;
+    fetchCmList();
+    setTimeout(function () {
+      if (allCmRows.length || cmBootstrapRetried) return;
+      if (cmBootstrapAttempts < CM_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapCm();
+      } else {
+        cmBootstrapRetried = true;
+        fetchCmList();
+      }
+    }, CM_BOOTSTRAP_RETRY_INTERVAL_MS);
+  }
+
+  function fetchCmList() {
+    gsRunWithRetry('costMonitoring_listForMonitoring', [], function (res) {
+      if (!res || !res.ok) {
+        if (!cmBootstrapRetried) return;
+        if (allCmRows.length) { showCmTableError('Gagal memuat ulang data terbaru: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.'), true); return; }
+        showCmTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
+        return;
+      }
+      cmBootstrapRetried = true;
+      allCmRows = res.data;
+      renderCmTable();
+    }, function (message) {
+      if (!cmBootstrapRetried) return;
+      if (allCmRows.length) { showCmTableError('Gagal memuat ulang data terbaru: ' + message, true); return; }
+      showCmTableError('Gagal memuat data: ' + message);
+    });
+  }
+
+  if (document.readyState === 'complete') {
+    bootstrapCm();
+  } else {
+    window.addEventListener('load', bootstrapCm);
+  }
+
+  function refreshCmData() {
+    var btn = document.getElementById('cmRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    fetchCmList();
+    setTimeout(function () {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
+    }, 1200);
+  }
+
+  function showCmTableError(message, soft) {
+    document.getElementById('cmTableError').innerText = message;
+    if (soft) return;
+    document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">' + message + '</td></tr>';
+  }
+
+  // ══════════════════════════ TABLE ══════════════════════════
+  function statusPillClass(status) {
+    if (status === 'Menunggu Approval') return 'cm-status-pending';
+    if (status === 'Dalam Proses') return 'cm-status-progress';
+    if (status === 'Selesai — Sesuai Anggaran') return 'cm-status-done-ok';
+    if (status === 'Selesai — Melebihi Anggaran') return 'cm-status-done-over';
+    return 'cm-status-none';
+  }
+
+  function getFilteredCmRows() {
+    var search = document.getElementById('cmSearch').value.toLowerCase().trim();
+    if (!search) return allCmRows;
+    return allCmRows.filter(function (r) {
+      return String(r.docId || '').toLowerCase().indexOf(search) !== -1 ||
+        String(r.projectId || '').toLowerCase().indexOf(search) !== -1 ||
+        String(r.projectName || '').toLowerCase().indexOf(search) !== -1 ||
+        String(r.clientName || '').toLowerCase().indexOf(search) !== -1;
+    });
+  }
+
+  function onCmFilterChange() { renderCmTable(); }
+  function resetCmFilter() { document.getElementById('cmSearch').value = ''; renderCmTable(); }
+
+  function renderCmTable() {
+    document.getElementById('cmTableError').innerText = '';
+    var rows = getFilteredCmRows();
+    if (!rows.length) {
+      document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada COR yang perlu dimonitor.</td></tr>';
+      return;
+    }
+    document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
+      var variance = r.variance;
+      var varClass = variance > 0 ? 'bad' : (variance < 0 ? 'good' : '');
+      return '<tr>' +
+        '<td>' + esc(r.docId) + '</td>' +
+        '<td>' + esc(r.projectId ? (r.projectId + ' — ' + r.projectName) : '-') + '<br><span style="font-size:11px; color:var(--text-faint);">' + esc(r.clientName) + '</span></td>' +
+        '<td style="font-family:monospace;">' + fmtRpCm(r.totalBudget) + '</td>' +
+        '<td style="font-family:monospace;">' + fmtRpCm(r.totalRealized) + '</td>' +
+        '<td style="font-family:monospace;" class="' + varClass + '">' + (variance > 0 ? '+' : '') + fmtRpCm(variance) + '</td>' +
+        '<td><span class="cm-status-pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
+        '<td><button class="btn-outline" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function fmtRpCm(n) { n = Math.round(Number(n) || 0); return 'Rp' + n.toLocaleString('id-ID'); }
+  function formatThousands(n) { n = Math.round(Number(n) || 0); return n ? n.toLocaleString('id-ID') : ''; }
+  function parseThousands(el) { return Number(String(el.value || '').replace(/\D/g, '')) || 0; }
+
+  // ══════════════════════════ DRAWER ══════════════════════════
+  function openCmDrawer(docId) {
+    currentCmDrawerDocId = docId;
+    document.body.classList.add('drawer-open');
+    document.getElementById('cmDrawer').classList.add('open');
+    document.getElementById('cmDrawerDocId').innerText = docId;
+    document.getElementById('cmDrawerProjectClient').innerText = 'Memuat...';
+    document.getElementById('cmSalsetItems').innerHTML = '<span class="inline-spinner"></span>Memuat...';
+    document.getElementById('cmVendorItems').innerHTML = '';
+    loadCmDetail(docId, 2);
+  }
+
+  function loadCmDetail(docId, retriesLeft) {
+    gsRunWithRetry('costMonitoring_getDetail', [docId], function (res) {
+      if (!res || !res.ok) {
+        document.getElementById('cmDrawerProjectClient').innerText = (res && res.error && res.error.message) || 'Gagal memuat detail.';
+        return;
+      }
+      currentCmDetail = res.data;
+      renderCmDrawer();
+    }, function (message) {
+      document.getElementById('cmDrawerProjectClient').innerText = 'Gagal memuat detail: ' + message;
+    });
+  }
+
+  function closeCmDrawer() {
+    document.getElementById('cmDrawer').classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    currentCmDrawerDocId = null;
+    currentCmDetail = null;
+  }
+
+  function renderCmDrawer() {
+    var d = currentCmDetail;
+    if (!d) return;
+
+    document.getElementById('cmDrawerProjectClient').innerText =
+      (d.projectId ? (d.projectId + ' — ' + d.projectName) : '-') + ' · ' + d.clientName;
+
+    document.getElementById('cmDrawerTotalBudget').innerText = fmtRpCm(d.totalBudget);
+    document.getElementById('cmDrawerTotalRealized').innerText = fmtRpCm(d.totalRealized);
+    var variance = d.totalRealized - d.totalBudget;
+    var varEl = document.getElementById('cmDrawerVariance');
+    varEl.innerText = (variance > 0 ? '+' : '') + fmtRpCm(variance);
+    varEl.className = 'cm-summary-value' + (variance > 0 ? ' bad' : (variance < 0 ? ' good' : ''));
+
+    var bannerEl = document.getElementById('cmDrawerBanner');
+    if (d.closed) {
+      bannerEl.innerHTML = '<p style="font-size:12px; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:6px; padding:8px 10px;">' +
+        '✅ Cost Monitoring ditandai <strong>Selesai</strong> oleh ' + esc(d.closedBy || '-') + '.</p>';
+    } else {
+      bannerEl.innerHTML = '';
+    }
+
+    var salItems = d.items.filter(function (it) { return it.costGroup === 'SAL'; });
+    var vendorItems = d.items.filter(function (it) { return it.costGroup === 'VENDOR'; });
+    document.getElementById('cmSalsetItems').innerHTML = salItems.length ? salItems.map(renderCmItemCard).join('') : '<p style="font-size:12px; color:var(--text-faint);">Tidak ada item.</p>';
+    document.getElementById('cmVendorItems').innerHTML = vendorItems.length ? vendorItems.map(renderCmItemCard).join('') : '<p style="font-size:12px; color:var(--text-faint);">Tidak ada item.</p>';
+
+    document.getElementById('cmCloseBtn').style.display = d.closed ? 'none' : '';
+  }
+
+  function disbStatusLabel(status) {
+    if (status === 'OK') return 'Tercatat';
+    if (status === 'APPROVED') return 'Disetujui';
+    if (status === 'PENDING_APPROVAL') return 'Menunggu Approval';
+    if (status === 'REJECTED') return 'Ditolak';
+    return status;
+  }
+
+  function renderCmItemCard(item) {
+    var remClass = item.remaining < 0 ? 'bad' : 'good';
+    var tag = item.corTab === 'CAMPAIGN' ? '<span class="cm-item-tag">Dana Campaign</span>' : (item.corTab === 'CLIENT' ? '<span class="cm-item-tag">Dana Client</span>' : '');
+    var historyRows = item.disbursements.map(function (dd) {
+      return '<div class="cm-history-row">' +
+        '<span>' + fmtRpCm(dd.Amount) + ' — <span class="cm-status-pill ' + (dd.Status === 'REJECTED' ? 'cm-status-done-over' : (dd.Status === 'PENDING_APPROVAL' ? 'cm-status-pending' : 'cm-status-done-ok')) + '" style="font-size:10px;">' + disbStatusLabel(dd.Status) + '</span>' +
+        (dd.Note ? '<div class="cm-history-note">' + esc(dd.Note) + '</div>' : '') +
+        '</span><span class="cm-history-note">' + esc(dd.Created_By || '-') + '</span></div>';
+    }).join('');
+
+    return '<div class="cm-item-card">' +
+      '<div class="cm-item-top">' +
+      '<div class="cm-item-title">' + esc(item.keterangan) + tag + '</div>' +
+      '<div class="cm-item-actions">' +
+      (currentCmDetail.closed ? '' : '<button class="btn-outline" onclick="openCmDisburseModal(\'' + item.budgetItemId + '\')">+ Catat Realisasi</button>') +
+      '</div>' +
+      '</div>' +
+      '<div class="cm-item-nums">' +
+      '<div><div class="cm-item-num-label">Anggaran</div><div class="cm-item-num-value">' + fmtRpCm(item.budgetedAmount) + '</div></div>' +
+      '<div><div class="cm-item-num-label">Realisasi</div><div class="cm-item-num-value">' + fmtRpCm(item.realized) + '</div></div>' +
+      '<div><div class="cm-item-num-label">Sisa/Lebih</div><div class="cm-item-num-value ' + remClass + '">' + (item.remaining < 0 ? '' : '') + fmtRpCm(item.remaining) + '</div></div>' +
+      '</div>' +
+      (item.disbursements.length ? '<button class="cm-history-toggle" onclick="toggleCmHistory(this)">Riwayat pencairan (' + item.disbursements.length + ') ▾</button><div class="cm-history-list">' + historyRows + '</div>' : '') +
+      '</div>';
+  }
+
+  function toggleCmHistory(btn) {
+    var list = btn.nextElementSibling;
+    list.classList.toggle('open');
+  }
+
+  // ══════════════════════════ CATAT REALISASI ══════════════════════════
+  function openCmDisburseModal(budgetItemId) {
+    cmActiveBudgetItemId = budgetItemId;
+    var item = currentCmDetail.items.filter(function (it) { return it.budgetItemId === budgetItemId; })[0];
+    if (!item) return;
+    document.getElementById('cmDisburseItemInfo').innerText =
+      item.keterangan + ' — Sisa anggaran: ' + fmtRpCm(item.remaining);
+    document.getElementById('cmDisburseAmount').value = '';
+    document.getElementById('cmDisburseNote').value = '';
+    document.getElementById('cmDisburseOverBudgetWrap').style.display = 'none';
+    document.getElementById('cmDisburseModal').classList.add('open');
+  }
+
+  function closeCmDisburseModal() {
+    document.getElementById('cmDisburseModal').classList.remove('open');
+    cmActiveBudgetItemId = null;
+  }
+
+  function onCmDisburseAmountChange() {
+    var item = currentCmDetail.items.filter(function (it) { return it.budgetItemId === cmActiveBudgetItemId; })[0];
+    if (!item) return;
+    var amount = parseThousands(document.getElementById('cmDisburseAmount'));
+    var overBudget = amount > item.remaining;
+    var wrap = document.getElementById('cmDisburseOverBudgetWrap');
+    wrap.style.display = overBudget ? '' : 'none';
+    if (overBudget && !allCmEmployees.length) fetchCmEmployees();
+  }
+
+  function fetchCmEmployees() {
+    gsRunWithRetry('employee_listAdmins', [], function (res) {
+      if (!res || !res.ok) return;
+      allCmEmployees = res.data;
+      var heads = allCmEmployees.filter(function (e) { return e.Role === 'Head of B2B'; });
+      var sel = document.getElementById('cmDisburseApprover');
+      sel.innerHTML = heads.length
+        ? heads.map(function (e) { return '<option value="' + e.Id + '">' + esc(e.Name) + '</option>'; }).join('')
+        : '<option value="">Belum ada Employee dengan Role "Head of B2B".</option>';
+    }, function () {});
+  }
+
+  function submitDisbursement() {
+    var item = currentCmDetail.items.filter(function (it) { return it.budgetItemId === cmActiveBudgetItemId; })[0];
+    if (!item) return;
+    var amount = parseThousands(document.getElementById('cmDisburseAmount'));
+    if (!amount) { alert('Isi nominal realisasi dulu.'); return; }
+    var note = document.getElementById('cmDisburseNote').value;
+    var overBudget = amount > item.remaining;
+    var approverId = overBudget ? document.getElementById('cmDisburseApprover').value : '';
+    if (overBudget && !approverId) { alert('Pilih Head of B2B tujuan approval dulu.'); return; }
+    if (!techfordConfirm('Simpan realisasi ini?')) return;
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.getElementById('cmDisburseSendBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Menyimpan realisasi...');
+
+    gsRunWithRetry('costMonitoring_addDisbursement', [currentCmDrawerDocId, cmActiveBudgetItemId, amount, note, approverId, createdBy], function (res) {
+      TechfordLoading.hide();
+      btn.disabled = false;
+      btn.innerText = 'Simpan';
+      if (!res || !res.ok) { alert('Gagal menyimpan: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
+      currentCmDetail = res.data;
+      closeCmDisburseModal();
+      renderCmDrawer();
+      fetchCmList();
+      showCmSuccess(overBudget ? 'Realisasi tercatat, menunggu approval Head of B2B.' : 'Realisasi berhasil dicatat.');
+    }, function (message) {
+      TechfordLoading.hide();
+      btn.disabled = false;
+      btn.innerText = 'Simpan';
+      alert('Gagal menyimpan: ' + message);
+    });
+  }
+
+  // ══════════════════════════ TANDAI SELESAI ══════════════════════════
+  function submitCloseCostMonitoring() {
+    if (!currentCmDrawerDocId) return;
+    if (!techfordConfirm('Tandai Cost Monitoring COR ini selesai? Setelah ini tidak bisa menambah realisasi baru.')) return;
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Menandai selesai...');
+    gsRunWithRetry('costMonitoring_closeCostMonitoring', [currentCmDrawerDocId, createdBy], function (res) {
+      TechfordLoading.hide();
+      if (!res || !res.ok) { alert('Gagal: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
+      currentCmDetail = res.data;
+      renderCmDrawer();
+      fetchCmList();
+      showCmSuccess('Cost Monitoring COR ini sudah ditandai selesai.');
+    }, function (message) {
+      TechfordLoading.hide();
+      alert('Gagal: ' + message);
+    });
+  }
+
+  function showCmSuccess(message) {
+    document.getElementById('cmSuccessMessage').innerText = message;
+    document.getElementById('cmSuccessModal').classList.add('open');
+  }
+  function closeCmSuccessModal() {
+    document.getElementById('cmSuccessModal').classList.remove('open');
+  }
+</script>

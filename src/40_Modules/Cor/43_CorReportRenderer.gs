@@ -344,5 +344,8 @@ var CorReportRenderer = (function (module) {
   module.computeGU = computeGU;
   module.computeGD = computeGD;
   module.fundCalc = fundCalc;
+  // Dipakai CostMonitoringService untuk membekukan Budgeted_Amount (Total
+  // setelah PPh) tiap item COR_Cost ke COR_Budget_Item saat COR di-approve.
+  module.calcItemRow = calcItemRow;
   return module;
 })(CorReportRenderer || {});

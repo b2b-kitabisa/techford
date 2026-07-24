@@ -663,6 +663,17 @@ var CorService = (function (module) {
 
     DocumentService.updateStatus(docId, 'Approved');
 
+    // Bekukan snapshot budget untuk Cost Monitoring (no-op kalau Gross Up
+    // atau kalau sudah pernah di-snapshot sebelumnya — lihat guard di
+    // CostMonitoringService.snapshotBudgetItems). Dibungkus try/catch
+    // supaya kegagalan di sini TIDAK membatalkan approval COR yang sudah
+    // berhasil di atas.
+    try {
+      CostMonitoringService.snapshotBudgetItems(docId);
+    } catch (err) {
+      Log.warn('CorService.approve', 'Gagal snapshot budget Cost Monitoring: ' + (err && err.message ? err.message : err));
+    }
+
     return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
   };
 

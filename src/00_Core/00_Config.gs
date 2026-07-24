@@ -38,6 +38,8 @@ var Config = (function (module) {
     COR_COST: 'COR_Cost',
     COR_MARGIN: 'COR_Margin',
     COR_RESULT: 'COR_Result',
+    COR_BUDGET_ITEM: 'COR_Budget_Item',
+    COR_DISBURSEMENT: 'COR_Disbursement',
     MARGIN_GUIDE: 'Margin_Guide',
     QUOTATION_HEADER: 'Quotation_Header',
     QUOTATION_ITEM: 'Quotation_Item',
@@ -311,6 +313,14 @@ var Config = (function (module) {
   // 2 kelompok baris biaya (Cost SALSET vs Cost Vendor/entity terpilih) —
   // sama untuk method Gross Down maupun Gross Up.
   module.COR_COST_GROUP = { SAL: 'SAL', VENDOR: 'VENDOR' };
+
+  // Status baris COR_Disbursement (realisasi pencairan per item budget
+  // Cost Monitoring) — OK berarti tercatat langsung (tidak melebihi sisa
+  // anggaran item itu), PENDING_APPROVAL/APPROVED/REJECTED adalah alur
+  // approval Head of B2B khusus untuk realisasi yang melebihi anggaran
+  // (lihat CostMonitoringService). Hanya OK & APPROVED yang dihitung ke
+  // Total Realisasi.
+  module.DISBURSEMENT_STATUS = { OK: 'OK', PENDING_APPROVAL: 'PENDING_APPROVAL', APPROVED: 'APPROVED', REJECTED: 'REJECTED' };
 
   // 4 komponen Default Margin — struktur ini tetap (mengikuti Panduan
   // Margin), tapi daftar sub-kategori & persentase tiap komponen dikelola
