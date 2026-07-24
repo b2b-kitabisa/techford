@@ -33,8 +33,7 @@ var NavigationConfig = (function (module) {
       group: 'Operation Module',
       items: [
         { page: 'document-pipeline', label: 'Document Pipeline', enabled: true },
-        { page: 'cor-form-builder', label: 'COR Form Builder', enabled: false },
-        { page: 'quotation-form-builder', label: 'Quotation Form Builder', enabled: false }
+        { page: 'cost-monitoring', label: 'Cost Monitoring', enabled: false }
       ]
     },
     {
