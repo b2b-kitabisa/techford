@@ -117,20 +117,6 @@ function doGet(e) {
     return handleQuotationRejectSubmit(params.docId, params.token, params.wording);
   }
 
-  // Link approval realisasi Cost Monitoring (magic link di email, TIDAK
-  // ada login) — sama persis pola COR, tapi kuncinya Disbursement_ID+token
-  // (bukan Doc_ID) karena approval-nya per baris realisasi, bukan per
-  // dokumen.
-  if (params.action === 'cost-disbursement-approve') {
-    return handleCostDisbursementApprovalLink(params.id, params.token);
-  }
-  if (params.action === 'cost-disbursement-reject') {
-    return renderCostDisbursementRejectForm(params.id, params.token);
-  }
-  if (params.action === 'cost-disbursement-reject-submit') {
-    return handleCostDisbursementRejectSubmit(params.id, params.token, params.wording);
-  }
-
   var page = params.page || 'lead-capturing';
   var route = ROUTES[page];
 
@@ -267,77 +253,6 @@ function handleCorRejectSubmit(docId, token, wording) {
     } else {
       html = '<h2>✅ Catatan revisi terkirim</h2>' +
         '<p>Dokumen <strong>' + escHtml(docId) + '</strong> dikembalikan ke consultant sebagai <strong>Revision</strong>.</p>';
-    }
-  } catch (err) {
-    html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + (err && err.message ? err.message : err) + '</p>';
-  }
-  return HtmlService.createHtmlOutput(
-    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
-    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
-  );
-}
-
-/**
- * Halaman konfirmasi sederhana untuk magic link approval realisasi Cost
- * Monitoring (?action=cost-disbursement-approve&id=...&token=...) — sama
- * pola dengan handleCorApprovalLink, kuncinya Disbursement_ID (bukan
- * Doc_ID) karena approval-nya per baris realisasi.
- */
-function handleCostDisbursementApprovalLink(disbursementId, token) {
-  var html;
-  try {
-    var result = CostMonitoringController.approveDisbursement(disbursementId, token);
-    if (!result || result.ok === false) {
-      html = '<h2>⚠️ Gagal approve</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
-    } else {
-      html = '<h2>✅ Realisasi berhasil disetujui</h2>' +
-        '<p>Realisasi cost untuk dokumen <strong>' + escHtml(result.data.docId) + '</strong> sudah disetujui oleh <strong>' + escHtml(result.data.approvedBy) + '</strong>.</p>';
-    }
-  } catch (err) {
-    html = '<h2>⚠️ Gagal approve</h2><p>' + (err && err.message ? err.message : err) + '</p>';
-  }
-  return HtmlService.createHtmlOutput(
-    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:32px;text-align:center;' +
-    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
-  );
-}
-
-/**
- * Form kecil TANPA login untuk link "Reject" realisasi Cost Monitoring
- * (?action=cost-disbursement-reject&id=...&token=...) — sama pola
- * renderCorRejectForm.
- */
-function renderCostDisbursementRejectForm(disbursementId, token) {
-  var webAppUrl = ScriptApp.getService().getUrl();
-  var html =
-    '<h2>Tolak Realisasi Cost</h2>' +
-    '<p style="color:#555;">Tuliskan alasan/catatan penolakan supaya admin tahu apa yang perlu diperbaiki.</p>' +
-    '<form method="get" action="' + webAppUrl + '">' +
-    '<input type="hidden" name="action" value="cost-disbursement-reject-submit">' +
-    '<input type="hidden" name="id" value="' + escHtml(disbursementId) + '">' +
-    '<input type="hidden" name="token" value="' + escHtml(token) + '">' +
-    '<textarea name="wording" rows="6" required placeholder="Contoh: Nominal ini terlalu besar, tolong dirinci lagi penggunaannya." ' +
-    'style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:10px;border:1px solid #ccc;border-radius:8px;"></textarea>' +
-    '<button type="submit" style="margin-top:14px;background:#c5221f;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;">Kirim Penolakan</button>' +
-    '</form>';
-  return HtmlService.createHtmlOutput(
-    '<div style="font-family:Arial,sans-serif;max-width:480px;margin:60px auto;padding:32px;' +
-    'border:1px solid #ddd;border-radius:12px;">' + html + '</div>'
-  );
-}
-
-/**
- * Diproses setelah form renderCostDisbursementRejectForm di-submit.
- */
-function handleCostDisbursementRejectSubmit(disbursementId, token, wording) {
-  var html;
-  try {
-    var result = CostMonitoringController.rejectDisbursement(disbursementId, token, wording);
-    if (!result || result.ok === false) {
-      html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + ((result && result.error && result.error.message) || 'Terjadi kesalahan.') + '</p>';
-    } else {
-      html = '<h2>✅ Catatan penolakan terkirim</h2>' +
-        '<p>Realisasi cost untuk dokumen <strong>' + escHtml(result.data.docId) + '</strong> sudah ditandai <strong>Rejected</strong>.</p>';
     }
   } catch (err) {
     html = '<h2>⚠️ Gagal mengirim penolakan</h2><p>' + (err && err.message ? err.message : err) + '</p>';

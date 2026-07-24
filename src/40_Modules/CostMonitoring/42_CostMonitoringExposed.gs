@@ -9,8 +9,8 @@ function costMonitoring_getDetail(docId) {
   return CostMonitoringController.getDetail(docId);
 }
 
-function costMonitoring_addDisbursement(docId, budgetItemId, amount, note, approverEmployeeId, createdBy) {
-  return CostMonitoringController.addDisbursement(docId, budgetItemId, amount, note, approverEmployeeId, createdBy);
+function costMonitoring_addDisbursement(docId, budgetItemId, amount, disbursementDate, note, createdBy) {
+  return CostMonitoringController.addDisbursement(docId, budgetItemId, amount, disbursementDate, note, createdBy);
 }
 
 function costMonitoring_closeCostMonitoring(docId, closedBy) {

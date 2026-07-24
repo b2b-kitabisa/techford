@@ -15,30 +15,15 @@ var CostMonitoringController = (function (module) {
     });
   };
 
-  module.addDisbursement = function (docId, budgetItemId, amount, note, approverEmployeeId, createdBy) {
+  module.addDisbursement = function (docId, budgetItemId, amount, disbursementDate, note, createdBy) {
     return ErrorHandler.handle('CostMonitoringController.addDisbursement', function () {
-      return CostMonitoringService.addDisbursement(docId, budgetItemId, amount, note, approverEmployeeId, createdBy);
+      return CostMonitoringService.addDisbursement(docId, budgetItemId, amount, disbursementDate, note, createdBy);
     });
   };
 
   module.closeCostMonitoring = function (docId, closedBy) {
     return ErrorHandler.handle('CostMonitoringController.closeCostMonitoring', function () {
       return CostMonitoringService.closeCostMonitoring(docId, closedBy);
-    });
-  };
-
-  // Dipanggil langsung dari doGet (magic link email, tanpa login) di
-  // WebAppRouter.gs — bukan lewat google.script.run, sama pola dengan
-  // CorController.approve/reject.
-  module.approveDisbursement = function (disbursementId, token) {
-    return ErrorHandler.handle('CostMonitoringController.approveDisbursement', function () {
-      return CostMonitoringService.approveDisbursement(disbursementId, token);
-    });
-  };
-
-  module.rejectDisbursement = function (disbursementId, token, wording) {
-    return ErrorHandler.handle('CostMonitoringController.rejectDisbursement', function () {
-      return CostMonitoringService.rejectDisbursement(disbursementId, token, wording);
     });
   };
 

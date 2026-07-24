@@ -4,21 +4,25 @@
  * Pencatatan realisasi pengeluaran terhadap item-item cost yang sudah
  * dianggarkan di COR (Gross Down, sudah Approved) — lihat COR_Budget_Item
  * (snapshot beku anggaran, dibuat sekali saat COR pertama kali Approved)
- * dan COR_Disbursement (riwayat realisasi, banyak baris per item budget).
+ * dan COR_Disbursement (riwayat realisasi, banyak baris per item budget,
+ * bisa dicatat berkali-kali/bertahap — semuanya diakumulasi).
  *
- * Aturan inti: tiap realisasi baru dibandingkan ke SISA anggaran item itu
- * (Budgeted_Amount dikurangi total realisasi yang sudah OK/APPROVED). Kalau
- * masih cukup, langsung tercatat (Status OK). Kalau melebihi, perlu
- * approval Head of B2B (magic link email, sama pola dengan approval COR/
- * Quotation) sebelum dihitung resmi ke Total Realisasi.
+ * Realisasi dicatat LANGSUNG tanpa gerbang approval — kalau total realisasi
+ * sebuah item melebihi anggarannya, itu cuma ditandai (badge) di UI, tidak
+ * memblokir apa pun (lihat CostMonitoringContent.html).
+ *
+ * Margin/Profit HANYA dipengaruhi realisasi Cost VENDOR (bukan Salset) —
+ * Cost Salset tetap dimonitor (SALDO per item) tapi murni operasional,
+ * dana talangan, bukan bagian dari margin/profit COR. Baseline diambil
+ * dari COR_Result (Net_Vendor, Profit_Estimate_Vendor) yang sudah dihitung
+ * & disimpan oleh alur COR — realisasi Vendor yang lebih hemat dari
+ * anggaran MENAMBAH profit/margin, yang lebih boros MENGURANGI.
  */
 var CostMonitoringService = (function (module) {
 
-  function fmtRp(n) { return 'Rp' + (Math.round(Number(n) || 0)).toLocaleString('id-ID'); }
-
-  function sumCounted(disbursements, budgetItemId) {
+  function sumByItem(disbursements, budgetItemId) {
     return disbursements
-      .filter(function (d) { return d.Budget_Item_ID === budgetItemId && (d.Status === Config.DISBURSEMENT_STATUS.OK || d.Status === Config.DISBURSEMENT_STATUS.APPROVED); })
+      .filter(function (d) { return d.Budget_Item_ID === budgetItemId; })
       .reduce(function (s, d) { return s + (Number(d.Amount) || 0); }, 0);
   }
 
@@ -49,7 +53,12 @@ var CostMonitoringService = (function (module) {
         Cost_Group: c.Cost_Group,
         Keterangan: c.Keterangan || '',
         Kategori: c.Kategori || '',
-        Budgeted_Amount: calc.tap,
+        // Dibulatkan supaya SAMA PERSIS dengan angka yang ditampilkan ke user
+        // (fmtRp juga membulatkan) — kalau tidak, sisa desimal dari
+        // pembagian PPh bisa bikin perbandingan "pas dengan anggaran"
+        // meleset (dianggap lebih padahal user mengetik angka yang sama
+        // dengan yang ditampilkan).
+        Budgeted_Amount: Math.round(calc.tap),
         Sort_Order: i,
         Snapshot_At: now
       };
@@ -58,23 +67,51 @@ var CostMonitoringService = (function (module) {
   };
 
   function computeTotals(items, disbursements) {
-    var totalBudget = 0, totalRealized = 0, hasPending = false, hasAny = false;
+    var t = { budgetSalset: 0, budgetVendor: 0, realizedSalset: 0, realizedVendor: 0, hasAny: false };
     items.forEach(function (item) {
-      totalBudget += Number(item.Budgeted_Amount) || 0;
-      totalRealized += sumCounted(disbursements, item.Budget_Item_ID);
-      disbursements.filter(function (d) { return d.Budget_Item_ID === item.Budget_Item_ID; }).forEach(function (d) {
-        hasAny = true;
-        if (d.Status === Config.DISBURSEMENT_STATUS.PENDING_APPROVAL) hasPending = true;
-      });
+      var budgeted = Number(item.Budgeted_Amount) || 0;
+      var realized = sumByItem(disbursements, item.Budget_Item_ID);
+      if (realized > 0) t.hasAny = true;
+      if (item.Cost_Group === 'SAL') {
+        t.budgetSalset += budgeted;
+        t.realizedSalset += realized;
+      } else {
+        t.budgetVendor += budgeted;
+        t.realizedVendor += realized;
+      }
     });
-    return { totalBudget: totalBudget, totalRealized: totalRealized, hasPending: hasPending, hasAny: hasAny };
+    t.totalBudget = t.budgetSalset + t.budgetVendor;
+    t.totalRealized = t.realizedSalset + t.realizedVendor;
+    return t;
+  }
+
+  /**
+   * Margin/Profit Anggaran vs Aktual — HANYA dari sisi Cost Vendor (lihat
+   * doc-comment modul). Net_Vendor & Profit_Estimate_Vendor dijumlahkan
+   * lintas Cor_Tab (Mix Fund digabung jadi 1 angka, tidak dipisah per
+   * sumber dana client/campaign).
+   */
+  function computeMargin(docId, totals) {
+    var results = CorResultRepository.findByDocId(docId);
+    var netVendor = results.reduce(function (s, r) { return s + (Number(r.Net_Vendor) || 0); }, 0);
+    var budgetedProfit = results.reduce(function (s, r) { return s + (Number(r.Profit_Estimate_Vendor) || 0); }, 0);
+
+    var deltaVendor = totals.budgetVendor - totals.realizedVendor; // positif = hemat
+    var actualProfit = budgetedProfit + deltaVendor;
+
+    return {
+      netVendor: netVendor,
+      budgetedProfit: budgetedProfit,
+      actualProfit: actualProfit,
+      budgetedMarginPct: netVendor > 0 ? (budgetedProfit / netVendor) * 100 : 0,
+      actualMarginPct: netVendor > 0 ? (actualProfit / netVendor) * 100 : 0
+    };
   }
 
   function computeDocStatus(header, totals) {
     if (header.Cost_Monitoring_Closed) {
       return totals.totalRealized > totals.totalBudget ? 'Selesai — Melebihi Anggaran' : 'Selesai — Sesuai Anggaran';
     }
-    if (totals.hasPending) return 'Menunggu Approval';
     if (!totals.hasAny) return 'Belum Ada Realisasi';
     return 'Dalam Proses';
   }
@@ -88,7 +125,7 @@ var CostMonitoringService = (function (module) {
     var docs = DocumentPipelineRepository.findAll().filter(function (d) {
       return d.Document_Type === 'COR' && d.Status === 'Approved';
     });
-    if (!docs.length) return [];
+    if (!docs.length) return { rows: [], aggregate: emptyAggregate() };
 
     var headers = CorHeaderRepository.findAll();
     var allItems = CorBudgetItemRepository.findAll();
@@ -96,13 +133,26 @@ var CostMonitoringService = (function (module) {
     var projects = ProjectRepository.findAll();
     var clients = ClientRepository.findAll();
 
-    return docs.map(function (doc) {
+    var aggTotals = { budgetSalset: 0, budgetVendor: 0, realizedSalset: 0, realizedVendor: 0 };
+    var aggMargin = { netVendor: 0, budgetedProfit: 0, actualProfit: 0 };
+
+    var rows = docs.map(function (doc) {
       var header = headers.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
       if (!header || header.Cor_Method !== Config.COR_METHOD.GROSS_DOWN) return null;
 
       var items = allItems.filter(function (b) { return b.Doc_ID === doc.Doc_ID; });
       var disb = allDisb.filter(function (d) { return d.Doc_ID === doc.Doc_ID; });
       var totals = computeTotals(items, disb);
+      var margin = computeMargin(doc.Doc_ID, totals);
+
+      aggTotals.budgetSalset += totals.budgetSalset;
+      aggTotals.budgetVendor += totals.budgetVendor;
+      aggTotals.realizedSalset += totals.realizedSalset;
+      aggTotals.realizedVendor += totals.realizedVendor;
+      aggMargin.netVendor += margin.netVendor;
+      aggMargin.budgetedProfit += margin.budgetedProfit;
+      aggMargin.actualProfit += margin.actualProfit;
+
       var project = projects.filter(function (p) { return p.Project_ID === doc.Project_ID; })[0] || {};
       var client = project.Client_ID ? clients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] : null;
 
@@ -111,17 +161,37 @@ var CostMonitoringService = (function (module) {
         projectId: project.Project_ID || '',
         projectName: project.Project_Name || '',
         clientName: client ? (client.Brand_Name || client.Entity_Name || '-') : '-',
-        totalBudget: totals.totalBudget,
+        budgetSalset: totals.budgetSalset,
+        budgetVendor: totals.budgetVendor,
         totalRealized: totals.totalRealized,
-        variance: totals.totalRealized - totals.totalBudget,
         status: computeDocStatus(header, totals)
       };
     }).filter(Boolean);
+
+    return {
+      rows: rows,
+      aggregate: {
+        budgetSalset: aggTotals.budgetSalset,
+        budgetVendor: aggTotals.budgetVendor,
+        realizedSalset: aggTotals.realizedSalset,
+        realizedVendor: aggTotals.realizedVendor,
+        netVendor: aggMargin.netVendor,
+        budgetedProfit: aggMargin.budgetedProfit,
+        actualProfit: aggMargin.actualProfit,
+        budgetedMarginPct: aggMargin.netVendor > 0 ? (aggMargin.budgetedProfit / aggMargin.netVendor) * 100 : 0,
+        actualMarginPct: aggMargin.netVendor > 0 ? (aggMargin.actualProfit / aggMargin.netVendor) * 100 : 0
+      }
+    };
   };
+
+  function emptyAggregate() {
+    return { budgetSalset: 0, budgetVendor: 0, realizedSalset: 0, realizedVendor: 0, netVendor: 0, budgetedProfit: 0, actualProfit: 0, budgetedMarginPct: 0, actualMarginPct: 0 };
+  }
 
   /**
    * Detail 1 COR untuk drawer "Kelola Cost" — item budget (diurutkan
-   * Sort_Order) lengkap dengan riwayat realisasi & sisa anggarannya masing2.
+   * Sort_Order) lengkap dengan riwayat realisasi & saldo anggarannya
+   * masing-masing, plus ringkasan margin/profit anggaran vs aktual.
    */
   module.getDetail = function (docId) {
     var doc = DocumentPipelineRepository.findById(docId);
@@ -142,48 +212,46 @@ var CostMonitoringService = (function (module) {
 
     var itemViews = items.map(function (item) {
       var itemDisb = disb.filter(function (d) { return d.Budget_Item_ID === item.Budget_Item_ID; })
-        .sort(function (a, b) { return new Date(a.Created_At) - new Date(b.Created_At); });
-      var realized = sumCounted(disb, item.Budget_Item_ID);
+        .sort(function (a, b) { return new Date(a.Disbursement_Date || a.Created_At) - new Date(b.Disbursement_Date || b.Created_At); });
+      var realized = sumByItem(disb, item.Budget_Item_ID);
       var budgeted = Number(item.Budgeted_Amount) || 0;
       return {
         budgetItemId: item.Budget_Item_ID,
-        corTab: item.Cor_Tab,
         costGroup: item.Cost_Group,
         keterangan: item.Keterangan,
         kategori: item.Kategori,
         budgetedAmount: budgeted,
         realized: realized,
-        remaining: budgeted - realized,
+        saldo: budgeted - realized,
         disbursements: itemDisb
       };
     });
 
     var totals = computeTotals(items, disb);
+    var margin = computeMargin(docId, totals);
 
     return {
       docId: docId,
       projectId: project.Project_ID || '',
       projectName: project.Project_Name || '',
       clientName: client ? (client.Brand_Name || client.Entity_Name || '-') : '-',
-      isMixFund: !!header.Is_Mix_Fund,
       closed: !!header.Cost_Monitoring_Closed,
       closedBy: header.Cost_Monitoring_Closed_By || '',
       closedAt: header.Cost_Monitoring_Closed_At || '',
-      totalBudget: totals.totalBudget,
-      totalRealized: totals.totalRealized,
       status: computeDocStatus(header, totals),
+      totals: totals,
+      margin: margin,
       items: itemViews
     };
   };
 
   /**
-   * Catat 1 realisasi pencairan untuk 1 item budget. Kalau akumulasinya
-   * (realisasi yang sudah OK/APPROVED + nominal baru ini) melebihi
-   * Budgeted_Amount item itu, WAJIB sertakan approverEmployeeId (Head of
-   * B2B) — realisasi ini ditahan sebagai PENDING_APPROVAL sampai disetujui
-   * lewat magic link email, belum dihitung ke Total Realisasi.
+   * Catat 1 realisasi pencairan untuk 1 item budget — TIDAK ada gerbang
+   * approval, langsung tersimpan. Kalau bikin akumulasi item ini melebihi
+   * anggarannya, itu cuma tampil sebagai penanda (SALDO minus) di UI,
+   * tidak memblokir penyimpanan.
    */
-  module.addDisbursement = function (docId, budgetItemId, amount, note, approverEmployeeId, createdBy) {
+  module.addDisbursement = function (docId, budgetItemId, amount, disbursementDate, note, createdBy) {
     var header = CorHeaderRepository.findByDocId(docId);
     if (!header) {
       throw new AppError('VALIDATION_ERROR', 'COR ini belum punya draft.');
@@ -201,116 +269,22 @@ var CostMonitoringService = (function (module) {
     if (amount <= 0) {
       throw new AppError('VALIDATION_ERROR', 'Nominal realisasi harus lebih dari 0.');
     }
+    if (Utils.isBlank(disbursementDate)) {
+      throw new AppError('VALIDATION_ERROR', 'Tanggal realisasi wajib diisi.');
+    }
 
-    var disb = CorDisbursementRepository.findByDocId(docId);
-    var existing = sumCounted(disb, budgetItemId);
-    var budgeted = Number(item.Budgeted_Amount) || 0;
-    var overBudget = (existing + amount) > budgeted;
-
-    var row = {
+    CorDisbursementRepository.insert({
       Disbursement_ID: Utils.generateId('DISB'),
       Doc_ID: docId,
       Budget_Item_ID: budgetItemId,
       Amount: amount,
+      Disbursement_Date: disbursementDate,
       Note: note || '',
-      Status: overBudget ? Config.DISBURSEMENT_STATUS.PENDING_APPROVAL : Config.DISBURSEMENT_STATUS.OK,
       Created_By: createdBy || '',
       Created_At: new Date()
-    };
-
-    if (overBudget) {
-      var approver = EmployeeRepository.findAll().filter(function (e) {
-        return String(e.Id) === String(approverEmployeeId) && e.Role === 'Head of B2B';
-      })[0];
-      if (!approver) {
-        throw new AppError('VALIDATION_ERROR', 'Realisasi ini melebihi sisa anggaran item — pilih approver Head of B2B dulu.');
-      }
-      var token = Utilities.getUuid();
-      row.Approval_Token = token;
-      row.Approval_Requested_To = approver.Email;
-      row.Approval_Requested_Name = approver.Name;
-      row.Approval_Requested_At = new Date();
-
-      CorDisbursementRepository.insert(row);
-      sendDisbursementApprovalEmail(docId, item, row, approver);
-    } else {
-      CorDisbursementRepository.insert(row);
-    }
+    });
 
     return module.getDetail(docId);
-  };
-
-  function sendDisbursementApprovalEmail(docId, item, row, approver) {
-    try {
-      var doc = DocumentPipelineRepository.findById(docId);
-      var project = doc ? ProjectRepository.findById(doc.Project_ID) : null;
-      var subject = (project ? ((project.Project_ID || docId) + ' — ' + (project.Project_Name || '-')) : docId) +
-        ' — Realisasi Cost Melebihi Anggaran';
-
-      var approveUrl = ScriptApp.getService().getUrl() + '?action=cost-disbursement-approve&id=' + encodeURIComponent(row.Disbursement_ID) + '&token=' + encodeURIComponent(row.Approval_Token);
-      var rejectUrl = ScriptApp.getService().getUrl() + '?action=cost-disbursement-reject&id=' + encodeURIComponent(row.Disbursement_ID) + '&token=' + encodeURIComponent(row.Approval_Token);
-
-      var body =
-        'Item: ' + item.Keterangan + ' (' + (item.Cost_Group === 'SAL' ? 'Cost SALSET' : 'Cost Vendor') + ')\n' +
-        'Anggaran item: ' + fmtRp(item.Budgeted_Amount) + '\n' +
-        'Nominal realisasi diajukan: ' + fmtRp(row.Amount) + '\n' +
-        (row.Note ? ('Catatan: ' + row.Note + '\n') : '') +
-        '\nRealisasi ini melebihi sisa anggaran item tersebut, perlu persetujuan Anda sebelum dicairkan.\n\n' +
-        'Setujui: ' + approveUrl + '\n' +
-        'Tolak & minta revisi: ' + rejectUrl + '\n\n' +
-        '— Dikirim otomatis oleh Techford Platform.';
-
-      MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
-    } catch (err) {
-      Log.error('CostMonitoringService.sendDisbursementApprovalEmail', 'Gagal mengirim email approval', err);
-      throw new AppError('COST_MONITORING_APPROVAL_FAILED', 'Realisasi tercatat tapi gagal mengirim email approval: ' + (err && err.message ? err.message : err));
-    }
-  }
-
-  function assertDisbursementToken(disbursementId, token) {
-    var row = CorDisbursementRepository.findById(disbursementId);
-    if (!row || !row.Approval_Token || String(row.Approval_Token) !== String(token)) {
-      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
-    }
-    if (row.Approval_Resolved_At) {
-      throw new AppError('VALIDATION_ERROR', 'Permintaan approval ini sudah diputuskan sebelumnya.');
-    }
-    return row;
-  }
-
-  /**
-   * Dipanggil dari doGet ?action=cost-disbursement-approve (magic link,
-   * tanpa login) — lihat WebAppRouter.gs.
-   */
-  module.approveDisbursement = function (disbursementId, token) {
-    var row = assertDisbursementToken(disbursementId, token);
-    var approverName = row.Approval_Requested_Name || 'Head of B2B';
-    var now = new Date();
-    CorDisbursementRepository.patchById(disbursementId, {
-      Status: Config.DISBURSEMENT_STATUS.APPROVED,
-      Approved_By: approverName,
-      Approved_At: now,
-      Approval_Resolved_At: now
-    });
-    return { disbursementId: disbursementId, docId: row.Doc_ID, approvedBy: approverName };
-  };
-
-  /**
-   * Dipanggil dari doGet ?action=cost-disbursement-reject-submit (form
-   * kecil tanpa login) — lihat WebAppRouter.gs.
-   */
-  module.rejectDisbursement = function (disbursementId, token, wording) {
-    var row = assertDisbursementToken(disbursementId, token);
-    if (Utils.isBlank(wording)) {
-      throw new AppError('VALIDATION_ERROR', 'Alasan/catatan penolakan wajib diisi.');
-    }
-    var now = new Date();
-    CorDisbursementRepository.patchById(disbursementId, {
-      Status: Config.DISBURSEMENT_STATUS.REJECTED,
-      Rejection_Note: wording,
-      Approval_Resolved_At: now
-    });
-    return { disbursementId: disbursementId, docId: row.Doc_ID, rejectedBy: row.Approval_Requested_Name || 'Head of B2B' };
   };
 
   /**
