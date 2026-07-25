@@ -485,8 +485,10 @@
 
 <div class="confirm-overlay" id="corApprovalModal">
   <div class="confirm-box" style="width:460px; max-width:92vw;">
-    <h3>Request Approval</h3>
-    <p style="margin-bottom:8px;">COR akan dikirim untuk direview & disetujui oleh salah satu Head of B2B.</p>
+    <div class="modal-hd tone-info">
+      <div class="modal-hd-ic">→</div>
+      <div><h3>Request Approval</h3><p>COR akan dikirim untuk direview &amp; disetujui oleh salah satu Head of B2B.</p></div>
+    </div>
     <div style="margin-bottom:12px;">
       <label class="taxonomy-label">Kirim ke (Head of B2B)</label>
       <select id="corApprovalApprover" style="width:100%; margin-top:6px;"></select>
@@ -504,7 +506,10 @@
 
 <div class="confirm-overlay" id="corConvertModal">
   <div class="confirm-box" style="width:480px; max-width:92vw;">
-    <h3>Convert ke Gross Down</h3>
+    <div class="modal-hd tone-warn">
+      <div class="modal-hd-ic">⇄</div>
+      <div><h3>Convert ke Gross Down</h3></div>
+    </div>
 
     <div id="corConvertStepIntro">
       <p style="margin-bottom:8px; font-size:13px; color:var(--text-muted);">Gross Up cuma alat estimasi nego ke client — begitu client setuju satu angka, COR sungguhan yang jalan lewat approval Head of B2B harus Gross Down. Klik lanjut kalau client SUDAH setuju angka ini.</p>
@@ -550,8 +555,10 @@
 
 <div class="confirm-overlay" id="corGuArchiveModal">
   <div class="confirm-box" style="width:520px; max-width:94vw;">
-    <h3>Estimasi Gross Up (Arsip)</h3>
-    <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Snapshot angka yang ditawarkan ke client SEBELUM dikonversi ke Gross Down — tidak berubah lagi walau data Gross Down direvisi setelahnya.</p>
+    <div class="modal-hd tone-info">
+      <div class="modal-hd-ic">🗄</div>
+      <div><h3>Estimasi Gross Up (Arsip)</h3><p>Snapshot angka yang ditawarkan ke client SEBELUM dikonversi ke Gross Down — tidak berubah lagi walau data Gross Down direvisi setelahnya.</p></div>
+    </div>
     <div id="corGuArchiveContent" style="max-height:60vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:14px; font-size:12.5px;">Memuat...</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeGrossUpArchive()">Tutup</button>
