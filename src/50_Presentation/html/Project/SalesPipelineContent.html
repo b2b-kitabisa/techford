@@ -40,7 +40,7 @@
 </div>
 
 <div class="filter-bar">
-  <input id="pipelineSearch" placeholder="Search Entity Name, Project ID, Brand Name...." oninput="onPipelineFilterChange()">
+  <div class="search-field"><span class="search-ic">⌕</span><input id="pipelineSearch" placeholder="Search Entity Name, Project ID, Brand Name...." oninput="onPipelineFilterChange()"></div>
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="pipelineDateFilterBtn" onclick="toggleDateFilterDropdown()">Date ▾</button>
@@ -90,9 +90,7 @@
         <th>Action</th>
       </tr>
     </thead>
-    <tbody id="pipelineTableBody">
-      <tr class="empty-row loading-row"><td colspan="5"><span class="inline-spinner"></span>Memuat data...</td></tr>
-    </tbody>
+    <tbody id="pipelineTableBody"></tbody>
   </table>
 </div>
 
@@ -347,14 +345,6 @@
   </div>
 </div>
 
-<div class="success-overlay" id="pipelineSuccessModal" onclick="if (event.target === this) closePipelineSuccessModal();">
-  <div class="success-box">
-    <div class="success-icon">✓</div>
-    <h3 id="pipelineSuccessMessage">Berhasil.</h3>
-    <button class="btn-save" onclick="closePipelineSuccessModal()">OK</button>
-  </div>
-</div>
-
 <script>
   var allProjects = [];
   var allClients = [];
@@ -425,6 +415,13 @@
       }
     }, PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
+  renderPipelineSkeleton();
+  function renderPipelineSkeleton() {
+    document.getElementById('pipelineTableBody').innerHTML = new Array(5).fill(
+      '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+    ).join('');
+  }
+
   if (document.readyState === 'complete') {
     bootstrapPipeline();
   } else {
@@ -744,8 +741,8 @@
         ? '<span class="badge badge-other">NEW PIPELINE</span>'
         : '<div class="entity-name">' + p.Project_ID + retainerTag + '</div><div class="entity-pic">' + (p.Project_Name || '-') + '</div>';
       var actionHtml = p.Is_Draft
-        ? '<button class="btn-outline" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">✏️ EDIT</button>'
-        : '<button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button>';
+        ? '<button class="btn-outline row-action-reveal" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">✏️ EDIT</button>'
+        : '<button class="btn-outline row-action-reveal" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button>';
 
       return '<tr>' +
         '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
@@ -1661,10 +1658,6 @@
   }
 
   function showPipelineSuccess(message) {
-    document.getElementById('pipelineSuccessMessage').innerText = message;
-    document.getElementById('pipelineSuccessModal').classList.add('open');
-  }
-  function closePipelineSuccessModal() {
-    document.getElementById('pipelineSuccessModal').classList.remove('open');
+    TechfordToast.show(message);
   }
 </script>
