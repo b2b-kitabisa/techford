@@ -102,6 +102,8 @@
     </div>
   </div>
 
+  <div class="toast-host" id="toastHost"></div>
+
   <script>
     // Karena arsitektur platform ini full-page-reload (bukan SPA), halaman
     // konten kadang perlu redirect ke halaman lain (misal Client Monitoring
@@ -384,6 +386,52 @@
     // Kalau user pindah halaman (full page reload) sementara overlay masih
     // terbuka, pastikan tidak "nyangkut" ke render halaman berikutnya.
     window.addEventListener('beforeunload', function () { TechfordLoading.reset(); });
+
+    /**
+     * TechfordToast — notifikasi ringan yang muncul sebentar di pojok
+     * kanan atas lalu hilang sendiri, TIDAK memblokir alur kerja (beda
+     * dari #techfordSuccessModal/alert() yang harus diklik OK dulu).
+     * Dipakai KHUSUS untuk konfirmasi ringan/tidak kritis (misal "Realisasi
+     * berhasil dicatat") — error & konfirmasi berisiko tetap pakai modal
+     * biasa. Lihat artefak "Techford — Usulan Sistem Desain".
+     */
+    var TechfordToast = (function () {
+      function show(message, tone) {
+        var host = document.getElementById('toastHost');
+        if (!host) return;
+        var el = document.createElement('div');
+        el.className = 'toast-item';
+        var markClass = tone === 'bad' ? 'toast-bad' : 'toast-ok';
+        var mark = tone === 'bad' ? '✕' : '✓';
+        el.innerHTML = '<span class="' + markClass + '">' + mark + '</span><span></span>';
+        el.querySelector('span:last-child').innerText = message;
+        host.appendChild(el);
+        requestAnimationFrame(function () { el.classList.add('show'); });
+        setTimeout(function () {
+          el.classList.remove('show');
+          setTimeout(function () { el.remove(); }, 250);
+        }, 3000);
+      }
+      return { show: show };
+    })();
+
+    // Warna avatar inisial ("dicatat oleh", dst) — dihitung dari nama
+    // supaya 1 orang selalu dapat warna yang sama di seluruh app, tanpa
+    // perlu disimpan di database. Palet dipilih dari turunan warna brand
+    // (cerulean) supaya tetap "satu keluarga" walau warnanya bervariasi.
+    var TECHFORD_AVATAR_PALETTE = ['#0A6E96', '#10A8E5', '#3A3A3A', '#6B7280', '#0E7C86', '#7C5CBF'];
+    function techfordAvatarColor(name) {
+      var str = String(name || '?');
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) { hash = (hash * 31 + str.charCodeAt(i)) >>> 0; }
+      return TECHFORD_AVATAR_PALETTE[hash % TECHFORD_AVATAR_PALETTE.length];
+    }
+    function techfordAvatarInitial(name) {
+      return String(name || '?').trim().charAt(0).toUpperCase() || '?';
+    }
+    function techfordAvatarHtml(name) {
+      return '<div class="avatar-initial" style="background:' + techfordAvatarColor(name) + ';">' + techfordAvatarInitial(name) + '</div>';
+    }
 
     /**
      * CorCalc — kalkulasi & rendering laporan COR, dipakai BERSAMA oleh

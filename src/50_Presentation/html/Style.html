@@ -21,6 +21,22 @@
     --accent-tint: rgba(var(--color-cerulean-rgb), 0.1);
     --accent-tint-strong: rgba(var(--color-cerulean-rgb), 0.18);
     --accent-border: rgba(var(--color-cerulean-rgb), 0.5);
+
+    /* ---- Sistem Desain v2 (lihat artefak "Techford — Usulan Sistem
+       Desain") — token semantik & bayangan dipakai konsisten oleh
+       komponen bersama (.stat-tile/.pill/.dtable/dst) supaya tiap modul
+       tidak reka ulang warna/radius/shadow sendiri-sendiri. ---- */
+    --good: #188038;
+    --good-tint: #E6F4EA;
+    --warn: #B8860B;
+    --warn-tint: #FEF7E0;
+    --bad: #C5221F;
+    --bad-tint: #FCE8E6;
+    --shadow-sm: 0 1px 2px rgba(var(--color-mineshaft-rgb), 0.08), 0 1px 1px rgba(var(--color-mineshaft-rgb), 0.05);
+    --shadow-md: 0 4px 14px rgba(var(--color-mineshaft-rgb), 0.10), 0 1px 3px rgba(var(--color-mineshaft-rgb), 0.07);
+    --shadow-lg: 0 16px 40px rgba(var(--color-mineshaft-rgb), 0.16), 0 4px 10px rgba(var(--color-mineshaft-rgb), 0.08);
+    --radius-md: 10px;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   }
 
   * { box-sizing: border-box; }
@@ -691,4 +707,166 @@
   .revenue-row input { background: var(--color-white); }
   .revenue-row-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; }
   .revenue-service-label { font-size: 13px; flex: 1.4; }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SISTEM DESAIN v2 — komponen bersama, dipakai lintas modul (Sales
+     Pipeline, Document Pipeline, Cost Monitoring, dst). Lihat artefak
+     "Techford — Usulan Sistem Desain" untuk perbandingan visual sebelum/
+     sesudah. Ditambahkan ADDITIVE (tidak menghapus class lama) supaya
+     migrasi tiap halaman bisa bertahap tanpa merusak yang belum disentuh.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ---- Stat tile (score card terpadu, ganti .stat-card/.pipeline-score-card/
+     .cm-score-card yang sebelumnya beda-beda per halaman) ---- */
+  .stat-tile-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-tile {
+    background: var(--color-white); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+    padding: 14px 16px; box-shadow: var(--shadow-sm); transition: box-shadow .15s ease, transform .15s ease;
+  }
+  .stat-tile.clickable { cursor: pointer; }
+  .stat-tile.clickable:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .stat-tile .st-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-faint); }
+  .stat-tile .st-value { font-family: var(--font-mono); font-size: 19px; font-weight: 700; margin-top: 5px; letter-spacing: -0.01em; }
+  .stat-tile .st-desc { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .stat-tile .st-compare { font-size: 12px; margin-top: 7px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  .stat-tile.accent { border-color: var(--color-cerulean); background: linear-gradient(180deg, var(--accent-tint), var(--color-white) 70%); }
+  .st-delta { font-weight: 700; display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 6px; font-size: 11px; }
+  .st-delta.up { color: var(--good); background: var(--good-tint); }
+  .st-delta.down { color: var(--bad); background: var(--bad-tint); }
+  .st-delta.flat { color: var(--text-faint); background: var(--bg-hover); }
+
+  /* ---- Pill status terpadu (neutral/info/warn/good/bad) — DIPAKAI UNTUK
+     STATUS BARU (Cost Monitoring, dst). Badge Lead/Client lama (.badge-*)
+     SENGAJA tidak diganti/dihapus, biar tidak menyentuh makna warna yang
+     sudah dipakai di tempat lain (lihat catatan di 04_NavigationConfig
+     & stageBadgeClass). ---- */
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .pill.neutral { color: var(--text-faint); background: var(--bg-hover); }
+  .pill.info { color: var(--color-cerulean); background: var(--accent-tint-strong); }
+  .pill.warn { color: var(--warn); background: var(--warn-tint); }
+  .pill.good { color: var(--good); background: var(--good-tint); }
+  .pill.bad { color: var(--bad); background: var(--bad-tint); }
+
+  /* ---- Tabel: hover baris, kolom rata kanan angka, teks 1-baris terpotong ---- */
+  .data-table tbody tr { transition: background .1s ease; }
+  .data-table tbody tr:hover { background: var(--bg-hover); }
+  .data-table td.num { font-family: var(--font-mono); text-align: right; }
+  .data-table td.truncate { max-width: 0; }
+  .data-table td.truncate .clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-row-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  /* Header tabel "nempel" saat scroll — bungkus <table> dalam
+     <div class="table-scroll-sticky" style="max-height:..."> untuk pakai ini. */
+  .table-scroll-sticky { overflow-y: auto; }
+  .table-scroll-sticky table thead th { position: sticky; top: 0; background: var(--bg-tint); z-index: 1; }
+  /* Tombol aksi baris baru terlihat penuh saat baris di-hover — tabel
+     terasa lebih lega secara default. Bungkus tombol aksi dengan class
+     ini di kolom Action. */
+  .row-action-reveal { opacity: 0; transition: opacity .12s ease; }
+  .data-table tbody tr:hover .row-action-reveal, .data-table tbody tr:focus-within .row-action-reveal { opacity: 1; }
+
+  /* ---- Search field dengan ikon ---- */
+  .search-field { position: relative; flex: 1; min-width: 180px; }
+  .search-field .search-ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-faint); font-size: 13px; pointer-events: none; }
+  .search-field input { width: 100%; padding-left: 32px !important; }
+
+  /* ---- Segmented control (ganti tab link bergaris-bawah) ---- */
+  .segmented { display: inline-flex; padding: 3px; background: var(--bg-hover); border-radius: 9px; gap: 2px; }
+  .segmented button { border: none; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 16px; border-radius: 7px; cursor: pointer; color: var(--text-faint); transition: background .15s ease, color .15s ease; }
+  .segmented button.active { background: var(--color-white); color: var(--color-mineshaft); box-shadow: var(--shadow-sm); }
+
+  /* ---- Modal header kontekstual (ikon sesuai tingkat keseriusan) ---- */
+  .modal-hd { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
+  .modal-hd .modal-hd-ic { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .modal-hd.tone-warn .modal-hd-ic { background: var(--warn-tint); color: var(--warn); }
+  .modal-hd.tone-bad .modal-hd-ic { background: var(--bad-tint); color: var(--bad); }
+  .modal-hd.tone-good .modal-hd-ic { background: var(--good-tint); color: var(--good); }
+  .modal-hd.tone-info .modal-hd-ic { background: var(--accent-tint-strong); color: var(--color-cerulean); }
+  .modal-hd h3, .modal-hd h4 { margin: 0 !important; }
+  .modal-hd p { margin: 2px 0 0; font-size: 12px; color: var(--text-faint); }
+
+  /* ---- Validasi form inline (pelengkap alert(), bukan pengganti semua) ---- */
+  .field-error input, .field-error select, .field-error textarea { border-color: var(--bad) !important; background: var(--bad-tint) !important; }
+  .field-error-msg { font-size: 11.5px; color: var(--bad); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+
+  /* ---- Stepper wizard bernomor ---- */
+  .stepper { display: flex; align-items: center; margin: 4px 0 18px; }
+  .stepper .step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; position: relative; }
+  .stepper .step .step-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid var(--border-soft); background: var(--color-white); color: var(--text-faint); z-index: 1; }
+  .stepper .step .step-lbl { font-size: 11px; color: var(--text-faint); text-align: center; }
+  .stepper .step.done .step-dot { background: var(--good); border-color: var(--good); color: #fff; }
+  .stepper .step.current .step-dot { background: var(--color-white); border-color: var(--color-cerulean); color: var(--color-cerulean); box-shadow: 0 0 0 4px var(--accent-tint); }
+  .stepper .step.done .step-lbl, .stepper .step.current .step-lbl { color: var(--color-mineshaft); font-weight: 600; }
+  .stepper .step:not(:last-child)::after { content: ""; position: absolute; top: 13px; left: 50%; width: 100%; height: 2px; background: var(--border-soft); }
+  .stepper .step.done:not(:last-child)::after { background: var(--good); }
+
+  /* ---- Avatar inisial (atribusi "dicatat oleh") ---- */
+  .avatar-initial { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .attrib-row { display: flex; align-items: center; gap: 8px; }
+  .attrib-row .attrib-who { font-size: 12.5px; font-weight: 600; }
+  .attrib-row .attrib-when { font-size: 11px; color: var(--text-faint); }
+
+  /* ---- Input nominal Rupiah dengan chip "Rp" ---- */
+  .curr-field { position: relative; }
+  .curr-field .curr-prefix { position: absolute; left: 1px; top: 1px; bottom: 1px; display: flex; align-items: center; padding: 0 10px; background: var(--bg-hover); border-radius: 5px 0 0 5px; font-size: 12.5px; font-weight: 700; color: var(--text-faint); pointer-events: none; }
+  .curr-field input { width: 100%; padding-left: 50px !important; text-align: right; font-family: var(--font-mono); font-weight: 700; box-sizing: border-box; }
+
+  /* ---- Timeline riwayat (ganti daftar baris datar) ---- */
+  .timeline { position: relative; padding-left: 22px; }
+  .timeline::before { content: ""; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--border-soft); }
+  .timeline .tl-item { position: relative; padding-bottom: 14px; }
+  .timeline .tl-item:last-child { padding-bottom: 0; }
+  .timeline .tl-item::before { content: ""; position: absolute; left: -22px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-white); border: 2px solid var(--color-cerulean); }
+  .timeline .tl-item.bad::before { border-color: var(--bad); }
+  .timeline .tl-item .tl-amt { font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+  .timeline .tl-item .tl-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+
+  /* ---- Severity stripe (garis warna kiri kartu, sinyal status sekilas) ---- */
+  .stripe-card { position: relative; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px 16px 12px 18px; background: var(--color-white); box-shadow: var(--shadow-sm); overflow: hidden; }
+  .stripe-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--border-soft); }
+  .stripe-card.ok::before { background: var(--good); }
+  .stripe-card.bad::before { background: var(--bad); }
+  .stripe-card.warn::before { background: var(--warn); }
+
+  /* ---- Tombol dengan spinner (state loading async) ---- */
+  .btn-loading-spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; animation: techford-spin 0.7s linear infinite; margin-right: 7px; vertical-align: middle; }
+  .btn-outline .btn-loading-spin { border: 2px solid var(--border-soft); border-top-color: var(--color-mineshaft); }
+
+  /* ---- Tooltip info terpadu ---- */
+  .info-tip-wrap { position: relative; display: inline-flex; }
+  .info-tip-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--bg-hover); color: var(--text-faint); font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; cursor: help; }
+  .info-tip-box { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: 210px; background: var(--color-mineshaft); color: var(--color-white); font-size: 11.5px; line-height: 1.5; padding: 9px 11px; border-radius: 8px; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: opacity .15s ease; z-index: 50; }
+  .info-tip-box::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--color-mineshaft); }
+  .info-tip-wrap:hover .info-tip-box { opacity: 1; }
+
+  /* ---- Pagination terpadu ---- */
+  .pagi { display: flex; align-items: center; gap: 6px; }
+  .pagi button { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-soft); background: var(--color-white); font-family: inherit; font-size: 12.5px; cursor: pointer; color: var(--text-muted); }
+  .pagi button:hover:not(:disabled) { background: var(--bg-hover); }
+  .pagi button.active { background: var(--color-cerulean); border-color: var(--color-cerulean); color: #fff; font-weight: 700; }
+  .pagi button:disabled { opacity: 0.4; cursor: default; }
+  .pagi .pagi-sep { color: var(--text-faint); font-size: 12px; padding: 0 2px; }
+
+  /* ---- Skeleton loading shimmer (ganti pola teks "Memuat..." + spinner) ---- */
+  .skel { position: relative; overflow: hidden; background: var(--bg-hover); border-radius: 6px; }
+  .skel::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+    transform: translateX(-100%); animation: techford-shimmer 1.4s infinite;
+  }
+  .skel-tile { height: 74px; border-radius: var(--radius-md); }
+  .skel-row { height: 14px; margin: 6px 0; border-radius: 4px; }
+  @keyframes techford-shimmer { 100% { transform: translateX(100%); } }
+  @media (prefers-reduced-motion: reduce) { .skel::after { animation: none; } }
+
+  /* ---- Toast notifikasi (lihat TechfordToast di Shell.html) ---- */
+  .toast-host { position: fixed; top: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .toast-item {
+    background: var(--color-mineshaft); color: var(--color-white); padding: 10px 16px; border-radius: 9px; font-size: 12.5px;
+    box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: 8px;
+    opacity: 0; transform: translateY(-8px); transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast-item.show { opacity: 1; transform: translateY(0); }
+  .toast-item .toast-ok { color: #6fe0a0; font-weight: 700; }
+  .toast-item .toast-bad { color: #f2a6a3; font-weight: 700; }
 </style>
