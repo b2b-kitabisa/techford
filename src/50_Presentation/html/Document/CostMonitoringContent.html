@@ -17,6 +17,9 @@
 
   .cm-drawer-score-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }
   .cm-drawer-sub-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .cm-result-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-softer); }
+  .cm-result-table td.cm-result-label { color: var(--text-muted); width: 60%; }
+  .cm-result-table td.cm-result-value { font-family: monospace; font-weight: 700; text-align: right; }
 
   .cm-section-hd { font-size: 14px; font-weight: 800; margin: 18px 0 8px; }
   .cm-item-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
@@ -79,6 +82,11 @@
 
     <div style="padding:16px 24px;">
       <div id="cmDrawerBanner"></div>
+
+      <div class="cm-section-hd" style="margin-top:0;">📊 Ringkasan Keuangan COR</div>
+      <table class="cm-result-table" id="cmResultTable" style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px;">
+        <tbody></tbody>
+      </table>
 
       <div class="cm-drawer-score-row">
         <div class="cm-score-card">
@@ -271,6 +279,10 @@
       '</div>';
   }
 
+  function resultRow(label, value) {
+    return '<tr><td class="cm-result-label">' + label + '</td><td class="cm-result-value">' + value + '</td></tr>';
+  }
+
   // ══════════════════════════ TABLE ══════════════════════════
   function statusPillClass(status) {
     if (status === 'Dalam Proses') return 'cm-status-progress';
@@ -352,13 +364,25 @@
     document.getElementById('cmDrawerProjectClient').innerText =
       (d.projectId ? (d.projectId + ' — ' + d.projectName) : '-') + ' · ' + d.clientName;
 
-    var m = d.margin;
+    var m = d.corResult;
     var marginDelta = m.actualMarginPct - m.budgetedMarginPct;
     var profitDelta = m.actualProfit - m.budgetedProfit;
     document.getElementById('cmDrawerMargin').innerText = fmtPct(m.budgetedMarginPct) + ' → ' + fmtPct(m.actualMarginPct);
     document.getElementById('cmDrawerMarginDelta').innerHTML = '<span class="' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>';
     document.getElementById('cmDrawerProfit').innerText = fmtRpCm(m.budgetedProfit) + ' → ' + fmtRpCm(m.actualProfit);
     document.getElementById('cmDrawerProfitDelta').innerHTML = '<span class="' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>';
+
+    document.getElementById('cmResultTable').querySelector('tbody').innerHTML =
+      resultRow('Total Dana Masuk (Total_Implementation_Fund)', fmtRpCm(m.totalImplementationFund)) +
+      resultRow('SALSET Cash In — Gross (Salset_Gross)', fmtRpCm(m.salsetGross)) +
+      resultRow('SALSET NGO Fee (Salset_NGO_Fee)', fmtRpCm(m.salsetNgoFee)) +
+      resultRow('Cash In Vendor — Gross (Gross_Vendor)', fmtRpCm(m.grossVendor)) +
+      resultRow('PPN Gross Down (PPN_Gross_Down)', fmtRpCm(m.ppnGrossDown)) +
+      resultRow('PPh 23 Vendor (Pph_23_Vendor)', fmtRpCm(m.pph23Vendor)) +
+      resultRow('Cash In Vendor — Net (Net_Vendor)', fmtRpCm(m.netVendor)) +
+      resultRow('Total Anggaran Cost Vendor (Cost_Estimate_Vendor)', fmtRpCm(m.costEstimateVendor)) +
+      resultRow('Profit Anggaran Vendor (Profit_Estimate_Vendor)', fmtRpCm(m.budgetedProfit)) +
+      resultRow('Margin Anggaran Vendor (Margin_Estimate_Vendor)', fmtPct(m.budgetedMarginPct));
 
     document.getElementById('cmDrawerBudgetSalset').innerText = fmtRpCm(d.totals.budgetSalset);
     document.getElementById('cmDrawerBudgetVendor').innerText = fmtRpCm(d.totals.budgetVendor);
@@ -434,7 +458,14 @@
     cmActiveBudgetItemId = null;
   }
 
+  var cmSubmittingDisbursement = false;
+
   function submitDisbursement() {
+    // Jaga-jaga tambahan supaya tidak bisa submit dobel (mis. klik cepat
+    // sebelum tombol sempat ke-disable) — sumber utama bug dobel-simpan
+    // sudah diperbaiki di server (lihat catatan addDisbursement), ini cuma
+    // lapisan pengaman tambahan.
+    if (cmSubmittingDisbursement) return;
     var item = currentCmDetail.items.filter(function (it) { return it.budgetItemId === cmActiveBudgetItemId; })[0];
     if (!item) return;
     var amount = parseThousands(document.getElementById('cmDisburseAmount'));
@@ -444,6 +475,7 @@
     var note = document.getElementById('cmDisburseNote').value;
     if (!techfordConfirm('Simpan realisasi ini?')) return;
 
+    cmSubmittingDisbursement = true;
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     var btn = document.getElementById('cmDisburseSendBtn');
     btn.disabled = true;
@@ -451,16 +483,26 @@
     TechfordLoading.show('Menyimpan realisasi...');
 
     gsRunWithRetry('costMonitoring_addDisbursement', [currentCmDrawerDocId, cmActiveBudgetItemId, amount, date, note, createdBy], function (res) {
+      cmSubmittingDisbursement = false;
       TechfordLoading.hide();
       btn.disabled = false;
       btn.innerText = 'Simpan';
       if (!res || !res.ok) { alert('Gagal menyimpan: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
-      currentCmDetail = res.data;
       closeCmDisburseModal();
-      renderCmDrawer();
+      // res.data bisa null kalau penyimpanan sukses tapi pembacaan ulang
+      // detail-nya gagal (lihat catatan di CostMonitoringService.addDisbursement)
+      // — realisasi TETAP tersimpan, jadi jangan tampilkan error, cukup
+      // fetch ulang detail-nya secara terpisah.
+      if (res.data) {
+        currentCmDetail = res.data;
+        renderCmDrawer();
+      } else {
+        loadCmDetail(currentCmDrawerDocId);
+      }
       fetchCmList();
       showCmSuccess('Realisasi berhasil dicatat.');
     }, function (message) {
+      cmSubmittingDisbursement = false;
       TechfordLoading.hide();
       btn.disabled = false;
       btn.innerText = 'Simpan';

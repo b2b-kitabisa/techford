@@ -86,21 +86,40 @@ var CostMonitoringService = (function (module) {
   }
 
   /**
-   * Margin/Profit Anggaran vs Aktual — HANYA dari sisi Cost Vendor (lihat
-   * doc-comment modul). Net_Vendor & Profit_Estimate_Vendor dijumlahkan
-   * lintas Cor_Tab (Mix Fund digabung jadi 1 angka, tidak dipisah per
-   * sumber dana client/campaign).
+   * Ringkasan COR_Result (SELURUH kolom finansialnya, dijumlahkan lintas
+   * Cor_Tab — Mix Fund digabung jadi 1 angka, tidak dipisah per sumber
+   * dana client/campaign) PLUS Margin/Profit Anggaran vs Aktual — margin
+   * HANYA dipengaruhi realisasi Cost Vendor (lihat doc-comment modul).
+   * Kalau sheet COR_Result belum dibuat/belum ada datanya, kembalikan
+   * ringkasan kosong (bukan throw) — Cost Monitoring tetap harus bisa
+   * dipakai (item budget & realisasi) walau ledger COR_Result tertunda.
    */
-  function computeMargin(docId, totals) {
-    var results = CorResultRepository.findByDocId(docId);
-    var netVendor = results.reduce(function (s, r) { return s + (Number(r.Net_Vendor) || 0); }, 0);
-    var budgetedProfit = results.reduce(function (s, r) { return s + (Number(r.Profit_Estimate_Vendor) || 0); }, 0);
+  function computeCorResultSummary(docId, totals) {
+    var results;
+    try {
+      results = CorResultRepository.findByDocId(docId);
+    } catch (err) {
+      results = [];
+    }
 
+    function sumField(field) {
+      return results.reduce(function (s, r) { return s + (Number(r[field]) || 0); }, 0);
+    }
+
+    var netVendor = sumField('Net_Vendor');
+    var budgetedProfit = sumField('Profit_Estimate_Vendor');
     var deltaVendor = totals.budgetVendor - totals.realizedVendor; // positif = hemat
     var actualProfit = budgetedProfit + deltaVendor;
 
     return {
+      totalImplementationFund: sumField('Total_Implementation_Fund'),
+      salsetGross: sumField('Salset_Gross'),
+      salsetNgoFee: sumField('Salset_NGO_Fee'),
+      grossVendor: sumField('Gross_Vendor'),
+      ppnGrossDown: sumField('PPN_Gross_Down'),
+      pph23Vendor: sumField('Pph_23_Vendor'),
       netVendor: netVendor,
+      costEstimateVendor: sumField('Cost_Estimate_Vendor'),
       budgetedProfit: budgetedProfit,
       actualProfit: actualProfit,
       budgetedMarginPct: netVendor > 0 ? (budgetedProfit / netVendor) * 100 : 0,
@@ -143,7 +162,7 @@ var CostMonitoringService = (function (module) {
       var items = allItems.filter(function (b) { return b.Doc_ID === doc.Doc_ID; });
       var disb = allDisb.filter(function (d) { return d.Doc_ID === doc.Doc_ID; });
       var totals = computeTotals(items, disb);
-      var margin = computeMargin(doc.Doc_ID, totals);
+      var margin = computeCorResultSummary(doc.Doc_ID, totals);
 
       aggTotals.budgetSalset += totals.budgetSalset;
       aggTotals.budgetVendor += totals.budgetVendor;
@@ -228,7 +247,7 @@ var CostMonitoringService = (function (module) {
     });
 
     var totals = computeTotals(items, disb);
-    var margin = computeMargin(docId, totals);
+    var corResult = computeCorResultSummary(docId, totals);
 
     return {
       docId: docId,
@@ -240,7 +259,7 @@ var CostMonitoringService = (function (module) {
       closedAt: header.Cost_Monitoring_Closed_At || '',
       status: computeDocStatus(header, totals),
       totals: totals,
-      margin: margin,
+      corResult: corResult,
       items: itemViews
     };
   };
@@ -274,7 +293,10 @@ var CostMonitoringService = (function (module) {
     }
 
     CorDisbursementRepository.insert({
-      Disbursement_ID: Utils.generateId('DISB'),
+      // Utilities.getUuid() (bukan Utils.generateId) — realisasi adalah
+      // catatan uang sungguhan, ID-nya harus benar2 tidak mungkin
+      // bentrok, beda dari ID lain di codebase yang cukup timestamp+random.
+      Disbursement_ID: Utilities.getUuid(),
       Doc_ID: docId,
       Budget_Item_ID: budgetItemId,
       Amount: amount,
@@ -284,7 +306,19 @@ var CostMonitoringService = (function (module) {
       Created_At: new Date()
     });
 
-    return module.getDetail(docId);
+    // PENTING: baris di atas ini SUDAH BERHASIL tersimpan pada titik ini.
+    // getDetail() di bawah cuma untuk MEMBACA ULANG hasilnya supaya client
+    // langsung dapat state terbaru tanpa round-trip kedua — kalau
+    // pembacaan ini gagal (misal sheet COR_Result bermasalah), JANGAN
+    // sampai seluruh addDisbursement dilaporkan gagal ke client (yang
+    // sebelumnya membuat user mengira realisasi belum tersimpan lalu
+    // mengulang submit, padahal sudah tersimpan — hasilnya baris dobel).
+    try {
+      return module.getDetail(docId);
+    } catch (err) {
+      Log.warn('CostMonitoringService.addDisbursement', 'Realisasi tersimpan tapi gagal memuat ulang detail: ' + (err && err.message ? err.message : err));
+      return null;
+    }
   };
 
   /**
