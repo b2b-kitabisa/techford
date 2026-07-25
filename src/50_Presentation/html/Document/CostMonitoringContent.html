@@ -1,49 +1,31 @@
 <style>
-  .cm-score-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .cm-score-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; background: var(--bg-tint); }
-  .cm-score-label { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
-  .cm-score-value { font-family: monospace; font-size: 17px; font-weight: 700; margin-top: 4px; }
-  .cm-score-compare { font-size: 12px; margin-top: 6px; color: var(--text-muted); }
-  .cm-delta-up { color: #188038; font-weight: 700; }
-  .cm-delta-down { color: #c5221f; font-weight: 700; }
-  .cm-delta-flat { color: var(--text-faint); font-weight: 700; }
-
-  .cm-status-pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .cm-status-none { background: var(--bg-hover); color: var(--text-muted); }
-  .cm-status-progress { background: var(--accent-tint-strong); color: var(--color-cerulean); }
-  .cm-status-done-ok { background: #e6f4ea; color: #188038; }
-  .cm-status-done-over { background: #fce8e6; color: #c5221f; }
-  .cm-overbudget-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #fce8e6; color: #c5221f; margin-left: 6px; }
+  /* Sisa gaya lokal khusus Cost Monitoring — komponen umum (stat-tile,
+     pill, stripe-card, timeline, curr-field, skel) sudah dipindah ke
+     Style.html supaya dipakai bersama modul lain juga. */
+  .cm-result-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-softer); }
+  .cm-result-table td.cm-result-label { color: var(--text-muted); width: 60%; }
+  .cm-result-table td.cm-result-value { font-family: var(--font-mono); font-weight: 700; text-align: right; }
 
   .cm-drawer-score-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }
   .cm-drawer-sub-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-  .cm-result-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-softer); }
-  .cm-result-table td.cm-result-label { color: var(--text-muted); width: 60%; }
-  .cm-result-table td.cm-result-value { font-family: monospace; font-weight: 700; text-align: right; }
 
   .cm-section-hd { font-size: 14px; font-weight: 800; margin: 18px 0 8px; }
-  .cm-item-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
-  .cm-item-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .cm-item-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
   .cm-item-title { font-weight: 700; font-size: 13px; }
-  .cm-item-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; font-size: 12px; }
+  .cm-item-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px; }
   .cm-item-num-label { color: var(--text-faint); font-size: 10px; text-transform: uppercase; font-weight: 700; }
-  .cm-item-num-value { font-family: monospace; font-weight: 700; }
-  .cm-item-num-value.bad { color: #c5221f; }
-  .cm-item-num-value.good { color: #188038; }
-  .cm-item-actions { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
-  .cm-history-toggle { font-size: 12px; color: var(--color-cerulean); cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; }
-  .cm-history-list { margin-top: 8px; border-top: 1px solid var(--border-softer); padding-top: 8px; display: none; }
-  .cm-history-list.open { display: block; }
-  .cm-history-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border-softer); }
-  .cm-history-row:last-child { border-bottom: none; }
-  .cm-history-note { color: var(--text-muted); font-size: 11px; }
-  .cm-history-date { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+  .cm-item-num-value { font-family: var(--font-mono); font-weight: 700; }
+  .cm-item-num-value.bad { color: var(--bad); }
+  .cm-item-num-value.good { color: var(--good); }
+  .cm-history-toggle { font-size: 12px; color: var(--color-cerulean); cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; margin-top: 10px; }
+  .cm-history-wrap { display: none; margin-top: 8px; }
+  .cm-history-wrap.open { display: block; }
 </style>
 
-<div class="cm-score-row" id="cmAggregateScoreRow"></div>
+<div class="stat-tile-row" id="cmAggregateScoreRow"></div>
 
 <div class="filter-bar">
-  <input id="cmSearch" placeholder="Search Doc_ID, Project, Client...." oninput="onCmFilterChange()">
+  <div class="search-field"><span class="search-ic">⌕</span><input id="cmSearch" class="fc" placeholder="Cari Doc_ID, Project, Client..." oninput="onCmFilterChange()"></div>
   <button class="filter-reset" onclick="resetCmFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="cmRefreshBtn" onclick="refreshCmData()" title="Ambil ulang data dari server">🔄 Refresh</button>
 </div>
@@ -63,9 +45,7 @@
         <th>Action</th>
       </tr>
     </thead>
-    <tbody id="cmTableBody">
-      <tr class="empty-row loading-row"><td colspan="7"><span class="inline-spinner"></span>Memuat data...</td></tr>
-    </tbody>
+    <tbody id="cmTableBody"></tbody>
   </table>
 </div>
 
@@ -89,35 +69,23 @@
       </table>
 
       <div class="cm-drawer-score-row">
-        <div class="cm-score-card">
-          <div class="cm-score-label">Margin (Anggaran → Aktual)</div>
-          <div class="cm-score-value" id="cmDrawerMargin">0% → 0%</div>
-          <div class="cm-score-compare" id="cmDrawerMarginDelta">-</div>
+        <div class="stat-tile accent">
+          <div class="st-label">Margin (Anggaran → Aktual)</div>
+          <div class="st-value" id="cmDrawerMargin">0% → 0%</div>
+          <div class="st-compare" id="cmDrawerMarginDelta">-</div>
         </div>
-        <div class="cm-score-card">
-          <div class="cm-score-label">Profit Vendor (Anggaran → Aktual)</div>
-          <div class="cm-score-value" id="cmDrawerProfit">Rp0 → Rp0</div>
-          <div class="cm-score-compare" id="cmDrawerProfitDelta">-</div>
+        <div class="stat-tile accent">
+          <div class="st-label">Profit Vendor (Anggaran → Aktual)</div>
+          <div class="st-value" id="cmDrawerProfit">Rp0 → Rp0</div>
+          <div class="st-compare" id="cmDrawerProfitDelta">-</div>
         </div>
       </div>
 
       <div class="cm-drawer-sub-row">
-        <div class="cm-score-card">
-          <div class="cm-score-label">Anggaran Salset</div>
-          <div class="cm-score-value" id="cmDrawerBudgetSalset">Rp0</div>
-        </div>
-        <div class="cm-score-card">
-          <div class="cm-score-label">Anggaran Vendor</div>
-          <div class="cm-score-value" id="cmDrawerBudgetVendor">Rp0</div>
-        </div>
-        <div class="cm-score-card">
-          <div class="cm-score-label">Realisasi Salset</div>
-          <div class="cm-score-value" id="cmDrawerRealizedSalset">Rp0</div>
-        </div>
-        <div class="cm-score-card">
-          <div class="cm-score-label">Realisasi Vendor</div>
-          <div class="cm-score-value" id="cmDrawerRealizedVendor">Rp0</div>
-        </div>
+        <div class="stat-tile"><div class="st-label">Anggaran Salset</div><div class="st-value" id="cmDrawerBudgetSalset">Rp0</div></div>
+        <div class="stat-tile"><div class="st-label">Anggaran Vendor</div><div class="st-value" id="cmDrawerBudgetVendor">Rp0</div></div>
+        <div class="stat-tile"><div class="st-label">Realisasi Salset</div><div class="st-value" id="cmDrawerRealizedSalset">Rp0</div></div>
+        <div class="stat-tile"><div class="st-label">Realisasi Vendor</div><div class="st-value" id="cmDrawerRealizedVendor">Rp0</div></div>
       </div>
 
       <div class="cm-section-hd">💰 Cost SALSET</div>
@@ -139,19 +107,24 @@
      per item. -->
 <div class="confirm-overlay" id="cmDisburseModal">
   <div class="confirm-box" style="width:420px; max-width:92vw;">
-    <h3>Catat Realisasi</h3>
-    <p style="margin-bottom:8px; font-size:12px; color:var(--text-muted);" id="cmDisburseItemInfo">-</p>
-    <div style="margin-bottom:10px;">
-      <label class="taxonomy-label">Nominal Realisasi</label>
-      <input id="cmDisburseAmount" type="text" inputmode="numeric" placeholder="0"
-        oninput="this.value=formatThousands(parseThousands(this));"
-        style="width:100%; margin-top:6px; box-sizing:border-box;">
+    <div class="modal-hd tone-info">
+      <div class="modal-hd-ic">Rp</div>
+      <div><h3>Catat Realisasi</h3><p id="cmDisburseItemInfo">-</p></div>
     </div>
-    <div style="margin-bottom:10px;">
+    <div class="field">
+      <label class="taxonomy-label">Nominal Realisasi</label>
+      <div class="curr-field">
+        <span class="curr-prefix">Rp</span>
+        <input id="cmDisburseAmount" type="text" inputmode="numeric" placeholder="0"
+          oninput="this.value=formatThousands(parseThousands(this));"
+          style="margin-top:6px;">
+      </div>
+    </div>
+    <div class="field">
       <label class="taxonomy-label">Tanggal Realisasi</label>
       <input id="cmDisburseDate" type="date" style="width:100%; margin-top:6px; box-sizing:border-box;">
     </div>
-    <div style="margin-bottom:10px;">
+    <div class="field">
       <label class="taxonomy-label">Catatan (opsional)</label>
       <textarea id="cmDisburseNote" rows="3" placeholder="Contoh: Pencairan tahap 1..." style="width:100%; margin-top:6px; box-sizing:border-box;"></textarea>
     </div>
@@ -159,14 +132,6 @@
       <button class="btn-outline" onclick="closeCmDisburseModal()">Batal</button>
       <button class="btn-save" id="cmDisburseSendBtn" onclick="submitDisbursement()">Simpan</button>
     </div>
-  </div>
-</div>
-
-<div class="success-overlay" id="cmSuccessModal" onclick="if (event.target === this) closeCmSuccessModal();">
-  <div class="success-box">
-    <div class="success-icon">✓</div>
-    <h3 id="cmSuccessMessage">Berhasil.</h3>
-    <button class="btn-save" onclick="closeCmSuccessModal()">OK</button>
   </div>
 </div>
 
@@ -182,6 +147,18 @@
   var cmBootstrapRetried = false;
   var CM_BOOTSTRAP_MAX_ATTEMPTS = 8;
   var CM_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  // Skeleton shimmer SEGERA (sebelum fetch pertama) — kerangka tabel &
+  // score card langsung tampil, cuma isinya yang menunggu data (lihat
+  // artefak "Techford — Usulan Sistem Desain" #skeleton).
+  renderCmSkeleton();
+
+  function renderCmSkeleton() {
+    document.getElementById('cmAggregateScoreRow').innerHTML =
+      new Array(6).fill('<div class="skel skel-tile"></div>').join('');
+    document.getElementById('cmTableBody').innerHTML =
+      new Array(3).fill('<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>').join('');
+  }
 
   function bootstrapCm() {
     cmBootstrapAttempts++;
@@ -250,7 +227,7 @@
     if (isNaN(dt.getTime())) return String(d);
     return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   }
-  function deltaClass(delta) { return delta > 0 ? 'cm-delta-up' : (delta < 0 ? 'cm-delta-down' : 'cm-delta-flat'); }
+  function deltaClass(delta) { return delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat'); }
   function deltaArrow(delta) { return delta > 0 ? '▲' : (delta < 0 ? '▼' : '—'); }
 
   // ══════════════════════════ SCORE CARD (aggregate) ══════════════════════════
@@ -261,21 +238,21 @@
     var profitDelta = a.actualProfit - a.budgetedProfit;
 
     document.getElementById('cmAggregateScoreRow').innerHTML =
-      scoreCard('Anggaran Salset', fmtRpCm(a.budgetSalset)) +
-      scoreCard('Anggaran Vendor', fmtRpCm(a.budgetVendor)) +
-      scoreCard('Realisasi Salset', fmtRpCm(a.realizedSalset)) +
-      scoreCard('Realisasi Vendor', fmtRpCm(a.realizedVendor)) +
-      scoreCard('Margin (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
-        '<span class="' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>') +
-      scoreCard('Profit Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
-        '<span class="' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>');
+      statTile('Anggaran Salset', fmtRpCm(a.budgetSalset)) +
+      statTile('Anggaran Vendor', fmtRpCm(a.budgetVendor)) +
+      statTile('Realisasi Salset', fmtRpCm(a.realizedSalset)) +
+      statTile('Realisasi Vendor', fmtRpCm(a.realizedVendor)) +
+      statTile('Margin (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
+        '<span class="st-delta ' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>', true) +
+      statTile('Profit Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
+        '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>', true);
   }
 
-  function scoreCard(label, value, compareHtml) {
-    return '<div class="cm-score-card">' +
-      '<div class="cm-score-label">' + label + '</div>' +
-      '<div class="cm-score-value">' + value + '</div>' +
-      (compareHtml ? '<div class="cm-score-compare">' + compareHtml + '</div>' : '') +
+  function statTile(label, value, compareHtml, accent) {
+    return '<div class="stat-tile' + (accent ? ' accent' : '') + '">' +
+      '<div class="st-label">' + label + '</div>' +
+      '<div class="st-value">' + value + '</div>' +
+      (compareHtml ? '<div class="st-compare">' + compareHtml + '</div>' : '') +
       '</div>';
   }
 
@@ -285,10 +262,10 @@
 
   // ══════════════════════════ TABLE ══════════════════════════
   function statusPillClass(status) {
-    if (status === 'Dalam Proses') return 'cm-status-progress';
-    if (status === 'Selesai — Sesuai Anggaran') return 'cm-status-done-ok';
-    if (status === 'Selesai — Melebihi Anggaran') return 'cm-status-done-over';
-    return 'cm-status-none';
+    if (status === 'Dalam Proses') return 'info';
+    if (status === 'Selesai — Sesuai Anggaran') return 'good';
+    if (status === 'Selesai — Melebihi Anggaran') return 'bad';
+    return 'neutral';
   }
 
   function getFilteredCmRows() {
@@ -313,14 +290,15 @@
       return;
     }
     document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
+      var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : '-';
       return '<tr>' +
         '<td>' + esc(r.docId) + '</td>' +
-        '<td>' + esc(r.projectId ? (r.projectId + ' — ' + r.projectName) : '-') + '<br><span style="font-size:11px; color:var(--text-faint);">' + esc(r.clientName) + '</span></td>' +
-        '<td style="font-family:monospace;">' + fmtRpCm(r.budgetSalset) + '</td>' +
-        '<td style="font-family:monospace;">' + fmtRpCm(r.budgetVendor) + '</td>' +
-        '<td style="font-family:monospace;">' + fmtRpCm(r.totalRealized) + '</td>' +
-        '<td><span class="cm-status-pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
-        '<td><button class="btn-outline" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
+        '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
+        '<td class="num">' + fmtRpCm(r.budgetSalset) + '</td>' +
+        '<td class="num">' + fmtRpCm(r.budgetVendor) + '</td>' +
+        '<td class="num">' + fmtRpCm(r.totalRealized) + '</td>' +
+        '<td><span class="pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
+        '<td><button class="btn-outline row-action-reveal" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
         '</tr>';
     }).join('');
   }
@@ -332,8 +310,8 @@
     document.getElementById('cmDrawer').classList.add('open');
     document.getElementById('cmDrawerDocId').innerText = docId;
     document.getElementById('cmDrawerProjectClient').innerText = 'Memuat...';
-    document.getElementById('cmSalsetItems').innerHTML = '<span class="inline-spinner"></span>Memuat...';
-    document.getElementById('cmVendorItems').innerHTML = '';
+    document.getElementById('cmSalsetItems').innerHTML = '<div class="skel skel-tile"></div>';
+    document.getElementById('cmVendorItems').innerHTML = '<div class="skel skel-tile"></div>';
     loadCmDetail(docId);
   }
 
@@ -368,9 +346,9 @@
     var marginDelta = m.actualMarginPct - m.budgetedMarginPct;
     var profitDelta = m.actualProfit - m.budgetedProfit;
     document.getElementById('cmDrawerMargin').innerText = fmtPct(m.budgetedMarginPct) + ' → ' + fmtPct(m.actualMarginPct);
-    document.getElementById('cmDrawerMarginDelta').innerHTML = '<span class="' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>';
+    document.getElementById('cmDrawerMarginDelta').innerHTML = '<span class="st-delta ' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>';
     document.getElementById('cmDrawerProfit').innerText = fmtRpCm(m.budgetedProfit) + ' → ' + fmtRpCm(m.actualProfit);
-    document.getElementById('cmDrawerProfitDelta').innerHTML = '<span class="' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>';
+    document.getElementById('cmDrawerProfitDelta').innerHTML = '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>';
 
     document.getElementById('cmResultTable').querySelector('tbody').innerHTML =
       resultRow('Total Dana Masuk (Total_Implementation_Fund)', fmtRpCm(m.totalImplementationFund)) +
@@ -391,7 +369,8 @@
 
     var bannerEl = document.getElementById('cmDrawerBanner');
     bannerEl.innerHTML = d.closed
-      ? '<p style="font-size:12px; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:6px; padding:8px 10px;">✅ Cost Monitoring ditandai <strong>Selesai</strong> oleh ' + esc(d.closedBy || '-') + '.</p>'
+      ? '<div class="attrib-row" style="background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:8px 12px; margin-bottom:14px;">' +
+        techfordAvatarHtml(d.closedBy) + '<div><div class="attrib-who">Ditandai Selesai oleh ' + esc(d.closedBy || '-') + '</div></div></div>'
       : '';
 
     var salItems = d.items.filter(function (it) { return it.costGroup === 'SAL'; });
@@ -404,33 +383,34 @@
 
   function renderCmItemCard(item) {
     var saldoClass = item.saldo < 0 ? 'bad' : 'good';
-    var overBadge = item.saldo < 0 ? '<span class="cm-overbudget-badge">⚠️ Melebihi Anggaran</span>' : '';
+    var overBadge = item.saldo < 0 ? '<span class="pill bad" style="margin-left:6px;">Melebihi Anggaran</span>' : '';
+    var cmRunningTotal = 0;
     var historyRows = item.disbursements.map(function (dd) {
-      return '<div class="cm-history-row">' +
-        '<span>' + fmtRpCm(dd.Amount) +
-        (dd.Note ? '<div class="cm-history-note">' + esc(dd.Note) + '</div>' : '') +
-        '</span><span style="text-align:right;"><span class="cm-history-date">' + fmtDateCm(dd.Disbursement_Date) + '</span><br><span class="cm-history-note">' + esc(dd.Created_By || '-') + '</span></span></div>';
+      cmRunningTotal += Number(dd.Amount) || 0;
+      var overThis = cmRunningTotal > item.budgetedAmount;
+      return '<div class="tl-item' + (overThis ? ' bad' : '') + '">' +
+        '<div class="tl-amt">' + fmtRpCm(dd.Amount) + '</div>' +
+        '<div class="tl-meta">' + fmtDateCm(dd.Disbursement_Date) + ' · ' + esc(dd.Created_By || '-') + (dd.Note ? ' — ' + esc(dd.Note) : '') + '</div>' +
+        '</div>';
     }).join('');
 
-    return '<div class="cm-item-card">' +
+    return '<div class="stripe-card ' + (item.saldo < 0 ? 'bad' : 'ok') + '" style="margin-bottom:10px;">' +
       '<div class="cm-item-top">' +
       '<div class="cm-item-title">' + esc(item.keterangan) + overBadge + '</div>' +
-      '<div class="cm-item-actions">' +
       (currentCmDetail.closed ? '' : '<button class="btn-outline" onclick="openCmDisburseModal(\'' + item.budgetItemId + '\')">+ Catat Realisasi</button>') +
-      '</div>' +
       '</div>' +
       '<div class="cm-item-nums">' +
       '<div><div class="cm-item-num-label">Anggaran</div><div class="cm-item-num-value">' + fmtRpCm(item.budgetedAmount) + '</div></div>' +
       '<div><div class="cm-item-num-label">Realisasi</div><div class="cm-item-num-value">' + fmtRpCm(item.realized) + '</div></div>' +
       '<div><div class="cm-item-num-label">Saldo</div><div class="cm-item-num-value ' + saldoClass + '">' + fmtRpCm(item.saldo) + '</div></div>' +
       '</div>' +
-      (item.disbursements.length ? '<button class="cm-history-toggle" onclick="toggleCmHistory(this)">Riwayat pencairan (' + item.disbursements.length + ') ▾</button><div class="cm-history-list">' + historyRows + '</div>' : '') +
+      (item.disbursements.length ? '<button class="cm-history-toggle" onclick="toggleCmHistory(this)">Riwayat pencairan (' + item.disbursements.length + ') ▾</button><div class="cm-history-wrap"><div class="timeline" style="margin-top:10px;">' + historyRows + '</div></div>' : '') +
       '</div>';
   }
 
   function toggleCmHistory(btn) {
-    var list = btn.nextElementSibling;
-    list.classList.toggle('open');
+    var wrap = btn.nextElementSibling;
+    wrap.classList.toggle('open');
   }
 
   // ══════════════════════════ CATAT REALISASI ══════════════════════════
@@ -479,7 +459,7 @@
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     var btn = document.getElementById('cmDisburseSendBtn');
     btn.disabled = true;
-    btn.innerText = 'Menyimpan...';
+    btn.innerHTML = '<span class="btn-loading-spin"></span>Menyimpan...';
     TechfordLoading.show('Menyimpan realisasi...');
 
     gsRunWithRetry('costMonitoring_addDisbursement', [currentCmDrawerDocId, cmActiveBudgetItemId, amount, date, note, createdBy], function (res) {
@@ -500,7 +480,7 @@
         loadCmDetail(currentCmDrawerDocId);
       }
       fetchCmList();
-      showCmSuccess('Realisasi berhasil dicatat.');
+      TechfordToast.show('Realisasi berhasil dicatat.');
     }, function (message) {
       cmSubmittingDisbursement = false;
       TechfordLoading.hide();
@@ -516,25 +496,24 @@
     if (!techfordConfirm('Tandai Cost Monitoring COR ini selesai? Setelah ini tidak bisa menambah realisasi baru.')) return;
 
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.getElementById('cmCloseBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-loading-spin"></span>Memproses...';
     TechfordLoading.show('Menandai selesai...');
     gsRunWithRetry('costMonitoring_closeCostMonitoring', [currentCmDrawerDocId, createdBy], function (res) {
       TechfordLoading.hide();
+      btn.disabled = false;
+      btn.innerText = '✅ Tandai Selesai';
       if (!res || !res.ok) { alert('Gagal: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
       currentCmDetail = res.data;
       renderCmDrawer();
       fetchCmList();
-      showCmSuccess('Cost Monitoring COR ini sudah ditandai selesai.');
+      TechfordToast.show('Cost Monitoring COR ini sudah ditandai selesai.');
     }, function (message) {
       TechfordLoading.hide();
+      btn.disabled = false;
+      btn.innerText = '✅ Tandai Selesai';
       alert('Gagal: ' + message);
     });
-  }
-
-  function showCmSuccess(message) {
-    document.getElementById('cmSuccessMessage').innerText = message;
-    document.getElementById('cmSuccessModal').classList.add('open');
-  }
-  function closeCmSuccessModal() {
-    document.getElementById('cmSuccessModal').classList.remove('open');
   }
 </script>
