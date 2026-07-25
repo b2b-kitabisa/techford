@@ -1,7 +1,7 @@
 <div id="clientStats" class="stat-cards"></div>
 
 <div class="filter-bar">
-  <input id="clientSearch" placeholder="Search Entity Name...." oninput="onClientFilterChange()">
+  <div class="search-field"><span class="search-ic">⌕</span><input id="clientSearch" placeholder="Search Entity Name...." oninput="onClientFilterChange()"></div>
   <select id="clientSourceFilter" onchange="onClientFilterChange()">
     <option value="">All Source</option>
   </select>
@@ -21,9 +21,7 @@
         <th>Action</th>
       </tr>
     </thead>
-    <tbody id="clientTableBody">
-      <tr class="empty-row loading-row"><td colspan="5"><span class="inline-spinner"></span>Memuat data...</td></tr>
-    </tbody>
+    <tbody id="clientTableBody"></tbody>
   </table>
 </div>
 
@@ -313,6 +311,12 @@
   // kelihatan "menunggu load") — sama seperti Sales Pipeline & Document
   // Pipeline yang score card-nya sudah statis di HTML sejak awal.
   renderClientStats(allClients);
+  renderClientSkeleton();
+  function renderClientSkeleton() {
+    document.getElementById('clientTableBody').innerHTML = new Array(5).fill(
+      '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+    ).join('');
+  }
 
   if (document.readyState === 'complete') {
     bootstrapClients();
@@ -540,7 +544,7 @@
         '<td class="nowrap-cell"><span class="badge ' + badgeClassForSource(c.Client_Source) + '">' + (c.Client_Source || '').toUpperCase() + '</span></td>' +
         '<td>' + (pic ? pic.PIC_Name : '-') + '</td>' +
         '<td class="nowrap-cell">' + formatDate(c.Created_Date) + '</td>' +
-        '<td><button class="btn-icon-round" onclick="openClientDetail(\'' + c.Client_ID + '\')" title="Lihat Detail">›</button></td>' +
+        '<td><button class="btn-icon-round row-action-reveal" onclick="openClientDetail(\'' + c.Client_ID + '\')" title="Lihat Detail">›</button></td>' +
         '</tr>';
     }).join('');
   }
