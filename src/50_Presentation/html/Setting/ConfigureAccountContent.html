@@ -12,9 +12,7 @@
     <thead>
       <tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Action</th></tr>
     </thead>
-    <tbody id="adminTableBody">
-      <tr class="empty-row loading-row"><td colspan="5"><span class="inline-spinner"></span>Memuat data...</td></tr>
-    </tbody>
+    <tbody id="adminTableBody"></tbody>
   </table>
 </div>
 
@@ -84,6 +82,13 @@
       }
     }, ADMIN_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
+  renderAdminSkeleton();
+  function renderAdminSkeleton() {
+    document.getElementById('adminTableBody').innerHTML = new Array(3).fill(
+      '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+    ).join('');
+  }
+
   if (document.readyState === 'complete') {
     bootstrapAdmins();
   } else {
