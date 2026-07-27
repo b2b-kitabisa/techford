@@ -153,7 +153,7 @@ var CostMonitoringService = (function (module) {
     var clients = ClientRepository.findAll();
 
     var aggTotals = { budgetSalset: 0, budgetVendor: 0, realizedSalset: 0, realizedVendor: 0 };
-    var aggMargin = { netVendor: 0, budgetedProfit: 0, actualProfit: 0, totalImplementationFund: 0, costEstimateVendor: 0 };
+    var aggMargin = { netVendor: 0, budgetedProfit: 0, actualProfit: 0, totalImplementationFund: 0, salsetNgoFee: 0 };
 
     var rows = docs.map(function (doc) {
       var header = headers.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
@@ -172,7 +172,7 @@ var CostMonitoringService = (function (module) {
       aggMargin.budgetedProfit += margin.budgetedProfit;
       aggMargin.actualProfit += margin.actualProfit;
       aggMargin.totalImplementationFund += margin.totalImplementationFund;
-      aggMargin.costEstimateVendor += margin.costEstimateVendor;
+      aggMargin.salsetNgoFee += margin.salsetNgoFee;
 
       var project = projects.filter(function (p) { return p.Project_ID === doc.Project_ID; })[0] || {};
       var client = project.Client_ID ? clients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] : null;
@@ -206,7 +206,7 @@ var CostMonitoringService = (function (module) {
         budgetedMarginPct: aggMargin.netVendor > 0 ? (aggMargin.budgetedProfit / aggMargin.netVendor) * 100 : 0,
         actualMarginPct: aggMargin.netVendor > 0 ? (aggMargin.actualProfit / aggMargin.netVendor) * 100 : 0,
         totalImplementationFund: aggMargin.totalImplementationFund,
-        costEstimateVendor: aggMargin.costEstimateVendor
+        salsetNgoFee: aggMargin.salsetNgoFee
       }
     };
   };
@@ -215,7 +215,7 @@ var CostMonitoringService = (function (module) {
     return {
       budgetSalset: 0, budgetVendor: 0, realizedSalset: 0, realizedVendor: 0, netVendor: 0,
       budgetedProfit: 0, actualProfit: 0, budgetedMarginPct: 0, actualMarginPct: 0,
-      totalImplementationFund: 0, costEstimateVendor: 0
+      totalImplementationFund: 0, salsetNgoFee: 0
     };
   }
 

@@ -21,8 +21,10 @@
   .cm-history-wrap { display: none; margin-top: 8px; }
   .cm-history-wrap.open { display: block; }
 
-  .cm-collapsible-hd { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-  .cm-collapse-caret { font-size: 11px; color: var(--text-faint); }
+  .cm-collapsible-hd { display: flex; align-items: center; justify-content: space-between; gap: 6px; cursor: pointer; user-select: none; padding: 6px 10px; margin-left: -10px; margin-right: -10px; width: calc(100% + 20px); border-radius: 8px; }
+  .cm-collapsible-hd:hover { background: var(--bg-hover); }
+  .cm-collapse-caret { font-size: 18px; line-height: 1; color: var(--text-muted); width: 26px; height: 26px; border-radius: 7px; background: var(--bg-hover); display: inline-flex; align-items: center; justify-content: center; transition: transform .15s ease; flex-shrink: 0; }
+  .cm-collapse-caret.collapsed { transform: rotate(-90deg); }
   .cm-collapsible-body { overflow: hidden; }
   .cm-collapsible-body.cm-collapsed { display: none; }
 
@@ -78,7 +80,8 @@
       <div id="cmDrawerBanner"></div>
 
       <div class="cm-section-hd cm-collapsible-hd" style="margin-top:0;" onclick="toggleCmResultTable(this)">
-        📊 Ringkasan Keuangan COR <span class="cm-collapse-caret">▾</span>
+        <span>📊 Ringkasan Keuangan COR</span>
+        <span class="cm-collapse-caret">▾</span>
       </div>
       <div class="cm-collapsible-body" id="cmResultTableWrap">
         <table class="cm-result-table" id="cmResultTable" style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px;">
@@ -254,12 +257,10 @@
     if (!a) return;
     var marginDelta = a.actualMarginPct - a.budgetedMarginPct;
     var profitDelta = a.actualProfit - a.budgetedProfit;
-    var costSavings = a.costEstimateVendor - a.realizedVendor; // positif = hemat (bagus)
 
     document.getElementById('cmAggregateScoreRow').innerHTML =
       statTile('Implementation Fund', fmtRpCm(a.totalImplementationFund)) +
-      statTile('Cost Estimate Vendor (Anggaran → Aktual)', fmtRpCm(a.costEstimateVendor) + ' → ' + fmtRpCm(a.realizedVendor),
-        '<span class="st-delta ' + deltaClass(costSavings) + '">' + deltaArrow(costSavings) + ' ' + fmtRpCm(Math.abs(costSavings)) + '</span>', true) +
+      statTile('Salset Fee', fmtRpCm(a.salsetNgoFee)) +
       statTile('Profit Estimate Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
         '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>', true) +
       statTile('Margin Estimate Vendor (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
@@ -395,16 +396,16 @@
     document.getElementById('cmDrawerProfitDelta').innerHTML = '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>';
 
     document.getElementById('cmResultTable').querySelector('tbody').innerHTML =
-      resultRow('Total Dana Masuk (Total_Implementation_Fund)', fmtRpCm(m.totalImplementationFund)) +
-      resultRow('SALSET Cash In — Gross (Salset_Gross)', fmtRpCm(m.salsetGross)) +
-      resultRow('SALSET NGO Fee (Salset_NGO_Fee)', fmtRpCm(m.salsetNgoFee)) +
-      resultRow('Cash In Vendor — Gross (Gross_Vendor)', fmtRpCm(m.grossVendor)) +
-      resultRow('PPN Gross Down (PPN_Gross_Down)', fmtRpCm(m.ppnGrossDown)) +
-      resultRow('PPh 23 Vendor (Pph_23_Vendor)', fmtRpCm(m.pph23Vendor)) +
-      resultRow('Cash In Vendor — Net (Net_Vendor)', fmtRpCm(m.netVendor)) +
-      resultRow('Total Anggaran Cost Vendor (Cost_Estimate_Vendor)', fmtRpCm(m.costEstimateVendor)) +
-      resultRow('Profit Anggaran Vendor (Profit_Estimate_Vendor)', fmtRpCm(m.budgetedProfit)) +
-      resultRow('Margin Anggaran Vendor (Margin_Estimate_Vendor)', fmtPct(m.budgetedMarginPct));
+      resultRow('Total Dana Masuk', fmtRpCm(m.totalImplementationFund)) +
+      resultRow('SALSET Cash In — Gross', fmtRpCm(m.salsetGross)) +
+      resultRow('SALSET NGO Fee', fmtRpCm(m.salsetNgoFee)) +
+      resultRow('Cash In Vendor — Gross', fmtRpCm(m.grossVendor)) +
+      resultRow('PPN Gross Down', fmtRpCm(m.ppnGrossDown)) +
+      resultRow('PPh 23 Vendor', fmtRpCm(m.pph23Vendor)) +
+      resultRow('Cash In Vendor — Net', fmtRpCm(m.netVendor)) +
+      resultRow('Total Anggaran Cost Vendor', fmtRpCm(m.costEstimateVendor)) +
+      resultRow('Profit Anggaran Vendor', fmtRpCm(m.budgetedProfit)) +
+      resultRow('Margin Anggaran Vendor', fmtPct(m.budgetedMarginPct));
 
     document.getElementById('cmDrawerBudgetSalset').innerText = fmtRpCm(d.totals.budgetSalset);
     document.getElementById('cmDrawerBudgetVendor').innerText = fmtRpCm(d.totals.budgetVendor);
@@ -460,7 +461,7 @@
   function toggleCmResultTable(hdEl) {
     var wrap = document.getElementById('cmResultTableWrap');
     var collapsed = wrap.classList.toggle('cm-collapsed');
-    hdEl.querySelector('.cm-collapse-caret').innerText = collapsed ? '▸' : '▾';
+    hdEl.querySelector('.cm-collapse-caret').classList.toggle('collapsed', collapsed);
   }
 
   // ══════════════════════════ CATAT REALISASI ══════════════════════════
