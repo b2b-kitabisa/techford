@@ -28,10 +28,24 @@
   .cm-collapsible-body { overflow: hidden; }
   .cm-collapsible-body.cm-collapsed { display: none; }
 
-  .cm-stack { display: flex; flex-direction: column; gap: 3px; font-variant-numeric: tabular-nums; }
-  .cm-stack .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; white-space: nowrap; }
-  .cm-stack .k { color: var(--text-faint); font-weight: 600; }
-  .cm-stack .v { font-weight: 700; }
+  /* Opsi C (dipilih & dikonfirmasi): header kolom angka rata-kanan senada
+     dengan datanya, garis pembatas tipis antar 3 kolom angka (bukan grid
+     penuh), baris "Aktual" ditonjolkan karena paling sering dicek, warna
+     hijau/merah cuma dipakai di angka Saldo/Δ (bukan blok latar). */
+  .cm-table col.cm-col-doc { width: 9%; }
+  .cm-table col.cm-col-proj { width: 24%; }
+  .cm-table col.cm-col-sal, .cm-table col.cm-col-ven, .cm-table col.cm-col-margin { width: 16%; }
+  .cm-table col.cm-col-status { width: 11%; }
+  .cm-table col.cm-col-action { width: 8%; }
+  .cm-table { table-layout: fixed; }
+  .cm-table th.th-num { text-align: right; }
+  .cm-col-divider { border-left: 1px solid var(--border-soft); }
+
+  .cm-stack { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; text-align: right; }
+  .cm-stack .row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; font-size: 12px; white-space: nowrap; }
+  .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; min-width: 52px; text-align: left; }
+  .cm-stack .v { font-weight: 800; font-size: 12.5px; }
+  .cm-stack .row.emph .v { font-size: 13.5px; }
   .cm-stack .v.bad { color: var(--bad); }
   .cm-stack .v.good { color: var(--good); }
   .cm-stack .delta.up { color: var(--good); }
@@ -49,14 +63,18 @@
 <div id="cmTableError" class="error"></div>
 
 <div class="table-scroll">
-  <table class="data-table">
+  <table class="data-table cm-table">
+    <colgroup>
+      <col class="cm-col-doc"><col class="cm-col-proj"><col class="cm-col-sal">
+      <col class="cm-col-ven"><col class="cm-col-margin"><col class="cm-col-status"><col class="cm-col-action">
+    </colgroup>
     <thead>
       <tr>
         <th>Doc_ID</th>
         <th>Project &amp; Client</th>
-        <th>Cost Salset</th>
-        <th>Cost Vendor</th>
-        <th>Margin</th>
+        <th class="th-num">Cost Salset</th>
+        <th class="th-num">Cost Vendor</th>
+        <th class="th-num">Margin</th>
         <th>Status</th>
         <th>Action</th>
       </tr>
@@ -316,9 +334,9 @@
       return '<tr>' +
         '<td>' + esc(r.docId) + '</td>' +
         '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
-        '<td>' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
-        '<td>' + costStack(r.budgetVendor, r.realizedVendor, saldoVendor) + '</td>' +
-        '<td>' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
+        '<td class="cm-col-divider">' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
+        '<td class="cm-col-divider">' + costStack(r.budgetVendor, r.realizedVendor, saldoVendor) + '</td>' +
+        '<td class="cm-col-divider">' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
         '<td><span class="pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
         '<td><button class="btn-outline row-action-reveal" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
         '</tr>';
@@ -332,7 +350,7 @@
     var saldoSign = saldo > 0 ? '+' : '';
     return '<div class="cm-stack">' +
       '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtRpCm(estimate) + '</span></div>' +
-      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
+      '<div class="row emph"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
       '<div class="row"><span class="k">Saldo</span><span class="v ' + saldoClass + '">' + saldoSign + fmtRpCm(saldo) + '</span></div>' +
       '</div>';
   }
@@ -343,7 +361,7 @@
   function marginStack(budgetedPct, actualPct, deltaPp) {
     return '<div class="cm-stack">' +
       '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtPct(budgetedPct) + '</span></div>' +
-      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtPct(actualPct) + '</span></div>' +
+      '<div class="row emph"><span class="k">Aktual</span><span class="v">' + fmtPct(actualPct) + '</span></div>' +
       '<div class="row"><span class="k">Δ</span><span class="v delta ' + deltaClass(deltaPp) + '">' + deltaArrow(deltaPp) + ' ' + fmtPct(Math.abs(deltaPp)) + 'pp</span></div>' +
       '</div>';
   }
