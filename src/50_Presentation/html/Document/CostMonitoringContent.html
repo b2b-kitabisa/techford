@@ -20,6 +20,11 @@
   .cm-history-toggle { font-size: 12px; color: var(--color-cerulean); cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; margin-top: 10px; }
   .cm-history-wrap { display: none; margin-top: 8px; }
   .cm-history-wrap.open { display: block; }
+
+  .cm-collapsible-hd { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .cm-collapse-caret { font-size: 11px; color: var(--text-faint); }
+  .cm-collapsible-body { overflow: hidden; }
+  .cm-collapsible-body.cm-collapsed { display: none; }
 </style>
 
 <div class="stat-tile-row" id="cmAggregateScoreRow"></div>
@@ -63,10 +68,14 @@
     <div style="padding:16px 24px;">
       <div id="cmDrawerBanner"></div>
 
-      <div class="cm-section-hd" style="margin-top:0;">📊 Ringkasan Keuangan COR</div>
-      <table class="cm-result-table" id="cmResultTable" style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px;">
-        <tbody></tbody>
-      </table>
+      <div class="cm-section-hd cm-collapsible-hd" style="margin-top:0;" onclick="toggleCmResultTable(this)">
+        📊 Ringkasan Keuangan COR <span class="cm-collapse-caret">▾</span>
+      </div>
+      <div class="cm-collapsible-body" id="cmResultTableWrap">
+        <table class="cm-result-table" id="cmResultTable" style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px;">
+          <tbody></tbody>
+        </table>
+      </div>
 
       <div class="cm-drawer-score-row">
         <div class="stat-tile accent">
@@ -155,7 +164,7 @@
 
   function renderCmSkeleton() {
     document.getElementById('cmAggregateScoreRow').innerHTML =
-      new Array(6).fill('<div class="skel skel-tile"></div>').join('');
+      new Array(4).fill('<div class="skel skel-tile"></div>').join('');
     document.getElementById('cmTableBody').innerHTML =
       new Array(3).fill('<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>').join('');
   }
@@ -236,16 +245,16 @@
     if (!a) return;
     var marginDelta = a.actualMarginPct - a.budgetedMarginPct;
     var profitDelta = a.actualProfit - a.budgetedProfit;
+    var costSavings = a.costEstimateVendor - a.realizedVendor; // positif = hemat (bagus)
 
     document.getElementById('cmAggregateScoreRow').innerHTML =
-      statTile('Anggaran Salset', fmtRpCm(a.budgetSalset)) +
-      statTile('Anggaran Vendor', fmtRpCm(a.budgetVendor)) +
-      statTile('Realisasi Salset', fmtRpCm(a.realizedSalset)) +
-      statTile('Realisasi Vendor', fmtRpCm(a.realizedVendor)) +
-      statTile('Margin (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
-        '<span class="st-delta ' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>', true) +
-      statTile('Profit Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
-        '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>', true);
+      statTile('Implementation Fund', fmtRpCm(a.totalImplementationFund)) +
+      statTile('Cost Estimate Vendor (Anggaran → Aktual)', fmtRpCm(a.costEstimateVendor) + ' → ' + fmtRpCm(a.realizedVendor),
+        '<span class="st-delta ' + deltaClass(costSavings) + '">' + deltaArrow(costSavings) + ' ' + fmtRpCm(Math.abs(costSavings)) + '</span>', true) +
+      statTile('Profit Estimate Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
+        '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>', true) +
+      statTile('Margin Estimate Vendor (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
+        '<span class="st-delta ' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>', true);
   }
 
   function statTile(label, value, compareHtml, accent) {
@@ -413,6 +422,12 @@
     wrap.classList.toggle('open');
   }
 
+  function toggleCmResultTable(hdEl) {
+    var wrap = document.getElementById('cmResultTableWrap');
+    var collapsed = wrap.classList.toggle('cm-collapsed');
+    hdEl.querySelector('.cm-collapse-caret').innerText = collapsed ? '▸' : '▾';
+  }
+
   // ══════════════════════════ CATAT REALISASI ══════════════════════════
   function todayIsoDate() {
     var d = new Date();
@@ -462,32 +477,42 @@
     btn.innerHTML = '<span class="btn-loading-spin"></span>Menyimpan...';
     TechfordLoading.show('Menyimpan realisasi...');
 
-    gsRunWithRetry('costMonitoring_addDisbursement', [currentCmDrawerDocId, cmActiveBudgetItemId, amount, date, note, createdBy], function (res) {
-      cmSubmittingDisbursement = false;
-      TechfordLoading.hide();
-      btn.disabled = false;
-      btn.innerText = 'Simpan';
-      if (!res || !res.ok) { alert('Gagal menyimpan: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
-      closeCmDisburseModal();
-      // res.data bisa null kalau penyimpanan sukses tapi pembacaan ulang
-      // detail-nya gagal (lihat catatan di CostMonitoringService.addDisbursement)
-      // — realisasi TETAP tersimpan, jadi jangan tampilkan error, cukup
-      // fetch ulang detail-nya secara terpisah.
-      if (res.data) {
-        currentCmDetail = res.data;
-        renderCmDrawer();
-      } else {
-        loadCmDetail(currentCmDrawerDocId);
-      }
-      fetchCmList();
-      TechfordToast.show('Realisasi berhasil dicatat.');
-    }, function (message) {
-      cmSubmittingDisbursement = false;
-      TechfordLoading.hide();
-      btn.disabled = false;
-      btn.innerText = 'Simpan';
-      alert('Gagal menyimpan: ' + message);
-    });
+    // PENTING: pemanggilan tulis (bikin baris baru di COR_Disbursement) TIDAK
+    // BOLEH lewat gsRunWithRetry — helper itu retry dengan MEMANGGIL ULANG
+    // fungsi server yang sama begitu google.script.run pulang res=null
+    // (glitch transport HtmlService, BUKAN berarti server-nya gagal). Untuk
+    // fungsi baca itu aman (baca ulang, tidak ada efek samping), tapi untuk
+    // addDisbursement setiap retry = INSERT baris baru lagi ke sheet — ini
+    // akar sebab bug realisasi tercatat 2-3x yang dilaporkan berulang.
+    // Solusinya: panggil SEKALI saja lewat google.script.run polos, dan kalau
+    // res kosong/null (bukan res.ok===false yang eksplisit), JANGAN anggap
+    // gagal & JANGAN retry — anggap kemungkinan besar sudah tersimpan,
+    // cukup baca ulang detail via loadCmDetail (aman, idempotent).
+    google.script.run
+      .withSuccessHandler(function (res) {
+        cmSubmittingDisbursement = false;
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Simpan';
+        if (res && res.ok === false) { alert('Gagal menyimpan: ' + res.error.message); return; }
+        closeCmDisburseModal();
+        if (res && res.data) {
+          currentCmDetail = res.data;
+          renderCmDrawer();
+        } else {
+          loadCmDetail(currentCmDrawerDocId);
+        }
+        fetchCmList();
+        TechfordToast.show('Realisasi berhasil dicatat.');
+      })
+      .withFailureHandler(function (err) {
+        cmSubmittingDisbursement = false;
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Simpan';
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .costMonitoring_addDisbursement(currentCmDrawerDocId, cmActiveBudgetItemId, amount, date, note, createdBy);
   }
 
   // ══════════════════════════ TANDAI SELESAI ══════════════════════════
@@ -500,20 +525,30 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-loading-spin"></span>Memproses...';
     TechfordLoading.show('Menandai selesai...');
-    gsRunWithRetry('costMonitoring_closeCostMonitoring', [currentCmDrawerDocId, createdBy], function (res) {
-      TechfordLoading.hide();
-      btn.disabled = false;
-      btn.innerText = '✅ Tandai Selesai';
-      if (!res || !res.ok) { alert('Gagal: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.')); return; }
-      currentCmDetail = res.data;
-      renderCmDrawer();
-      fetchCmList();
-      TechfordToast.show('Cost Monitoring COR ini sudah ditandai selesai.');
-    }, function (message) {
-      TechfordLoading.hide();
-      btn.disabled = false;
-      btn.innerText = '✅ Tandai Selesai';
-      alert('Gagal: ' + message);
-    });
+    // Sama seperti submitDisbursement — ini juga panggilan tulis, jadi TIDAK
+    // pakai gsRunWithRetry (lihat catatan di sana kenapa retry berbahaya
+    // untuk operasi tulis).
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = '✅ Tandai Selesai';
+        if (res && res.ok === false) { alert('Gagal: ' + res.error.message); return; }
+        if (res && res.data) {
+          currentCmDetail = res.data;
+          renderCmDrawer();
+        } else {
+          loadCmDetail(currentCmDrawerDocId);
+        }
+        fetchCmList();
+        TechfordToast.show('Cost Monitoring COR ini sudah ditandai selesai.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = '✅ Tandai Selesai';
+        alert('Gagal: ' + (err && err.message ? err.message : err));
+      })
+      .costMonitoring_closeCostMonitoring(currentCmDrawerDocId, createdBy);
   }
 </script>
