@@ -183,8 +183,12 @@ var CostMonitoringService = (function (module) {
         projectName: project.Project_Name || '',
         clientName: client ? (client.Brand_Name || client.Entity_Name || '-') : '-',
         budgetSalset: totals.budgetSalset,
+        realizedSalset: totals.realizedSalset,
         budgetVendor: totals.budgetVendor,
+        realizedVendor: totals.realizedVendor,
         totalRealized: totals.totalRealized,
+        budgetedMarginPct: margin.budgetedMarginPct,
+        actualMarginPct: margin.actualMarginPct,
         status: computeDocStatus(header, totals)
       };
     }).filter(Boolean);

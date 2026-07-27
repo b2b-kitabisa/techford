@@ -25,6 +25,15 @@
   .cm-collapse-caret { font-size: 11px; color: var(--text-faint); }
   .cm-collapsible-body { overflow: hidden; }
   .cm-collapsible-body.cm-collapsed { display: none; }
+
+  .cm-stack { display: flex; flex-direction: column; gap: 3px; font-variant-numeric: tabular-nums; }
+  .cm-stack .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; white-space: nowrap; }
+  .cm-stack .k { color: var(--text-faint); font-weight: 600; }
+  .cm-stack .v { font-weight: 700; }
+  .cm-stack .v.bad { color: var(--bad); }
+  .cm-stack .v.good { color: var(--good); }
+  .cm-stack .delta.up { color: var(--good); }
+  .cm-stack .delta.down { color: var(--bad); }
 </style>
 
 <div class="stat-tile-row" id="cmAggregateScoreRow"></div>
@@ -43,9 +52,9 @@
       <tr>
         <th>Doc_ID</th>
         <th>Project &amp; Client</th>
-        <th>Anggaran Salset</th>
-        <th>Anggaran Vendor</th>
-        <th>Total Realisasi</th>
+        <th>Cost Salset</th>
+        <th>Cost Vendor</th>
+        <th>Margin</th>
         <th>Status</th>
         <th>Action</th>
       </tr>
@@ -300,16 +309,42 @@
     }
     document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
       var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : '-';
+      var saldoSalset = r.budgetSalset - r.realizedSalset;
+      var saldoVendor = r.budgetVendor - r.realizedVendor;
+      var marginDeltaPp = r.actualMarginPct - r.budgetedMarginPct;
       return '<tr>' +
         '<td>' + esc(r.docId) + '</td>' +
         '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
-        '<td class="num">' + fmtRpCm(r.budgetSalset) + '</td>' +
-        '<td class="num">' + fmtRpCm(r.budgetVendor) + '</td>' +
-        '<td class="num">' + fmtRpCm(r.totalRealized) + '</td>' +
+        '<td>' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
+        '<td>' + costStack(r.budgetVendor, r.realizedVendor, saldoVendor) + '</td>' +
+        '<td>' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
         '<td><span class="pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
         '<td><button class="btn-outline row-action-reveal" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
         '</tr>';
     }).join('');
+  }
+
+  // Kolom Cost Salset/Vendor: Saldo = Estimate − Aktual (positif = hemat/
+  // belum terpakai, sama seperti definisi SALDO per-item di drawer).
+  function costStack(estimate, actual, saldo) {
+    var saldoClass = saldo > 0 ? 'good' : (saldo < 0 ? 'bad' : '');
+    var saldoSign = saldo > 0 ? '+' : '';
+    return '<div class="cm-stack">' +
+      '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtRpCm(estimate) + '</span></div>' +
+      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
+      '<div class="row"><span class="k">Saldo</span><span class="v ' + saldoClass + '">' + saldoSign + fmtRpCm(saldo) + '</span></div>' +
+      '</div>';
+  }
+
+  // Margin HANYA margin Vendor (realisasi Salset tidak menggerus margin/
+  // profit COR — lihat doc-comment CostMonitoringService). Delta ditulis
+  // dalam poin persentase (pp), bukan persen relatif.
+  function marginStack(budgetedPct, actualPct, deltaPp) {
+    return '<div class="cm-stack">' +
+      '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtPct(budgetedPct) + '</span></div>' +
+      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtPct(actualPct) + '</span></div>' +
+      '<div class="row"><span class="k">Δ</span><span class="v delta ' + deltaClass(deltaPp) + '">' + deltaArrow(deltaPp) + ' ' + fmtPct(Math.abs(deltaPp)) + 'pp</span></div>' +
+      '</div>';
   }
 
   // ══════════════════════════ DRAWER ══════════════════════════
