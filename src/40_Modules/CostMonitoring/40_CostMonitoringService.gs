@@ -127,12 +127,17 @@ var CostMonitoringService = (function (module) {
     };
   }
 
+  // Status utama (label) SELALU salah satu dari 3: Belum Ada Realisasi /
+  // Dalam Proses / Selesai. Kesesuaian anggaran (Sesuai/Melebihi Anggaran)
+  // adalah tag TERPISAH — cuma relevan begitu ada realisasi (Dalam Proses
+  // atau Selesai), null untuk Belum Ada Realisasi.
   function computeDocStatus(header, totals) {
+    var overBudget = totals.totalRealized > totals.totalBudget;
     if (header.Cost_Monitoring_Closed) {
-      return totals.totalRealized > totals.totalBudget ? 'Selesai — Melebihi Anggaran' : 'Selesai — Sesuai Anggaran';
+      return { label: 'Selesai', budgetTag: overBudget ? 'Melebihi Anggaran' : 'Sesuai Anggaran' };
     }
-    if (!totals.hasAny) return 'Belum Ada Realisasi';
-    return 'Dalam Proses';
+    if (!totals.hasAny) return { label: 'Belum Ada Realisasi', budgetTag: null };
+    return { label: 'Dalam Proses', budgetTag: overBudget ? 'Melebihi Anggaran' : 'Sesuai Anggaran' };
   }
 
   /**

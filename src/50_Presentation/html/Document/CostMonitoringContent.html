@@ -28,28 +28,35 @@
   .cm-collapsible-body { overflow: hidden; }
   .cm-collapsible-body.cm-collapsed { display: none; }
 
-  /* Opsi C (dipilih & dikonfirmasi): header kolom angka rata-kanan senada
-     dengan datanya, garis pembatas tipis antar 3 kolom angka (bukan grid
-     penuh), baris "Aktual" ditonjolkan karena paling sering dicek, warna
-     hijau/merah cuma dipakai di angka Saldo/Δ (bukan blok latar). */
+  /* Kolom angka (Cost Salset/Vendor/Margin): header rata-tengah, isinya
+     sebuah blok lebar-tetap yang di-center di dalam sel — di DALAM blok itu
+     sendiri label ada di kiri & angka di kanan (mirip tab-stop Google Docs),
+     supaya tetap rapi sejajar antar baris tapi blok keseluruhannya center
+     terhadap kolom. Garis pembatas tipis di kiri tiap kolom angka, dan garis
+     di kanan kolom Margin supaya terpisah jelas dari Status. */
   .cm-table col.cm-col-doc { width: 9%; }
   .cm-table col.cm-col-proj { width: 24%; }
   .cm-table col.cm-col-sal, .cm-table col.cm-col-ven, .cm-table col.cm-col-margin { width: 16%; }
   .cm-table col.cm-col-status { width: 11%; }
   .cm-table col.cm-col-action { width: 8%; }
   .cm-table { table-layout: fixed; }
-  .cm-table th.th-num { text-align: right; }
-  .cm-col-divider { border-left: 1px solid var(--border-soft); }
+  .cm-table th.th-num { text-align: center; }
+  .cm-col-divider { border-left: 1px solid var(--border-soft); text-align: center; }
+  .cm-col-margin-end { border-right: 1px solid var(--border-soft); }
 
-  .cm-stack { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; text-align: right; }
-  .cm-stack .row { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; font-size: 12px; white-space: nowrap; }
-  .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; min-width: 52px; text-align: left; }
-  .cm-stack .v { font-weight: 800; font-size: 12.5px; }
-  .cm-stack .row.emph .v { font-size: 13.5px; }
+  .cm-stack { display: inline-flex; flex-direction: column; gap: 4px; width: 148px; text-align: left; font-variant-numeric: tabular-nums; }
+  .cm-stack .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; white-space: nowrap; }
+  .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; }
+  .cm-stack .v { font-weight: 700; font-size: 12.5px; }
   .cm-stack .v.bad { color: var(--bad); }
   .cm-stack .v.good { color: var(--good); }
   .cm-stack .delta.up { color: var(--good); }
   .cm-stack .delta.down { color: var(--bad); }
+
+  .cm-score-rows { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  .cm-score-rows .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+  .cm-score-rows .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; }
+  .cm-score-rows .v { font-weight: 700; font-size: 13px; }
 </style>
 
 <div class="stat-tile-row" id="cmAggregateScoreRow"></div>
@@ -122,8 +129,8 @@
 
       <div class="cm-drawer-sub-row">
         <div class="stat-tile"><div class="st-label">Anggaran Salset</div><div class="st-value" id="cmDrawerBudgetSalset">Rp0</div></div>
-        <div class="stat-tile"><div class="st-label">Anggaran Vendor</div><div class="st-value" id="cmDrawerBudgetVendor">Rp0</div></div>
         <div class="stat-tile"><div class="st-label">Realisasi Salset</div><div class="st-value" id="cmDrawerRealizedSalset">Rp0</div></div>
+        <div class="stat-tile"><div class="st-label">Anggaran Vendor</div><div class="st-value" id="cmDrawerBudgetVendor">Rp0</div></div>
         <div class="stat-tile"><div class="st-label">Realisasi Vendor</div><div class="st-value" id="cmDrawerRealizedVendor">Rp0</div></div>
       </div>
 
@@ -279,8 +286,7 @@
     document.getElementById('cmAggregateScoreRow').innerHTML =
       statTile('Implementation Fund', fmtRpCm(a.totalImplementationFund)) +
       statTile('Salset Fee', fmtRpCm(a.salsetNgoFee)) +
-      statTile('Profit Estimate Vendor (Anggaran → Aktual)', fmtRpCm(a.budgetedProfit) + ' → ' + fmtRpCm(a.actualProfit),
-        '<span class="st-delta ' + deltaClass(profitDelta) + '">' + deltaArrow(profitDelta) + ' ' + fmtRpCm(Math.abs(profitDelta)) + '</span>', true) +
+      profitScoreTile('Profit Estimate', a.budgetedProfit, a.actualProfit) +
       statTile('Margin Estimate Vendor (Anggaran → Aktual)', fmtPct(a.budgetedMarginPct) + ' → ' + fmtPct(a.actualMarginPct),
         '<span class="st-delta ' + deltaClass(marginDelta) + '">' + deltaArrow(marginDelta) + ' ' + fmtPct(Math.abs(marginDelta)) + '</span>', true);
   }
@@ -293,15 +299,34 @@
       '</div>';
   }
 
+  // Kartu Profit Estimate: Estimate/Aktual ditulis label-kiri angka-kanan
+  // (sama seperti kolom tabel), delta ditampilkan Rp DAN persen sekaligus.
+  function profitScoreTile(label, budgeted, actual) {
+    var delta = actual - budgeted;
+    var deltaPct = budgeted ? (delta / Math.abs(budgeted)) * 100 : 0;
+    var cls = deltaClass(delta);
+    var arrow = deltaArrow(delta);
+    return '<div class="stat-tile accent">' +
+      '<div class="st-label">' + label + '</div>' +
+      '<div class="cm-score-rows">' +
+      '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtRpCm(budgeted) + '</span></div>' +
+      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
+      '</div>' +
+      '<div class="st-compare">' +
+      '<span class="st-delta ' + cls + '">' + arrow + ' ' + fmtRpCm(Math.abs(delta)) + '</span> ' +
+      '<span class="st-delta ' + cls + '">' + arrow + ' ' + fmtPct(Math.abs(deltaPct)) + '</span>' +
+      '</div>' +
+      '</div>';
+  }
+
   function resultRow(label, value) {
     return '<tr><td class="cm-result-label">' + label + '</td><td class="cm-result-value">' + value + '</td></tr>';
   }
 
   // ══════════════════════════ TABLE ══════════════════════════
-  function statusPillClass(status) {
-    if (status === 'Dalam Proses') return 'info';
-    if (status === 'Selesai — Sesuai Anggaran') return 'good';
-    if (status === 'Selesai — Melebihi Anggaran') return 'bad';
+  function statusPillClass(statusLabel) {
+    if (statusLabel === 'Dalam Proses') return 'info';
+    if (statusLabel === 'Selesai') return 'good';
     return 'neutral';
   }
 
@@ -336,8 +361,8 @@
         '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
         '<td class="cm-col-divider">' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
         '<td class="cm-col-divider">' + costStack(r.budgetVendor, r.realizedVendor, saldoVendor) + '</td>' +
-        '<td class="cm-col-divider">' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
-        '<td><span class="pill ' + statusPillClass(r.status) + '">' + esc(r.status) + '</span></td>' +
+        '<td class="cm-col-divider cm-col-margin-end">' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
+        '<td>' + statusCell(r.status) + '</td>' +
         '<td><button class="btn-outline row-action-reveal" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
         '</tr>';
     }).join('');
@@ -350,20 +375,31 @@
     var saldoSign = saldo > 0 ? '+' : '';
     return '<div class="cm-stack">' +
       '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtRpCm(estimate) + '</span></div>' +
-      '<div class="row emph"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
+      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtRpCm(actual) + '</span></div>' +
       '<div class="row"><span class="k">Saldo</span><span class="v ' + saldoClass + '">' + saldoSign + fmtRpCm(saldo) + '</span></div>' +
       '</div>';
   }
 
   // Margin HANYA margin Vendor (realisasi Salset tidak menggerus margin/
   // profit COR — lihat doc-comment CostMonitoringService). Delta ditulis
-  // dalam poin persentase (pp), bukan persen relatif.
+  // sebagai persen (bukan "poin persentase") sesuai permintaan.
   function marginStack(budgetedPct, actualPct, deltaPp) {
     return '<div class="cm-stack">' +
       '<div class="row"><span class="k">Estimate</span><span class="v">' + fmtPct(budgetedPct) + '</span></div>' +
-      '<div class="row emph"><span class="k">Aktual</span><span class="v">' + fmtPct(actualPct) + '</span></div>' +
-      '<div class="row"><span class="k">Δ</span><span class="v delta ' + deltaClass(deltaPp) + '">' + deltaArrow(deltaPp) + ' ' + fmtPct(Math.abs(deltaPp)) + 'pp</span></div>' +
+      '<div class="row"><span class="k">Aktual</span><span class="v">' + fmtPct(actualPct) + '</span></div>' +
+      '<div class="row"><span class="k">Δ</span><span class="v delta ' + deltaClass(deltaPp) + '">' + deltaArrow(deltaPp) + ' ' + fmtPct(Math.abs(deltaPp)) + '</span></div>' +
       '</div>';
+  }
+
+  // Status utama (Belum Ada Realisasi / Dalam Proses / Selesai) ditampilkan
+  // sebagai pill, keterangan kesesuaian anggaran (Sesuai/Melebihi) sebagai
+  // tag TERPISAH di bawahnya — cuma muncul kalau sudah ada realisasi.
+  function statusCell(status) {
+    var html = '<span class="pill ' + statusPillClass(status.label) + '">' + esc(status.label) + '</span>';
+    if (status.budgetTag) {
+      html += '<div style="margin-top:4px;"><span class="pill ' + (status.budgetTag === 'Melebihi Anggaran' ? 'bad' : 'good') + '" style="font-size:10px;">' + esc(status.budgetTag) + '</span></div>';
+    }
+    return html;
   }
 
   // ══════════════════════════ DRAWER ══════════════════════════
