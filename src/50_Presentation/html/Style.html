@@ -42,14 +42,15 @@
   * { box-sizing: border-box; }
   /* Sebagian besar komponen di app ini pakai font-size fixed dalam px
      (bukan rem/relative), jadi tidak ada satu variabel tunggal yang bisa
-     dinaikkan untuk "membesarkan" semuanya sekaligus. Cara paling aman &
+     diubah untuk menyesuaikan semuanya sekaligus. Cara paling aman &
      berdampak-luas tanpa menulis ulang ratusan deklarasi font-size satu-
      per-satu: `zoom` di html — efeknya identik dengan user menekan
-     Ctrl+Scroll zoom in di browser (semua ukuran & proporsi ikut naik
-     bersama), tapi otomatis aktif tanpa perlu di-set manual tiap buka.
-     Nilai 1.12 dipilih sebagai titik awal yang wajar — gampang diubah
-     kalau dirasa masih kurang/terlalu besar. */
-  html { zoom: 1.12; }
+     Ctrl+Scroll zoom di browser (semua ukuran & proporsi ikut menyusut
+     bersama, muat lebih banyak konten per layar), tapi otomatis aktif
+     tanpa perlu di-set manual tiap buka. Nilai 0.88 dipilih sebagai titik
+     awal (setara "zoom out" ke ~88%) — gampang diubah kalau masih kurang/
+     terlalu kecil. */
+  html { zoom: 0.88; }
   body {
     font-family: 'Plus Jakarta Sans', Arial, sans-serif;
     margin: 0;

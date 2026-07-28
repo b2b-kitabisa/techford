@@ -44,10 +44,13 @@
   .cm-col-divider { border-left: 1px solid var(--border-soft); text-align: center; }
   .cm-col-margin-end { border-right: 1px solid var(--border-soft); }
 
-  .cm-stack { display: inline-flex; flex-direction: column; gap: 4px; width: 148px; text-align: left; font-variant-numeric: tabular-nums; }
-  .cm-stack .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; white-space: nowrap; }
-  .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; }
-  .cm-stack .v { font-weight: 700; font-size: 12.5px; }
+  /* Label (k) dipasang di kolom grid FIXED di kiri (bukan flex
+     space-between) — posisinya selalu sama persis di semua baris, tidak
+     ikut geser/numpuk ke tengah walau angka di kolom (v) jadi panjang. */
+  .cm-stack { display: inline-flex; flex-direction: column; gap: 5px; width: 178px; font-variant-numeric: tabular-nums; }
+  .cm-stack .row { display: grid; grid-template-columns: 48px 1fr; align-items: baseline; gap: 8px; font-size: 12px; white-space: nowrap; }
+  .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; text-align: left; }
+  .cm-stack .v { font-weight: 700; font-size: 12.5px; text-align: right; }
   .cm-stack .v.bad { color: var(--bad); }
   .cm-stack .v.good { color: var(--good); }
   .cm-stack .delta.up { color: var(--good); }
