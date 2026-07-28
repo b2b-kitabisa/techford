@@ -35,12 +35,18 @@
      (lihat lebar col di bawah), hasilnya tetap terlihat "center" terhadap
      header di atasnya tanpa label numpuk ke tengah. Garis pembatas tipis di
      kiri tiap kolom angka, dan garis di kanan kolom Margin supaya terpisah
-     jelas dari Status. */
-  .cm-table col.cm-col-doc { width: 9%; }
+     jelas dari Status.
+
+     Kolom Status DIHAPUS sebagai kolom terpisah — statusnya digabung ke
+     dalam kolom Doc_ID (pill status + tag anggaran di atas, Doc_ID di
+     bawah), persis pola yang sudah dipakai Document Pipeline (badge Stage
+     nempel di kolom pertama). Ini membebaskan lebar supaya kolom Action
+     (tombol "Kelola Cost") tidak lagi terjepit/wrap dan tabel muat tanpa
+     perlu geser scrollbar di zoom 100%. */
+  .cm-table col.cm-col-doc { width: 15%; }
   .cm-table col.cm-col-proj { width: 22%; }
   .cm-table col.cm-col-sal, .cm-table col.cm-col-ven, .cm-table col.cm-col-margin { width: 17%; }
-  .cm-table col.cm-col-status { width: 10%; }
-  .cm-table col.cm-col-action { width: 7%; }
+  .cm-table col.cm-col-action { width: 12%; }
   .cm-table { table-layout: fixed; }
   .cm-table th.th-num { text-align: center; }
   .cm-col-divider { border-left: 1px solid var(--border-soft); }
@@ -78,7 +84,7 @@
   <table class="data-table cm-table">
     <colgroup>
       <col class="cm-col-doc"><col class="cm-col-proj"><col class="cm-col-sal">
-      <col class="cm-col-ven"><col class="cm-col-margin"><col class="cm-col-status"><col class="cm-col-action">
+      <col class="cm-col-ven"><col class="cm-col-margin"><col class="cm-col-action">
     </colgroup>
     <thead>
       <tr>
@@ -87,7 +93,6 @@
         <th class="th-num">Cost Salset</th>
         <th class="th-num">Cost Vendor</th>
         <th class="th-num">Margin</th>
-        <th>Status</th>
         <th>Action</th>
       </tr>
     </thead>
@@ -208,7 +213,7 @@
     document.getElementById('cmAggregateScoreRow').innerHTML =
       new Array(4).fill('<div class="skel skel-tile"></div>').join('');
     document.getElementById('cmTableBody').innerHTML =
-      new Array(3).fill('<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>').join('');
+      new Array(3).fill('<tr><td colspan="6" style="padding:14px;"><div class="skel skel-row"></div></td></tr>').join('');
   }
 
   function bootstrapCm() {
@@ -263,7 +268,7 @@
   function showCmTableError(message, soft) {
     document.getElementById('cmTableError').innerText = message;
     if (soft) return;
-    document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">' + message + '</td></tr>';
+    document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="6">' + message + '</td></tr>';
   }
 
   // ══════════════════════════ HELPERS ══════════════════════════
@@ -353,7 +358,7 @@
     document.getElementById('cmTableError').innerText = '';
     var rows = getFilteredCmRows();
     if (!rows.length) {
-      document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada COR yang perlu dimonitor.</td></tr>';
+      document.getElementById('cmTableBody').innerHTML = '<tr class="empty-row"><td colspan="6">Tidak ada COR yang perlu dimonitor.</td></tr>';
       return;
     }
     document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
@@ -362,12 +367,11 @@
       var saldoVendor = r.budgetVendor - r.realizedVendor;
       var marginDeltaPp = r.actualMarginPct - r.budgetedMarginPct;
       return '<tr>' +
-        '<td>' + esc(r.docId) + '</td>' +
+        '<td>' + statusCell(r.status) + '<div class="entity-name" style="margin-top:4px;">' + esc(r.docId) + '</div></td>' +
         '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
         '<td class="cm-col-divider">' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
         '<td class="cm-col-divider">' + costStack(r.budgetVendor, r.realizedVendor, saldoVendor) + '</td>' +
         '<td class="cm-col-divider cm-col-margin-end">' + marginStack(r.budgetedMarginPct, r.actualMarginPct, marginDeltaPp) + '</td>' +
-        '<td>' + statusCell(r.status) + '</td>' +
         '<td><button class="btn-outline row-action-reveal" onclick="openCmDrawer(\'' + r.docId + '\')">Kelola Cost</button></td>' +
         '</tr>';
     }).join('');
