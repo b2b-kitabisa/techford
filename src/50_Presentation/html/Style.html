@@ -47,10 +47,14 @@
      per-satu: `zoom` di html — efeknya identik dengan user menekan
      Ctrl+Scroll zoom di browser (semua ukuran & proporsi ikut menyusut
      bersama, muat lebih banyak konten per layar), tapi otomatis aktif
-     tanpa perlu di-set manual tiap buka. Nilai 0.88 dipilih sebagai titik
-     awal (setara "zoom out" ke ~88%) — gampang diubah kalau masih kurang/
-     terlalu kecil. */
-  html { zoom: 0.88; }
+     tanpa perlu di-set manual tiap buka. Ini berlaku di SELURUH halaman
+     (Style.html dipakai bersama semua Content page lewat SPA shell), bukan
+     cuma Cost Monitoring. 0.88 ternyata masih belum cukup kecil (user tetap
+     perlu zoom out manual ke ~90% di browser di atasnya) — diturunkan ke
+     0.8 supaya tampilan di zoom browser 100% (default, tanpa perlu
+     otak-atik apa pun) sudah sama nyamannya dengan 0.88 + zoom out manual
+     90% sebelumnya (0.88 × 0.9 ≈ 0.79, dibulatkan ke 0.8). */
+  html { zoom: 0.8; }
   body {
     font-family: 'Plus Jakarta Sans', Arial, sans-serif;
     margin: 0;

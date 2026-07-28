@@ -28,27 +28,29 @@
   .cm-collapsible-body { overflow: hidden; }
   .cm-collapsible-body.cm-collapsed { display: none; }
 
-  /* Kolom angka (Cost Salset/Vendor/Margin): header rata-tengah, isinya
-     sebuah blok lebar-tetap yang di-center di dalam sel — di DALAM blok itu
-     sendiri label ada di kiri & angka di kanan (mirip tab-stop Google Docs),
-     supaya tetap rapi sejajar antar baris tapi blok keseluruhannya center
-     terhadap kolom. Garis pembatas tipis di kiri tiap kolom angka, dan garis
-     di kanan kolom Margin supaya terpisah jelas dari Status. */
+  /* Kolom angka (Cost Salset/Vendor/Margin): header rata-tengah. Isinya
+     blok yang mengisi PENUH lebar kolom (bukan blok sempit yang di-center)
+     — label (k) selalu menempel di tepi kiri sel, angka (v) di tepi kanan,
+     mirip tab-stop Google Docs. Karena kolomnya sendiri sudah proporsional
+     (lihat lebar col di bawah), hasilnya tetap terlihat "center" terhadap
+     header di atasnya tanpa label numpuk ke tengah. Garis pembatas tipis di
+     kiri tiap kolom angka, dan garis di kanan kolom Margin supaya terpisah
+     jelas dari Status. */
   .cm-table col.cm-col-doc { width: 9%; }
-  .cm-table col.cm-col-proj { width: 24%; }
-  .cm-table col.cm-col-sal, .cm-table col.cm-col-ven, .cm-table col.cm-col-margin { width: 16%; }
-  .cm-table col.cm-col-status { width: 11%; }
-  .cm-table col.cm-col-action { width: 8%; }
+  .cm-table col.cm-col-proj { width: 22%; }
+  .cm-table col.cm-col-sal, .cm-table col.cm-col-ven, .cm-table col.cm-col-margin { width: 17%; }
+  .cm-table col.cm-col-status { width: 10%; }
+  .cm-table col.cm-col-action { width: 7%; }
   .cm-table { table-layout: fixed; }
   .cm-table th.th-num { text-align: center; }
-  .cm-col-divider { border-left: 1px solid var(--border-soft); text-align: center; }
+  .cm-col-divider { border-left: 1px solid var(--border-soft); }
   .cm-col-margin-end { border-right: 1px solid var(--border-soft); }
 
   /* Label (k) dipasang di kolom grid FIXED di kiri (bukan flex
      space-between) — posisinya selalu sama persis di semua baris, tidak
      ikut geser/numpuk ke tengah walau angka di kolom (v) jadi panjang. */
-  .cm-stack { display: inline-flex; flex-direction: column; gap: 5px; width: 178px; font-variant-numeric: tabular-nums; }
-  .cm-stack .row { display: grid; grid-template-columns: 48px 1fr; align-items: baseline; gap: 8px; font-size: 12px; white-space: nowrap; }
+  .cm-stack { display: flex; flex-direction: column; gap: 5px; width: 100%; font-variant-numeric: tabular-nums; }
+  .cm-stack .row { display: grid; grid-template-columns: 52px 1fr; align-items: baseline; gap: 8px; font-size: 12px; white-space: nowrap; }
   .cm-stack .k { color: var(--text-faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; text-align: left; }
   .cm-stack .v { font-weight: 700; font-size: 12.5px; text-align: right; }
   .cm-stack .v.bad { color: var(--bad); }
