@@ -9,7 +9,10 @@
   <div id="gdvStatusError" class="error"></div>
 
   <div class="stat-tile" style="margin-bottom:20px;">
-    <div class="st-label">Status Data Saat Ini</div>
+    <div class="st-label" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>Status Data Saat Ini</span>
+      <button class="filter-reset" id="gdvStatusRefreshBtn" onclick="fetchGdvStatus()" title="Muat ulang status" style="font-size:11px; padding:3px 8px;">🔄 Refresh</button>
+    </div>
     <div class="st-value" id="gdvStatusValue" style="font-size:16px;">Memuat...</div>
     <div class="st-compare" id="gdvStatusCompare">-</div>
   </div>
@@ -102,13 +105,18 @@
   }
 
   function fetchGdvStatus() {
+    document.getElementById('gdvStatusError').innerText = '';
+    var btn = document.getElementById('gdvStatusRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
     gsRunWithRetry('gdvController_getStatus', [], function (res) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
       if (!res || !res.ok) {
-        document.getElementById('gdvStatusError').innerText = (res && res.error && res.error.message) || 'Gagal memuat status.';
+        document.getElementById('gdvStatusError').innerText = (res && res.error && res.error.message) || 'Gagal memuat status — coba klik Refresh lagi.';
         return;
       }
       renderGdvStatus(res.data);
     }, function (message) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
       document.getElementById('gdvStatusError').innerText = 'Gagal memuat status: ' + message;
     });
   }

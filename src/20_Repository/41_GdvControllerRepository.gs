@@ -25,6 +25,14 @@ var GdvControllerRepository = (function (module) {
   };
 
   /**
+   * Jumlah baris data saat ini — dipakai strip status UI, TIDAK membaca
+   * seluruh isi sheet (lihat BaseRepository.count).
+   */
+  module.count = function () {
+    return base.count();
+  };
+
+  /**
    * Timpa seluruh isi sheet dengan baris hasil parse CSV terbaru.
    * @param {Array<{Link_Campaign: string, Realized_Nominal: number}>} rows
    */
@@ -50,15 +58,12 @@ var GdvControllerUploadLogRepository = (function (module) {
   /**
    * Entri log paling baru (upload terakhir) — dipakai untuk strip
    * "Terakhir diupload: ..." di UI. null kalau belum pernah ada upload
-   * sama sekali.
+   * sama sekali. Tab ini APPEND-ONLY, jadi baris FISIK terakhir sudah
+   * pasti yang terbaru — tidak perlu bandingkan tanggal satu-satu.
    */
   module.findLatest = function () {
     var rows = module.findAll();
-    if (!rows.length) return null;
-    return rows.reduce(function (latest, row) {
-      if (!latest) return row;
-      return new Date(row.Uploaded_At) > new Date(latest.Uploaded_At) ? row : latest;
-    }, null);
+    return rows.length ? rows[rows.length - 1] : null;
   };
 
   return module;

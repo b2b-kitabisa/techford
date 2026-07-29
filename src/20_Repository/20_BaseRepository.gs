@@ -42,6 +42,17 @@ BaseRepository.prototype.findAll = function () {
   return Utils.rowsToObjects(rows);
 };
 
+/**
+ * Jumlah baris data (tidak termasuk header) — pakai getLastRow() saja,
+ * BUKAN findAll().length, supaya tidak perlu membaca & mengubah SELURUH
+ * sheet jadi array of objects cuma untuk menghitung. Penting untuk sheet
+ * yang bisa besar (mis. GDV_Controller, hasil upload CSV produksi).
+ */
+BaseRepository.prototype.count = function () {
+  var sheet = this._getSheet();
+  return Math.max(0, sheet.getLastRow() - 1);
+};
+
 BaseRepository.prototype.findBy = function (predicateFn) {
   return this.findAll().filter(predicateFn);
 };

@@ -162,7 +162,7 @@ var GdvControllerService = (function (module) {
    */
   module.getStatus = function () {
     var latest = GdvControllerUploadLogRepository.findLatest();
-    var currentRowCount = GdvControllerRepository.findAll().length;
+    var currentRowCount = GdvControllerRepository.count();
     return {
       latestUpload: latest,
       currentRowCount: currentRowCount
