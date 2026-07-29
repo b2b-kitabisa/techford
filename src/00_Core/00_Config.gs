@@ -340,7 +340,7 @@ var Config = (function (module) {
   // data yang dikelola langsung oleh modul-modul lain. ID-nya WAJIB diisi
   // manual sekali saat setup (lihat SETUP.md) — sebelum diisi, fitur upload
   // akan gagal dengan pesan jelas ("spreadsheet belum dikonfigurasi").
-  module.GDV_CONTROLLER_SPREADSHEET_ID = '';
+  module.GDV_CONTROLLER_SPREADSHEET_ID = '15alu24X-_98FZxUEO4UuxnKcpnHqhPIJf4-XdrvgwMo';
 
   module.getGdvControllerSpreadsheet = function () {
     if (!module.GDV_CONTROLLER_SPREADSHEET_ID) {
