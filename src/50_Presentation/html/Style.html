@@ -723,6 +723,16 @@
   .revenue-row-empty { font-size: 13px; color: var(--text-faint); padding: 8px 2px; }
   .revenue-service-label { font-size: 13px; flex: 1.4; }
 
+  /* ---- GDV Tahap 2 — 3 skema input (CSR / CSR Retainer / Ads Sponsorship)
+     bisa tampil BERSAMAAN di satu project (kalau services-nya dipilih
+     lebih dari satu), jadi tiap skema punya blok+label sendiri supaya
+     jelas asalnya, ditumpuk vertikal dalam satu kartu GDV yang sama. ---- */
+  .gdv-scheme-block { margin-bottom: 16px; }
+  .gdv-scheme-block:last-child { margin-bottom: 0; }
+  .gdv-scheme-label { font-size: 12px; font-weight: 700; color: var(--color-cerulean); text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 8px; }
+  .gdv-retainer-link-group { border: 1px dashed var(--border-softer); border-radius: 8px; padding: 10px 8px; margin-bottom: 10px; background: var(--color-white); }
+  .gdv-retainer-link-group:last-of-type { margin-bottom: 0; }
+
   /* ══════════════════════════════════════════════════════════════════
      SISTEM DESAIN v2 — komponen bersama, dipakai lintas modul (Sales
      Pipeline, Document Pipeline, Cost Monitoring, dst). Lihat artefak

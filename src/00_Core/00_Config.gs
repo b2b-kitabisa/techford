@@ -287,12 +287,17 @@ var Config = (function (module) {
   module.DOCUMENT_NON_PIPELINE_TYPES = ['PKS', 'TRANSFER_REQUEST', 'BAST'];
 
   // ---- Revenue Breakdown (sheet Revenue_Breakdown, terpisah dari Project) ----
-  // Service 'CSR' menghasilkan baris GDV (Item_Name = link campaign).
-  // Service SELAIN CSR menghasilkan baris SERVICE (Item_Name = nama
-  // category yang dipilih, atau nama service itu sendiri kalau service-nya
-  // tidak punya category, misal Ads Sponsorship/Placement & Production).
+  // Service 'CSR' ATAU 'Ads Sponsorship' menghasilkan baris GDV (Item_Name =
+  // link campaign) — bukan cuma CSR lagi sejak GDV Tahap 2 (lihat diskusi
+  // skema Tableau/GDV Controller). Service SELAIN keduanya menghasilkan
+  // baris SERVICE (Item_Name = nama category yang dipilih, atau nama
+  // service itu sendiri kalau service-nya tidak punya category).
   module.REVENUE_VALUE_TYPE = { GDV: 'GDV', SERVICE: 'SERVICE' };
-  module.REVENUE_GDV_SERVICE_KEY = 'CSR';
+  module.REVENUE_GDV_SERVICE_KEYS = ['CSR', 'Ads Sponsorship'];
+  // Skema Retainer (link dengan banyak termin nominal+notes+date) HANYA
+  // berlaku untuk kombinasi CSR + Project.Is_Retainer — Ads Sponsorship
+  // TETAP pakai skema link-only biasa walau project-nya Retainer.
+  module.REVENUE_GDV_RETAINER_SERVICE_KEY = 'CSR';
 
   // ---- COR Calculator (Cost of Revenue) ----
   // Direplikasi dari kalkulator COR manual (spreadsheet "Template COR" +

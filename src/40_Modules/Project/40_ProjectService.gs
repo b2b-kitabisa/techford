@@ -338,13 +338,24 @@ var ProjectService = (function (module) {
    * RevenueBreakdownRepository.replaceForProject).
    *
    * @param {Object} input
-   *   - gdvCampaigns: [{link, amount, notes}] — HANYA valid kalau service
-   *     'CSR' ada di Project.Services. Ini daftar bebas (bukan per-category),
-   *     consultant bisa tambah campaign sebanyak apa pun.
+   *   Tiga skema input GDV (lihat diskusi arsitektur Tableau/GDV Controller
+   *   Tahap 2) — mana yang valid tergantung Services & Is_Retainer project:
+   *   - gdvCsrCampaigns: [{link, amount, notes}] — skema CSR biasa. HANYA
+   *     valid kalau service 'CSR' dipilih DAN project BUKAN Retainer
+   *     (!project.Is_Retainer). Daftar bebas, satu link boleh berulang.
+   *   - gdvRetainerLinks: [{link, entries: [{amount, notes, date}]}] —
+   *     skema Retainer. HANYA valid kalau service 'CSR' dipilih DAN project
+   *     Retainer (project.Is_Retainer). Satu link bisa punya banyak termin
+   *     (nominal+notes+date) — tiap termin jadi satu baris Revenue_Breakdown
+   *     dengan Item_Name yang sama (link-nya) dan Entry_Date berbeda.
+   *   - gdvAdsCampaigns: [{link}] — skema Ads Sponsorship. HANYA valid kalau
+   *     service 'Ads Sponsorship' dipilih. Link-only, TIDAK ada nominal/
+   *     notes/date — nominalnya selalu datang dari GDV_Controller
+   *     (Tableau), bukan input manual, jadi Amount selalu 0 di baris ini.
    *   - serviceRevenueItems: {key: {amount, notes}} — satu baris per category
-   *     yang dipilih untuk tiap service SELAIN CSR (key = "Service::Category"),
-   *     atau per service itu sendiri kalau service itu tidak punya category
-   *     (key = "Service", misal Ads Sponsorship/Placement & Production).
+   *     yang dipilih untuk tiap service SELAIN CSR/Ads Sponsorship (key =
+   *     "Service::Category"), atau per service itu sendiri kalau service itu
+   *     tidak punya category (key = "Service", misal Placement & Production).
    *     Key yang tidak lagi cocok dengan Services/Service_Categories project
    *     saat ini (misal category-nya sudah dihapus dari Edit Project)
    *     otomatis diabaikan (bukan error) — supaya tidak "nyangkut" data usang.
@@ -362,12 +373,30 @@ var ProjectService = (function (module) {
 
     var services = decodeJson(project.Services, []);
     var serviceCategories = decodeJson(project.Service_Categories, {});
+    var isRetainer = !!project.Is_Retainer;
     var now = new Date();
     var rows = [];
 
-    var gdvCampaigns = [];
-    if (services.indexOf(Config.REVENUE_GDV_SERVICE_KEY) !== -1) {
-      gdvCampaigns = (input.gdvCampaigns || [])
+    function pushGdvRow(link, amount, notes, entryDate, sourceService) {
+      rows.push({
+        Breakdown_ID: Utils.generateId('RB'),
+        Project_ID: projectId,
+        Value_Type: Config.REVENUE_VALUE_TYPE.GDV,
+        Item_Name: link,
+        Amount: amount,
+        Notes: notes,
+        Created_By: project.Created_By || '',
+        Created_Date: now,
+        Last_Updated: now,
+        Entry_Date: entryDate || '',
+        Source_Service: sourceService
+      });
+    }
+
+    var hasCsr = services.indexOf('CSR') !== -1;
+
+    if (hasCsr && !isRetainer) {
+      (input.gdvCsrCampaigns || [])
         .map(function (c) {
           return {
             link: String((c && c.link) || '').trim(),
@@ -375,28 +404,38 @@ var ProjectService = (function (module) {
             notes: String((c && c.notes) || '').trim()
           };
         })
-        .filter(function (c) { return c.link || c.amount; });
+        .filter(function (c) { return c.link || c.amount; })
+        .forEach(function (c) { pushGdvRow(c.link, c.amount, c.notes, '', 'CSR'); });
     }
-    // Kalau CSR tidak dipilih, gdvCampaigns dipaksa kosong — konsisten
-    // dengan aturan "tidak dipilih CSR maka tidak bisa menambahkan campaign".
 
-    gdvCampaigns.forEach(function (c) {
-      rows.push({
-        Breakdown_ID: Utils.generateId('RB'),
-        Project_ID: projectId,
-        Value_Type: Config.REVENUE_VALUE_TYPE.GDV,
-        Item_Name: c.link,
-        Amount: c.amount,
-        Notes: c.notes,
-        Created_By: project.Created_By || '',
-        Created_Date: now,
-        Last_Updated: now
+    if (hasCsr && isRetainer) {
+      (input.gdvRetainerLinks || []).forEach(function (l) {
+        var link = String((l && l.link) || '').trim();
+        if (!link) return;
+        (( l && l.entries) || []).forEach(function (e) {
+          var amount = Number(e && e.amount) || 0;
+          var notes = String((e && e.notes) || '').trim();
+          var date = String((e && e.date) || '').trim();
+          if (!amount && !notes && !date) return;
+          pushGdvRow(link, amount, notes, date, 'CSR');
+        });
       });
-    });
+    }
+    // Kalau CSR tidak dipilih, atau kombinasi retainer/non-retainer-nya tidak
+    // cocok dengan skema di atas, tidak ada baris CSR yang dihasilkan sama
+    // sekali — konsisten dengan aturan "tidak dipilih CSR maka tidak bisa
+    // menambahkan campaign CSR".
+
+    if (services.indexOf('Ads Sponsorship') !== -1) {
+      (input.gdvAdsCampaigns || [])
+        .map(function (c) { return String((c && c.link) || '').trim(); })
+        .filter(function (link) { return link; })
+        .forEach(function (link) { pushGdvRow(link, 0, '', '', 'Ads Sponsorship'); });
+    }
 
     var validKeys = {};
     services.forEach(function (service) {
-      if (service === Config.REVENUE_GDV_SERVICE_KEY) return;
+      if (Config.REVENUE_GDV_SERVICE_KEYS.indexOf(service) !== -1) return;
       var categories = serviceCategories[service] || [];
       if (categories.length) {
         categories.forEach(function (cat) { validKeys[service + '::' + cat] = true; });

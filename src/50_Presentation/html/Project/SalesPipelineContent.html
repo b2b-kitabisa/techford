@@ -298,15 +298,8 @@
           <h3>GDV</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
-        <div class="revenue-row-labels" id="gdvRowLabels" style="display:none;">
-          <span style="flex:2;">Campaign Link</span>
-          <span style="flex:1;">Nominal GDV</span>
-          <span style="flex:2;">Notes</span>
-          <span style="width:28px;"></span>
-        </div>
-        <div id="gdvCampaignsContainer"></div>
-        <button type="button" class="btn-outline" id="addGdvCampaignBtn" onclick="addGdvCampaignRow()">+ Tambah Campaign</button>
-        <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR dulu di Project Information untuk menambahkan campaign GDV.</div>
+        <div id="gdvSchemeContainer"></div>
+        <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR atau Ads Sponsorship dulu di Project Information untuk menambahkan campaign GDV.</div>
       </div>
 
       <div class="revenue-subsection">
@@ -371,7 +364,9 @@
   var editProjectProgramCategory = null;
   var editProjectIssues = [];
   var editOtherDocLinks = [];
-  var editGdvCampaigns = [];
+  var editGdvCsrCampaigns = [];
+  var editGdvRetainerLinks = [];
+  var editGdvAdsCampaigns = [];
   var editServiceRevenueItems = {};
 
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
@@ -1536,14 +1531,41 @@
   }
 
   function renderRevenueBreakdown(project) {
-    var hasCsr = (project.Services || []).indexOf('CSR') !== -1;
+    var services = project.Services || [];
+    var hasCsr = services.indexOf('CSR') !== -1;
+    var hasAds = services.indexOf('Ads Sponsorship') !== -1;
+    var isRetainer = !!project.Is_Retainer;
     var savedRows = allRevenueBreakdown.filter(function (r) { return r.Project_ID === project.Project_ID; });
+    var savedGdvRows = savedRows.filter(function (r) { return r.Value_Type === 'GDV'; });
 
-    editGdvCampaigns = hasCsr
-      ? savedRows.filter(function (r) { return r.Value_Type === 'GDV'; })
+    document.getElementById('gdvDisabledNote').style.display = (hasCsr || hasAds) ? 'none' : '';
+
+    // ---- Skema CSR biasa (flat, non-Retainer) ----
+    editGdvCsrCampaigns = (hasCsr && !isRetainer)
+      ? savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; })
           .map(function (r) { return { link: r.Item_Name || '', amount: Number(r.Amount) || 0, notes: r.Notes || '' }; })
       : [];
-    renderGdvCampaigns(hasCsr);
+
+    // ---- Skema Retainer (link -> banyak termin nominal+notes+date) ----
+    editGdvRetainerLinks = [];
+    if (hasCsr && isRetainer) {
+      var byLink = {};
+      var linkOrder = [];
+      savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; }).forEach(function (r) {
+        var link = r.Item_Name || '';
+        if (!byLink[link]) { byLink[link] = []; linkOrder.push(link); }
+        byLink[link].push({ amount: Number(r.Amount) || 0, notes: r.Notes || '', date: r.Entry_Date || '' });
+      });
+      editGdvRetainerLinks = linkOrder.map(function (link) { return { link: link, entries: byLink[link] }; });
+    }
+
+    // ---- Skema Ads Sponsorship (link-only, multi) ----
+    editGdvAdsCampaigns = hasAds
+      ? savedGdvRows.filter(function (r) { return r.Source_Service === 'Ads Sponsorship'; })
+          .map(function (r) { return { link: r.Item_Name || '' }; })
+      : [];
+
+    renderGdvSchemes(hasCsr, hasAds, isRetainer);
 
     var rows = getServiceRevenueRows(project);
     var savedServiceRows = savedRows.filter(function (r) { return r.Value_Type === 'SERVICE'; });
@@ -1557,25 +1579,6 @@
     updateRevenueTotals();
   }
 
-  function renderGdvCampaigns(enabled) {
-    var container = document.getElementById('gdvCampaignsContainer');
-    var labels = document.getElementById('gdvRowLabels');
-    document.getElementById('addGdvCampaignBtn').style.display = enabled ? '' : 'none';
-    document.getElementById('gdvDisabledNote').style.display = enabled ? 'none' : '';
-    if (!enabled) { container.innerHTML = ''; labels.style.display = 'none'; return; }
-    if (!editGdvCampaigns.length) editGdvCampaigns = [{ link: '', amount: 0, notes: '' }];
-    labels.style.display = '';
-
-    container.innerHTML = editGdvCampaigns.map(function (c, idx) {
-      return '<div class="revenue-row">' +
-        '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCampaigns[' + idx + '].link=this.value">' +
-        '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvAmountInput(this, ' + idx + ')">' +
-        '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCampaigns[' + idx + '].notes=this.value">' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCampaignRow(' + idx + ')" title="Hapus">×</button>' +
-        '</div>';
-    }).join('');
-  }
-
   // Format angka besar dengan titik pemisah ribuan (id-ID) langsung saat
   // diketik — supaya nominal miliaran (misal 100000000) mudah dibaca jadi
   // 100.000.000. Model tetap menyimpan angka murni (Number), formatting
@@ -1584,12 +1587,6 @@
     n = Number(n) || 0;
     return n ? n.toLocaleString('id-ID') : '';
   }
-  function onGdvAmountInput(el, idx) {
-    var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
-    editGdvCampaigns[idx].amount = amount;
-    el.value = formatThousands(amount);
-    updateRevenueTotals();
-  }
   function onServiceRevenueAmountInput(el, key) {
     var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
     editServiceRevenueItems[key].amount = amount;
@@ -1597,15 +1594,141 @@
     updateRevenueTotals();
   }
 
-  function addGdvCampaignRow() {
-    editGdvCampaigns.push({ link: '', amount: 0, notes: '' });
-    renderGdvCampaigns(true);
+  // ---- Render gabungan 3 skema GDV ke dalam #gdvSchemeContainer ----
+  function renderGdvSchemes(hasCsr, hasAds, isRetainer) {
+    var container = document.getElementById('gdvSchemeContainer');
+    var html = '';
+
+    if (hasCsr && !isRetainer) html += renderGdvCsrBlock();
+    if (hasCsr && isRetainer) html += renderGdvRetainerBlock();
+    if (hasAds) html += renderGdvAdsBlock();
+
+    container.innerHTML = html;
   }
-  function removeGdvCampaignRow(index) {
-    editGdvCampaigns.splice(index, 1);
-    renderGdvCampaigns(true);
+
+  function renderGdvCsrBlock() {
+    if (!editGdvCsrCampaigns.length) editGdvCsrCampaigns = [{ link: '', amount: 0, notes: '' }];
+    var rowsHtml = editGdvCsrCampaigns.map(function (c, idx) {
+      return '<div class="revenue-row">' +
+        '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
+        '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
+        '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="gdv-scheme-block">' +
+      '<div class="gdv-scheme-label">CSR</div>' +
+      '<div class="revenue-row-labels"><span style="flex:2;">Campaign Link</span><span style="flex:1;">Nominal GDV</span><span style="flex:2;">Notes</span><span style="width:28px;"></span></div>' +
+      rowsHtml +
+      '<button type="button" class="btn-outline" onclick="addGdvCsrCampaignRow()">+ Tambah Campaign</button>' +
+      '</div>';
+  }
+
+  function onGdvCsrAmountInput(el, idx) {
+    var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
+    editGdvCsrCampaigns[idx].amount = amount;
+    el.value = formatThousands(amount);
     updateRevenueTotals();
   }
+  function addGdvCsrCampaignRow() {
+    editGdvCsrCampaigns.push({ link: '', amount: 0, notes: '' });
+    renderGdvSchemes(true, currentDrawerHasAds(), false);
+  }
+  function removeGdvCsrCampaignRow(index) {
+    editGdvCsrCampaigns.splice(index, 1);
+    renderGdvSchemes(true, currentDrawerHasAds(), false);
+    updateRevenueTotals();
+  }
+
+  // ---- Skema Retainer: satu link, banyak termin (nominal+notes+date) ----
+  function renderGdvRetainerBlock() {
+    if (!editGdvRetainerLinks.length) editGdvRetainerLinks = [{ link: '', entries: [{ amount: 0, notes: '', date: '' }] }];
+    var linksHtml = editGdvRetainerLinks.map(function (l, linkIdx) {
+      var entriesHtml = (l.entries || []).map(function (e, entryIdx) {
+        return '<div class="revenue-row">' +
+          '<input type="date" style="width:150px;" value="' + escAttr(e.date) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].date=this.value">' +
+          '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(e.amount) + '" oninput="onGdvRetainerAmountInput(this, ' + linkIdx + ', ' + entryIdx + ')">' +
+          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(e.notes) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].notes=this.value">' +
+          '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvRetainerEntryRow(' + linkIdx + ', ' + entryIdx + ')" title="Hapus">×</button>' +
+          '</div>';
+      }).join('');
+      return '<div class="gdv-retainer-link-group">' +
+        '<div class="revenue-row">' +
+        '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value">' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
+        '</div>' +
+        '<div class="revenue-row-labels" style="padding-left:8px;"><span style="width:150px;">Tanggal Termin</span><span style="flex:1;">Nominal</span><span style="flex:2;">Notes</span><span style="width:28px;"></span></div>' +
+        '<div style="padding-left:8px;">' + entriesHtml + '</div>' +
+        '<button type="button" class="btn-outline" style="margin-left:8px;" onclick="addGdvRetainerEntryRow(' + linkIdx + ')">+ Tambah Termin</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="gdv-scheme-block">' +
+      '<div class="gdv-scheme-label">CSR (Retainer)</div>' +
+      linksHtml +
+      '<button type="button" class="btn-outline" onclick="addGdvRetainerLinkGroup()">+ Tambah Campaign Link</button>' +
+      '</div>';
+  }
+
+  function onGdvRetainerAmountInput(el, linkIdx, entryIdx) {
+    var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
+    editGdvRetainerLinks[linkIdx].entries[entryIdx].amount = amount;
+    el.value = formatThousands(amount);
+    updateRevenueTotals();
+  }
+  function addGdvRetainerLinkGroup() {
+    editGdvRetainerLinks.push({ link: '', entries: [{ amount: 0, notes: '', date: '' }] });
+    renderGdvSchemes(true, currentDrawerHasAds(), true);
+  }
+  function removeGdvRetainerLinkGroup(linkIdx) {
+    editGdvRetainerLinks.splice(linkIdx, 1);
+    renderGdvSchemes(true, currentDrawerHasAds(), true);
+    updateRevenueTotals();
+  }
+  function addGdvRetainerEntryRow(linkIdx) {
+    editGdvRetainerLinks[linkIdx].entries.push({ amount: 0, notes: '', date: '' });
+    renderGdvSchemes(true, currentDrawerHasAds(), true);
+  }
+  function removeGdvRetainerEntryRow(linkIdx, entryIdx) {
+    editGdvRetainerLinks[linkIdx].entries.splice(entryIdx, 1);
+    renderGdvSchemes(true, currentDrawerHasAds(), true);
+    updateRevenueTotals();
+  }
+
+  // ---- Skema Ads Sponsorship: link-only, multi, tanpa nominal/notes ----
+  function renderGdvAdsBlock() {
+    if (!editGdvAdsCampaigns.length) editGdvAdsCampaigns = [{ link: '' }];
+    var rowsHtml = editGdvAdsCampaigns.map(function (c, idx) {
+      return '<div class="revenue-row">' +
+        '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
+        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="gdv-scheme-block">' +
+      '<div class="gdv-scheme-label">Ads Sponsorship</div>' +
+      '<div class="placeholder-note" style="margin-top:0; margin-bottom:8px;">Nominal realisasi otomatis dari GDV Controller (Tableau) — cukup catat link campaign-nya di sini.</div>' +
+      rowsHtml +
+      '<button type="button" class="btn-outline" onclick="addGdvAdsCampaignRow()">+ Tambah Campaign</button>' +
+      '</div>';
+  }
+
+  function addGdvAdsCampaignRow() {
+    editGdvAdsCampaigns.push({ link: '' });
+    renderGdvSchemes(currentDrawerHasCsr(), true, currentDrawerIsRetainer());
+  }
+  function removeGdvAdsCampaignRow(index) {
+    editGdvAdsCampaigns.splice(index, 1);
+    renderGdvSchemes(currentDrawerHasCsr(), true, currentDrawerIsRetainer());
+  }
+
+  // Helper kecil supaya add/remove row tidak perlu simpan ulang
+  // hasCsr/hasAds/isRetainer sebagai state terpisah — cukup baca lagi dari
+  // project yang sedang dibuka di drawer.
+  function currentDrawerProject() {
+    return allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0] || {};
+  }
+  function currentDrawerHasCsr() { return (currentDrawerProject().Services || []).indexOf('CSR') !== -1; }
+  function currentDrawerHasAds() { return (currentDrawerProject().Services || []).indexOf('Ads Sponsorship') !== -1; }
+  function currentDrawerIsRetainer() { return !!currentDrawerProject().Is_Retainer; }
 
   function renderServiceRevenueItems(rows) {
     var container = document.getElementById('serviceRevenueItemsContainer');
@@ -1629,7 +1752,12 @@
   }
 
   function updateRevenueTotals() {
-    var totalGdv = editGdvCampaigns.reduce(function (sum, c) { return sum + (Number(c.amount) || 0); }, 0);
+    var totalGdv = editGdvCsrCampaigns.reduce(function (sum, c) { return sum + (Number(c.amount) || 0); }, 0);
+    editGdvRetainerLinks.forEach(function (l) {
+      (l.entries || []).forEach(function (e) { totalGdv += Number(e.amount) || 0; });
+    });
+    // Ads Sponsorship tidak punya nominal manual — realisasinya dari GDV
+    // Controller (Tableau), jadi tidak ikut dijumlah di sini.
     var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key].amount) || 0); }, 0);
     document.getElementById('projectTotalGdvDisplay').innerText = formatRupiah(totalGdv);
     document.getElementById('projectTotalRevenueDisplay').innerText = formatRupiah(totalRev);
@@ -1652,7 +1780,9 @@
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       })
       .project_updateRevenueBreakdown(currentPipelineDrawerId, {
-        gdvCampaigns: editGdvCampaigns,
+        gdvCsrCampaigns: editGdvCsrCampaigns,
+        gdvRetainerLinks: editGdvRetainerLinks,
+        gdvAdsCampaigns: editGdvAdsCampaigns,
         serviceRevenueItems: editServiceRevenueItems
       });
   }
