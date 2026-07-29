@@ -60,7 +60,30 @@
   var gdvNotBrandCsvText = null;
   var gdvNotBrandFileName = null;
 
-  fetchGdvStatus();
+  // Bootstrap dengan retry otomatis — sama seperti pola di halaman lain
+  // (Cost Monitoring, Sales Pipeline, dst). Glitch transport
+  // google.script.run (res=null walau server-nya sendiri sukses) kadang
+  // butuh lebih dari 2-3 percobaan bawaan gsRunWithRetry untuk berhasil,
+  // apalagi kalau ada beberapa google.script.run lain yang ditembak
+  // bersamaan saat halaman baru dibuka. Tanpa lapisan ini, 1 kali sial
+  // (3 percobaan gagal semua) langsung berakhir jadi pesan error padahal
+  // sebenarnya cuma butuh dicoba lagi.
+  var gdvBootstrapAttempts = 0;
+  var gdvBootstrapSucceeded = false;
+  var GDV_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var GDV_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapGdvStatus() {
+    gdvBootstrapAttempts++;
+    fetchGdvStatus(function (ok) {
+      if (ok) { gdvBootstrapSucceeded = true; return; }
+      if (gdvBootstrapSucceeded) return;
+      if (gdvBootstrapAttempts < GDV_BOOTSTRAP_MAX_ATTEMPTS) {
+        setTimeout(bootstrapGdvStatus, GDV_BOOTSTRAP_RETRY_INTERVAL_MS);
+      }
+    });
+  }
+  bootstrapGdvStatus();
 
   document.getElementById('gdvCsvBrandInput').addEventListener('change', function (e) {
     readGdvFile(e.target.files[0], function (text, name) {
@@ -104,7 +127,7 @@
     return new TextDecoder('utf-8').decode(bytes);
   }
 
-  function fetchGdvStatus() {
+  function fetchGdvStatus(onDone) {
     document.getElementById('gdvStatusError').innerText = '';
     var btn = document.getElementById('gdvStatusRefreshBtn');
     if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
@@ -119,12 +142,15 @@
           ? (res.error ? ('[' + res.error.code + '] ' + res.error.message) : ('respons tidak dikenal: ' + JSON.stringify(res)))
           : 'server tidak merespons sama sekali setelah beberapa percobaan (indikasi timeout/lambat).';
         document.getElementById('gdvStatusError').innerText = 'Gagal memuat status — ' + detail;
+        if (onDone) onDone(false);
         return;
       }
       renderGdvStatus(res.data);
+      if (onDone) onDone(true);
     }, function (message) {
       if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
       document.getElementById('gdvStatusError').innerText = 'Gagal memuat status: ' + message;
+      if (onDone) onDone(false);
     });
   }
 
