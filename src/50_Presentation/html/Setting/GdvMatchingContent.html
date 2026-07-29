@@ -1,0 +1,143 @@
+<div class="container" style="max-width: 1040px;">
+  <p style="color: var(--text-muted); font-size:13px;">
+    Mencocokkan realisasi GDV dari <strong>GDV Controller</strong> (hasil upload CSV Tableau) dengan seluruh klaim
+    manual GDV di <strong>Revenue Breakdown</strong> lintas semua project, dikelompokkan per <strong>Campaign
+    Link</strong>. Selisih antara realisasi dan total klaim jadi <strong>Department Portion</strong>. Perhitungan
+    ini selalu live — klik Refresh untuk data terbaru.
+  </p>
+
+  <div id="gdvMatchError" class="error"></div>
+
+  <div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <h3 style="margin:0; font-size:14px;">Per Campaign Link</h3>
+    <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data" style="font-size:11px; padding:3px 8px;">🔄 Refresh</button>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Campaign Link</th>
+        <th class="num">Realisasi (Tableau)</th>
+        <th class="num">Total Diklaim</th>
+        <th class="num">Department Portion</th>
+        <th>Status</th>
+        <th style="width:36px;"></th>
+      </tr>
+    </thead>
+    <tbody id="gdvMatchTableBody">
+      <tr class="empty-row"><td colspan="6">Memuat...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  var gdvMatchRows = [];
+  var gdvMatchExpanded = {};
+
+  // Bootstrap dengan retry otomatis — pola yang sama dengan halaman lain
+  // (lihat GdvControllerContent.html) supaya glitch transport
+  // google.script.run tidak langsung berakhir jadi error di percobaan
+  // pertama saat halaman baru dibuka.
+  var gdvMatchBootstrapAttempts = 0;
+  var gdvMatchBootstrapSucceeded = false;
+  var GDV_MATCH_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var GDV_MATCH_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+
+  function bootstrapGdvMatching() {
+    gdvMatchBootstrapAttempts++;
+    fetchGdvMatching(function (ok) {
+      if (ok) { gdvMatchBootstrapSucceeded = true; return; }
+      if (gdvMatchBootstrapSucceeded) return;
+      if (gdvMatchBootstrapAttempts < GDV_MATCH_BOOTSTRAP_MAX_ATTEMPTS) {
+        setTimeout(bootstrapGdvMatching, GDV_MATCH_BOOTSTRAP_RETRY_INTERVAL_MS);
+      }
+    });
+  }
+  bootstrapGdvMatching();
+
+  function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function fmtRp(n) { return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+
+  function fetchGdvMatching(onDone) {
+    document.getElementById('gdvMatchError').innerText = '';
+    var btn = document.getElementById('gdvMatchRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    gsRunWithRetry('gdvMatching_getMatching', [], function (res) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
+      if (!res || !res.ok) {
+        var detail = res
+          ? (res.error ? ('[' + res.error.code + '] ' + res.error.message) : ('respons tidak dikenal: ' + JSON.stringify(res)))
+          : 'server tidak merespons sama sekali setelah beberapa percobaan (indikasi timeout/lambat).';
+        document.getElementById('gdvMatchError').innerText = 'Gagal memuat data — ' + detail;
+        if (onDone) onDone(false);
+        return;
+      }
+      gdvMatchRows = res.data.rows || [];
+      renderGdvMatchScoreCard(res.data.summary || {});
+      renderGdvMatchTable();
+      if (onDone) onDone(true);
+    }, function (message) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
+      document.getElementById('gdvMatchError').innerText = 'Gagal memuat data: ' + message;
+      if (onDone) onDone(false);
+    });
+  }
+
+  function renderGdvMatchScoreCard(summary) {
+    document.getElementById('gdvMatchScoreRow').innerHTML =
+      '<div class="stat-tile"><div class="st-label">Total Realisasi (Tableau)</div><div class="st-value">' + fmtRp(summary.totalRealized) + '</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Total Diklaim (Manual)</div><div class="st-value">' + fmtRp(summary.totalClaimed) + '</div></div>' +
+      '<div class="stat-tile accent"><div class="st-label">Department Portion</div><div class="st-value">' + fmtRp(summary.totalDepartmentPortion) + '</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Belum Sinkron / Klaim Melebihi</div><div class="st-value">' + (summary.belumSinkronCount || 0) + ' / ' + (summary.klaimMelebihiCount || 0) + '</div></div>';
+  }
+
+  function statusPill(status) {
+    if (status === 'SINKRON') return '<span class="pill good">Sinkron</span>';
+    if (status === 'KLAIM_MELEBIHI') return '<span class="pill bad">Klaim Melebihi</span>';
+    return '<span class="pill neutral">Belum Sinkron</span>';
+  }
+
+  function renderGdvMatchTable() {
+    var tbody = document.getElementById('gdvMatchTableBody');
+    if (!gdvMatchRows.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada data GDV untuk dicocokkan.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = gdvMatchRows.map(function (r, idx) {
+      var expanded = !!gdvMatchExpanded[r.linkCampaign];
+      var mainRow = '<tr style="cursor:pointer;" onclick="toggleGdvMatchRow(' + idx + ')">' +
+        '<td>' + esc(r.linkCampaign) + '</td>' +
+        '<td class="num">' + (r.hasRealized ? fmtRp(r.realizedNominal) : '-') + '</td>' +
+        '<td class="num">' + fmtRp(r.totalClaimed) + '</td>' +
+        '<td class="num">' + fmtRp(r.departmentPortion) + '</td>' +
+        '<td>' + statusPill(r.status) + '</td>' +
+        '<td style="text-align:center;">' + (expanded ? '▲' : '▼') + '</td>' +
+        '</tr>';
+      if (!expanded) return mainRow;
+
+      var claimsHtml = r.claims.length
+        ? '<table class="data-table" style="margin:0;">' +
+          '<thead><tr><th>Project</th><th>Client</th><th>Skema</th><th class="num">Nominal</th><th>Notes</th></tr></thead>' +
+          '<tbody>' + r.claims.map(function (c) {
+            return '<tr>' +
+              '<td>' + esc(c.Project_Name || c.Project_ID) + '</td>' +
+              '<td>' + esc(c.Client_Name || '-') + '</td>' +
+              '<td>' + esc(c.Source_Service || '-') + '</td>' +
+              '<td class="num">' + fmtRp(c.Amount) + '</td>' +
+              '<td>' + esc(c.Notes || '-') + '</td>' +
+              '</tr>';
+          }).join('') + '</tbody></table>'
+        : '<div class="placeholder-note" style="margin:0;">Belum ada project yang mengklaim link ini secara manual.</div>';
+
+      var detailRow = '<tr><td colspan="6" style="background:var(--bg-hover); padding:12px 16px;">' + claimsHtml + '</td></tr>';
+      return mainRow + detailRow;
+    }).join('');
+  }
+
+  function toggleGdvMatchRow(idx) {
+    var link = gdvMatchRows[idx].linkCampaign;
+    gdvMatchExpanded[link] = !gdvMatchExpanded[link];
+    renderGdvMatchTable();
+  }
+</script>

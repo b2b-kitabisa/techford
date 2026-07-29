@@ -48,7 +48,8 @@ var NavigationConfig = (function (module) {
       items: [
         { page: 'configure-account', label: 'Configure Account', enabled: true },
         { page: 'master-data', label: 'Master Data', enabled: true },
-        { page: 'gdv-controller', label: 'GDV Controller', enabled: true }
+        { page: 'gdv-controller', label: 'GDV Controller', enabled: true },
+        { page: 'gdv-matching', label: 'GDV Matching', enabled: true }
       ]
     }
   ];

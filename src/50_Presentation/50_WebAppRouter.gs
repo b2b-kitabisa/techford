@@ -88,6 +88,11 @@ var ROUTES = {
     content: '50_Presentation/html/Setting/GdvControllerContent',
     title: 'GDV Controller',
     headerActions: ''
+  },
+  'gdv-matching': {
+    content: '50_Presentation/html/Setting/GdvMatchingContent',
+    title: 'GDV Matching',
+    headerActions: ''
   }
 };
 
