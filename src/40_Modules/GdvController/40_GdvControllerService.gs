@@ -47,6 +47,16 @@ var GdvControllerService = (function (module) {
     return cleaned ? Number(cleaned) : 0;
   }
 
+  // Export "CSV" dari Tableau sering sebenarnya tab-delimited (format
+  // "Unicode Text" Excel/Windows), bukan koma — walau ekstensinya .csv.
+  // Deteksi otomatis dari baris pertama supaya kedua format tetap kebaca.
+  function detectDelimiter(csvText) {
+    var firstLine = csvText.split(/\r\n|\r|\n/)[0] || '';
+    var tabCount = (firstLine.match(/\t/g) || []).length;
+    var commaCount = (firstLine.match(/,/g) || []).length;
+    return tabCount > commaCount ? '\t' : ',';
+  }
+
   /**
    * Parse SATU CSV (Brand atau Not-Brand — headernya sama persis) jadi
    * array row object siap tulis ke sheet, ditandai Source_Category supaya
@@ -56,7 +66,12 @@ var GdvControllerService = (function (module) {
     if (Utils.isBlank(csvText)) {
       throw new AppError('VALIDATION_ERROR', 'File CSV ' + fileLabel + ' kosong atau gagal dibaca.');
     }
-    var table = Utilities.parseCsv(csvText);
+    // Sisa BOM (﻿) bisa masih nempel di karakter pertama walau
+    // decoding di client sudah benar — kalau dibiarkan, kolom pertama
+    // header tidak akan cocok ("﻿campaigner_name" != "campaigner_name").
+    csvText = csvText.replace(/^﻿/, '');
+
+    var table = Utilities.parseCsv(csvText, detectDelimiter(csvText));
     if (!table.length) {
       throw new AppError('VALIDATION_ERROR', 'File CSV ' + fileLabel + ' tidak berisi data apa pun.');
     }

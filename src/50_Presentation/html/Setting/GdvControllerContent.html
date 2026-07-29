@@ -73,12 +73,32 @@
     });
   });
 
+  // Export "CSV" dari Tableau/Excel di Windows sering sebenarnya berformat
+  // "Unicode Text" — UTF-16 (LE/BE) dengan BOM, bukan UTF-8, walau
+  // ekstensinya tetap .csv. readAsText(file) polos (defaultnya menebak
+  // UTF-8) akan mengacak isinya kalau filenya UTF-16 — jadi baca dulu
+  // sebagai byte mentah (ArrayBuffer), deteksi BOM, baru decode dengan
+  // encoding yang benar.
   function readGdvFile(file, onDone) {
     if (!file) return;
     var reader = new FileReader();
-    reader.onload = function (ev) { onDone(ev.target.result, file.name); };
+    reader.onload = function (ev) { onDone(decodeGdvFileBuffer(ev.target.result), file.name); };
     reader.onerror = function () { alert('Gagal membaca file "' + file.name + '" — coba lagi.'); };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
+  }
+
+  function decodeGdvFileBuffer(buffer) {
+    var bytes = new Uint8Array(buffer);
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+    }
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return new TextDecoder('utf-8').decode(bytes.subarray(3));
+    }
+    return new TextDecoder('utf-8').decode(bytes);
   }
 
   function fetchGdvStatus() {
