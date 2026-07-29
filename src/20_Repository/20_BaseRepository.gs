@@ -15,12 +15,21 @@
  * lewat komposisi (bukan class inheritance klasik) supaya konsisten dengan
  * pola namespace/IIFE yang dipakai di seluruh platform.
  */
-function BaseRepository(sheetName) {
+/**
+ * @param {string} sheetName
+ * @param {Function} [spreadsheetGetterFn] - opsional, default Config.getSpreadsheet
+ *   (spreadsheet database utama). Isi ini kalau sheet-nya hidup di
+ *   spreadsheet LAIN (mis. GDV_Controller — sengaja file terpisah, lihat
+ *   Config.getGdvControllerSpreadsheet), supaya tetap lewat satu-satunya
+ *   layer ini, bukan modul lain yang manggil SpreadsheetApp sendiri.
+ */
+function BaseRepository(sheetName, spreadsheetGetterFn) {
   this.sheetName = sheetName;
+  this._getSpreadsheet = spreadsheetGetterFn || Config.getSpreadsheet;
 }
 
 BaseRepository.prototype._getSheet = function () {
-  var sheet = Config.getSpreadsheet().getSheetByName(this.sheetName);
+  var sheet = this._getSpreadsheet().getSheetByName(this.sheetName);
   if (!sheet) {
     throw new AppError('SHEET_NOT_FOUND', 'Sheet "' + this.sheetName + '" tidak ditemukan.');
   }
@@ -134,5 +143,32 @@ BaseRepository.prototype.deleteAllWhere = function (predicateFn) {
       }
     }
     return deletedCount;
+  });
+};
+
+/**
+ * Timpa SELURUH isi sheet (semua baris data, bukan cuma yang cocok
+ * predicate) dengan rowObjects yang baru — dipakai untuk sheet yang
+ * memang didesain "snapshot terbaru" (mis. GDV_Controller, hasil upload
+ * CSV yang selalu menggantikan data sebelumnya, bukan akumulasi/riwayat).
+ * Pakai clearContent+setValues (bukan loop deleteRow/insert) supaya cepat
+ * untuk ratusan baris sekaligus.
+ */
+BaseRepository.prototype.replaceAll = function (rowObjects) {
+  var self = this;
+  return LockHelper.withLock(function () {
+    var sheet = self._getSheet();
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+    }
+    if (!rowObjects.length) return;
+    var values = rowObjects.map(function (rowObject) {
+      return headers.map(function (header) {
+        return rowObject.hasOwnProperty(header) ? rowObject[header] : '';
+      });
+    });
+    sheet.getRange(2, 1, values.length, headers.length).setValues(values);
   });
 };

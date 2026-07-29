@@ -1,0 +1,136 @@
+<div class="container" style="max-width: 720px;">
+  <p style="color: var(--text-muted); font-size:13px;">
+    Upload CSV hasil export dari Tableau untuk memperbarui data realisasi GDV per link campaign.
+    Setiap upload akan <strong>menimpa seluruh data sebelumnya</strong> — riwayat siapa &amp; kapan upload
+    tetap tersimpan di log di bawah.
+  </p>
+
+  <div id="gdvStatusError" class="error"></div>
+
+  <div class="stat-tile" style="margin-bottom:20px;">
+    <div class="st-label">Status Data Saat Ini</div>
+    <div class="st-value" id="gdvStatusValue" style="font-size:16px;">Memuat...</div>
+    <div class="st-compare" id="gdvStatusCompare">-</div>
+  </div>
+
+  <div class="drawer-section" style="border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px;">
+    <h3 style="margin-top:0;">Upload CSV Baru</h3>
+    <p style="font-size:12px; color: var(--text-faint); margin-top:-4px;">
+      Header CSV wajib punya kolom <code>Link_Campaign</code> dan <code>Realized_Nominal</code> (urutan kolom bebas).
+      Link boleh berupa slug saja (mis. <code>bantuumkm</code>) atau URL penuh — kalau URL penuh, bagian belakang
+      setelah slash terakhir akan diambil otomatis.
+    </p>
+    <input type="file" id="gdvCsvFileInput" accept=".csv,text/csv" style="margin-bottom:12px;">
+    <div>
+      <button class="btn-save" id="gdvUploadBtn" onclick="submitGdvUpload()">⬆ Upload &amp; Timpa Data</button>
+    </div>
+  </div>
+
+  <h3 style="margin-top:28px; margin-bottom:8px; font-size:14px;">Riwayat Upload Terakhir</h3>
+  <table class="data-table">
+    <thead>
+      <tr><th>Waktu</th><th>Oleh</th><th>Nama File</th><th>Jumlah Baris</th></tr>
+    </thead>
+    <tbody id="gdvLogTableBody">
+      <tr class="empty-row"><td colspan="4">Memuat...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  var gdvSelectedCsvText = null;
+  var gdvSelectedFileName = null;
+
+  fetchGdvStatus();
+
+  document.getElementById('gdvCsvFileInput').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    gdvSelectedCsvText = null;
+    gdvSelectedFileName = null;
+    if (!file) return;
+    gdvSelectedFileName = file.name;
+    var reader = new FileReader();
+    reader.onload = function (ev) { gdvSelectedCsvText = ev.target.result; };
+    reader.onerror = function () { alert('Gagal membaca file — coba lagi.'); };
+    reader.readAsText(file);
+  });
+
+  function fetchGdvStatus() {
+    gsRunWithRetry('gdvController_getStatus', [], function (res) {
+      if (!res || !res.ok) {
+        document.getElementById('gdvStatusError').innerText = (res && res.error && res.error.message) || 'Gagal memuat status.';
+        return;
+      }
+      renderGdvStatus(res.data);
+    }, function (message) {
+      document.getElementById('gdvStatusError').innerText = 'Gagal memuat status: ' + message;
+    });
+  }
+
+  function fmtGdvDate(d) {
+    if (!d) return '-';
+    var dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' ' + dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderGdvStatus(data) {
+    document.getElementById('gdvStatusValue').innerText = data.currentRowCount + ' link tersimpan';
+    var latest = data.latestUpload;
+    document.getElementById('gdvStatusCompare').innerText = latest
+      ? 'Terakhir diupload: ' + esc(latest.File_Name || '-') + ' oleh ' + esc(latest.Uploaded_By || '-') + ', ' + fmtGdvDate(latest.Uploaded_At) + ' (' + latest.Row_Count + ' baris)'
+      : 'Belum pernah ada upload.';
+
+    var logRows = latest ? [latest] : [];
+    document.getElementById('gdvLogTableBody').innerHTML = logRows.length
+      ? logRows.map(function (log) {
+          return '<tr>' +
+            '<td>' + fmtGdvDate(log.Uploaded_At) + '</td>' +
+            '<td>' + esc(log.Uploaded_By || '-') + '</td>' +
+            '<td>' + esc(log.File_Name || '-') + '</td>' +
+            '<td class="num">' + log.Row_Count + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="4">Belum ada riwayat upload.</td></tr>';
+  }
+
+  function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function submitGdvUpload() {
+    if (!gdvSelectedCsvText) { alert('Pilih file CSV dulu.'); return; }
+    if (!techfordConfirm('Upload akan MENIMPA seluruh data GDV Controller yang ada sekarang dengan isi file "' + gdvSelectedFileName + '". Lanjutkan?')) return;
+
+    var uploadedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var btn = document.getElementById('gdvUploadBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-loading-spin"></span>Mengupload...';
+    TechfordLoading.show('Mengupload & memproses CSV...');
+
+    // Panggilan TULIS (menimpa data) — SENGAJA tidak lewat gsRunWithRetry.
+    // Helper itu retry dengan memanggil ULANG fungsi server yang sama kalau
+    // google.script.run pulang res=null (glitch transport, bukan berarti
+    // gagal) — untuk operasi baca itu aman, tapi untuk operasi tulis retry
+    // otomatis bisa berarti mengulang proses timpa-data dua kali tanpa
+    // sepengetahuan user. Lihat catatan yang sama di CostMonitoringContent.html.
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerHTML = '⬆ Upload &amp; Timpa Data';
+        if (res && res.ok === false) { alert('Gagal upload: ' + res.error.message); return; }
+        document.getElementById('gdvCsvFileInput').value = '';
+        gdvSelectedCsvText = null;
+        gdvSelectedFileName = null;
+        fetchGdvStatus();
+        TechfordToast.show('CSV berhasil diupload — data GDV Controller diperbarui.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerHTML = '⬆ Upload &amp; Timpa Data';
+        alert('Gagal upload: ' + (err && err.message ? err.message : err));
+      })
+      .gdvController_uploadCsv(gdvSelectedCsvText, gdvSelectedFileName, uploadedBy);
+  }
+</script>

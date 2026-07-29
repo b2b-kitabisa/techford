@@ -43,7 +43,9 @@ var Config = (function (module) {
     MARGIN_GUIDE: 'Margin_Guide',
     QUOTATION_HEADER: 'Quotation_Header',
     QUOTATION_ITEM: 'Quotation_Item',
-    AUDIT_LOG: 'AuditLog'
+    AUDIT_LOG: 'AuditLog',
+    GDV_CONTROLLER: 'GDV_Controller',
+    GDV_CONTROLLER_UPLOAD_LOG: 'GDV_Controller_Upload_Log'
   };
 
   // Kategori opsi dropdown yang dikelola lewat Setting > Master Data
@@ -330,6 +332,22 @@ var Config = (function (module) {
 
   // Cache default (detik) untuk data referensi yang jarang berubah.
   module.CACHE_TTL_SECONDS = 300;
+
+  // ---- GDV Controller (rekonsiliasi GDV vs data Tableau) ----
+  // Spreadsheet TERPISAH dari database utama Techford (SPREADSHEET_ID di
+  // atas) — sengaja dipisah karena isinya hasil upload CSV manual (admin
+  // export dari Tableau lalu upload lewat Setting > GDV Controller), bukan
+  // data yang dikelola langsung oleh modul-modul lain. ID-nya WAJIB diisi
+  // manual sekali saat setup (lihat SETUP.md) — sebelum diisi, fitur upload
+  // akan gagal dengan pesan jelas ("spreadsheet belum dikonfigurasi").
+  module.GDV_CONTROLLER_SPREADSHEET_ID = '';
+
+  module.getGdvControllerSpreadsheet = function () {
+    if (!module.GDV_CONTROLLER_SPREADSHEET_ID) {
+      throw new AppError('CONFIG_MISSING', 'GDV_CONTROLLER_SPREADSHEET_ID belum diisi di Config.gs — lihat SETUP.md bagian GDV Controller.');
+    }
+    return SpreadsheetApp.openById(module.GDV_CONTROLLER_SPREADSHEET_ID);
+  };
 
   module.getSpreadsheet = function () {
     return SpreadsheetApp.openById(module.SPREADSHEET_ID);

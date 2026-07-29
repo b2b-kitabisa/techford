@@ -83,6 +83,11 @@ var ROUTES = {
     content: '50_Presentation/html/Document/CostMonitoringContent',
     title: 'Cost Monitoring',
     headerActions: ''
+  },
+  'gdv-controller': {
+    content: '50_Presentation/html/Setting/GdvControllerContent',
+    title: 'GDV Controller',
+    headerActions: ''
   }
 };
 
