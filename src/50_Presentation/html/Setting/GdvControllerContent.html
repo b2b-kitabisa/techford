@@ -111,7 +111,14 @@
     gsRunWithRetry('gdvController_getStatus', [], function (res) {
       if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
       if (!res || !res.ok) {
-        document.getElementById('gdvStatusError').innerText = (res && res.error && res.error.message) || 'Gagal memuat status — coba klik Refresh lagi.';
+        // Tampilkan detail SEMENTARA (bukan pesan generik) supaya penyebab
+        // asli kelihatan — [kode: pesan] kalau server sempat merespons
+        // dengan error terstruktur, atau penanda kalau res-nya benar2 null
+        // (server tidak merespons sama sekali, indikasi timeout).
+        var detail = res
+          ? (res.error ? ('[' + res.error.code + '] ' + res.error.message) : ('respons tidak dikenal: ' + JSON.stringify(res)))
+          : 'server tidak merespons sama sekali setelah beberapa percobaan (indikasi timeout/lambat).';
+        document.getElementById('gdvStatusError').innerText = 'Gagal memuat status — ' + detail;
         return;
       }
       renderGdvStatus(res.data);
