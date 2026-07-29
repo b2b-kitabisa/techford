@@ -149,12 +149,25 @@ var GdvControllerService = (function (module) {
       totalRowCount: combined.length,
       brandRowCount: brandRows.length,
       notBrandRowCount: notBrandRows.length,
-      uploadedAt: now,
+      uploadedAt: now.toISOString(),
       uploadedBy: uploadedBy || '',
       brandFileName: brandFileName || '',
       notBrandFileName: notBrandFileName || ''
     };
   };
+
+  // Eksekusi getStatus() terbukti SELALU "Completed" sukses di log Apps
+  // Script, tapi client tetap terima res=null berkali-kali — pola klasik
+  // objek Date yang dibaca dari spreadsheet EKSTERNAL (bukan spreadsheet
+  // bound utama) gagal ke-serialize dengan benar lewat jembatan
+  // google.script.run, walau eksekusinya sendiri sukses total. Perbaikan:
+  // ubah Date jadi string ISO SEBELUM dikirim ke client — jangan pernah
+  // kirim objek Date mentah hasil baca dari spreadsheet eksternal ini.
+  function toIsoStringSafe(value) {
+    if (!value) return '';
+    var d = (value instanceof Date) ? value : new Date(value);
+    return isNaN(d.getTime()) ? String(value) : d.toISOString();
+  }
 
   /**
    * Status upload terakhir — dipakai strip "Terakhir diupload: ..." di UI.
@@ -163,8 +176,18 @@ var GdvControllerService = (function (module) {
   module.getStatus = function () {
     var latest = GdvControllerUploadLogRepository.findLatest();
     var currentRowCount = GdvControllerRepository.count();
+    var latestSafe = latest ? {
+      Log_ID: latest.Log_ID,
+      Uploaded_At: toIsoStringSafe(latest.Uploaded_At),
+      Uploaded_By: latest.Uploaded_By,
+      Brand_File_Name: latest.Brand_File_Name,
+      Brand_Row_Count: latest.Brand_Row_Count,
+      Not_Brand_File_Name: latest.Not_Brand_File_Name,
+      Not_Brand_Row_Count: latest.Not_Brand_Row_Count,
+      Total_Row_Count: latest.Total_Row_Count
+    } : null;
     return {
-      latestUpload: latest,
+      latestUpload: latestSafe,
       currentRowCount: currentRowCount
     };
   };
