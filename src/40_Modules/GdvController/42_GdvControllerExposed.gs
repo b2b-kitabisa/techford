@@ -1,8 +1,8 @@
 /**
  * Module.GdvController.Exposed
  */
-function gdvController_uploadCsv(csvText, fileName, uploadedBy) {
-  return GdvControllerController.uploadCsv(csvText, fileName, uploadedBy);
+function gdvController_uploadCsvPair(brandCsvText, brandFileName, notBrandCsvText, notBrandFileName, uploadedBy) {
+  return GdvControllerController.uploadCsvPair(brandCsvText, brandFileName, notBrandCsvText, notBrandFileName, uploadedBy);
 }
 
 function gdvController_getStatus() {

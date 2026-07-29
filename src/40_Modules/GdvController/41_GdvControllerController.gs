@@ -3,9 +3,9 @@
  */
 var GdvControllerController = (function (module) {
 
-  module.uploadCsv = function (csvText, fileName, uploadedBy) {
-    return ErrorHandler.handle('GdvControllerController.uploadCsv', function () {
-      return GdvControllerService.uploadCsv(csvText, fileName, uploadedBy);
+  module.uploadCsvPair = function (brandCsvText, brandFileName, notBrandCsvText, notBrandFileName, uploadedBy) {
+    return ErrorHandler.handle('GdvControllerController.uploadCsvPair', function () {
+      return GdvControllerService.uploadCsvPair(brandCsvText, brandFileName, notBrandCsvText, notBrandFileName, uploadedBy);
     });
   };
 

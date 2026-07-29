@@ -1,8 +1,9 @@
 <div class="container" style="max-width: 720px;">
   <p style="color: var(--text-muted); font-size:13px;">
-    Upload CSV hasil export dari Tableau untuk memperbarui data realisasi GDV per link campaign.
-    Setiap upload akan <strong>menimpa seluruh data sebelumnya</strong> — riwayat siapa &amp; kapan upload
-    tetap tersimpan di log di bawah.
+    Upload 2 CSV hasil export dari Tableau (metode tarik datanya beda untuk <strong>Brand</strong> dan
+    <strong>Not-Brand</strong>, tapi headernya sama) untuk memperbarui data realisasi GDV per link campaign.
+    Kedua file <strong>wajib diupload bersamaan</strong> — datanya akan digabung jadi satu, dan
+    <strong>menimpa seluruh data sebelumnya</strong>. Riwayat siapa &amp; kapan upload tetap tersimpan di log di bawah.
   </p>
 
   <div id="gdvStatusError" class="error"></div>
@@ -16,11 +17,24 @@
   <div class="drawer-section" style="border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px;">
     <h3 style="margin-top:0;">Upload CSV Baru</h3>
     <p style="font-size:12px; color: var(--text-faint); margin-top:-4px;">
-      Header CSV wajib punya kolom <code>Link_Campaign</code> dan <code>Realized_Nominal</code> (urutan kolom bebas).
-      Link boleh berupa slug saja (mis. <code>bantuumkm</code>) atau URL penuh — kalau URL penuh, bagian belakang
-      setelah slash terakhir akan diambil otomatis.
+      Header CSV (dari tarikan Tableau) wajib punya kolom: <code>campaigner_name</code>, <code>campaigner_id</code>,
+      <code>project_id</code>, <code>short_url</code>, <code>Fundraiser Name</code>, <code>child_id</code>,
+      <code>child_short_url</code>, <code>Year of Project Launched</code>, <code>project_statuses</code>,
+      <code>Main Source</code>, <code>Gdv</code>, <code>Platform Fee</code>, <code>subscription_fee</code>,
+      <code>Bank Charge Fee</code> — urutan kolom bebas. <code>short_url</code> boleh berupa URL penuh
+      (bagian belakang setelah slash terakhir diambil otomatis).
     </p>
-    <input type="file" id="gdvCsvFileInput" accept=".csv,text/csv" style="margin-bottom:12px;">
+
+    <div class="form-grid-2col" style="margin-bottom:12px;">
+      <div>
+        <label style="font-size:12px; font-weight:700; display:block; margin-bottom:6px;">CSV Brand</label>
+        <input type="file" id="gdvCsvBrandInput" accept=".csv,text/csv">
+      </div>
+      <div>
+        <label style="font-size:12px; font-weight:700; display:block; margin-bottom:6px;">CSV Not-Brand</label>
+        <input type="file" id="gdvCsvNotBrandInput" accept=".csv,text/csv">
+      </div>
+    </div>
     <div>
       <button class="btn-save" id="gdvUploadBtn" onclick="submitGdvUpload()">⬆ Upload &amp; Timpa Data</button>
     </div>
@@ -29,31 +43,43 @@
   <h3 style="margin-top:28px; margin-bottom:8px; font-size:14px;">Riwayat Upload Terakhir</h3>
   <table class="data-table">
     <thead>
-      <tr><th>Waktu</th><th>Oleh</th><th>Nama File</th><th>Jumlah Baris</th></tr>
+      <tr><th>Waktu</th><th>Oleh</th><th>File Brand</th><th>File Not-Brand</th><th>Total Baris</th></tr>
     </thead>
     <tbody id="gdvLogTableBody">
-      <tr class="empty-row"><td colspan="4">Memuat...</td></tr>
+      <tr class="empty-row"><td colspan="5">Memuat...</td></tr>
     </tbody>
   </table>
 </div>
 
 <script>
-  var gdvSelectedCsvText = null;
-  var gdvSelectedFileName = null;
+  var gdvBrandCsvText = null;
+  var gdvBrandFileName = null;
+  var gdvNotBrandCsvText = null;
+  var gdvNotBrandFileName = null;
 
   fetchGdvStatus();
 
-  document.getElementById('gdvCsvFileInput').addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    gdvSelectedCsvText = null;
-    gdvSelectedFileName = null;
-    if (!file) return;
-    gdvSelectedFileName = file.name;
-    var reader = new FileReader();
-    reader.onload = function (ev) { gdvSelectedCsvText = ev.target.result; };
-    reader.onerror = function () { alert('Gagal membaca file — coba lagi.'); };
-    reader.readAsText(file);
+  document.getElementById('gdvCsvBrandInput').addEventListener('change', function (e) {
+    readGdvFile(e.target.files[0], function (text, name) {
+      gdvBrandCsvText = text;
+      gdvBrandFileName = name;
+    });
   });
+
+  document.getElementById('gdvCsvNotBrandInput').addEventListener('change', function (e) {
+    readGdvFile(e.target.files[0], function (text, name) {
+      gdvNotBrandCsvText = text;
+      gdvNotBrandFileName = name;
+    });
+  });
+
+  function readGdvFile(file, onDone) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) { onDone(ev.target.result, file.name); };
+    reader.onerror = function () { alert('Gagal membaca file "' + file.name + '" — coba lagi.'); };
+    reader.readAsText(file);
+  }
 
   function fetchGdvStatus() {
     gsRunWithRetry('gdvController_getStatus', [], function (res) {
@@ -75,11 +101,14 @@
       ' ' + dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   }
 
+  function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
   function renderGdvStatus(data) {
-    document.getElementById('gdvStatusValue').innerText = data.currentRowCount + ' link tersimpan';
+    document.getElementById('gdvStatusValue').innerText = data.currentRowCount + ' baris tersimpan';
     var latest = data.latestUpload;
     document.getElementById('gdvStatusCompare').innerText = latest
-      ? 'Terakhir diupload: ' + esc(latest.File_Name || '-') + ' oleh ' + esc(latest.Uploaded_By || '-') + ', ' + fmtGdvDate(latest.Uploaded_At) + ' (' + latest.Row_Count + ' baris)'
+      ? 'Terakhir diupload oleh ' + esc(latest.Uploaded_By || '-') + ', ' + fmtGdvDate(latest.Uploaded_At) +
+        ' (Brand: ' + latest.Brand_Row_Count + ' baris, Not-Brand: ' + latest.Not_Brand_Row_Count + ' baris)'
       : 'Belum pernah ada upload.';
 
     var logRows = latest ? [latest] : [];
@@ -88,18 +117,18 @@
           return '<tr>' +
             '<td>' + fmtGdvDate(log.Uploaded_At) + '</td>' +
             '<td>' + esc(log.Uploaded_By || '-') + '</td>' +
-            '<td>' + esc(log.File_Name || '-') + '</td>' +
-            '<td class="num">' + log.Row_Count + '</td>' +
+            '<td>' + esc(log.Brand_File_Name || '-') + ' <span style="color:var(--text-faint);">(' + log.Brand_Row_Count + ')</span></td>' +
+            '<td>' + esc(log.Not_Brand_File_Name || '-') + ' <span style="color:var(--text-faint);">(' + log.Not_Brand_Row_Count + ')</span></td>' +
+            '<td class="num">' + log.Total_Row_Count + '</td>' +
             '</tr>';
         }).join('')
-      : '<tr class="empty-row"><td colspan="4">Belum ada riwayat upload.</td></tr>';
+      : '<tr class="empty-row"><td colspan="5">Belum ada riwayat upload.</td></tr>';
   }
 
-  function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-
   function submitGdvUpload() {
-    if (!gdvSelectedCsvText) { alert('Pilih file CSV dulu.'); return; }
-    if (!techfordConfirm('Upload akan MENIMPA seluruh data GDV Controller yang ada sekarang dengan isi file "' + gdvSelectedFileName + '". Lanjutkan?')) return;
+    if (!gdvBrandCsvText) { alert('Pilih file CSV Brand dulu.'); return; }
+    if (!gdvNotBrandCsvText) { alert('Pilih file CSV Not-Brand dulu.'); return; }
+    if (!techfordConfirm('Upload akan MENIMPA seluruh data GDV Controller yang ada sekarang dengan gabungan isi "' + gdvBrandFileName + '" (Brand) dan "' + gdvNotBrandFileName + '" (Not-Brand). Lanjutkan?')) return;
 
     var uploadedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
     var btn = document.getElementById('gdvUploadBtn');
@@ -119,9 +148,10 @@
         btn.disabled = false;
         btn.innerHTML = '⬆ Upload &amp; Timpa Data';
         if (res && res.ok === false) { alert('Gagal upload: ' + res.error.message); return; }
-        document.getElementById('gdvCsvFileInput').value = '';
-        gdvSelectedCsvText = null;
-        gdvSelectedFileName = null;
+        document.getElementById('gdvCsvBrandInput').value = '';
+        document.getElementById('gdvCsvNotBrandInput').value = '';
+        gdvBrandCsvText = null; gdvBrandFileName = null;
+        gdvNotBrandCsvText = null; gdvNotBrandFileName = null;
         fetchGdvStatus();
         TechfordToast.show('CSV berhasil diupload — data GDV Controller diperbarui.');
       })
@@ -131,6 +161,6 @@
         btn.innerHTML = '⬆ Upload &amp; Timpa Data';
         alert('Gagal upload: ' + (err && err.message ? err.message : err));
       })
-      .gdvController_uploadCsv(gdvSelectedCsvText, gdvSelectedFileName, uploadedBy);
+      .gdvController_uploadCsvPair(gdvBrandCsvText, gdvBrandFileName, gdvNotBrandCsvText, gdvNotBrandFileName, uploadedBy);
   }
 </script>
