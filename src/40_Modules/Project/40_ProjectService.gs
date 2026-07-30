@@ -459,7 +459,14 @@ var ProjectService = (function (module) {
 
     var validKeys = {};
     services.forEach(function (service) {
-      if (Config.REVENUE_GDV_SERVICE_KEYS.indexOf(service) !== -1) return;
+      // BUKAN Config.REVENUE_GDV_SERVICE_KEYS — array itu menentukan service
+      // mana yang boleh punya baris GDV (CSR & Ads Sponsorship berdua),
+      // beda konsep dari "service mana yang boleh punya baris Service
+      // Revenue" (di sini). Ads Sponsorship SENGAJA tetap boleh punya
+      // Service Revenue manual (misal fee pengelolaan campaign) terpisah
+      // dari realisasi GDV-nya — hanya CSR yang dikecualikan, karena seluruh
+      // nominalnya sudah lewat GDV (campaign link).
+      if (Config.REVENUE_SERVICE_EXCLUDED_KEYS.indexOf(service) !== -1) return;
       var categories = serviceCategories[service] || [];
       if (categories.length) {
         categories.forEach(function (cat) { validKeys[service + '::' + cat] = true; });
@@ -525,6 +532,60 @@ var ProjectService = (function (module) {
     if (!updated) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }
+    return module.getAllProjects();
+  };
+
+  /**
+   * Tandai LOSS secara manual — SENGAJA terpisah dari updateStage() dan
+   * TIDAK dikunci Allow_Manual_Deal. Alasan: gerbang Allow_Manual_Deal itu
+   * spesifik untuk melindungi progres Stage otomatis dari Document Pipeline
+   * (terutama supaya "Won" tidak diklik sembarangan tanpa Quotation Signed),
+   * sedangkan menandai deal batal adalah keputusan sales yang berdiri
+   * sendiri dan harus selalu bisa dilakukan kapan pun, di Stage apa pun
+   * sebelum Won.
+   *
+   * Stage SEBELUM Loss disimpan ke Pre_Loss_Stage supaya undoLoss() bisa
+   * mengembalikannya persis ke situ — bukan sekadar reset ke Prospect.
+   */
+  module.markLoss = function (projectId) {
+    var project = ProjectRepository.findById(projectId);
+    if (!project) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+    }
+    if (project.Stage === 'Loss') {
+      throw new AppError('VALIDATION_ERROR', 'Project ini sudah berstatus Loss.');
+    }
+    if (project.Stage === 'Won') {
+      throw new AppError('VALIDATION_ERROR', 'Project yang sudah Won tidak bisa ditandai Loss.');
+    }
+    ProjectRepository.ensureColumns(['Pre_Loss_Stage']);
+    ProjectRepository.update(projectId, {
+      Stage: 'Loss',
+      Pre_Loss_Stage: project.Stage,
+      Last_Updated: new Date()
+    });
+    return module.getAllProjects();
+  };
+
+  /**
+   * Undo LOSS — mengembalikan Stage ke Pre_Loss_Stage yang tersimpan saat
+   * markLoss() dipanggil. Fallback ke PIPELINE_DEFAULT_STAGE kalau
+   * Pre_Loss_Stage kosong (mis. project di-Loss-kan sebelum kolom ini ada).
+   */
+  module.undoLoss = function (projectId) {
+    var project = ProjectRepository.findById(projectId);
+    if (!project) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+    }
+    if (project.Stage !== 'Loss') {
+      throw new AppError('VALIDATION_ERROR', 'Project ini sedang tidak berstatus Loss.');
+    }
+    var restoreStage = project.Pre_Loss_Stage || Config.PIPELINE_DEFAULT_STAGE;
+    ProjectRepository.update(projectId, {
+      Stage: restoreStage,
+      Pre_Loss_Stage: '',
+      Last_Updated: new Date()
+    });
     return module.getAllProjects();
   };
 

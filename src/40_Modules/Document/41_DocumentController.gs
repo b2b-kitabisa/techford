@@ -30,5 +30,11 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.updateLink = function (docId, link) {
+    return ErrorHandler.handle('DocumentController.updateLink', function () {
+      return DocumentService.updateLink(docId, link);
+    });
+  };
+
   return module;
 })(DocumentController || {});

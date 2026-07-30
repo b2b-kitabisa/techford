@@ -42,6 +42,18 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.markLoss = function (projectId) {
+    return ErrorHandler.handle('ProjectController.markLoss', function () {
+      return ProjectService.markLoss(projectId);
+    });
+  };
+
+  module.undoLoss = function (projectId) {
+    return ErrorHandler.handle('ProjectController.undoLoss', function () {
+      return ProjectService.undoLoss(projectId);
+    });
+  };
+
   module.createDraft = function (clientId, createdBy) {
     return ErrorHandler.handle('ProjectController.createDraft', function () {
       return ProjectService.createDraftProject(clientId, createdBy);

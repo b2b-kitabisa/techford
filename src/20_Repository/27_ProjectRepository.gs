@@ -10,6 +10,11 @@
  * Services, Service_Categories, Issues, dan Other_Document_Links disimpan
  * sebagai string JSON di satu sel (bukan multi-kolom) karena bentuknya
  * multi-select/nested — lihat ProjectService untuk encode/decode-nya.
+ *
+ * Pre_Loss_Stage ditambahkan belakangan (self-migrating, lihat
+ * ensureColumns) — menyimpan Stage SEBELUM ditandai Loss secara manual,
+ * supaya undoLoss() bisa mengembalikannya persis ke situ. Kosong kalau
+ * project ini belum pernah di-Loss-kan.
  */
 var ProjectRepository = (function (module) {
 
@@ -38,6 +43,26 @@ var ProjectRepository = (function (module) {
     }, patch);
     module.invalidateCache();
     return updated;
+  };
+
+  /**
+   * Kolom yang belum ada di sheet (mis. Pre_Loss_Stage, ditambahkan
+   * belakangan untuk fitur Undo LOSS) ditambahkan otomatis — sama pola
+   * dengan CorFundRepository/RevenueBreakdownRepository.
+   */
+  module.ensureColumns = function (columnNames) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      columnNames.forEach(function (name) {
+        if (headers.indexOf(name) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(name);
+          headers.push(name);
+        }
+      });
+    });
   };
 
   module.invalidateCache = function () {

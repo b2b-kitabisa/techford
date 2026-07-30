@@ -298,6 +298,14 @@ var Config = (function (module) {
   // berlaku untuk kombinasi CSR + Project.Is_Retainer — Ads Sponsorship
   // TETAP pakai skema link-only biasa walau project-nya Retainer.
   module.REVENUE_GDV_RETAINER_SERVICE_KEY = 'CSR';
+  // Service yang TIDAK boleh punya baris Service Revenue (nominal manual per
+  // category) — HANYA CSR, karena seluruh nominalnya sudah direpresentasikan
+  // lewat GDV (campaign link). Ads Sponsorship SENGAJA TIDAK ikut di sini
+  // (beda dari REVENUE_GDV_SERVICE_KEYS di atas) — link campaign-nya tetap
+  // masuk GDV seperti biasa, TAPI Ads Sponsorship juga bisa punya nominal
+  // Service Revenue manual sendiri (misal fee pengelolaan campaign),
+  // terpisah dari realisasi GDV yang datang otomatis dari Tableau.
+  module.REVENUE_SERVICE_EXCLUDED_KEYS = ['CSR'];
 
   // ---- COR Calculator (Cost of Revenue) ----
   // Direplikasi dari kalkulator COR manual (spreadsheet "Template COR" +

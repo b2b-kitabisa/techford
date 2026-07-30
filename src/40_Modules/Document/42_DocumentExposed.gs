@@ -19,3 +19,7 @@ function document_create(input, createdBy) {
 function document_updateStatus(docId, newStatus) {
   return DocumentController.updateStatus(docId, newStatus);
 }
+
+function document_updateLink(docId, link) {
+  return DocumentController.updateLink(docId, link);
+}

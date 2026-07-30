@@ -35,7 +35,12 @@
   </div>
 </div>
 
-<div class="pl-sc-note">ℹ️ Angka di atas dihitung dari <b>seluruh project</b> (kecuali draft) — sengaja tidak mengikuti filter, supaya tetap jadi acuan tetap.</div>
+<div style="display:flex; justify-content:flex-end; margin:-10px 0 16px;">
+  <span class="info-tip-wrap">
+    <span class="info-tip-dot">?</span>
+    <span class="info-tip-box">Angka di atas dihitung dari <b>seluruh project</b> (kecuali draft) — sengaja tidak mengikuti filter, supaya tetap jadi acuan tetap.</span>
+  </span>
+</div>
 
 <div class="filter-bar">
   <div class="search-field" id="pipelineSearchField">
@@ -223,6 +228,8 @@
           </label>
           <select id="detailStageSelect" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;"></select>
           <button class="btn-outline" id="stageUpdateBtn" onclick="submitStageUpdate()">Update</button>
+          <button class="btn-outline" id="markLossBtn" onclick="openMarkLossConfirm()" style="display:none; color:#c5221f; border-color:#f09595;" title="Tandai deal ini batal — bisa di-Undo">🚫 Tandai LOSS</button>
+          <button class="btn-outline" id="undoLossBtn" onclick="openUndoLossConfirm()" style="display:none;" title="Kembalikan Stage ke sebelum ditandai Loss">↩️ Undo LOSS</button>
           <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
         </div>
       </div>
@@ -499,6 +506,30 @@
   </div>
 </div>
 
+<!-- ================= Preview COR & Quotation dari Document Request ================= -->
+<!-- Sama persis library & pola dengan "Lihat COR"/"Lihat Quotation" di
+     Document Pipeline (CorCalc/QoCalc — lihat Shell.html) supaya satu
+     sumber logika render, cuma dipanggil dari tempat berbeda. -->
+<div class="confirm-overlay" id="pipelineCorPreviewModal">
+  <div class="confirm-box" style="width:880px; max-width:96vw;">
+    <h3>Lihat COR</h3>
+    <div id="pipelineCorPreviewContent" class="cor-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;"><span class="inline-spinner"></span>Memuat...</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closePipelineCorPreview()">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="pipelineQuotationPreviewModal">
+  <div class="confirm-box" style="width:880px; max-width:96vw;">
+    <h3>Lihat Quotation</h3>
+    <div id="pipelineQuotationPreviewContent" class="qo-report" style="max-height:72vh; overflow:auto; background:var(--bg-tint); border:1px solid var(--border-soft); border-radius:8px; padding:16px;"><span class="inline-spinner"></span>Memuat...</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closePipelineQuotationPreview()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <script>
   var allProjects = [];
   var allClients = [];
@@ -508,6 +539,16 @@
   var taxonomy = { services: [], programType: {}, kborgPrograms: [], issues: [], stages: [], stageBucket: {} };
   var docTaxonomy = { documentTypes: [], quotationEntities: [] };
   var pendingDocRequestKeys = {}; // key -> true, dokumen yang ditoggle ON tapi belum dikirim lewat REQUEST
+
+  // ---- State untuk preview COR/Quotation dari Document Request (lihat
+  // openPipelineCorPreview/openPipelineQuotationPreview) — pola & nama
+  // variabel sama persis dengan Document Pipeline (DocumentPipelineContent.html)
+  // supaya mudah dibandingkan, cuma di-scope terpisah di sini.
+  var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [] };
+  var quotationTaxonomy = { ppnRate: 11 };
+  var quotationLogosCache = null;
+  var corReportStyleInjected = false;
+  var quotationReportStyleInjected = false;
 
   var pipelinePage = 1;
   var currentPipelineDrawerId = null;
@@ -837,6 +878,10 @@
     return allClients.filter(function (c) { return c.Client_ID === clientId; })[0] || null;
   }
 
+  function getProjectById(projectId) {
+    return allProjects.filter(function (p) { return p.Project_ID === projectId; })[0] || null;
+  }
+
   function getConsultants() {
     var role = String(taxonomy.consultantRole || 'Consultant').trim().toLowerCase();
     return allEmployees.filter(function (e) {
@@ -1005,13 +1050,12 @@
    * (sama seperti perilaku lama yang dipaksa), tapi sekarang bisa diganti
    * lewat klik header.
    *
-   * Draft SELALU didorong ke bawah apa pun kolom yang di-sort — datanya belum
-   * lengkap (tanpa nama/service/nilai), jadi kalau ikut diurutkan normal ia
-   * akan menumpuk di posisi teratas untuk hampir semua kolom dan menutupi
-   * project sebenarnya.
+   * Draft SELALU didorong ke ATAS apa pun kolom yang di-sort — sengaja,
+   * supaya admin selalu diingatkan ada New Pipeline yang belum dilengkapi
+   * setiap kali membuka halaman ini, bukan tenggelam di tengah/bawah daftar.
    */
   function comparePipelineRows(a, b) {
-    if (!!a.Is_Draft !== !!b.Is_Draft) return a.Is_Draft ? 1 : -1;
+    if (!!a.Is_Draft !== !!b.Is_Draft) return a.Is_Draft ? -1 : 1;
 
     var dir = pipelineSort.dir === 'asc' ? 1 : -1;
     var va, vb;
@@ -1830,6 +1874,14 @@
     document.getElementById('allowManualDealToggle').checked = !!project.Allow_Manual_Deal;
     setStageBoxLocked(!project.Allow_Manual_Deal);
 
+    // Tombol LOSS manual — SENGAJA lepas dari gerbang Allow_Manual_Deal
+    // (lihat catatan di ProjectService.markLoss): selalu tersedia di Stage
+    // Prospect/Negotiation, berubah jadi "Undo LOSS" begitu Stage = Loss,
+    // dan hilang total kalau sudah Won (deal final, tidak masuk akal
+    // ditandai batal lagi).
+    document.getElementById('markLossBtn').style.display = (project.Stage === 'Prospect' || project.Stage === 'Negotiation') ? '' : 'none';
+    document.getElementById('undoLossBtn').style.display = (project.Stage === 'Loss') ? '' : 'none';
+
     // Ringkasan nilai deal langsung di header — besaran project kebaca
     // tanpa perlu scroll ke Revenue Breakdown dulu.
     document.getElementById('projectDealValueHeader').innerText =
@@ -2042,6 +2094,19 @@
     }
     container.innerHTML = '<div class="vlist">' + requested.map(function (d) {
       var typeLabel = getDocRequestLabelFor(d);
+      var isPreviewable = d.Document_Type === 'COR' || d.Document_Type === 'QUOTATION';
+      var link = String(d.Document_Link || '').trim();
+      var href = link ? toHrefWithScheme(link) : '';
+      var actionsHtml = '';
+      if (isPreviewable) {
+        actionsHtml += '<button type="button" class="btn-outline" style="padding:4px 10px; font-size:12px;" onclick="' +
+          (d.Document_Type === 'COR' ? 'openPipelineCorPreview' : 'openPipelineQuotationPreview') + '(\'' + escAttr(d.Doc_ID) + '\')">👁️ Lihat</button>';
+      }
+      if (href) {
+        actionsHtml += '<a class="btn-outline" style="padding:4px 10px; font-size:12px;" href="' + escAttr(href) + '" target="_blank" rel="noopener">🔗 Link</a>';
+      } else if (!isPreviewable) {
+        actionsHtml += '<span class="vl-sub" style="flex-shrink:0;">Belum ada link</span>';
+      }
       return '<div class="vlist-row">' +
         '<div class="vl-main">' +
         '<div class="vl-name">' + escHtml(typeLabel) + '</div>' +
@@ -2051,6 +2116,7 @@
         '<div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">' +
         '<span class="badge ' + docStageBadgeClass(d.Stage) + '">' + escHtml(String(d.Stage || '-').toUpperCase()) + '</span>' +
         '<span class="pill neutral">' + escHtml(String(d.Status || '-')) + '</span>' +
+        actionsHtml +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
@@ -2064,9 +2130,215 @@
     return label + (doc.Entity ? ' — ' + doc.Entity : '');
   }
 
+  // ---- Preview "Lihat COR"/"Lihat Quotation" dari Document Request ----
+  // Porting persis dari DocumentPipelineContent.html (openCorPreview/
+  // openQuotationPreview/buildCorPreviewModel) — sengaja diberi nama fungsi &
+  // ID modal yang berbeda (prefix "pipeline") supaya tidak bentrok kalau
+  // dua fragment SPA ini pernah aktif bersamaan, tapi logikanya sama persis
+  // sehingga hasil preview selalu identik dengan yang dilihat di Document
+  // Pipeline maupun PDF final (CorCalc/QoCalc, keduanya global di Shell.html).
+  function ensureCorReportStyle() {
+    if (corReportStyleInjected) return;
+    corReportStyleInjected = true;
+    var s = document.createElement('style');
+    s.innerHTML = CorCalc.REPORT_CSS;
+    document.head.appendChild(s);
+  }
+
+  function buildCorPreviewModel(draft) {
+    var header = draft.header;
+    var vendorEntity = header ? (header.Vendor_Entity || '') : '';
+    var isViaSalset = header ? !!header.Is_Via_Salset : false;
+    var method = header ? (header.Cor_Method || 'GROSS_DOWN') : 'GROSS_DOWN';
+    var isMixFund = header ? !!header.Is_Mix_Fund : false;
+    var ngoRate = header ? (Number(header.Ngo_Rate) || 10) : 10;
+    var biayaSalset = header ? (Number(header.Biaya_Salset) || 0) : 0;
+
+    var entities = corTaxonomy.entities || [];
+    var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
+    var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
+    var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
+      { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
+    var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+
+    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
+    function toCost(c) { return { label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '', harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1 }; }
+    function marginFor(tab) {
+      var m = {};
+      (draft.margins || []).filter(function (r) { return r.Cor_Tab === tab; }).forEach(function (r) {
+        m[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 };
+      });
+      return m;
+    }
+
+    var funds = (draft.funds || []).map(toFund);
+    var costs = draft.costs || [];
+    function salItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'SAL'; }).map(toCost); }
+    function baaItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'VENDOR'; }).map(toCost); }
+
+    var blocks;
+    if (isMixFund) {
+      blocks = [
+        { tabLabel: 'Client', funds: funds.filter(function (f) { return f.fundType === 'CLIENT'; }), salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') },
+        { tabLabel: 'Campaign', funds: funds.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), salItems: salItems('CAMPAIGN'), baaItems: baaItems('CAMPAIGN'), margin: marginFor('CAMPAIGN') }
+      ];
+    } else if (method === 'GROSS_DOWN') {
+      blocks = [{ tabLabel: null, funds: funds, salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+    } else {
+      blocks = [{ tabLabel: null, funds: [], salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+    }
+
+    var project = getProjectById(draft.doc.Project_ID) || {};
+
+    return {
+      docLabel: draft.doc.Doc_ID,
+      projectLabel: project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-',
+      method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
+      ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset,
+      marginComponents: corTaxonomy.marginComponents || [], blocks: blocks
+    };
+  }
+
+  function openPipelineCorPreview(docId) {
+    ensureCorReportStyle();
+    document.getElementById('pipelineCorPreviewContent').innerHTML = '<span class="inline-spinner"></span>Memuat...';
+    document.getElementById('pipelineCorPreviewModal').classList.add('open');
+
+    function loadDraft(retriesLeft) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) {
+            if (!res && retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+            document.getElementById('pipelineCorPreviewContent').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.');
+            return;
+          }
+          if (!res.data.header) {
+            document.getElementById('pipelineCorPreviewContent').innerText = 'Draft COR ini belum pernah disimpan.';
+            return;
+          }
+          try {
+            var model = buildCorPreviewModel(res.data);
+            document.getElementById('pipelineCorPreviewContent').innerHTML = CorCalc.renderDocumentHtml(model);
+          } catch (e) {
+            document.getElementById('pipelineCorPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;
+          }
+        })
+        .withFailureHandler(function (err) {
+          if (retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+          document.getElementById('pipelineCorPreviewContent').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+        })
+        .cor_getDraft(docId);
+    }
+
+    if (corTaxonomy.marginComponents && corTaxonomy.marginComponents.length) {
+      loadDraft(2);
+    } else {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) corTaxonomy = res.data;
+          loadDraft(2);
+        })
+        .withFailureHandler(function () { loadDraft(2); })
+        .cor_getTaxonomy();
+    }
+  }
+  function closePipelineCorPreview() {
+    document.getElementById('pipelineCorPreviewModal').classList.remove('open');
+  }
+
+  function ensureQuotationReportStyle() {
+    if (quotationReportStyleInjected) return;
+    quotationReportStyleInjected = true;
+    var s = document.createElement('style');
+    s.innerHTML = QoCalc.REPORT_CSS;
+    document.head.appendChild(s);
+  }
+
+  function openPipelineQuotationPreview(docId) {
+    ensureQuotationReportStyle();
+    document.getElementById('pipelineQuotationPreviewContent').innerHTML = '<span class="inline-spinner"></span>Memuat...';
+    document.getElementById('pipelineQuotationPreviewModal').classList.add('open');
+
+    function render(draft, logos) {
+      if (!draft.header) {
+        document.getElementById('pipelineQuotationPreviewContent').innerText = 'Draft Quotation ini belum pernah disimpan.';
+        return;
+      }
+      try {
+        var header = draft.header;
+        var model = {
+          entityCode: draft.entityCode,
+          language: header.Language,
+          entityName: header.Entity_Name,
+          picName: header.Pic_Name,
+          picEmail: header.Pic_Email,
+          picPhone: header.Pic_Phone,
+          picTitle: header.Pic_Title,
+          headName: header.Head_Name,
+          titleName: header.Title_Name,
+          serviceName: header.Service_Name,
+          firstStatementHtml: header.First_Statement,
+          importantRemarksHtml: header.Important_Remarks,
+          quotationNumber: header.Quotation_Number,
+          createdDateText: formatDate(header.Created_Date),
+          validDateText: formatDate(header.Valid_Date),
+          agencyFeeRate: header.Agency_Fee_Rate,
+          ppnRate: quotationTaxonomy.ppnRate || 11,
+          categories: QoCalc.buildCategoriesFromItems(draft.items || []),
+          logoDataUri: (logos && logos[draft.entityCode]) || ''
+        };
+        document.getElementById('pipelineQuotationPreviewContent').innerHTML = QoCalc.renderDocumentHtml(model);
+      } catch (e) {
+        document.getElementById('pipelineQuotationPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;
+      }
+    }
+
+    function loadDraft(retriesLeft) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.ok) {
+            if (!res && retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+            document.getElementById('pipelineQuotationPreviewContent').innerText = 'Gagal memuat: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server, silakan coba lagi.');
+            return;
+          }
+          render(res.data, quotationLogosCache);
+        })
+        .withFailureHandler(function (err) {
+          if (retriesLeft > 0) { loadDraft(retriesLeft - 1); return; }
+          document.getElementById('pipelineQuotationPreviewContent').innerText = 'Gagal memuat: ' + (err && err.message ? err.message : err);
+        })
+        .quotation_getDraft(docId);
+    }
+
+    if (quotationLogosCache) {
+      loadDraft(2);
+    } else {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) quotationLogosCache = res.data;
+          loadDraft(2);
+        })
+        .withFailureHandler(function () { loadDraft(2); })
+        .quotation_getLogos();
+    }
+  }
+  function closePipelineQuotationPreview() {
+    document.getElementById('pipelineQuotationPreviewModal').classList.remove('open');
+  }
+
+  // Link tanpa skema (mis. "drive.google.com/x") tetap perlu diberi https://
+  // — kalau tidak, browser menganggapnya path relatif dan membuka URL web
+  // app-nya sendiri, bukan dokumen tujuan.
+  function toHrefWithScheme(link) {
+    return /^https?:\/\//i.test(link) ? link : ('https://' + link);
+  }
+
   /**
-   * Tampilan BACA Other Related Document — link dibuat clickable (buka tab
-   * baru) supaya tidak perlu copy-paste manual dari teks.
+   * Tampilan BACA Other Related Document — SEKARANG jadi hyperlink murni:
+   * "kalimat" (nama) yang jadi teks klik-nya, BUKAN menampilkan URL mentah
+   * di bawahnya. Sebelumnya nama + URL penuh ditampilkan berdampingan, yang
+   * membuat baris terasa sangat penuh untuk link panjang (Google
+   * Drive/Sheet URL bisa 80+ karakter).
    */
   function renderOtherDocView(project) {
     var container = document.getElementById('otherDocView');
@@ -2082,17 +2354,15 @@
     container.innerHTML = '<div class="vlist">' + docs.map(function (d) {
       var name = String(d.name || '').trim();
       var link = String(d.link || '').trim();
-      // Link tanpa skema (mis. "drive.google.com/x") tetap perlu diberi
-      // https:// — kalau tidak, browser menganggapnya path relatif dan
-      // membuka URL web app-nya sendiri, bukan dokumen tujuan.
-      var href = /^https?:\/\//i.test(link) ? link : ('https://' + link);
+      var href = link ? toHrefWithScheme(link) : '';
+      var titleHtml = link
+        ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(name || link) + ' ↗</a>' +
+          '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(href) + '\', this)" title="Salin link">⧉</button>'
+        : escHtml(name || '(tanpa nama)');
       return '<div class="vlist-row">' +
         '<div class="vl-main">' +
-        '<div class="vl-name">' + escHtml(name || '(tanpa nama)') + '</div>' +
-        '<div class="vl-sub">' + (link
-          ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(link) + ' ↗</a>' +
-            '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(href) + '\', this)" title="Salin link">⧉</button>'
-          : 'Belum ada link.') + '</div>' +
+        '<div class="vl-name">' + titleHtml + '</div>' +
+        (link ? '' : '<div class="vl-sub">Belum ada link.</div>') +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
@@ -2469,6 +2739,50 @@
       .project_updateStage(projectId, stage);
   }
 
+  // ---- Tandai LOSS manual + Undo ----
+  // Terpisah dari submitStageUpdate() di atas — TIDAK lewat dropdown Stage
+  // & TIDAK dikunci Allow_Manual_Deal, karena menandai deal batal adalah
+  // keputusan sales yang berdiri sendiri (lihat catatan lengkap di
+  // ProjectService.markLoss). Stage sebelum Loss disimpan server-side
+  // (Pre_Loss_Stage) supaya Undo bisa balik persis ke situ.
+  function openMarkLossConfirm() {
+    if (!currentPipelineDrawerId) return;
+    if (!techfordConfirm('Tandai project ini LOSS (deal batal)? Bisa di-Undo kalau ini keliru.')) return;
+    var projectId = currentPipelineDrawerId;
+    TechfordLoading.show('Menandai LOSS...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('Project ditandai LOSS.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menandai LOSS: ' + (err && err.message ? err.message : err));
+      })
+      .project_markLoss(projectId);
+  }
+
+  function openUndoLossConfirm() {
+    if (!currentPipelineDrawerId) return;
+    if (!techfordConfirm('Undo LOSS — kembalikan Stage project ini ke sebelum ditandai Loss?')) return;
+    var projectId = currentPipelineDrawerId;
+    TechfordLoading.show('Membatalkan LOSS...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        showPipelineSuccess('LOSS berhasil di-Undo.');
+        fetchProjects();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal Undo LOSS: ' + (err && err.message ? err.message : err));
+      })
+      .project_undoLoss(projectId);
+  }
+
   // ---- Other Document Related ----
   // Sekarang bagian dari EDIT PROJECT — hanya bisa ditambah/hapus saat mode
   // edit aktif — sekarang section berdiri sendiri (bukan bagian dari EDIT
@@ -2503,10 +2817,17 @@
           '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
           '</div>';
       }
+      // Nama jadi hyperlink langsung — TIDAK menampilkan URL mentah di
+      // bawahnya (dulu ditampilkan berdampingan, sangat penuh untuk link
+      // Google Drive/Sheet yang bisa 80+ karakter).
+      var docHref = doc.link ? toHrefWithScheme(doc.link) : '';
+      var docTitleHtml = docHref
+        ? '<a class="link-ext" href="' + escAttr(docHref) + '" target="_blank" rel="noopener">' + escHtml(doc.name || doc.link) + ' ↗</a>'
+        : escHtml(doc.name || '(tanpa nama)');
       return '<div class="row-view">' +
         '<div class="rv-main">' +
-        '<div class="rv-title">' + escHtml(doc.name || '(tanpa nama)') + '</div>' +
-        '<div class="rv-sub">' + escHtml(doc.link || 'Belum ada link.') + '</div>' +
+        '<div class="rv-title">' + docTitleHtml + '</div>' +
+        (docHref ? '' : '<div class="rv-sub">Belum ada link.</div>') +
         '</div>' +
         '<button type="button" class="icon-btn-sm" onclick="startEditOtherDocRow(' + idx + ')" title="Edit dokumen ini">✏️</button>' +
         '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
@@ -2565,22 +2886,22 @@
 
   // ---- Revenue Breakdown ----
   // Service 'CSR' DAN 'Ads Sponsorship' menghasilkan GDV (daftar campaign
-  // link). Service SELAIN keduanya menghasilkan Service Revenue: satu nilai
-  // per category yang dipilih (atau per service itu sendiri kalau service itu
-  // tidak punya category, misal Placement & Production).
-  //
-  // BUG YANG DIPERBAIKI: daftar ini dulu hanya mengecualikan 'CSR', jadi
-  // 'Ads Sponsorship' muncul DI DUA TEMPAT sekaligus (section GDV dan section
-  // Service Revenue). Sisi server sudah benar mengecualikan keduanya (lihat
-  // validKeys di ProjectService.updateRevenueBreakdown), sehingga nominal yang
-  // diisi di baris Service Revenue "Ads Sponsorship" DIBUANG diam-diam saat
-  // disimpan — terlihat tersimpan di layar, tapi hilang setelah refresh.
-  var GDV_SERVICE_KEYS = ['CSR', 'Ads Sponsorship'];
+  // link). Untuk Service Revenue, HANYA 'CSR' yang dikecualikan — seluruh
+  // nominalnya sudah lewat GDV (campaign link), jadi tidak perlu baris
+  // Service Revenue lagi. Ads Sponsorship BOLEH punya keduanya sekaligus:
+  // GDV (link, realisasi otomatis dari Tableau) DAN Service Revenue manual
+  // (mis. fee pengelolaan campaign) — dua sumber pendapatan yang independen.
+  // Harus SELALU sinkron dengan Config.REVENUE_SERVICE_EXCLUDED_KEYS di
+  // ProjectService.updateRevenueBreakdown (validKeys) — kalau tidak, nominal
+  // yang diisi di sini bisa terlihat tersimpan di layar tapi dibuang diam-
+  // diam oleh server saat disimpan (lihat riwayat bug yang sama untuk Ads
+  // Sponsorship sebelum aturan ini diperjelas).
+  var SERVICE_REVENUE_EXCLUDED_KEYS = ['CSR'];
 
   function getServiceRevenueRows(project) {
     var rows = [];
     (project.Services || []).forEach(function (service) {
-      if (GDV_SERVICE_KEYS.indexOf(service) !== -1) return;
+      if (SERVICE_REVENUE_EXCLUDED_KEYS.indexOf(service) !== -1) return;
       var svcDef = (taxonomy.services || []).filter(function (s) { return s.key === service; })[0];
       var label = svcDef ? svcDef.label : service;
       var categories = (project.Service_Categories || {})[service] || [];

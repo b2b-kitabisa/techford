@@ -170,6 +170,15 @@
       </div>
       <div class="placeholder-note">Stage &amp; Sales Pipeline Stage project terkait akan otomatis menyesuaikan berdasarkan Status yang dipilih di sini.</div>
     </div>
+
+    <div class="drawer-section">
+      <span class="taxonomy-label">Link Dokumen</span>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+        <input id="docLinkInput" placeholder="Link Drive/Sheet dokumen ini...">
+        <button class="btn-outline" onclick="submitDocLinkUpdate()">Simpan</button>
+      </div>
+      <div class="placeholder-note">Ditampilkan ke Sales Pipeline pada bagian Document Request, supaya consultant bisa langsung buka dokumennya dari sana.</div>
+    </div>
   </div>
 </div>
 
@@ -785,6 +794,27 @@
       }).join('');
       document.getElementById('docStatusSelect').value = doc.Status;
     }
+
+    document.getElementById('docLinkInput').value = doc.Document_Link || '';
+  }
+
+  function submitDocLinkUpdate() {
+    if (!currentDocDrawerId) return;
+    var link = document.getElementById('docLinkInput').value.trim();
+    var docId = currentDocDrawerId;
+    TechfordLoading.show('Menyimpan link dokumen...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        allDocuments = res.data;
+        TechfordToast.show('Link dokumen berhasil disimpan.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .document_updateLink(docId, link);
   }
 
   // Tombol & wizard "Kerjakan COR" — kalau dokumen ini SUDAH punya draft

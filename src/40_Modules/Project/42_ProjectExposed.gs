@@ -28,6 +28,14 @@ function project_setAllowManualDeal(projectId, allow) {
   return ProjectController.setAllowManualDeal(projectId, allow);
 }
 
+function project_markLoss(projectId) {
+  return ProjectController.markLoss(projectId);
+}
+
+function project_undoLoss(projectId) {
+  return ProjectController.undoLoss(projectId);
+}
+
 function project_createDraft(clientId, createdBy) {
   return ProjectController.createDraft(clientId, createdBy);
 }

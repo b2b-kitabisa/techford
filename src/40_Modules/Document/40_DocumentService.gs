@@ -120,6 +120,22 @@ var DocumentService = (function (module) {
     return module.getAllDocuments();
   };
 
+  /**
+   * Link manual ke file dokumen ini (Drive/Sheet) — diisi admin di drawer
+   * Document Pipeline, ditampilkan read-only di section Document Request
+   * Sales Pipeline. Berlaku untuk SEMUA Document_Type (bukan cuma COR/
+   * Quotation yang sudah punya Pdf_File_Url dari proses generate PDF).
+   */
+  module.updateLink = function (docId, link) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (!doc) {
+      throw new AppError('DOCUMENT_NOT_FOUND', 'Dokumen tidak ditemukan.');
+    }
+    DocumentPipelineRepository.ensureColumns(['Document_Link']);
+    DocumentPipelineRepository.update(docId, { Document_Link: String(link || '').trim(), Last_Updated: new Date() });
+    return module.getAllDocuments();
+  };
+
   function checkAndAdvanceProjectStage(projectId) {
     var docs = DocumentPipelineRepository.findByProjectId(projectId);
     if (!docs.length) return;
