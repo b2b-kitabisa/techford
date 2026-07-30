@@ -400,6 +400,10 @@
         <span class="revenue-total-pill">Total: <span id="gdvDrawerTotal">Rp0</span></span>
       </div>
       <div class="scheme-tabs" id="gdvSchemeTabs"></div>
+      <div class="popup-search-wrap" id="gdvSearchWrap" style="display:none;">
+        <span class="popup-search-ic">⌕</span>
+        <input id="gdvSearchInput" placeholder="Cari campaign link..." oninput="onGdvSearchInput(this.value)">
+      </div>
       <div id="gdvSchemeContainer"></div>
       <div class="placeholder-note" id="gdvDrawerDisabledNote" style="display:none;">Pilih service CSR atau Ads Sponsorship dulu di Edit Project untuk menambahkan campaign GDV.</div>
     </div>
@@ -430,6 +434,10 @@
         <span class="revenue-total-pill">Total: <span id="serviceRevenueDrawerTotal">Rp0</span></span>
       </div>
       <div class="placeholder-note" style="margin-top:0; margin-bottom:12px;">Kategori di bawah mengikuti Service &amp; Service Category yang dipilih di Edit Project.</div>
+      <div class="popup-search-wrap" id="serviceRevenueSearchWrap" style="display:none;">
+        <span class="popup-search-ic">⌕</span>
+        <input id="serviceRevenueSearchInput" placeholder="Cari kategori/service..." oninput="onServiceRevenueSearchInput(this.value)">
+      </div>
       <div id="serviceRevenueItemsContainer"></div>
     </div>
 
@@ -537,6 +545,38 @@
 
   // Tab skema aktif di popup Input GDV ('csr' | 'retainer' | 'ads').
   var gdvActiveTab = null;
+
+  // Search ringan di dalam popup GDV & Service Revenue — hanya ditampilkan
+  // kalau daftarnya melebihi ambang batas ini (lihat renderGdvSchemes /
+  // renderServiceRevenueItems); untuk 2-3 baris kotak cari cuma noise.
+  var GDV_SEARCH_THRESHOLD = 6;
+  var SERVICE_REVENUE_SEARCH_THRESHOLD = 6;
+  var gdvSearchQuery = '';
+  var serviceRevenueSearchQuery = '';
+
+  function onGdvSearchInput(value) {
+    gdvSearchQuery = value.trim().toLowerCase();
+    rerenderGdvSchemes();
+  }
+  function onServiceRevenueSearchInput(value) {
+    serviceRevenueSearchQuery = value.trim().toLowerCase();
+    var project = currentProjectOrNull();
+    if (project) renderServiceRevenueItems(getServiceRevenueRows(project));
+  }
+
+  /**
+   * Indeks item yang tampil setelah difilter search. Item yang SEDANG DIEDIT
+   * selalu ikut tampil apa pun query-nya — menyembunyikan baris yang tengah
+   * dikerjakan user (misal link-nya sedang diketik ulang dan belum cocok
+   * lagi dengan query lama) akan sangat membingungkan.
+   */
+  function searchFilteredIndices(items, editingMap, query, matchFn) {
+    var indices = items.map(function (_, i) { return i; });
+    if (!query) return indices;
+    return indices.filter(function (i) {
+      return editingMap[i] || matchFn(items[i]).toLowerCase().indexOf(query) !== -1;
+    });
+  }
 
   // Urutan tabel. Sebelumnya dipaksa Created_Date terbaru tanpa bisa diubah;
   // sekarang semua header utama bisa diklik, dengan default yang sama seperti
@@ -1716,6 +1756,57 @@
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
+  // Warna aksen kiri per Service — SAMA dengan warna chip Service di tabel
+  // (lihat SERVICE_ABBR), supaya satu warna berarti satu hal yang sama di
+  // seluruh app: hijau = CSR, biru = Ads Sponsorship, netral = sisanya.
+  function serviceAccentClass(serviceKeyOrScheme) {
+    var key = String(serviceKeyOrScheme || '');
+    if (key.indexOf('CSR') !== -1) return 'accent-csr';
+    if (key.indexOf('Ads Sponsorship') !== -1) return 'accent-ads';
+    return 'accent-other';
+  }
+
+  /**
+   * Salin teks ke clipboard + umpan balik visual singkat pada tombolnya.
+   * navigator.clipboard butuh HTTPS (web app Apps Script selalu HTTPS) dan
+   * tidak tersedia di semua browser lama — fallback ke execCommand('copy')
+   * lewat textarea sementara kalau API-nya tidak ada.
+   */
+  function copyToClipboard(text, btnEl) {
+    function onCopied() {
+      if (!btnEl) return;
+      var original = btnEl.innerHTML;
+      btnEl.innerHTML = '✓';
+      btnEl.classList.add('copied');
+      setTimeout(function () { btnEl.innerHTML = original; btnEl.classList.remove('copied'); }, 1200);
+      TechfordToast.show('Link tersalin.');
+    }
+    function onFailed() {
+      alert('Gagal menyalin link — silakan salin manual: ' + text);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onCopied, function () { copyToClipboardFallback(text, onCopied, onFailed); });
+    } else {
+      copyToClipboardFallback(text, onCopied, onFailed);
+    }
+  }
+  function copyToClipboardFallback(text, onCopied, onFailed) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? onCopied() : onFailed();
+    } catch (e) {
+      onFailed();
+    }
+  }
+
   /**
    * Render drawer Detail LENGKAP — bagian baca + isi ulang form kelima popup.
    * Dipakai saat drawer pertama dibuka. Untuk refresh data di latar belakang
@@ -1999,7 +2090,8 @@
         '<div class="vl-main">' +
         '<div class="vl-name">' + escHtml(name || '(tanpa nama)') + '</div>' +
         '<div class="vl-sub">' + (link
-          ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(link) + ' ↗</a>'
+          ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(link) + ' ↗</a>' +
+            '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(href) + '\', this)" title="Salin link">⧉</button>'
           : 'Belum ada link.') + '</div>' +
         '</div>' +
         '</div>';
@@ -2225,6 +2317,8 @@
     // Semua baris tersimpan mulai dari mode baca setiap kali popup dibuka.
     gdvCsrEditing = {}; gdvRetainerEditing = {}; gdvAdsEditing = {};
     gdvActiveTab = null;
+    gdvSearchQuery = '';
+    document.getElementById('gdvSearchInput').value = '';
     renderGdvSchemes(hasCsrService(project), hasAdsService(project), !!project.Is_Retainer);
     updateRevenueTotals();
     openStackedDrawer('gdvDrawer', 'gdvDrawerPid');
@@ -2240,6 +2334,8 @@
     var project = currentProjectOrNull();
     if (!project) return;
     serviceRevenueEditing = {};
+    serviceRevenueSearchQuery = '';
+    document.getElementById('serviceRevenueSearchInput').value = '';
     renderServiceRevenueItems(getServiceRevenueRows(project));
     updateRevenueTotals();
     openStackedDrawer('serviceRevenueDrawer', 'serviceRevenueDrawerPid');
@@ -2605,9 +2701,11 @@
 
     container.innerHTML = '<div class="vlist">' + items.map(function (it) {
       var badge = gdvSyncBadgeHtml(it.link);
-      return '<div class="vlist-row">' +
+      return '<div class="vlist-row ' + serviceAccentClass(it.scheme) + '">' +
         '<div class="vl-main">' +
-        '<div class="vl-name mono">' + escHtml(it.link) + '</div>' +
+        '<div class="vl-name mono">' + escHtml(it.link) +
+        '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(it.link) + '\', this)" title="Salin campaign link">⧉</button>' +
+        '</div>' +
         '<div class="vl-sub">' + escHtml(it.scheme) + (it.sub ? ' · ' + escHtml(it.sub) : '') +
         (badge ? ' ' + badge : '') + '</div>' +
         '</div>' +
@@ -2636,7 +2734,8 @@
     container.innerHTML = '<div class="vlist">' + rows.map(function (r) {
       var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
       var amount = Number(entry.amount) || 0;
-      return '<div class="vlist-row"' + (amount ? '' : ' style="opacity:0.6;"') + '>' +
+      var serviceKey = r.key.indexOf('::') !== -1 ? r.key.split('::')[0] : r.key;
+      return '<div class="vlist-row ' + serviceAccentClass(serviceKey) + '"' + (amount ? '' : ' style="opacity:0.6;"') + '>' +
         '<div class="vl-main">' +
         '<div class="vl-name">' + escHtml(r.label) + '</div>' +
         (entry.notes ? '<div class="vl-sub">' + escHtml(entry.notes) + '</div>' : '') +
@@ -2700,10 +2799,22 @@
     if (gdvActiveTab === 'csr') container.innerHTML = renderGdvCsrBlock();
     else if (gdvActiveTab === 'retainer') container.innerHTML = renderGdvRetainerBlock();
     else container.innerHTML = renderGdvAdsBlock();
+
+    // Kotak cari hanya muncul kalau daftar tab yang sedang aktif melebihi
+    // ambang batas — untuk 2-3 baris, kotak ini cuma noise. Query di-reset
+    // saat pindah tab supaya tidak ada filter "nyangkut" dari tab sebelumnya.
+    var currentCount = gdvActiveTab === 'csr' ? editGdvCsrCampaigns.length
+      : gdvActiveTab === 'retainer' ? editGdvRetainerLinks.length
+      : editGdvAdsCampaigns.length;
+    var searchWrap = document.getElementById('gdvSearchWrap');
+    if (searchWrap) searchWrap.style.display = currentCount > GDV_SEARCH_THRESHOLD ? '' : 'none';
   }
 
   function setGdvTab(tabId) {
     gdvActiveTab = tabId;
+    gdvSearchQuery = '';
+    var searchInput = document.getElementById('gdvSearchInput');
+    if (searchInput) searchInput.value = '';
     renderGdvSchemes(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
   }
 
@@ -2776,18 +2887,21 @@
       editGdvCsrCampaigns = [{ link: '', amount: 0, notes: '' }];
       gdvCsrEditing[0] = true;
     }
-    var rowsHtml = editGdvCsrCampaigns.map(function (c, idx) {
+    var visibleIdx = searchFilteredIndices(editGdvCsrCampaigns, gdvCsrEditing, gdvSearchQuery, function (c) { return c.link || ''; });
+    var rowsHtml = visibleIdx.map(function (idx) {
+      var c = editGdvCsrCampaigns[idx];
       if (gdvCsrEditing[idx]) {
-        return '<div class="row-edit">' +
+        return '<div class="row-edit accent-csr">' +
           '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
           '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
           '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
           '</div>';
       }
-      return '<div class="row-view">' +
+      return '<div class="row-view accent-csr">' +
         '<div class="rv-main">' +
-        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') + '</div>' +
+        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') +
+        (c.link ? '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(c.link) + '\', this)" title="Salin campaign link">⧉</button>' : '') + '</div>' +
         '<div class="rv-sub">' + (c.notes ? escHtml(c.notes) + ' · ' : '') + (gdvSyncBadgeHtml(c.link) || 'Status sinkron belum tersedia') + '</div>' +
         '</div>' +
         '<div class="rv-amt">' + formatRupiah(c.amount) + '</div>' +
@@ -2795,6 +2909,7 @@
         '<button type="button" class="icon-btn-sm danger" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
         '</div>';
     }).join('');
+    if (!visibleIdx.length) rowsHtml = '<div class="placeholder-note" style="margin-top:0;">Tidak ada campaign yang cocok dengan pencarian.</div>';
     return '<div class="gdv-scheme-block">' +
       rowsHtml +
       '<button type="button" class="btn-outline" onclick="addGdvCsrCampaignRow()">+ Tambah Campaign</button>' +
@@ -2833,7 +2948,9 @@
       editGdvRetainerLinks = [{ link: '', entries: [{ amount: 0, notes: '', date: '' }] }];
       gdvRetainerEditing[0] = true;
     }
-    var linksHtml = editGdvRetainerLinks.map(function (l, linkIdx) {
+    var visibleIdx = searchFilteredIndices(editGdvRetainerLinks, gdvRetainerEditing, gdvSearchQuery, function (l) { return l.link || ''; });
+    var linksHtml = visibleIdx.map(function (linkIdx) {
+      var l = editGdvRetainerLinks[linkIdx];
       var entries = l.entries || [];
       var total = entries.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
 
@@ -2843,9 +2960,10 @@
               return (e.date ? formatDate(e.date) : 'tanpa tanggal') + ': ' + formatRupiah(e.amount);
             }).join(' · ')
           : 'Belum ada termin.';
-        return '<div class="row-view" style="align-items:flex-start;">' +
+        return '<div class="row-view accent-csr" style="align-items:flex-start;">' +
           '<div class="rv-main">' +
-          '<div class="rv-title">' + escHtml(l.link || '(link belum diisi)') + '</div>' +
+          '<div class="rv-title">' + escHtml(l.link || '(link belum diisi)') +
+          (l.link ? '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(l.link) + '\', this)" title="Salin campaign link">⧉</button>' : '') + '</div>' +
           '<div class="rv-sub">' + escHtml(entries.length + ' termin') + ' · ' + (gdvSyncBadgeHtml(l.link) || 'Status sinkron belum tersedia') + '</div>' +
           '<div class="rv-sub">' + escHtml(terminSummary) + '</div>' +
           '</div>' +
@@ -2863,7 +2981,7 @@
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerEntryRow(' + linkIdx + ', ' + entryIdx + ')" title="Hapus termin ini">×</button>' +
           '</div>';
       }).join('');
-      return '<div class="gdv-retainer-link-group" style="border-style:solid; border-color:var(--color-cerulean); background:var(--accent-tint);">' +
+      return '<div class="gdv-retainer-link-group accent-csr" style="border-style:solid; border-color:var(--color-cerulean); background:var(--accent-tint);">' +
         '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value">' +
         '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(l.link) + '</span>' +
@@ -2877,6 +2995,7 @@
         '</div>' +
         '</div>';
     }).join('');
+    if (!visibleIdx.length) linksHtml = '<div class="placeholder-note" style="margin-top:0;">Tidak ada campaign link yang cocok dengan pencarian.</div>';
     return '<div class="gdv-scheme-block">' +
       linksHtml +
       '<button type="button" class="btn-outline" onclick="addGdvRetainerLinkGroup()">+ Tambah Campaign Link</button>' +
@@ -2919,22 +3038,26 @@
       editGdvAdsCampaigns = [{ link: '' }];
       gdvAdsEditing[0] = true;
     }
-    var rowsHtml = editGdvAdsCampaigns.map(function (c, idx) {
+    var visibleIdx = searchFilteredIndices(editGdvAdsCampaigns, gdvAdsEditing, gdvSearchQuery, function (c) { return c.link || ''; });
+    var rowsHtml = visibleIdx.map(function (idx) {
+      var c = editGdvAdsCampaigns[idx];
       if (gdvAdsEditing[idx]) {
-        return '<div class="row-edit">' +
+        return '<div class="row-edit accent-ads">' +
           '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
           '</div>';
       }
-      return '<div class="row-view">' +
+      return '<div class="row-view accent-ads">' +
         '<div class="rv-main">' +
-        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') + '</div>' +
+        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') +
+        (c.link ? '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(c.link) + '\', this)" title="Salin campaign link">⧉</button>' : '') + '</div>' +
         '<div class="rv-sub">' + (gdvSyncBadgeHtml(c.link) || 'Status sinkron belum tersedia') + '</div>' +
         '</div>' +
         '<button type="button" class="icon-btn-sm" onclick="startEditGdvAdsRow(' + idx + ')" title="Edit campaign ini">✏️</button>' +
         '<button type="button" class="icon-btn-sm danger" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
         '</div>';
     }).join('');
+    if (!visibleIdx.length) rowsHtml = '<div class="placeholder-note" style="margin-top:0;">Tidak ada campaign yang cocok dengan pencarian.</div>';
     return '<div class="gdv-scheme-block">' +
       '<div class="placeholder-note" style="margin-top:0; margin-bottom:10px;">Nominal realisasi otomatis dari GDV Controller (Tableau) — cukup catat link campaign-nya di sini.</div>' +
       rowsHtml +
@@ -2976,19 +3099,41 @@
    */
   function renderServiceRevenueItems(rows) {
     var container = document.getElementById('serviceRevenueItemsContainer');
+    var searchWrap = document.getElementById('serviceRevenueSearchWrap');
     if (!container) return;
     if (!rows.length) {
       container.innerHTML = '<div class="empty-hint"><span class="eh-ic">💼</span>Belum ada service dipilih.<br>Pilih Service &amp; Service Category dulu di <strong>Edit Project</strong>.</div>';
+      if (searchWrap) searchWrap.style.display = 'none';
       return;
     }
-    container.innerHTML = rows.map(function (r) {
+
+    // Kotak cari hanya muncul kalau daftarnya melebihi ambang batas.
+    if (searchWrap) searchWrap.style.display = rows.length > SERVICE_REVENUE_SEARCH_THRESHOLD ? '' : 'none';
+
+    // Baris yang sedang diedit (termasuk yang nominalnya masih 0 — selalu
+    // dalam mode edit) tetap tampil apa pun query-nya, sama seperti pola di
+    // popup GDV.
+    var query = serviceRevenueSearchQuery;
+    var visibleRows = !query ? rows : rows.filter(function (r) {
+      var amount = Number((editServiceRevenueItems[r.key] || {}).amount) || 0;
+      var isEditing = serviceRevenueEditing[r.key] || !amount;
+      return isEditing || r.label.toLowerCase().indexOf(query) !== -1;
+    });
+
+    if (!visibleRows.length) {
+      container.innerHTML = '<div class="placeholder-note" style="margin-top:0;">Tidak ada kategori yang cocok dengan pencarian.</div>';
+      return;
+    }
+
+    container.innerHTML = visibleRows.map(function (r) {
       var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
       var amount = Number(entry.amount) || 0;
       var keyAttr = escAttr(r.key);
       var isEditing = serviceRevenueEditing[r.key] || !amount;
+      var accentClass = serviceAccentClass(r.key.indexOf('::') !== -1 ? r.key.split('::')[0] : r.key);
 
       if (isEditing) {
-        return '<div class="row-edit">' +
+        return '<div class="row-edit ' + accentClass + '">' +
           '<span class="revenue-service-label" style="flex:1.4; font-size:12.5px;">' + escHtml(r.label) + '</span>' +
           '<input type="text" inputmode="numeric" placeholder="0" style="width:130px;" value="' + formatThousands(amount) + '" ' +
           'oninput="onServiceRevenueAmountInput(this, \'' + keyAttr + '\')">' +
@@ -2996,7 +3141,7 @@
           'oninput="editServiceRevenueItems[\'' + keyAttr + '\'].notes=this.value">' +
           '</div>';
       }
-      return '<div class="row-view">' +
+      return '<div class="row-view ' + accentClass + '">' +
         '<div class="rv-main">' +
         '<div class="rv-title">' + escHtml(r.label) + '</div>' +
         (entry.notes ? '<div class="rv-sub">' + escHtml(entry.notes) + '</div>' : '') +

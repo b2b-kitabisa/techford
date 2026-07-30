@@ -989,6 +989,49 @@
   .link-ext { color: var(--color-cerulean); text-decoration: none; word-break: break-all; }
   .link-ext:hover { text-decoration: underline; }
 
+  /* ---- Tombol salin link (Other Document & Campaign Link) ----
+     Klik langsung menyalin ke clipboard tanpa harus buka tab baru dulu lalu
+     copy dari address bar. */
+  .copy-btn {
+    width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border-soft);
+    background: var(--color-white); color: var(--text-faint); cursor: pointer; font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    margin-left: 5px; vertical-align: middle; font-family: inherit; padding: 0;
+  }
+  .copy-btn:hover { border-color: var(--color-cerulean); color: var(--color-cerulean); }
+  .copy-btn.copied { border-color: var(--good); color: var(--good); }
+
+  /* ---- Search box ringan di dalam popup GDV / Service Revenue ----
+     Hanya ditampilkan kalau daftarnya panjang (lihat renderGdvSchemes /
+     renderServiceRevenueItems) — untuk 2-3 baris kotak ini cuma noise. */
+  .popup-search-wrap { position: relative; margin-bottom: 12px; }
+  .popup-search-wrap .popup-search-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-faint); font-size: 13px; pointer-events: none; }
+  .popup-search-wrap input { width: 100%; padding-left: 32px !important; }
+
+  /* ---- Aksen warna kiri per Service ----
+     Warnanya SAMA dengan chip Service di tabel (.svc-chip) supaya satu warna
+     berarti satu hal yang sama di seluruh app — mempercepat memindai drawer
+     yang datanya banyak service sekaligus. Coloring saja (bukan hover) —
+     didefinisikan lewat custom property supaya bisa digabung dengan shadow
+     hover baris tanpa satu menimpa yang lain. */
+  /* --accent-shadow default TIDAK "none" — box-shadow tidak bisa mencampur
+     "none" dengan shadow lain dalam satu daftar, jadi default-nya nol-efek
+     (transparan, tanpa spread) supaya selalu aman digabung dengan shadow hover. */
+  .vlist-row, .row-view, .row-edit, .gdv-retainer-link-group { --accent-shadow: inset 0 0 0 transparent; box-shadow: var(--accent-shadow); }
+  .accent-csr { --accent-shadow: inset 3px 0 0 #188038; }
+  .accent-ads { --accent-shadow: inset 3px 0 0 var(--color-cerulean); }
+  .accent-other { --accent-shadow: inset 3px 0 0 var(--text-faint); }
+
+  /* ---- Hover elevation pada baris/kartu yang benar-benar interaktif ----
+     Penanda visual "ini bisa disentuh" tanpa perlu teks tambahan. Hanya
+     dipasang di baris yang memang punya aksi (pensil/hapus di popup, kartu
+     link Retainer) — bukan di daftar baca .vlist-row yang isinya cuma
+     teks/badge, supaya sinyal hover tidak menjanjikan interaksi yang
+     sebenarnya tidak ada. */
+  .row-view, .row-edit, .gdv-retainer-link-group { transition: box-shadow .12s ease; }
+  .row-view:hover { box-shadow: var(--accent-shadow), var(--shadow-sm); }
+  .gdv-retainer-link-group:hover { box-shadow: var(--accent-shadow), var(--shadow-sm); }
+
   /* Banner penjelasan di dalam drawer (mis. alasan field dikunci) — beda
      dari .error yang dipakai untuk kegagalan fetch di atas tabel. */
   .alert-inline {
