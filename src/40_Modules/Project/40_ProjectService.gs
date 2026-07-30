@@ -266,6 +266,30 @@ var ProjectService = (function (module) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }
 
+    // Stage 'Won' = deal sudah jadi dan angka/scope-nya sudah dipakai dokumen
+    // turunan (COR, Quotation) serta rekonsiliasi GDV Matching. Mengubah
+    // scope project setelah itu membuat data historis tidak lagi cocok dengan
+    // dokumen yang sudah terbit, jadi field-field di bawah DITOLAK di sini —
+    // bukan cuma di-disable di UI (lihat applyEditProjectLockState di
+    // SalesPipelineContent.html), supaya tidak ada celah lewat state client
+    // yang basi atau pemanggilan langsung.
+    //
+    // Other_Notes & Other_Document_Links SENGAJA tidak termasuk: keduanya
+    // catatan/lampiran pelengkap, tidak dipakai perhitungan apa pun, dan
+    // justru paling sering perlu ditambah SETELAH deal jadi.
+    //
+    // Stage 'Loss' sengaja TIDAK dikunci — project gagal masih sering perlu
+    // dirapikan datanya untuk keperluan laporan.
+    if (existing.Stage === 'Won') {
+      var lockedFields = ['projectName', 'consultant', 'services', 'serviceCategories',
+        'programType', 'programCategory', 'programName', 'issues'];
+      var attempted = lockedFields.filter(function (f) { return patch.hasOwnProperty(f); });
+      if (attempted.length) {
+        throw new AppError('PROJECT_LOCKED_WON',
+          'Project sudah Won — hanya Other Notes & Other Document Related yang masih bisa diubah. Field yang ditolak: ' + attempted.join(', ') + '.');
+      }
+    }
+
     var safePatch = {};
     if (patch.hasOwnProperty('projectName')) safePatch.Project_Name = patch.projectName;
     if (patch.hasOwnProperty('consultant')) safePatch.Consultant = patch.consultant;

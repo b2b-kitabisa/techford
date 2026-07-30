@@ -190,7 +190,12 @@
   </div>
 </div>
 
-<!-- ================= Drawer: Project Detail ================= -->
+<!-- ================= Drawer: Project Detail (MURNI BACA) =================
+     Semua form edit sengaja dipindah ke drawer terpisah di bawah — drawer
+     ini hanya menampilkan informasi. SATU-SATUNYA pengecualian: Stage &
+     Izinkan Deal Manual, yang memang harus bisa diubah langsung dari sini
+     (bukan lewat popup) karena sifatnya kontrol status, bukan pengisian
+     data. -->
 <div class="drawer-overlay" id="pipelineDrawer" onclick="if (event.target === this) closePipelineDetail();">
   <div class="drawer-panel drawer-panel-wide">
     <div class="drawer-header">
@@ -198,6 +203,7 @@
         <div>
           <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="projectIdHeaderDisplay"></div>
           <h2 style="color: var(--color-white); font-size:18px; margin:0;">PROJECT DETAIL</h2>
+          <div style="font-size:11.5px; color:rgba(255,255,255,0.82); margin-top:4px;" id="projectDealValueHeader"></div>
         </div>
         <div style="display:flex; align-items:center; gap:14px;">
           <label class="switch-wrap" style="color: var(--color-white);" title="Izinkan Stage diubah manual — kalau OFF, Stage hanya bisa maju otomatis lewat Document Pipeline">Izinkan Deal Manual
@@ -213,23 +219,24 @@
     <div class="drawer-section">
       <div class="section-title-row">
         <h3>Project Information</h3>
-        <button class="btn-outline" id="projectEditInfoToggleBtn" onclick="toggleProjectEditInfo()">✏️ EDIT PROJECT</button>
+        <button class="btn-outline" id="projectEditInfoToggleBtn" onclick="openEditProjectDrawer()">✏️ EDIT PROJECT</button>
       </div>
 
       <div id="projectViewBlock">
+        <div class="stepper" id="projectStageStepper"></div>
+
         <div class="section-title-row" style="align-items:flex-start;">
           <div>
             <div class="entity-name" id="projectNameDisplay" style="font-size:18px;"></div>
             <div class="entity-pic" id="projectClientBrandDisplay"></div>
             <div class="entity-pic" id="projectClientEntityDisplay"></div>
             <div class="entity-pic" id="projectIdDisplay" style="color: var(--text-faint);"></div>
-            <div class="entity-pic" id="projectConsultantDisplay" style="margin-top:4px;"></div>
+            <div class="attrib-row" id="projectConsultantDisplay" style="margin-top:8px;"></div>
           </div>
           <div style="font-size:11px; text-align:right;">
             <div style="color: var(--text-faint);" id="projectCreatedDateDisplay"></div>
             <div style="font-weight:700; margin-top:8px;" id="projectProgramTypeDisplay"></div>
             <div style="font-weight:700;" id="projectProgramNameDisplay"></div>
-            <div style="color: var(--text-muted); margin-top:4px;" id="projectIssuesDisplay"></div>
           </div>
         </div>
 
@@ -243,50 +250,13 @@
             <div class="drawer-field-value" id="projectOtherNotesDisplay">Belum ada catatan.</div>
           </div>
         </div>
-      </div>
 
-      <div class="drawer-edit-form" id="projectEditForm">
-        <label>Project Name<input id="editProjectName"></label>
-        <label>Client (tidak bisa diubah)<input id="editProjectClientDisplay" disabled></label>
-        <label>Consultant
-          <select id="editConsultant"><option value="">Pilih Consultant...</option></select>
-        </label>
+        <div style="margin-top:14px;">
+          <div class="drawer-field-label">Issue :</div>
+          <div id="projectIssuesDisplay" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+        </div>
 
-        <span class="taxonomy-label" style="margin-top:6px;">Choose Service (Multiple Select)</span>
-        <div class="toggle-btn-group" id="editServiceButtons"></div>
-        <span class="taxonomy-label" style="margin-top:10px;">Choose Service Category (Multiple Select)</span>
-        <div class="service-category-grid" id="editCategoryGrid"></div>
-
-        <span class="taxonomy-label" style="margin-top:10px;">Program Type</span>
-        <div class="toggle-btn-group" id="editProgramTypeButtons" style="margin-bottom:8px;"></div>
-        <div id="editProgramCategoryArea"></div>
-
-        <span class="taxonomy-label" style="margin-top:10px;">Issue (Multiple Select)</span>
-        <div class="toggle-btn-group" id="editIssueButtons" style="margin-bottom:8px;"></div>
-        <input id="editIssueCustom" placeholder="Pilih Momentum untuk mengisi issue spesifik" disabled>
-
-        <label style="margin-top:10px;">Other Notes<textarea id="editOtherNotes" placeholder="Type notes here."></textarea></label>
-      </div>
-    </div>
-
-    <div class="drawer-section" id="documentRequestSection">
-      <div class="section-title-row">
-        <h3>Document Request</h3>
-      </div>
-      <div id="documentRequestRows"></div>
-      <div style="text-align:right; margin-top:6px;">
-        <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
-      </div>
-    </div>
-
-    <div class="drawer-section" id="otherDocSection">
-      <div class="section-title-row">
-        <h3>Other Document Related</h3>
-      </div>
-      <div id="otherDocLinksContainer"></div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-        <button type="button" class="btn-outline" onclick="addOtherDocLinkRow()">+ Tambah Dokumen</button>
-        <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
+        <div class="meta-strip" id="projectMetaStrip"></div>
       </div>
     </div>
 
@@ -298,8 +268,11 @@
           <h3>GDV</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
-        <div id="gdvSchemeContainer"></div>
-        <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR atau Ads Sponsorship dulu di Project Information untuk menambahkan campaign GDV.</div>
+        <div id="gdvViewList"></div>
+        <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR atau Ads Sponsorship dulu di Edit Project untuk menambahkan campaign GDV.</div>
+        <div style="margin-top:10px;">
+          <button class="btn-outline" id="gdvEditOpenBtn" onclick="openGdvDrawer()">✏️ EDIT GDV</button>
+        </div>
       </div>
 
       <div class="revenue-subsection">
@@ -307,16 +280,74 @@
           <h3>Service Revenue</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalRevenueDisplay">Rp0</span></span>
         </div>
-        <div class="revenue-row-labels" id="serviceRevenueRowLabels" style="display:none;">
-          <span class="revenue-service-label">Category / Service</span>
-          <span style="width:140px;">Nominal</span>
-          <span style="width:160px;">Notes</span>
+        <div id="serviceRevenueViewList"></div>
+        <div style="margin-top:10px;">
+          <button class="btn-outline" id="serviceRevenueEditOpenBtn" onclick="openServiceRevenueDrawer()">✏️ EDIT SERVICE REVENUE</button>
         </div>
-        <div id="serviceRevenueItemsContainer"></div>
+      </div>
+    </div>
+
+    <div class="drawer-section" id="documentRequestSection">
+      <div class="section-title-row">
+        <h3>Document Request</h3>
+        <button class="btn-outline" onclick="openRequestDocDrawer()">📄 REQUEST DOCUMENT</button>
+      </div>
+      <div id="documentRequestView"></div>
+    </div>
+
+    <div class="drawer-section" id="otherDocSection">
+      <div class="section-title-row">
+        <h3>Other Document Related</h3>
+        <button class="btn-outline" onclick="openOtherDocDrawer()">✏️ KELOLA DOKUMEN</button>
+      </div>
+      <div id="otherDocView"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup 1: Edit Project ================= -->
+<div class="drawer-overlay drawer-stacked" id="editProjectDrawer" onclick="if (event.target === this) closeEditProjectDrawer();">
+  <div class="drawer-panel drawer-panel-mid">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="editProjectDrawerPid"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">EDIT PROJECT</h2>
+        </div>
+        <button class="drawer-close" onclick="closeEditProjectDrawer()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="alert-inline warn" id="editProjectWonNotice" style="display:none;">
+        <strong>Stage project ini sudah Won.</strong> Project Name, Consultant, Service, Service Category, Program,
+        dan Issue dikunci supaya data historis (COR, Quotation, GDV Matching) tidak berubah setelah deal jadi.
+        Hanya <strong>Other Notes</strong> yang masih bisa diedit.
       </div>
 
-      <div style="text-align:right; margin-top:12px;">
-        <button class="btn-save" onclick="submitRevenueBreakdown()">💾 SAVE</button>
+      <div class="drawer-edit-form open" id="projectEditForm">
+        <div id="editProjectLockable">
+          <label>Project Name<input id="editProjectName"></label>
+          <label>Client (tidak bisa diubah)<input id="editProjectClientDisplay" disabled></label>
+          <label>Consultant
+            <select id="editConsultant"><option value="">Pilih Consultant...</option></select>
+          </label>
+
+          <span class="taxonomy-label" style="margin-top:6px;">Choose Service (Multiple Select)</span>
+          <div class="toggle-btn-group" id="editServiceButtons"></div>
+          <span class="taxonomy-label" style="margin-top:10px;">Choose Service Category (Multiple Select)</span>
+          <div class="service-category-grid" id="editCategoryGrid"></div>
+
+          <span class="taxonomy-label" style="margin-top:10px;">Program Type</span>
+          <div class="toggle-btn-group" id="editProgramTypeButtons" style="margin-bottom:8px;"></div>
+          <div id="editProgramCategoryArea"></div>
+
+          <span class="taxonomy-label" style="margin-top:10px;">Issue (Multiple Select)</span>
+          <div class="toggle-btn-group" id="editIssueButtons" style="margin-bottom:8px;"></div>
+          <input id="editIssueCustom" placeholder="Pilih Momentum untuk mengisi issue spesifik" disabled>
+        </div>
+
+        <label style="margin-top:10px;">Other Notes<textarea id="editOtherNotes" placeholder="Type notes here."></textarea></label>
       </div>
     </div>
 
@@ -333,7 +364,117 @@
 
     <div class="drawer-footer">
       <span class="save-hint" id="projectSaveHint"></span>
-      <button class="btn-save" id="projectSaveBtn" onclick="openProjectEditConfirm()" style="display:none;">💾 SAVE</button>
+      <button class="btn-save" id="projectSaveBtn" onclick="openProjectEditConfirm()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup 2: Input GDV ================= -->
+<div class="drawer-overlay drawer-stacked" id="gdvDrawer" onclick="if (event.target === this) closeGdvDrawer();">
+  <div class="drawer-panel drawer-panel-mid">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="gdvDrawerPid"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">INPUT GDV</h2>
+        </div>
+        <button class="drawer-close" onclick="closeGdvDrawer()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="revenue-subsection-header">
+        <h3 style="margin:0; font-size:14px;">Total GDV</h3>
+        <span class="revenue-total-pill">Total: <span id="gdvDrawerTotal">Rp0</span></span>
+      </div>
+      <div class="scheme-tabs" id="gdvSchemeTabs"></div>
+      <div id="gdvSchemeContainer"></div>
+      <div class="placeholder-note" id="gdvDrawerDisabledNote" style="display:none;">Pilih service CSR atau Ads Sponsorship dulu di Edit Project untuk menambahkan campaign GDV.</div>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint">Perubahan baru tersimpan setelah klik SAVE.</span>
+      <button class="btn-save" onclick="submitRevenueBreakdown('gdv')">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup 3: Service Revenue ================= -->
+<div class="drawer-overlay drawer-stacked" id="serviceRevenueDrawer" onclick="if (event.target === this) closeServiceRevenueDrawer();">
+  <div class="drawer-panel drawer-panel-mid">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="serviceRevenueDrawerPid"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">INPUT SERVICE REVENUE</h2>
+        </div>
+        <button class="drawer-close" onclick="closeServiceRevenueDrawer()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="revenue-subsection-header">
+        <h3 style="margin:0; font-size:14px;">Total Service Revenue</h3>
+        <span class="revenue-total-pill">Total: <span id="serviceRevenueDrawerTotal">Rp0</span></span>
+      </div>
+      <div class="placeholder-note" style="margin-top:0; margin-bottom:12px;">Kategori di bawah mengikuti Service &amp; Service Category yang dipilih di Edit Project.</div>
+      <div id="serviceRevenueItemsContainer"></div>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint">Perubahan baru tersimpan setelah klik SAVE.</span>
+      <button class="btn-save" onclick="submitRevenueBreakdown('service')">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup 4: Other Related Document ================= -->
+<div class="drawer-overlay drawer-stacked" id="otherDocDrawer" onclick="if (event.target === this) closeOtherDocDrawer();">
+  <div class="drawer-panel drawer-panel-mid">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="otherDocDrawerPid"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">OTHER DOCUMENT RELATED</h2>
+        </div>
+        <button class="drawer-close" onclick="closeOtherDocDrawer()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="placeholder-note" style="margin-top:0; margin-bottom:12px;">Dokumen yang sudah tersimpan tampil sebagai teks — klik ✏️ di barisnya dulu untuk mengubah.</div>
+      <div id="otherDocLinksContainer"></div>
+      <button type="button" class="btn-outline" style="margin-top:4px;" onclick="addOtherDocLinkRow()">+ Tambah Dokumen</button>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint">Perubahan baru tersimpan setelah klik SAVE.</span>
+      <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Popup 5: Request Document ================= -->
+<div class="drawer-overlay drawer-stacked" id="requestDocDrawer" onclick="if (event.target === this) closeRequestDocDrawer();">
+  <div class="drawer-panel drawer-panel-mid">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="requestDocDrawerPid"></div>
+          <h2 style="color: var(--color-white); font-size:18px; margin:0;">REQUEST DOCUMENT</h2>
+        </div>
+        <button class="drawer-close" onclick="closeRequestDocDrawer()">&times;</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="placeholder-note" style="margin-top:0; margin-bottom:12px;">Dokumen yang sudah pernah diminta terkunci ON — permintaannya sudah masuk ke tim Operation dan tidak bisa dibatalkan dari sini.</div>
+      <div id="documentRequestRows"></div>
+    </div>
+
+    <div class="drawer-footer">
+      <span class="save-hint">Permintaan baru dikirim setelah klik REQUEST.</span>
+      <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
     </div>
   </div>
 </div>
@@ -368,6 +509,22 @@
   var editGdvRetainerLinks = [];
   var editGdvAdsCampaigns = [];
   var editServiceRevenueItems = {};
+
+  // ---- Pola "pensil dulu" ----
+  // Baris yang datang dari data TERSIMPAN dimulai dalam mode BACA (teks
+  // biasa, tidak bisa diketik) supaya drawer yang cuma dibuka untuk dilihat
+  // tidak bisa berubah karena salah ketik. Map di bawah menandai baris mana
+  // yang sedang dibuka untuk diedit (index/key -> true). Baris BARU (hasil
+  // "+ Tambah") langsung ditandai editing, karena belum ada apa pun yang
+  // perlu dilindungi di sana.
+  var otherDocEditing = {};
+  var gdvCsrEditing = {};
+  var gdvRetainerEditing = {};
+  var gdvAdsEditing = {};
+  var serviceRevenueEditing = {};
+
+  // Tab skema aktif di popup Input GDV ('csr' | 'retainer' | 'ads').
+  var gdvActiveTab = null;
 
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
   // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allProjects.length`
@@ -521,7 +678,15 @@
         // ikut ter-render ulang begitu data ini datang (bisa datang belakangan
         // saat paralel bootstrap) — lihat pelajaran dari bug race-condition
         // sebelumnya di Client Monitoring & score card Sales Pipeline.
-        if (currentPipelineDrawerId) renderDocumentRequestRows(currentPipelineDrawerId);
+        if (currentPipelineDrawerId) {
+          renderDocumentRequestView(currentPipelineDrawerId);
+          // Daftar toggle di popup Request Document hanya di-render ulang
+          // kalau popup-nya sedang tertutup — kalau terbuka, toggle yang
+          // sudah dinyalakan user tapi belum di-REQUEST akan ikut ter-reset.
+          if (!document.getElementById('requestDocDrawer').classList.contains('open')) {
+            renderDocumentRequestRows(currentPipelineDrawerId);
+          }
+        }
       })
       .withFailureHandler(function () {})
       .document_getAll();
@@ -533,7 +698,15 @@
         if (!res || !res.ok) return;
         pDocTaxonomyLoaded = true;
         docTaxonomy = res.data;
-        if (currentPipelineDrawerId) renderDocumentRequestRows(currentPipelineDrawerId);
+        if (currentPipelineDrawerId) {
+          renderDocumentRequestView(currentPipelineDrawerId);
+          // Daftar toggle di popup Request Document hanya di-render ulang
+          // kalau popup-nya sedang tertutup — kalau terbuka, toggle yang
+          // sudah dinyalakan user tapi belum di-REQUEST akan ikut ter-reset.
+          if (!document.getElementById('requestDocDrawer').classList.contains('open')) {
+            renderDocumentRequestRows(currentPipelineDrawerId);
+          }
+        }
       })
       .withFailureHandler(function () {})
       .document_getTaxonomy();
@@ -550,7 +723,10 @@
         // ikut di-render ulang begitu data ini datang.
         if (currentPipelineDrawerId) {
           var openProject = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
-          if (openProject) renderRevenueBreakdown(openProject);
+          // renderRevenueBreakdown() juga mengisi ulang state form popup GDV/
+          // Service Revenue, jadi dilewati kalau ada popup yang sedang terbuka
+          // supaya ketikan yang belum disimpan tidak tertimpa.
+          if (openProject && !isAnyStackedDrawerOpen()) renderRevenueBreakdown(openProject);
         }
       })
       .withFailureHandler(function () {})
@@ -721,6 +897,16 @@
     var paged = paginateProjects(filtered);
     renderPipelineTable(paged);
     renderPipelinePagination(paged);
+
+    // Drawer Detail sekarang SENGAJA dibiarkan terbuka setelah menyimpan
+    // (dulu ditutup total), jadi bagian bacanya harus ikut ter-render ulang
+    // setiap allProjects berubah — kalau tidak, user melihat angka/nama lama
+    // padahal simpannya sudah berhasil. Hanya bagian BACA yang di-render;
+    // form popup tidak disentuh supaya ketikan yang sedang berjalan aman.
+    if (currentPipelineDrawerId) {
+      var openProject = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
+      if (openProject) renderProjectDetailView(openProject);
+    }
   }
 
   function renderPipelineTable(paged) {
@@ -1106,13 +1292,55 @@
     document.getElementById('pipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
   }
+  var STACKED_DRAWER_IDS = ['editProjectDrawer', 'gdvDrawer', 'serviceRevenueDrawer', 'otherDocDrawer', 'requestDocDrawer'];
+
   function closePipelineDetail() {
+    // Kelima popup hidup di luar #pipelineDrawer (supaya bisa bertumpuk di
+    // atasnya), jadi menutup drawer Detail TIDAK otomatis menutup mereka —
+    // harus ditutup eksplisit di sini, kalau tidak akan menggantung di layar
+    // tanpa konteks project.
+    STACKED_DRAWER_IDS.forEach(function (id) { closeStackedDrawer(id); });
     document.getElementById('pipelineDrawer').classList.remove('open');
     document.body.classList.remove('drawer-open');
     currentPipelineDrawerId = null;
   }
 
+  function escHtml(str) {
+    return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Warna avatar diturunkan dari nama (hash sederhana) supaya konsisten:
+  // orang yang sama SELALU dapat warna yang sama di mana pun ditampilkan.
+  var AVATAR_COLORS = ['#1f5aa8', '#157a54', '#9a6b0a', '#7b3fa0', '#0f6f7a', '#a8412f'];
+  function avatarColorFor(name) {
+    var s = String(name || '');
+    var sum = 0;
+    for (var i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+    return AVATAR_COLORS[sum % AVATAR_COLORS.length];
+  }
+  function initialsOf(name) {
+    var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  /**
+   * Render drawer Detail LENGKAP — bagian baca + isi ulang form kelima popup.
+   * Dipakai saat drawer pertama dibuka. Untuk refresh data di latar belakang
+   * pakai renderProjectDetailView() saja (lihat catatannya di sana), supaya
+   * ketikan yang sedang berjalan di popup tidak ikut terhapus.
+   */
   function renderPipelineDrawer(project) {
+    renderProjectDetailView(project);
+    renderProjectEditForms(project);
+  }
+
+  /**
+   * Bagian BACA drawer Detail. Aman dipanggil kapan saja — tidak menyentuh
+   * state form popup mana pun.
+   */
+  function renderProjectDetailView(project) {
     var client = getClientById(project.Client_ID) || {};
 
     document.getElementById('projectIdHeaderDisplay').innerText = project.Project_ID;
@@ -1120,23 +1348,64 @@
     document.getElementById('allowManualDealToggle').checked = !!project.Allow_Manual_Deal;
     setStageBoxLocked(!project.Allow_Manual_Deal);
 
+    // Ringkasan nilai deal langsung di header — besaran project kebaca
+    // tanpa perlu scroll ke Revenue Breakdown dulu.
+    document.getElementById('projectDealValueHeader').innerText =
+      'GDV ' + formatRupiah(project.Total_GDV) + '   ·   REV ' + formatRupiah(project.Total_Service_Revenue);
+
+    renderProjectStageStepper(project);
+
     document.getElementById('projectNameDisplay').innerText = project.Project_Name + (project.Is_Retainer ? ' 🔁' : '');
     document.getElementById('projectClientBrandDisplay').innerText = client.Brand_Name || '-';
     document.getElementById('projectClientEntityDisplay').innerText = client.Entity_Name || '-';
     document.getElementById('projectIdDisplay').innerText = project.Project_ID;
-    document.getElementById('projectConsultantDisplay').innerText = project.Consultant ? ('Consultant: ' + project.Consultant) : '';
+    document.getElementById('projectConsultantDisplay').innerHTML = project.Consultant
+      ? '<span class="avatar-initial" style="background:' + avatarColorFor(project.Consultant) + ';">' + escHtml(initialsOf(project.Consultant)) + '</span>' +
+        '<span><span class="attrib-who">' + escHtml(project.Consultant) + '</span>' +
+        '<span class="attrib-when" style="display:block;">Consultant</span></span>'
+      : '<span class="attrib-when">Consultant belum ditentukan.</span>';
 
     document.getElementById('projectCreatedDateDisplay').innerText = 'Created date: ' + formatDate(project.Created_Date);
     document.getElementById('projectProgramTypeDisplay').innerText = project.Program_Type || '-';
     document.getElementById('projectProgramNameDisplay').innerText = project.Program_Name || '-';
-    document.getElementById('projectIssuesDisplay').innerText = (project.Issues || []).join('; ');
+
+    // Issue sekarang tampil sebagai chip (dulu satu baris teks dipisah ";")
+    // supaya tiap issue kebaca sebagai item terpisah.
+    var issues = project.Issues || [];
+    document.getElementById('projectIssuesDisplay').innerHTML = issues.length
+      ? issues.map(function (i) { return '<span class="tag-chip">' + escHtml(i) + '</span>'; }).join('')
+      : '<span style="font-size:12.5px; color:var(--text-faint);">Belum ada issue dipilih.</span>';
 
     document.getElementById('projectServiceListDisplay').innerHTML = renderServiceListHtml(project);
     document.getElementById('projectOtherNotesDisplay').innerText = project.Other_Notes || 'Belum ada catatan.';
-    // Total GDV/Service Revenue ditampilkan oleh renderRevenueBreakdown() di
-    // akhir fungsi ini (dihitung dari Gdv_Campaigns/Service_Revenue_Items).
 
-    // Edit form (disiapkan tapi disembunyikan sampai EDIT PROJECT diklik)
+    renderProjectMetaStrip(project);
+
+    // Tampilan baca Document Request & Other Document (keduanya tidak
+    // bergantung pada state form popup mana pun).
+    renderDocumentRequestView(project.Project_ID);
+    renderOtherDocView(project);
+
+    // Bagian baca Revenue Breakdown (daftar vertikal GDV & Service Revenue
+    // beserta nominalnya) — sekaligus mengisi state form popup GDV/Service
+    // Revenue, jadi hanya dipanggil kalau popup-nya sedang TIDAK dibuka.
+    if (!isAnyStackedDrawerOpen()) renderRevenueBreakdown(project);
+  }
+
+  function isAnyStackedDrawerOpen() {
+    return STACKED_DRAWER_IDS.some(function (id) {
+      return document.getElementById(id).classList.contains('open');
+    });
+  }
+
+  /**
+   * Isi ulang state & form kelima popup dari data project. TIDAK dipanggil
+   * saat refresh data di latar belakang — kalau dipanggil, ketikan yang
+   * sedang berjalan di popup yang terbuka akan tertimpa data lama.
+   */
+  function renderProjectEditForms(project) {
+    var client = getClientById(project.Client_ID) || {};
+
     document.getElementById('editProjectName').value = project.Project_Name || '';
     document.getElementById('editProjectClientDisplay').value = (client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-');
     document.getElementById('editConsultant').value = project.Consultant || '';
@@ -1154,28 +1423,77 @@
     renderEditProgramCategoryArea();
     renderIssueButtonsInto('editIssueButtons', editProjectIssues, 'toggleEditIssue');
     updateIssueCustomInputState('editIssueCustom', editProjectIssues);
+    applyEditProjectLockState(project);
 
-    document.getElementById('projectViewBlock').style.display = '';
-    document.getElementById('projectEditForm').classList.remove('open');
-    document.getElementById('projectSaveBtn').style.display = 'none';
     document.getElementById('projectSaveHint').innerText = '';
-    document.getElementById('projectEditInfoToggleBtn').innerHTML = '✏️ EDIT PROJECT';
-    document.getElementById('documentRequestSection').style.display = '';
-    document.getElementById('otherDocSection').style.display = '';
-    document.getElementById('revenueBreakdownSection').style.display = '';
 
+    // ---- Form popup Other Document Related ----
     editOtherDocLinks = (project.Other_Document_Links || []).map(function (d) {
       return { name: (d && d.name) || '', link: (d && d.link) || '' };
     });
+    // Semua baris hasil load = sudah tersimpan, jadi mulai dalam mode BACA
+    // (butuh klik pensil untuk mengubah) — lihat catatan pola "pensil dulu".
+    otherDocEditing = {};
     renderOtherDocLinks();
 
-    // Reset staging Document Request setiap kali drawer dibuka/di-render
-    // ulang, supaya toggle yang belum di-REQUEST tidak nyangkut ke project
-    // lain atau sesi berikutnya.
+    // Reset staging Document Request setiap kali form disiapkan ulang, supaya
+    // toggle yang belum di-REQUEST tidak nyangkut ke project lain atau sesi
+    // berikutnya.
     pendingDocRequestKeys = {};
     renderDocumentRequestRows(project.Project_ID);
 
-    renderRevenueBreakdown(project);
+    // State form popup GDV & Service Revenue TIDAK diisi di sini — sudah
+    // dikerjakan renderRevenueBreakdown() lewat renderProjectDetailView()
+    // (daftar read-only-nya dibangun dari state yang sama), jadi memanggil
+    // lagi di sini hanya render dobel.
+  }
+
+  // ---- Stepper Stage: Prospect → Negotiation → Won/Loss ----
+  // Loss sengaja TIDAK ditampilkan sebagai langkah terpisah setelah Won —
+  // keduanya adalah akhir yang saling eksklusif, jadi langkah terakhir
+  // berubah label & warna sesuai hasil aktualnya.
+  function renderProjectStageStepper(project) {
+    var stage = project.Stage || '';
+    var isLoss = stage === 'Loss';
+    var finalLabel = isLoss ? 'Loss' : 'Won';
+    var order = ['Prospect', 'Negotiation', finalLabel];
+    var currentIndex = order.indexOf(stage);
+    if (currentIndex === -1) currentIndex = 0;
+
+    document.getElementById('projectStageStepper').innerHTML = order.map(function (label, idx) {
+      var cls = 'step';
+      if (idx < currentIndex) cls += ' done';
+      else if (idx === currentIndex) cls += (idx === order.length - 1 && !isLoss) ? ' done' : ' current';
+      var dot = idx < currentIndex ? '✓' : (idx + 1);
+      if (idx === currentIndex && idx === order.length - 1 && !isLoss) dot = '✓';
+      if (idx === currentIndex && isLoss && idx === order.length - 1) dot = '✕';
+      return '<div class="' + cls + '">' +
+        '<div class="step-dot"' + (isLoss && idx === currentIndex ? ' style="background:var(--bad); border-color:var(--bad); color:#fff; box-shadow:none;"' : '') + '>' + dot + '</div>' +
+        '<div class="step-lbl">' + label + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  // ---- Strip metadata: umur & aktivitas terakhir project ----
+  function renderProjectMetaStrip(project) {
+    var parts = [];
+    parts.push('Dibuat <b>' + escHtml(formatDate(project.Created_Date)) + '</b>' +
+      (project.Created_By ? ' oleh <b>' + escHtml(project.Created_By) + '</b>' : ''));
+    if (project.Last_Updated) {
+      parts.push('Perubahan terakhir <b>' + escHtml(formatDate(project.Last_Updated)) + '</b>');
+    }
+    var ageDays = daysSince(project.Created_Date);
+    if (ageDays !== null) parts.push('Umur pipeline <b>' + ageDays + ' hari</b>');
+    document.getElementById('projectMetaStrip').innerHTML = parts.map(function (p) {
+      return '<span>' + p + '</span>';
+    }).join('');
+  }
+
+  function daysSince(value) {
+    if (!value) return null;
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
   }
 
   // ---- Document Request (Deck/Quotation-YKB/Quotation-PT KAI/COR/RAB/
@@ -1216,6 +1534,87 @@
     }).join('');
   }
 
+  /**
+   * Tampilan BACA Document Request di drawer Detail — hanya menampilkan
+   * dokumen yang MEMANG SUDAH diminta (tipe yang belum diminta tidak
+   * ditampilkan sama sekali; untuk memintanya, lewat popup Request
+   * Document). Stage & Status-nya di-mirror langsung dari baris Document
+   * yang sama yang dipakai tabel Document Pipeline — termasuk kelas badge
+   * warnanya — supaya tidak ada dua versi kebenaran soal status dokumen.
+   */
+  function docStageBadgeClass(stage) {
+    if (stage === 'Done') return 'stage-badge-done';
+    if (stage === 'Client Review') return 'stage-badge-client-review';
+    if (stage === 'In Progress') return 'stage-badge-in-progress';
+    return 'stage-badge-new-request';
+  }
+
+  function renderDocumentRequestView(projectId) {
+    var container = document.getElementById('documentRequestView');
+    if (!container) return;
+    var requested = allDocuments.filter(function (d) { return d.Project_ID === projectId; });
+    if (!requested.length) {
+      container.innerHTML = '<div class="empty-hint"><span class="eh-ic">📄</span>' +
+        'Belum ada dokumen yang diminta untuk project ini.<br>Klik <strong>REQUEST DOCUMENT</strong> di atas untuk mengirim permintaan ke tim Operation.</div>';
+      return;
+    }
+    container.innerHTML = '<div class="vlist">' + requested.map(function (d) {
+      var typeLabel = getDocRequestLabelFor(d);
+      return '<div class="vlist-row">' +
+        '<div class="vl-main">' +
+        '<div class="vl-name">' + escHtml(typeLabel) + '</div>' +
+        '<div class="vl-sub">' + escHtml(d.Doc_ID || '-') + ' · diminta ' + escHtml(formatDate(d.Requested_Date)) +
+        (d.Requested_By ? ' oleh ' + escHtml(d.Requested_By) : '') + '</div>' +
+        '</div>' +
+        '<div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">' +
+        '<span class="badge ' + docStageBadgeClass(d.Stage) + '">' + escHtml(String(d.Stage || '-').toUpperCase()) + '</span>' +
+        '<span class="pill neutral">' + escHtml(String(d.Status || '-')) + '</span>' +
+        '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  // Label dokumen mengikuti taxonomy (bukan kode mentah Document_Type), dan
+  // Quotation diberi keterangan entitasnya — sama seperti Document Pipeline.
+  function getDocRequestLabelFor(doc) {
+    var type = (docTaxonomy.documentTypes || []).filter(function (t) { return t.key === doc.Document_Type; })[0];
+    var label = type ? type.label : (doc.Document_Type || '-');
+    return label + (doc.Entity ? ' — ' + doc.Entity : '');
+  }
+
+  /**
+   * Tampilan BACA Other Related Document — link dibuat clickable (buka tab
+   * baru) supaya tidak perlu copy-paste manual dari teks.
+   */
+  function renderOtherDocView(project) {
+    var container = document.getElementById('otherDocView');
+    if (!container) return;
+    var docs = (project.Other_Document_Links || []).filter(function (d) {
+      return d && (String(d.name || '').trim() || String(d.link || '').trim());
+    });
+    if (!docs.length) {
+      container.innerHTML = '<div class="empty-hint"><span class="eh-ic">🔗</span>' +
+        'Belum ada dokumen terkait.<br>Klik <strong>KELOLA DOKUMEN</strong> di atas untuk menambahkan.</div>';
+      return;
+    }
+    container.innerHTML = '<div class="vlist">' + docs.map(function (d) {
+      var name = String(d.name || '').trim();
+      var link = String(d.link || '').trim();
+      // Link tanpa skema (mis. "drive.google.com/x") tetap perlu diberi
+      // https:// — kalau tidak, browser menganggapnya path relatif dan
+      // membuka URL web app-nya sendiri, bukan dokumen tujuan.
+      var href = /^https?:\/\//i.test(link) ? link : ('https://' + link);
+      return '<div class="vlist-row">' +
+        '<div class="vl-main">' +
+        '<div class="vl-name">' + escHtml(name || '(tanpa nama)') + '</div>' +
+        '<div class="vl-sub">' + (link
+          ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(link) + ' ↗</a>'
+          : 'Belum ada link.') + '</div>' +
+        '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
   function toggleDocRequestPending(key, checked) {
     pendingDocRequestKeys[key] = checked;
   }
@@ -1234,6 +1633,10 @@
     submitDocRequestsSequentially(toRequest, 0, projectId, createdBy, function () {
       TechfordLoading.hide();
       pendingDocRequestKeys = {};
+      // Popup ditutup dulu supaya renderDocumentRequestRows() di dalam
+      // fetchDocuments() boleh menyegarkan daftar toggle-nya (saat popup
+      // terbuka, render itu sengaja dilewati agar toggle user tidak ter-reset).
+      closeStackedDrawer('requestDocDrawer');
       fetchDocuments();
       fetchProjects();
       showPipelineSuccess('Permintaan dokumen berhasil dikirim ke tim Operation.');
@@ -1352,29 +1755,137 @@
     updateIssueCustomInputState('editIssueCustom', editProjectIssues);
   }
 
-  function toggleProjectEditInfo() {
-    var editForm = document.getElementById('projectEditForm');
-    var isOpen = editForm.classList.toggle('open');
-    document.getElementById('projectViewBlock').style.display = isOpen ? 'none' : '';
-    document.getElementById('projectSaveBtn').style.display = isOpen ? 'inline-block' : 'none';
-    document.getElementById('projectEditInfoToggleBtn').innerHTML = isOpen ? '✕' : '✏️ EDIT PROJECT';
-
-    // Document Request, Other Document Related, & Revenue Breakdown cuma
-    // relevan di tampilan depan (bukan bagian dari EDIT PROJECT) —
-    // sembunyikan selagi mode edit aktif supaya tidak membingungkan (Edit
-    // Project murni cuma Project Information/Service/Category/Program/
-    // Issue/Other Notes). Revenue Breakdown juga bergantung pada Services/
-    // Categories yang sedang diedit, jadi tidak masuk akal ditampilkan
-    // bersamaan.
-    document.getElementById('documentRequestSection').style.display = isOpen ? 'none' : '';
-    document.getElementById('otherDocSection').style.display = isOpen ? 'none' : '';
-    document.getElementById('revenueBreakdownSection').style.display = isOpen ? 'none' : '';
-
-    if (!isOpen && currentPipelineDrawerId) {
-      var project = allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0];
-      if (project) renderPipelineDrawer(project);
-    }
+  // ================= Popup drawer: buka/tutup =================
+  // Kelima popup dibuka DI ATAS drawer Detail (Detail sengaja dibiarkan
+  // terbuka di belakang supaya konteks project tidak hilang), jadi saat
+  // popup ditutup, body.drawer-open TIDAK boleh dilepas — drawer Detail
+  // masih perlu mengunci scroll halaman di belakangnya.
+  function openStackedDrawer(drawerId, pidElementId) {
+    if (!currentPipelineDrawerId) return;
+    if (pidElementId) document.getElementById(pidElementId).innerText = currentPipelineDrawerId;
+    document.getElementById(drawerId).classList.add('open');
   }
+  function closeStackedDrawer(drawerId) {
+    document.getElementById(drawerId).classList.remove('open');
+  }
+
+  function currentProjectOrNull() {
+    return allProjects.filter(function (p) { return p.Project_ID === currentPipelineDrawerId; })[0] || null;
+  }
+
+  // ---- Popup 1: Edit Project ----
+  function openEditProjectDrawer() {
+    var project = currentProjectOrNull();
+    if (!project) return;
+    applyEditProjectLockState(project);
+    openStackedDrawer('editProjectDrawer', 'editProjectDrawerPid');
+  }
+  function closeEditProjectDrawer() {
+    closeStackedDrawer('editProjectDrawer');
+    // Buang perubahan yang belum disimpan dengan me-render ulang dari data
+    // project terakhir — supaya popup dibuka lagi tidak menampilkan sisa
+    // ketikan yang sudah ditinggalkan.
+    var project = currentProjectOrNull();
+    if (project) renderPipelineDrawer(project);
+  }
+
+  /**
+   * Stage 'Won' = deal sudah jadi, dan angka/scope-nya sudah dipakai
+   * dokumen turunan (COR, Quotation) serta rekonsiliasi GDV Matching.
+   * Mengubah Project Name/Service/Program setelah itu membuat data historis
+   * tidak lagi cocok dengan dokumen yang sudah terbit, jadi seluruh field
+   * dikunci KECUALI Other Notes (catatan bebas, tidak dipakai perhitungan
+   * apa pun). Stage 'Loss' sengaja TIDAK dikunci — project gagal masih
+   * sering perlu dirapikan datanya untuk keperluan laporan.
+   */
+  function applyEditProjectLockState(project) {
+    var locked = (project.Stage === 'Won');
+    var wrap = document.getElementById('editProjectLockable');
+    document.getElementById('editProjectWonNotice').style.display = locked ? '' : 'none';
+    if (locked) wrap.classList.add('locked-field'); else wrap.classList.remove('locked-field');
+
+    // Input & select dinonaktifkan lewat properti disabled (bukan cuma CSS)
+    // supaya benar-benar tidak bisa diubah, termasuk lewat keyboard.
+    // editProjectClientDisplay memang SELALU disabled (Client tidak bisa
+    // diubah setelah project dibuat), jadi dikecualikan dari toggle ini.
+    ['editProjectName', 'editConsultant'].forEach(function (id) {
+      document.getElementById(id).disabled = locked;
+    });
+    // editIssueCustom punya aturan enable/disable-nya sendiri (hanya aktif
+    // kalau issue "Momentum" dipilih), jadi saat TIDAK terkunci biarkan
+    // aturan itu yang menentukan — jangan dipaksa enable di sini.
+    if (locked) document.getElementById('editIssueCustom').disabled = true;
+    else updateIssueCustomInputState('editIssueCustom', editProjectIssues);
+
+    // Tombol taxonomy (Service/Category/Program/Issue) bukan <input>, jadi
+    // dimatikan dengan pointer-events supaya klik-nya tidak berefek.
+    ['editServiceButtons', 'editCategoryGrid', 'editProgramTypeButtons', 'editProgramCategoryArea', 'editIssueButtons'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.style.pointerEvents = locked ? 'none' : '';
+      el.style.opacity = locked ? '0.55' : '';
+    });
+  }
+
+  // ---- Popup 2: Input GDV ----
+  function openGdvDrawer() {
+    var project = currentProjectOrNull();
+    if (!project) return;
+    // Semua baris tersimpan mulai dari mode baca setiap kali popup dibuka.
+    gdvCsrEditing = {}; gdvRetainerEditing = {}; gdvAdsEditing = {};
+    gdvActiveTab = null;
+    renderGdvSchemes(hasCsrService(project), hasAdsService(project), !!project.Is_Retainer);
+    updateRevenueTotals();
+    openStackedDrawer('gdvDrawer', 'gdvDrawerPid');
+  }
+  function closeGdvDrawer() {
+    closeStackedDrawer('gdvDrawer');
+    var project = currentProjectOrNull();
+    if (project) renderRevenueBreakdown(project);
+  }
+
+  // ---- Popup 3: Service Revenue ----
+  function openServiceRevenueDrawer() {
+    var project = currentProjectOrNull();
+    if (!project) return;
+    serviceRevenueEditing = {};
+    renderServiceRevenueItems(getServiceRevenueRows(project));
+    updateRevenueTotals();
+    openStackedDrawer('serviceRevenueDrawer', 'serviceRevenueDrawerPid');
+  }
+  function closeServiceRevenueDrawer() {
+    closeStackedDrawer('serviceRevenueDrawer');
+    var project = currentProjectOrNull();
+    if (project) renderRevenueBreakdown(project);
+  }
+
+  // ---- Popup 4: Other Related Document ----
+  function openOtherDocDrawer() {
+    if (!currentPipelineDrawerId) return;
+    otherDocEditing = {};
+    renderOtherDocLinks();
+    openStackedDrawer('otherDocDrawer', 'otherDocDrawerPid');
+  }
+  function closeOtherDocDrawer() {
+    closeStackedDrawer('otherDocDrawer');
+    var project = currentProjectOrNull();
+    if (project) renderPipelineDrawer(project);
+  }
+
+  // ---- Popup 5: Request Document ----
+  function openRequestDocDrawer() {
+    if (!currentPipelineDrawerId) return;
+    pendingDocRequestKeys = {};
+    renderDocumentRequestRows(currentPipelineDrawerId);
+    openStackedDrawer('requestDocDrawer', 'requestDocDrawerPid');
+  }
+  function closeRequestDocDrawer() {
+    closeStackedDrawer('requestDocDrawer');
+    pendingDocRequestKeys = {};
+  }
+
+  function hasCsrService(project) { return (project.Services || []).indexOf('CSR') !== -1; }
+  function hasAdsService(project) { return (project.Services || []).indexOf('Ads Sponsorship') !== -1; }
 
   function openProjectEditConfirm() {
     if (!currentPipelineDrawerId) return;
@@ -1388,22 +1899,33 @@
     document.getElementById('projectEditConfirm').classList.remove('open');
     if (!currentPipelineDrawerId) return;
 
-    var manualNameEl = document.getElementById('editProgramManualName');
-    var customIssue = document.getElementById('editIssueCustom').value.trim();
-    var issues = editProjectIssues.slice();
-    if (customIssue) issues.push(customIssue);
+    var project = currentProjectOrNull();
+    var lockedByWon = !!project && project.Stage === 'Won';
 
-    var patch = {
-      projectName: document.getElementById('editProjectName').value,
-      consultant: document.getElementById('editConsultant').value,
-      services: editProjectServices,
-      serviceCategories: editProjectCategories,
-      programType: editProjectProgramType,
-      programCategory: editProjectProgramCategory,
-      programName: manualNameEl ? manualNameEl.value.trim() : undefined,
-      issues: issues,
-      otherNotes: document.getElementById('editOtherNotes').value
-    };
+    var patch;
+    if (lockedByWon) {
+      // Stage Won: HANYA Other Notes yang dikirim. Field lain sengaja tidak
+      // disertakan sama sekali (bukan cuma di-disable di UI) supaya tidak
+      // ada celah menimpa data historis lewat state client yang basi.
+      patch = { otherNotes: document.getElementById('editOtherNotes').value };
+    } else {
+      var manualNameEl = document.getElementById('editProgramManualName');
+      var customIssue = document.getElementById('editIssueCustom').value.trim();
+      var issues = editProjectIssues.slice();
+      if (customIssue) issues.push(customIssue);
+
+      patch = {
+        projectName: document.getElementById('editProjectName').value,
+        consultant: document.getElementById('editConsultant').value,
+        services: editProjectServices,
+        serviceCategories: editProjectCategories,
+        programType: editProjectProgramType,
+        programCategory: editProjectProgramCategory,
+        programName: manualNameEl ? manualNameEl.value.trim() : undefined,
+        issues: issues,
+        otherNotes: document.getElementById('editOtherNotes').value
+      };
+    }
 
     var projectId = currentPipelineDrawerId;
     var btn = document.getElementById('projectSaveBtn');
@@ -1419,7 +1941,9 @@
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Informasi project berhasil disimpan.');
         fetchProjects();
-        closePipelineDetail();
+        // Tutup HANYA popup Edit Project — drawer Detail dibiarkan terbuka
+        // supaya user langsung melihat hasil perubahannya.
+        closeStackedDrawer('editProjectDrawer');
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -1467,23 +1991,63 @@
     return String(str || '').replace(/"/g, '&quot;');
   }
 
+  /**
+   * Baris di popup Other Document Related. Baris yang SUDAH tersimpan tampil
+   * sebagai teks (mode baca) sampai tombol ✏️ di barisnya diklik — supaya
+   * popup yang dibuka cuma untuk melihat tidak bisa berubah karena salah
+   * ketik. Baris BARU langsung dalam mode edit karena belum ada isi yang
+   * perlu dilindungi.
+   */
   function renderOtherDocLinks() {
     var container = document.getElementById('otherDocLinksContainer');
-    if (!editOtherDocLinks.length) editOtherDocLinks = [{ name: '', link: '' }];
+    if (!container) return;
+    if (!editOtherDocLinks.length) {
+      // Baris kosong pertama otomatis dalam mode edit — kalau tidak, user
+      // melihat baris "(tanpa nama)" yang harus diklik pensil dulu padahal
+      // memang belum pernah ada isinya.
+      editOtherDocLinks = [{ name: '', link: '' }];
+      otherDocEditing[0] = true;
+    }
     container.innerHTML = editOtherDocLinks.map(function (doc, idx) {
-      return '<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">' +
-        '<input placeholder="Nama dokumen..." style="flex:1;" value="' + escAttr(doc.name) + '" oninput="editOtherDocLinks[' + idx + '].name=this.value">' +
-        '<input placeholder="Put related link in here....." style="flex:2;" value="' + escAttr(doc.link) + '" oninput="editOtherDocLinks[' + idx + '].link=this.value">' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0;" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus">×</button>' +
+      if (otherDocEditing[idx]) {
+        return '<div class="row-edit">' +
+          '<input placeholder="Nama dokumen..." style="flex:1;" value="' + escAttr(doc.name) + '" oninput="editOtherDocLinks[' + idx + '].name=this.value">' +
+          '<input placeholder="Put related link in here....." style="flex:2;" value="' + escAttr(doc.link) + '" oninput="editOtherDocLinks[' + idx + '].link=this.value">' +
+          '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
+          '</div>';
+      }
+      return '<div class="row-view">' +
+        '<div class="rv-main">' +
+        '<div class="rv-title">' + escHtml(doc.name || '(tanpa nama)') + '</div>' +
+        '<div class="rv-sub">' + escHtml(doc.link || 'Belum ada link.') + '</div>' +
+        '</div>' +
+        '<button type="button" class="icon-btn-sm" onclick="startEditOtherDocRow(' + idx + ')" title="Edit dokumen ini">✏️</button>' +
+        '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
         '</div>';
     }).join('');
   }
+  function startEditOtherDocRow(index) {
+    otherDocEditing[index] = true;
+    renderOtherDocLinks();
+  }
   function addOtherDocLinkRow() {
     editOtherDocLinks.push({ name: '', link: '' });
+    otherDocEditing[editOtherDocLinks.length - 1] = true;
     renderOtherDocLinks();
   }
   function removeOtherDocLinkRow(index) {
     editOtherDocLinks.splice(index, 1);
+    // Penanda mode-edit dikunci ke INDEX baris, jadi setelah ada baris yang
+    // dihapus, semua penanda di atas index itu harus digeser satu — kalau
+    // tidak, baris tersimpan yang tidak diapa-apakan bisa ikut terbuka
+    // (atau sebaliknya, baris yang sedang diedit malah menutup sendiri).
+    var shifted = {};
+    Object.keys(otherDocEditing).forEach(function (k) {
+      var i = Number(k);
+      if (i < index) shifted[i] = otherDocEditing[k];
+      else if (i > index) shifted[i - 1] = otherDocEditing[k];
+    });
+    otherDocEditing = shifted;
     renderOtherDocLinks();
   }
 
@@ -1501,6 +2065,9 @@
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Dokumen terkait berhasil disimpan.');
         fetchProjects();
+        // Tutup popup-nya saja; drawer Detail tetap terbuka & daftar bacanya
+        // ikut ter-refresh lewat renderPipeline() setelah fetchProjects().
+        closeStackedDrawer('otherDocDrawer');
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -1510,14 +2077,23 @@
   }
 
   // ---- Revenue Breakdown ----
-  // Service 'CSR' menghasilkan GDV (daftar campaign bebas, link + nominal).
-  // Service SELAIN CSR menghasilkan Service Revenue: satu nilai per category
-  // yang dipilih (atau per service itu sendiri kalau service itu tidak
-  // punya category, misal Ads Sponsorship/Placement & Production).
+  // Service 'CSR' DAN 'Ads Sponsorship' menghasilkan GDV (daftar campaign
+  // link). Service SELAIN keduanya menghasilkan Service Revenue: satu nilai
+  // per category yang dipilih (atau per service itu sendiri kalau service itu
+  // tidak punya category, misal Placement & Production).
+  //
+  // BUG YANG DIPERBAIKI: daftar ini dulu hanya mengecualikan 'CSR', jadi
+  // 'Ads Sponsorship' muncul DI DUA TEMPAT sekaligus (section GDV dan section
+  // Service Revenue). Sisi server sudah benar mengecualikan keduanya (lihat
+  // validKeys di ProjectService.updateRevenueBreakdown), sehingga nominal yang
+  // diisi di baris Service Revenue "Ads Sponsorship" DIBUANG diam-diam saat
+  // disimpan — terlihat tersimpan di layar, tapi hilang setelah refresh.
+  var GDV_SERVICE_KEYS = ['CSR', 'Ads Sponsorship'];
+
   function getServiceRevenueRows(project) {
     var rows = [];
     (project.Services || []).forEach(function (service) {
-      if (service === 'CSR') return;
+      if (GDV_SERVICE_KEYS.indexOf(service) !== -1) return;
       var svcDef = (taxonomy.services || []).filter(function (s) { return s.key === service; })[0];
       var label = svcDef ? svcDef.label : service;
       var categories = (project.Service_Categories || {})[service] || [];
@@ -1538,7 +2114,13 @@
     var savedRows = allRevenueBreakdown.filter(function (r) { return r.Project_ID === project.Project_ID; });
     var savedGdvRows = savedRows.filter(function (r) { return r.Value_Type === 'GDV'; });
 
-    document.getElementById('gdvDisabledNote').style.display = (hasCsr || hasAds) ? 'none' : '';
+    // Tanpa service CSR/Ads Sponsorship, GDV tidak berlaku sama sekali —
+    // catatan penjelasnya ditampilkan dan tombol EDIT GDV disembunyikan
+    // (bukan cuma dinonaktifkan) supaya tidak ada popup yang bisa dibuka
+    // tapi isinya kosong tanpa keterangan.
+    var gdvApplicable = hasCsr || hasAds;
+    document.getElementById('gdvDisabledNote').style.display = gdvApplicable ? 'none' : '';
+    document.getElementById('gdvEditOpenBtn').style.display = gdvApplicable ? '' : 'none';
 
     // ---- Skema CSR biasa (flat, non-Retainer) ----
     editGdvCsrCampaigns = (hasCsr && !isRetainer)
@@ -1565,6 +2147,8 @@
           .map(function (r) { return { link: r.Item_Name || '' }; })
       : [];
 
+    // Baris tersimpan mulai dalam mode baca (pola "pensil dulu").
+    gdvCsrEditing = {}; gdvRetainerEditing = {}; gdvAdsEditing = {};
     renderGdvSchemes(hasCsr, hasAds, isRetainer);
     fetchGdvSyncStatus();
 
@@ -1575,9 +2159,100 @@
       var savedRow = savedServiceRows.filter(function (s) { return s.Item_Name === r.label; })[0];
       editServiceRevenueItems[r.key] = { amount: savedRow ? Number(savedRow.Amount) || 0 : 0, notes: savedRow ? (savedRow.Notes || '') : '' };
     });
+    serviceRevenueEditing = {};
     renderServiceRevenueItems(rows);
 
+    // Daftar vertikal read-only di drawer Detail — dibangun dari state edit
+    // yang baru diisi di atas, jadi selalu konsisten dengan isi popup-nya.
+    renderGdvViewList(hasCsr, hasAds, isRetainer);
+    renderServiceRevenueViewList(rows);
+
     updateRevenueTotals();
+  }
+
+  /**
+   * Daftar vertikal Campaign Link di drawer Detail (BACA). Tiap link tampil
+   * satu baris dengan total nominal yang diinput consultant di sisi kanan
+   * dan badge sinkron GDV Matching di bawah nama link-nya.
+   *
+   * Ads Sponsorship sengaja TIDAK menampilkan nominal — realisasinya datang
+   * dari GDV Controller (Tableau), bukan input manual, jadi menampilkan Rp0
+   * di sana akan menyesatkan.
+   */
+  function renderGdvViewList(hasCsr, hasAds, isRetainer) {
+    var container = document.getElementById('gdvViewList');
+    if (!container) return;
+
+    var items = [];
+    if (hasCsr && !isRetainer) {
+      editGdvCsrCampaigns.filter(function (c) { return String(c.link || '').trim(); }).forEach(function (c) {
+        items.push({ link: c.link, amount: Number(c.amount) || 0, showAmount: true, scheme: 'CSR', sub: c.notes || '' });
+      });
+    }
+    if (hasCsr && isRetainer) {
+      editGdvRetainerLinks.filter(function (l) { return String(l.link || '').trim(); }).forEach(function (l) {
+        var entries = l.entries || [];
+        var total = entries.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
+        items.push({
+          link: l.link, amount: total, showAmount: true, scheme: 'CSR (Retainer)',
+          sub: entries.length + ' termin'
+        });
+      });
+    }
+    if (hasAds) {
+      editGdvAdsCampaigns.filter(function (c) { return String(c.link || '').trim(); }).forEach(function (c) {
+        items.push({ link: c.link, amount: 0, showAmount: false, scheme: 'Ads Sponsorship', sub: 'Nominal dari GDV Controller' });
+      });
+    }
+
+    if (!items.length) {
+      container.innerHTML = (hasCsr || hasAds)
+        ? '<div class="empty-hint"><span class="eh-ic">📊</span>Belum ada campaign GDV dicatat.<br>Klik <strong>EDIT GDV</strong> di bawah untuk menambahkan.</div>'
+        : '';
+      return;
+    }
+
+    container.innerHTML = '<div class="vlist">' + items.map(function (it) {
+      var badge = gdvSyncBadgeHtml(it.link);
+      return '<div class="vlist-row">' +
+        '<div class="vl-main">' +
+        '<div class="vl-name mono">' + escHtml(it.link) + '</div>' +
+        '<div class="vl-sub">' + escHtml(it.scheme) + (it.sub ? ' · ' + escHtml(it.sub) : '') +
+        (badge ? ' ' + badge : '') + '</div>' +
+        '</div>' +
+        '<div class="vl-right">' +
+        (it.showAmount
+          ? '<div class="vl-amt">' + formatRupiah(it.amount) + '</div><div class="vl-amt-lbl">diinput consultant</div>'
+          : '<div class="vl-amt-lbl">otomatis dari Tableau</div>') +
+        '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  /**
+   * Daftar vertikal kategori Service Revenue di drawer Detail (BACA) —
+   * pola sama seperti GDV di atas. Kategori yang nominalnya masih 0 tetap
+   * ditampilkan (diredupkan) supaya jelas mana yang belum diisi, bukan
+   * hilang begitu saja.
+   */
+  function renderServiceRevenueViewList(rows) {
+    var container = document.getElementById('serviceRevenueViewList');
+    if (!container) return;
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty-hint"><span class="eh-ic">💼</span>Belum ada service dipilih di Edit Project.</div>';
+      return;
+    }
+    container.innerHTML = '<div class="vlist">' + rows.map(function (r) {
+      var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
+      var amount = Number(entry.amount) || 0;
+      return '<div class="vlist-row"' + (amount ? '' : ' style="opacity:0.6;"') + '>' +
+        '<div class="vl-main">' +
+        '<div class="vl-name">' + escHtml(r.label) + '</div>' +
+        (entry.notes ? '<div class="vl-sub">' + escHtml(entry.notes) + '</div>' : '') +
+        '</div>' +
+        '<div class="vl-right"><div class="vl-amt">' + (amount ? formatRupiah(amount) : '—') + '</div></div>' +
+        '</div>';
+    }).join('') + '</div>';
   }
 
   // Format angka besar dengan titik pemisah ribuan (id-ID) langsung saat
@@ -1595,16 +2270,56 @@
     updateRevenueTotals();
   }
 
-  // ---- Render gabungan 3 skema GDV ke dalam #gdvSchemeContainer ----
+  // ---- Render skema GDV ke dalam #gdvSchemeContainer (popup Input GDV) ----
+  // Skema yang tersedia dipilih lewat TAB (bukan ditumpuk vertikal semua),
+  // karena satu project bisa punya CSR & Ads Sponsorship sekaligus dan
+  // menumpuk keduanya membuat popup jadi sangat panjang. Kalau cuma ada 1
+  // skema, tab-nya disembunyikan supaya tidak jadi kontrol yang tidak berguna.
   function renderGdvSchemes(hasCsr, hasAds, isRetainer) {
     var container = document.getElementById('gdvSchemeContainer');
-    var html = '';
+    var tabsEl = document.getElementById('gdvSchemeTabs');
+    var noteEl = document.getElementById('gdvDrawerDisabledNote');
+    if (!container) return;
 
-    if (hasCsr && !isRetainer) html += renderGdvCsrBlock();
-    if (hasCsr && isRetainer) html += renderGdvRetainerBlock();
-    if (hasAds) html += renderGdvAdsBlock();
+    var available = [];
+    if (hasCsr && !isRetainer) available.push({ id: 'csr', label: 'CSR' });
+    if (hasCsr && isRetainer) available.push({ id: 'retainer', label: 'CSR (Retainer)' });
+    if (hasAds) available.push({ id: 'ads', label: 'Ads Sponsorship' });
 
-    container.innerHTML = html;
+    if (noteEl) noteEl.style.display = available.length ? 'none' : '';
+    if (!available.length) {
+      if (tabsEl) tabsEl.innerHTML = '';
+      container.innerHTML = '';
+      return;
+    }
+
+    // Tab aktif dipertahankan selama masih tersedia — supaya menambah/hapus
+    // baris tidak melempar user balik ke tab pertama.
+    if (!gdvActiveTab || !available.some(function (t) { return t.id === gdvActiveTab; })) {
+      gdvActiveTab = available[0].id;
+    }
+
+    if (tabsEl) {
+      tabsEl.style.display = available.length > 1 ? '' : 'none';
+      tabsEl.innerHTML = available.map(function (t) {
+        return '<button type="button" class="' + (t.id === gdvActiveTab ? 'active' : '') + '" onclick="setGdvTab(\'' + t.id + '\')">' + t.label + '</button>';
+      }).join('');
+    }
+
+    if (gdvActiveTab === 'csr') container.innerHTML = renderGdvCsrBlock();
+    else if (gdvActiveTab === 'retainer') container.innerHTML = renderGdvRetainerBlock();
+    else container.innerHTML = renderGdvAdsBlock();
+  }
+
+  function setGdvTab(tabId) {
+    gdvActiveTab = tabId;
+    renderGdvSchemes(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
+  }
+
+  // Dipakai semua fungsi add/remove baris GDV — supaya tidak perlu
+  // meneruskan hasCsr/hasAds/isRetainer manual di setiap pemanggilan.
+  function rerenderGdvSchemes() {
+    renderGdvSchemes(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
   }
 
   // ---- Tahap 4: badge status sinkron GDV Matching per link ----
@@ -1631,7 +2346,11 @@
     gsRunWithRetry('gdvMatching_getStatusForLinks', [links], function (res) {
       if (!res || !res.ok) return; // gagal diam-diam — badge cukup tidak muncul, bukan bagian kritikal alur simpan
       gdvSyncStatusByLink = res.data || {};
-      renderGdvSchemes(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
+      // Badge dipakai di DUA tempat: baris di popup Input GDV dan daftar
+      // read-only di drawer Detail — keduanya perlu di-render ulang begitu
+      // status datang, kalau tidak badge-nya baru muncul saat ada trigger lain.
+      rerenderGdvSchemes();
+      renderGdvViewList(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
     }, function () { /* gagal diam-diam, sama seperti di atas */ });
   }
 
@@ -1648,20 +2367,44 @@
     return '<span class="pill ' + pillClass + '" title="' + escAttr(title) + '">' + pillLabel + '</span>';
   }
 
+  // Penanda mode-edit dikunci ke index baris, jadi setelah ada baris yang
+  // dihapus semua penanda di atas index itu harus digeser satu — kalau tidak,
+  // baris tersimpan yang tidak diapa-apakan bisa ikut terbuka.
+  function shiftEditingMap(map, removedIndex) {
+    var shifted = {};
+    Object.keys(map).forEach(function (k) {
+      var i = Number(k);
+      if (i < removedIndex) shifted[i] = map[k];
+      else if (i > removedIndex) shifted[i - 1] = map[k];
+    });
+    return shifted;
+  }
+
   function renderGdvCsrBlock() {
-    if (!editGdvCsrCampaigns.length) editGdvCsrCampaigns = [{ link: '', amount: 0, notes: '' }];
+    if (!editGdvCsrCampaigns.length) {
+      editGdvCsrCampaigns = [{ link: '', amount: 0, notes: '' }];
+      gdvCsrEditing[0] = true;
+    }
     var rowsHtml = editGdvCsrCampaigns.map(function (c, idx) {
-      return '<div class="revenue-row">' +
-        '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
-        '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
-        '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
-        '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(c.link) + '</span>' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+      if (gdvCsrEditing[idx]) {
+        return '<div class="row-edit">' +
+          '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
+          '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
+          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
+          '<button type="button" class="icon-btn-sm danger" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
+          '</div>';
+      }
+      return '<div class="row-view">' +
+        '<div class="rv-main">' +
+        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') + '</div>' +
+        '<div class="rv-sub">' + (c.notes ? escHtml(c.notes) + ' · ' : '') + (gdvSyncBadgeHtml(c.link) || 'Status sinkron belum tersedia') + '</div>' +
+        '</div>' +
+        '<div class="rv-amt">' + formatRupiah(c.amount) + '</div>' +
+        '<button type="button" class="icon-btn-sm" onclick="startEditGdvCsrRow(' + idx + ')" title="Edit campaign ini">✏️</button>' +
+        '<button type="button" class="icon-btn-sm danger" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
         '</div>';
     }).join('');
     return '<div class="gdv-scheme-block">' +
-      '<div class="gdv-scheme-label">CSR</div>' +
-      '<div class="revenue-row-labels"><span style="flex:2;">Campaign Link</span><span style="flex:1;">Nominal GDV</span><span style="flex:2;">Notes</span><span style="width:118px; flex-shrink:0;">Sync</span><span style="width:28px;"></span></div>' +
       rowsHtml +
       '<button type="button" class="btn-outline" onclick="addGdvCsrCampaignRow()">+ Tambah Campaign</button>' +
       '</div>';
@@ -1673,44 +2416,84 @@
     el.value = formatThousands(amount);
     updateRevenueTotals();
   }
+  function startEditGdvCsrRow(idx) {
+    gdvCsrEditing[idx] = true;
+    rerenderGdvSchemes();
+  }
   function addGdvCsrCampaignRow() {
     editGdvCsrCampaigns.push({ link: '', amount: 0, notes: '' });
-    renderGdvSchemes(true, currentDrawerHasAds(), false);
+    gdvCsrEditing[editGdvCsrCampaigns.length - 1] = true;
+    rerenderGdvSchemes();
   }
   function removeGdvCsrCampaignRow(index) {
     editGdvCsrCampaigns.splice(index, 1);
-    renderGdvSchemes(true, currentDrawerHasAds(), false);
+    gdvCsrEditing = shiftEditingMap(gdvCsrEditing, index);
+    rerenderGdvSchemes();
     updateRevenueTotals();
   }
 
   // ---- Skema Retainer: satu link, banyak termin (nominal+notes+date) ----
+  // Mode baca menampilkan link + ringkasan termin; begitu pensil diklik,
+  // SELURUH grup link itu (termasuk semua terminnya) terbuka untuk diedit —
+  // membuka termin satu-satu akan membingungkan karena terminnya saling
+  // terkait dalam satu link.
   function renderGdvRetainerBlock() {
-    if (!editGdvRetainerLinks.length) editGdvRetainerLinks = [{ link: '', entries: [{ amount: 0, notes: '', date: '' }] }];
+    if (!editGdvRetainerLinks.length) {
+      editGdvRetainerLinks = [{ link: '', entries: [{ amount: 0, notes: '', date: '' }] }];
+      gdvRetainerEditing[0] = true;
+    }
     var linksHtml = editGdvRetainerLinks.map(function (l, linkIdx) {
-      var entriesHtml = (l.entries || []).map(function (e, entryIdx) {
+      var entries = l.entries || [];
+      var total = entries.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
+
+      if (!gdvRetainerEditing[linkIdx]) {
+        var terminSummary = entries.length
+          ? entries.map(function (e) {
+              return (e.date ? formatDate(e.date) : 'tanpa tanggal') + ': ' + formatRupiah(e.amount);
+            }).join(' · ')
+          : 'Belum ada termin.';
+        return '<div class="row-view" style="align-items:flex-start;">' +
+          '<div class="rv-main">' +
+          '<div class="rv-title">' + escHtml(l.link || '(link belum diisi)') + '</div>' +
+          '<div class="rv-sub">' + escHtml(entries.length + ' termin') + ' · ' + (gdvSyncBadgeHtml(l.link) || 'Status sinkron belum tersedia') + '</div>' +
+          '<div class="rv-sub">' + escHtml(terminSummary) + '</div>' +
+          '</div>' +
+          '<div class="rv-amt">' + formatRupiah(total) + '</div>' +
+          '<button type="button" class="icon-btn-sm" onclick="startEditGdvRetainerRow(' + linkIdx + ')" title="Edit link &amp; termin ini">✏️</button>' +
+          '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
+          '</div>';
+      }
+
+      var entriesHtml = entries.map(function (e, entryIdx) {
         return '<div class="revenue-row">' +
           '<input type="date" style="width:150px;" value="' + escAttr(e.date) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].date=this.value">' +
           '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(e.amount) + '" oninput="onGdvRetainerAmountInput(this, ' + linkIdx + ', ' + entryIdx + ')">' +
           '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(e.notes) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].notes=this.value">' +
-          '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvRetainerEntryRow(' + linkIdx + ', ' + entryIdx + ')" title="Hapus">×</button>' +
+          '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerEntryRow(' + linkIdx + ', ' + entryIdx + ')" title="Hapus termin ini">×</button>' +
           '</div>';
       }).join('');
-      return '<div class="gdv-retainer-link-group">' +
+      return '<div class="gdv-retainer-link-group" style="border-style:solid; border-color:var(--color-cerulean); background:var(--accent-tint);">' +
         '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value">' +
         '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(l.link) + '</span>' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
+        '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
         '</div>' +
         '<div class="revenue-row-labels" style="padding-left:8px;"><span style="width:150px;">Tanggal Termin</span><span style="flex:1;">Nominal</span><span style="flex:2;">Notes</span><span style="width:28px;"></span></div>' +
         '<div style="padding-left:8px;">' + entriesHtml + '</div>' +
-        '<button type="button" class="btn-outline" style="margin-left:8px;" onclick="addGdvRetainerEntryRow(' + linkIdx + ')">+ Tambah Termin</button>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-left:8px;">' +
+        '<button type="button" class="btn-outline" onclick="addGdvRetainerEntryRow(' + linkIdx + ')">+ Tambah Termin</button>' +
+        '<span style="font-size:12px; color:var(--text-faint);">Subtotal link ini: <strong style="font-family:var(--font-mono);">' + formatRupiah(total) + '</strong></span>' +
+        '</div>' +
         '</div>';
     }).join('');
     return '<div class="gdv-scheme-block">' +
-      '<div class="gdv-scheme-label">CSR (Retainer)</div>' +
       linksHtml +
       '<button type="button" class="btn-outline" onclick="addGdvRetainerLinkGroup()">+ Tambah Campaign Link</button>' +
       '</div>';
+  }
+  function startEditGdvRetainerRow(linkIdx) {
+    gdvRetainerEditing[linkIdx] = true;
+    rerenderGdvSchemes();
   }
 
   function onGdvRetainerAmountInput(el, linkIdx, entryIdx) {
@@ -1725,44 +2508,62 @@
   }
   function removeGdvRetainerLinkGroup(linkIdx) {
     editGdvRetainerLinks.splice(linkIdx, 1);
-    renderGdvSchemes(true, currentDrawerHasAds(), true);
+    gdvRetainerEditing = shiftEditingMap(gdvRetainerEditing, linkIdx);
+    rerenderGdvSchemes();
     updateRevenueTotals();
   }
   function addGdvRetainerEntryRow(linkIdx) {
     editGdvRetainerLinks[linkIdx].entries.push({ amount: 0, notes: '', date: '' });
-    renderGdvSchemes(true, currentDrawerHasAds(), true);
+    rerenderGdvSchemes();
   }
   function removeGdvRetainerEntryRow(linkIdx, entryIdx) {
     editGdvRetainerLinks[linkIdx].entries.splice(entryIdx, 1);
-    renderGdvSchemes(true, currentDrawerHasAds(), true);
+    rerenderGdvSchemes();
     updateRevenueTotals();
   }
 
   // ---- Skema Ads Sponsorship: link-only, multi, tanpa nominal/notes ----
   function renderGdvAdsBlock() {
-    if (!editGdvAdsCampaigns.length) editGdvAdsCampaigns = [{ link: '' }];
+    if (!editGdvAdsCampaigns.length) {
+      editGdvAdsCampaigns = [{ link: '' }];
+      gdvAdsEditing[0] = true;
+    }
     var rowsHtml = editGdvAdsCampaigns.map(function (c, idx) {
-      return '<div class="revenue-row">' +
-        '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
-        '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(c.link) + '</span>' +
-        '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus">×</button>' +
+      if (gdvAdsEditing[idx]) {
+        return '<div class="row-edit">' +
+          '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
+          '<button type="button" class="icon-btn-sm danger" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
+          '</div>';
+      }
+      return '<div class="row-view">' +
+        '<div class="rv-main">' +
+        '<div class="rv-title">' + escHtml(c.link || '(link belum diisi)') + '</div>' +
+        '<div class="rv-sub">' + (gdvSyncBadgeHtml(c.link) || 'Status sinkron belum tersedia') + '</div>' +
+        '</div>' +
+        '<button type="button" class="icon-btn-sm" onclick="startEditGdvAdsRow(' + idx + ')" title="Edit campaign ini">✏️</button>' +
+        '<button type="button" class="icon-btn-sm danger" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
         '</div>';
     }).join('');
     return '<div class="gdv-scheme-block">' +
-      '<div class="gdv-scheme-label">Ads Sponsorship</div>' +
-      '<div class="placeholder-note" style="margin-top:0; margin-bottom:8px;">Nominal realisasi otomatis dari GDV Controller (Tableau) — cukup catat link campaign-nya di sini.</div>' +
+      '<div class="placeholder-note" style="margin-top:0; margin-bottom:10px;">Nominal realisasi otomatis dari GDV Controller (Tableau) — cukup catat link campaign-nya di sini.</div>' +
       rowsHtml +
       '<button type="button" class="btn-outline" onclick="addGdvAdsCampaignRow()">+ Tambah Campaign</button>' +
       '</div>';
   }
 
+  function startEditGdvAdsRow(idx) {
+    gdvAdsEditing[idx] = true;
+    rerenderGdvSchemes();
+  }
   function addGdvAdsCampaignRow() {
     editGdvAdsCampaigns.push({ link: '' });
-    renderGdvSchemes(currentDrawerHasCsr(), true, currentDrawerIsRetainer());
+    gdvAdsEditing[editGdvAdsCampaigns.length - 1] = true;
+    rerenderGdvSchemes();
   }
   function removeGdvAdsCampaignRow(index) {
     editGdvAdsCampaigns.splice(index, 1);
-    renderGdvSchemes(currentDrawerHasCsr(), true, currentDrawerIsRetainer());
+    gdvAdsEditing = shiftEditingMap(gdvAdsEditing, index);
+    rerenderGdvSchemes();
   }
 
   // Helper kecil supaya add/remove row tidak perlu simpan ulang
@@ -1775,25 +2576,50 @@
   function currentDrawerHasAds() { return (currentDrawerProject().Services || []).indexOf('Ads Sponsorship') !== -1; }
   function currentDrawerIsRetainer() { return !!currentDrawerProject().Is_Retainer; }
 
+  /**
+   * Baris Service Revenue di popup. Kategori yang SUDAH punya nominal tampil
+   * mode baca (butuh pensil untuk diubah); kategori yang masih kosong langsung
+   * dalam mode edit karena memang belum ada nilai yang perlu dilindungi.
+   * Daftar kategorinya sendiri tidak bisa ditambah/dihapus dari sini — itu
+   * mengikuti Service & Service Category di Edit Project.
+   */
   function renderServiceRevenueItems(rows) {
     var container = document.getElementById('serviceRevenueItemsContainer');
-    var labels = document.getElementById('serviceRevenueRowLabels');
+    if (!container) return;
     if (!rows.length) {
-      labels.style.display = 'none';
-      container.innerHTML = '<div class="revenue-row-empty">Belum ada service dipilih di Project Information.</div>';
+      container.innerHTML = '<div class="empty-hint"><span class="eh-ic">💼</span>Belum ada service dipilih.<br>Pilih Service &amp; Service Category dulu di <strong>Edit Project</strong>.</div>';
       return;
     }
-    labels.style.display = '';
     container.innerHTML = rows.map(function (r) {
       var entry = editServiceRevenueItems[r.key] || { amount: 0, notes: '' };
-      return '<div class="revenue-row">' +
-        '<span class="revenue-service-label">' + r.label + '</span>' +
-        '<input type="text" inputmode="numeric" placeholder="0" style="width:140px;" value="' + formatThousands(entry.amount) + '" ' +
-        'oninput="onServiceRevenueAmountInput(this, \'' + r.key + '\')">' +
-        '<input placeholder="Notes (opsional)" style="width:160px;" value="' + escAttr(entry.notes) + '" ' +
-        'oninput="editServiceRevenueItems[\'' + r.key + '\'].notes=this.value">' +
+      var amount = Number(entry.amount) || 0;
+      var keyAttr = escAttr(r.key);
+      var isEditing = serviceRevenueEditing[r.key] || !amount;
+
+      if (isEditing) {
+        return '<div class="row-edit">' +
+          '<span class="revenue-service-label" style="flex:1.4; font-size:12.5px;">' + escHtml(r.label) + '</span>' +
+          '<input type="text" inputmode="numeric" placeholder="0" style="width:130px;" value="' + formatThousands(amount) + '" ' +
+          'oninput="onServiceRevenueAmountInput(this, \'' + keyAttr + '\')">' +
+          '<input placeholder="Notes (opsional)" style="flex:1;" value="' + escAttr(entry.notes) + '" ' +
+          'oninput="editServiceRevenueItems[\'' + keyAttr + '\'].notes=this.value">' +
+          '</div>';
+      }
+      return '<div class="row-view">' +
+        '<div class="rv-main">' +
+        '<div class="rv-title">' + escHtml(r.label) + '</div>' +
+        (entry.notes ? '<div class="rv-sub">' + escHtml(entry.notes) + '</div>' : '') +
+        '</div>' +
+        '<div class="rv-amt">' + formatRupiah(amount) + '</div>' +
+        '<button type="button" class="icon-btn-sm" onclick="startEditServiceRevenueRow(\'' + keyAttr + '\')" title="Edit nominal kategori ini">✏️</button>' +
         '</div>';
     }).join('');
+  }
+
+  function startEditServiceRevenueRow(key) {
+    serviceRevenueEditing[key] = true;
+    var project = currentProjectOrNull();
+    if (project) renderServiceRevenueItems(getServiceRevenueRows(project));
   }
 
   function updateRevenueTotals() {
@@ -1804,19 +2630,41 @@
     // Ads Sponsorship tidak punya nominal manual — realisasinya dari GDV
     // Controller (Tableau), jadi tidak ikut dijumlah di sini.
     var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key].amount) || 0); }, 0);
-    document.getElementById('projectTotalGdvDisplay').innerText = formatRupiah(totalGdv);
-    document.getElementById('projectTotalRevenueDisplay').innerText = formatRupiah(totalRev);
+
+    // Total ditampilkan di DUA tempat: kartu ringkasan drawer Detail dan
+    // header popup masing-masing — angkanya sama, sumbernya satu.
+    setTextIfExists('projectTotalGdvDisplay', formatRupiah(totalGdv));
+    setTextIfExists('projectTotalRevenueDisplay', formatRupiah(totalRev));
+    setTextIfExists('gdvDrawerTotal', formatRupiah(totalGdv));
+    setTextIfExists('serviceRevenueDrawerTotal', formatRupiah(totalRev));
   }
 
-  function submitRevenueBreakdown() {
+  function setTextIfExists(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.innerText = text;
+  }
+
+  /**
+   * Simpan Revenue Breakdown. GDV & Service Revenue punya tombol SAVE
+   * masing-masing di popup-nya, tapi keduanya menembak endpoint yang SAMA
+   * (project_updateRevenueBreakdown menulis ulang seluruh baris milik project
+   * ini sekaligus) — jadi payload-nya selalu lengkap, apa pun popup asalnya.
+   * Parameter `origin` cuma menentukan popup mana yang ditutup setelah sukses.
+   */
+  function submitRevenueBreakdown(origin) {
     if (!currentPipelineDrawerId) return;
-    if (!techfordConfirm('Simpan Revenue Breakdown ini?')) return;
+    var label = origin === 'service' ? 'Service Revenue' : 'GDV';
+    if (!techfordConfirm('Simpan ' + label + ' project ini?')) return;
     TechfordLoading.show('Menyimpan revenue breakdown...');
     google.script.run
       .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
-        showPipelineSuccess('Revenue breakdown berhasil disimpan.');
+        showPipelineSuccess(label + ' berhasil disimpan.');
+        // Popup ditutup DULU sebelum fetch — supaya isAnyStackedDrawerOpen()
+        // sudah false saat data baru datang, jadi daftar baca di drawer Detail
+        // benar-benar ter-render ulang (lihat guard di fetchRevenueBreakdown).
+        closeStackedDrawer(origin === 'service' ? 'serviceRevenueDrawer' : 'gdvDrawer');
         fetchProjects();
         fetchRevenueBreakdown();
       })
