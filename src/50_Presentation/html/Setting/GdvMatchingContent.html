@@ -1,39 +1,62 @@
-<div class="container" style="max-width: 1040px;">
-  <p style="color: var(--text-muted); font-size:13px;">
-    Mencocokkan realisasi GDV dari <strong>GDV Controller</strong> (hasil upload CSV Tableau) dengan seluruh klaim
-    manual GDV di <strong>Revenue Breakdown</strong> lintas semua project, dikelompokkan per <strong>Campaign
-    Link</strong>. Selisih antara realisasi dan total klaim jadi <strong>Department Portion</strong>. Perhitungan
-    ini selalu live — klik Refresh untuk data terbaru.
-  </p>
+<p style="color: var(--text-muted); font-size:13px;">
+  Mencocokkan realisasi GDV dari <strong>GDV Controller</strong> (hasil upload CSV Tableau) dengan seluruh klaim
+  manual GDV di <strong>Revenue Breakdown</strong> lintas semua project, dikelompokkan per <strong>Campaign
+  Link</strong>. Selisih antara realisasi dan total klaim jadi <strong>Department Portion</strong>. Perhitungan
+  ini selalu live — klik Refresh untuk data terbaru.
+</p>
 
-  <div id="gdvMatchError" class="error"></div>
+<div id="gdvMatchError" class="error"></div>
 
-  <div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
+<div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
 
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-    <h3 style="margin:0; font-size:14px;">Per Campaign Link</h3>
-    <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data" style="font-size:11px; padding:3px 8px;">🔄 Refresh</button>
-  </div>
+<div class="filter-bar">
+  <div class="search-field"><span class="search-ic">⌕</span><input id="gdvMatchSearch" placeholder="Cari Short URL atau Campaigner Name..." oninput="onGdvMatchFilterChange()"></div>
+  <button class="filter-reset" onclick="resetGdvMatchFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data">🔄 Refresh</button>
+</div>
+
+<div class="table-scroll">
   <table class="data-table">
     <thead>
       <tr>
-        <th>Campaign Link</th>
-        <th class="num">Realisasi (Tableau)</th>
-        <th class="num">Total Diklaim</th>
-        <th class="num">Department Portion</th>
-        <th>Status</th>
+        <th class="sortable" onclick="setGdvMatchSort('linkCampaign')">Campaign Link <span class="sort-icon" data-field="linkCampaign">⇕</span></th>
+        <th class="sortable" onclick="setGdvMatchSort('campaignerName')">Campaigner Name <span class="sort-icon" data-field="campaignerName">⇕</span></th>
+        <th class="sortable num" onclick="setGdvMatchSort('realizedNominal')">GDV Actual <span class="sort-icon" data-field="realizedNominal">⇕</span></th>
+        <th class="sortable num" onclick="setGdvMatchSort('totalClaimed')">Claim AE <span class="sort-icon" data-field="totalClaimed">⇕</span></th>
+        <th class="sortable num" onclick="setGdvMatchSort('departmentPortion')">Department Portion <span class="sort-icon" data-field="departmentPortion">⇕</span></th>
+        <th class="sortable" onclick="setGdvMatchSort('projectStatus')">Project Status <span class="sort-icon" data-field="projectStatus">⇕</span></th>
+        <th class="sortable num" onclick="setGdvMatchSort('platformFee')">Platform Fee <span class="sort-icon" data-field="platformFee">⇕</span></th>
+        <th class="sortable" onclick="setGdvMatchSort('sourceCategory')">Source Category <span class="sort-icon" data-field="sourceCategory">⇕</span></th>
+        <th class="sortable" onclick="setGdvMatchSort('status')">Status <span class="sort-icon" data-field="status">⇕</span></th>
         <th style="width:36px;"></th>
       </tr>
     </thead>
     <tbody id="gdvMatchTableBody">
-      <tr class="empty-row"><td colspan="6">Memuat...</td></tr>
+      <tr class="empty-row"><td colspan="10">Memuat...</td></tr>
     </tbody>
   </table>
+</div>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="gdvMatchPageSize" onchange="onGdvMatchFilterChange()">
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="gdvMatchPageButtons"></div>
 </div>
 
 <script>
   var gdvMatchRows = [];
   var gdvMatchExpanded = {};
+  var gdvMatchPage = 1;
+  var gdvMatchSort = { field: 'realizedNominal', dir: 'desc' };
+  var GDV_MATCH_NUMERIC_FIELDS = ['realizedNominal', 'totalClaimed', 'departmentPortion', 'platformFee'];
 
   // Bootstrap dengan retry otomatis — pola yang sama dengan halaman lain
   // (lihat GdvControllerContent.html) supaya glitch transport
@@ -75,7 +98,7 @@
       }
       gdvMatchRows = res.data.rows || [];
       renderGdvMatchScoreCard(res.data.summary || {});
-      renderGdvMatchTable();
+      renderGdvMatching();
       if (onDone) onDone(true);
     }, function (message) {
       if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
@@ -86,10 +109,10 @@
 
   function renderGdvMatchScoreCard(summary) {
     document.getElementById('gdvMatchScoreRow').innerHTML =
-      '<div class="stat-tile"><div class="st-label">Total Realisasi (Tableau)</div><div class="st-value">' + fmtRp(summary.totalRealized) + '</div></div>' +
-      '<div class="stat-tile"><div class="st-label">Total Diklaim (Manual)</div><div class="st-value">' + fmtRp(summary.totalClaimed) + '</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Total GDV Actual</div><div class="st-value">' + fmtRp(summary.totalRealized) + '</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Total Claim</div><div class="st-value">' + fmtRp(summary.totalClaimed) + '</div></div>' +
       '<div class="stat-tile accent"><div class="st-label">Department Portion</div><div class="st-value">' + fmtRp(summary.totalDepartmentPortion) + '</div></div>' +
-      '<div class="stat-tile"><div class="st-label">Belum Sinkron / Klaim Melebihi</div><div class="st-value">' + (summary.belumSinkronCount || 0) + ' / ' + (summary.klaimMelebihiCount || 0) + '</div></div>';
+      '<div class="stat-tile"><div class="st-label">Platform Fee</div><div class="st-value">' + fmtRp(summary.totalPlatformFee) + '</div></div>';
   }
 
   function statusPill(status) {
@@ -98,19 +121,91 @@
     return '<span class="pill neutral">Belum Sinkron</span>';
   }
 
-  function renderGdvMatchTable() {
+  function getFilteredGdvMatchRows() {
+    var search = document.getElementById('gdvMatchSearch').value.toLowerCase().trim();
+    return gdvMatchRows.filter(function (r) {
+      return !search ||
+        String(r.linkCampaign || '').toLowerCase().indexOf(search) !== -1 ||
+        String(r.campaignerName || '').toLowerCase().indexOf(search) !== -1;
+    }).sort(function (a, b) {
+      var field = gdvMatchSort.field;
+      var va = a[field], vb = b[field];
+      if (GDV_MATCH_NUMERIC_FIELDS.indexOf(field) !== -1) {
+        va = Number(va) || 0;
+        vb = Number(vb) || 0;
+      } else {
+        va = String(va || '').toLowerCase();
+        vb = String(vb || '').toLowerCase();
+      }
+      var cmp = va < vb ? -1 : (va > vb ? 1 : 0);
+      return gdvMatchSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  function setGdvMatchSort(field) {
+    if (gdvMatchSort.field === field) {
+      gdvMatchSort.dir = gdvMatchSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      gdvMatchSort.field = field;
+      gdvMatchSort.dir = 'asc';
+    }
+    renderGdvMatching();
+  }
+
+  function onGdvMatchFilterChange() {
+    gdvMatchPage = 1;
+    renderGdvMatching();
+  }
+
+  function resetGdvMatchFilter() {
+    document.getElementById('gdvMatchSearch').value = '';
+    gdvMatchPage = 1;
+    renderGdvMatching();
+  }
+
+  function paginateGdvMatch(list) {
+    var pageSize = Number(document.getElementById('gdvMatchPageSize').value);
+    var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    gdvMatchPage = Math.min(Math.max(1, gdvMatchPage), totalPages);
+    var start = (gdvMatchPage - 1) * pageSize;
+    return { items: list.slice(start, start + pageSize), page: gdvMatchPage, totalPages: totalPages };
+  }
+
+  function renderGdvMatching() {
+    updateGdvMatchSortIcons();
+    var filtered = getFilteredGdvMatchRows();
+    var paged = paginateGdvMatch(filtered);
+    renderGdvMatchTable(paged.items);
+    renderGdvMatchPagination(paged);
+  }
+
+  function updateGdvMatchSortIcons() {
+    document.querySelectorAll('.sort-icon').forEach(function (el) {
+      if (el.getAttribute('data-field') === gdvMatchSort.field) {
+        el.innerText = gdvMatchSort.dir === 'asc' ? '↑' : '↓';
+      } else {
+        el.innerText = '⇕';
+      }
+    });
+  }
+
+  function renderGdvMatchTable(items) {
     var tbody = document.getElementById('gdvMatchTableBody');
-    if (!gdvMatchRows.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada data GDV untuk dicocokkan.</td></tr>';
+    if (!items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="10">Tidak ada data GDV untuk dicocokkan.</td></tr>';
       return;
     }
-    tbody.innerHTML = gdvMatchRows.map(function (r, idx) {
+    tbody.innerHTML = items.map(function (r) {
       var expanded = !!gdvMatchExpanded[r.linkCampaign];
-      var mainRow = '<tr style="cursor:pointer;" onclick="toggleGdvMatchRow(' + idx + ')">' +
+      var mainRow = '<tr style="cursor:pointer;" onclick="toggleGdvMatchRow(\'' + esc(r.linkCampaign).replace(/'/g, "\\'") + '\')">' +
         '<td>' + esc(r.linkCampaign) + '</td>' +
+        '<td>' + esc(r.campaignerName || '-') + '</td>' +
         '<td class="num">' + (r.hasRealized ? fmtRp(r.realizedNominal) : '-') + '</td>' +
         '<td class="num">' + fmtRp(r.totalClaimed) + '</td>' +
         '<td class="num">' + fmtRp(r.departmentPortion) + '</td>' +
+        '<td>' + esc(r.projectStatus || '-') + '</td>' +
+        '<td class="num">' + fmtRp(r.platformFee) + '</td>' +
+        '<td>' + esc(r.sourceCategory || '-') + '</td>' +
         '<td>' + statusPill(r.status) + '</td>' +
         '<td style="text-align:center;">' + (expanded ? '▲' : '▼') + '</td>' +
         '</tr>';
@@ -130,14 +225,27 @@
           }).join('') + '</tbody></table>'
         : '<div class="placeholder-note" style="margin:0;">Belum ada project yang mengklaim link ini secara manual.</div>';
 
-      var detailRow = '<tr><td colspan="6" style="background:var(--bg-hover); padding:12px 16px;">' + claimsHtml + '</td></tr>';
+      var detailRow = '<tr><td colspan="10" style="background:var(--bg-hover); padding:12px 16px;">' + claimsHtml + '</td></tr>';
       return mainRow + detailRow;
     }).join('');
   }
 
-  function toggleGdvMatchRow(idx) {
-    var link = gdvMatchRows[idx].linkCampaign;
+  function renderGdvMatchPagination(paged) {
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToGdvMatchPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
+    for (var p = 1; p <= paged.totalPages; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToGdvMatchPage(' + p + ')">' + p + '</button>';
+    }
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToGdvMatchPage(' + (paged.page + 1) + ')">Next &gt;</button>';
+    document.getElementById('gdvMatchPageButtons').innerHTML = buttons;
+  }
+
+  function goToGdvMatchPage(page) {
+    gdvMatchPage = page;
+    renderGdvMatching();
+  }
+
+  function toggleGdvMatchRow(link) {
     gdvMatchExpanded[link] = !gdvMatchExpanded[link];
-    renderGdvMatchTable();
+    renderGdvMatching();
   }
 </script>

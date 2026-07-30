@@ -32,17 +32,38 @@ var GdvMatchingService = (function (module) {
   }
 
   /**
-   * Kumpulkan realisasi Tableau per link. Sengaja DIJUMLAH (bukan ambil
-   * satu baris) — kalau di masa depan satu link muncul di kedua kategori
-   * Brand/Not-Brand upload (harusnya tidak, tapi tidak divalidasi di Tahap
-   * 1), jumlahnya tetap benar dan tidak diam-diam kehilangan data.
+   * Kumpulkan realisasi Tableau per link, plus atribut deskriptif sisi
+   * Tableau (Campaigner_Name, Project_Status, Platform_Fee, Source_Category)
+   * yang diminta ditampilkan di tabel GDV Matching. Nominal (Realized_Nominal
+   * & Platform_Fee) sengaja DIJUMLAH (bukan ambil satu baris) — kalau di masa
+   * depan satu link muncul di kedua kategori Brand/Not-Brand upload
+   * (harusnya tidak, tapi tidak divalidasi di Tahap 1), jumlahnya tetap
+   * benar dan tidak diam-diam kehilangan data. Source_Category digabung
+   * (bukan ditimpa) untuk kasus yang sama supaya kelihatan kalau satu link
+   * ternyata muncul di kedua kategori upload.
    */
   function buildRealizedByLink() {
     var realizedByLink = {};
     GdvControllerRepository.findAll().forEach(function (row) {
       var link = String(row.Link_Campaign || '').trim();
       if (!link) return;
-      realizedByLink[link] = (realizedByLink[link] || 0) + (Number(row.Realized_Nominal) || 0);
+      if (!realizedByLink[link]) {
+        realizedByLink[link] = {
+          realizedNominal: 0,
+          platformFee: 0,
+          campaignerName: '',
+          projectStatus: '',
+          sourceCategories: []
+        };
+      }
+      var entry = realizedByLink[link];
+      entry.realizedNominal += Number(row.Realized_Nominal) || 0;
+      entry.platformFee += Number(row.Platform_Fee) || 0;
+      if (!entry.campaignerName) entry.campaignerName = row.Campaigner_Name || '';
+      if (!entry.projectStatus) entry.projectStatus = row.Project_Status || '';
+      if (row.Source_Category && entry.sourceCategories.indexOf(row.Source_Category) === -1) {
+        entry.sourceCategories.push(row.Source_Category);
+      }
     });
     return realizedByLink;
   }
@@ -99,17 +120,21 @@ var GdvMatchingService = (function (module) {
 
     var rows = Object.keys(linkSet).map(function (link) {
       var hasRealized = realizedByLink.hasOwnProperty(link);
-      var realized = realizedByLink[link] || 0;
+      var meta = realizedByLink[link] || { realizedNominal: 0, platformFee: 0, campaignerName: '', projectStatus: '', sourceCategories: [] };
       var claims = claimsByLink[link] || [];
       var totalClaimed = claims.reduce(function (sum, c) { return sum + c.Amount; }, 0);
-      var departmentPortion = hasRealized ? Math.max(0, realized - totalClaimed) : 0;
+      var departmentPortion = hasRealized ? Math.max(0, meta.realizedNominal - totalClaimed) : 0;
       return {
         linkCampaign: link,
-        realizedNominal: realized,
+        campaignerName: meta.campaignerName,
+        realizedNominal: meta.realizedNominal,
         hasRealized: hasRealized,
         totalClaimed: totalClaimed,
         departmentPortion: departmentPortion,
-        status: computeStatus(hasRealized, totalClaimed, realized),
+        projectStatus: meta.projectStatus,
+        platformFee: meta.platformFee,
+        sourceCategory: meta.sourceCategories.join(', '),
+        status: computeStatus(hasRealized, totalClaimed, meta.realizedNominal),
         claims: claims
       };
     });
@@ -120,10 +145,11 @@ var GdvMatchingService = (function (module) {
       acc.totalRealized += r.realizedNominal;
       acc.totalClaimed += r.totalClaimed;
       acc.totalDepartmentPortion += r.departmentPortion;
+      acc.totalPlatformFee += r.platformFee;
       if (r.status === 'BELUM_SINKRON') acc.belumSinkronCount++;
       if (r.status === 'KLAIM_MELEBIHI') acc.klaimMelebihiCount++;
       return acc;
-    }, { totalRealized: 0, totalClaimed: 0, totalDepartmentPortion: 0, belumSinkronCount: 0, klaimMelebihiCount: 0 });
+    }, { totalRealized: 0, totalClaimed: 0, totalDepartmentPortion: 0, totalPlatformFee: 0, belumSinkronCount: 0, klaimMelebihiCount: 0 });
 
     return { rows: rows, summary: summary };
   };
