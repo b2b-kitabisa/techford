@@ -225,6 +225,19 @@ var CostMonitoringService = (function (module) {
   }
 
   /**
+   * Jumlah COR yang SEDANG melebihi anggaran DAN belum "Selesai" (Cost
+   * Monitoring belum ditutup) — dipakai badge sidebar (buildMenuWithBadges,
+   * 50_WebAppRouter.gs). COR yang sudah ditutup tetap boleh berstatus
+   * "Melebihi Anggaran" di tabel (riwayat), tapi TIDAK ikut dihitung di sini
+   * karena tidak butuh perhatian lagi — badge hanya untuk yang masih aktif.
+   */
+  module.countOverBudget = function () {
+    return module.listForMonitoring().rows.filter(function (r) {
+      return r.status && r.status.budgetTag === 'Melebihi Anggaran' && r.status.label !== 'Selesai';
+    }).length;
+  };
+
+  /**
    * Detail 1 COR untuk drawer "Kelola Cost" — item budget (diurutkan
    * Sort_Order) lengkap dengan riwayat realisasi & saldo anggarannya
    * masing-masing, plus ringkasan margin/profit anggaran vs aktual.

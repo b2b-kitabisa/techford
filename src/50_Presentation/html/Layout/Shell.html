@@ -18,12 +18,31 @@
         <div class="brand-subtitle">Kitabisa B2B OS 2026</div>
       </div>
 
-      <nav class="sidebar-nav">
+      <div class="sidebar-search-wrap">
+        <input type="text" id="sidebarSearchInput" class="sidebar-search-input" placeholder="🔍 Cari menu..." oninput="filterSidebarMenu(this.value)">
+        <button type="button" class="sidebar-search-clear" id="sidebarSearchClear" style="display:none;" onclick="clearSidebarSearch()" title="Hapus pencarian">×</button>
+      </div>
+
+      <!-- Grup "Favorit" — dirakit KLIEN (JS, renderFavoriteNavGroup) dari item
+           yang di-pin user (disimpan per-user di localStorage), BUKAN dari
+           NavigationConfig.MENU — supaya struktur menu asli di server tidak
+           perlu tahu apa-apa soal pin/favorit. Disembunyikan default, baru
+           muncul begitu ada minimal 1 item yang di-pin. -->
+      <div class="nav-group nav-group-favorite" data-group="__favorite__" id="navGroupFavorite" style="display:none;">
+        <div class="nav-group-label" onclick="toggleNavGroup(this)">
+          <span>⭐ Favorit</span>
+          <span class="nav-group-chevron">▾</span>
+        </div>
+        <div class="nav-group-items" id="navGroupFavoriteItems"></div>
+      </div>
+      <div class="nav-group-divider" id="navGroupFavoriteDivider" style="display:none;"></div>
+
+      <nav class="sidebar-nav" id="sidebarNav">
         <? for (var g = 0; g < menu.length; g++) { ?>
           <? if (g > 0) { ?><div class="nav-group-divider"></div><? } ?>
           <div class="nav-group" data-group="<?= menu[g].group ?>">
             <div class="nav-group-label" onclick="toggleNavGroup(this)">
-              <span><?= menu[g].group ?></span>
+              <span><?= menu[g].group ?> <span class="nav-group-count">(<?= menu[g].items.length ?>)</span></span>
               <span class="nav-group-chevron">▾</span>
             </div>
             <div class="nav-group-items">
@@ -31,14 +50,23 @@
                    var item = menu[g].items[i];
                    var isActive = item.page === activePage;
                    var classes = 'nav-item' + (isActive ? ' nav-item-active' : '') + (!item.enabled ? ' nav-item-disabled' : '');
+                   var icon = item.icon || '•';
               ?>
                 <? if (item.enabled) { ?>
-                  <a class="<?= classes ?>" data-page="<?= item.page ?>" href="<?= webAppUrl ?>?page=<?= item.page ?>" onclick="return TechfordNav.onSidebarClick(event, '<?= item.page ?>');">
-                    <span><?= item.label ?></span>
+                  <a class="<?= classes ?>" data-page="<?= item.page ?>" data-label="<?= item.label ?>" data-icon="<?= icon ?>"
+                     href="<?= webAppUrl ?>?page=<?= item.page ?>" title="<?= item.label ?>"
+                     onclick="return TechfordNav.onSidebarClick(event, '<?= item.page ?>');">
+                    <span class="nav-item-icon"><?= icon ?></span>
+                    <span class="nav-item-label"><?= item.label ?></span>
                     <? if (item.badge) { ?><span class="nav-badge"><?= item.badge ?></span><? } ?>
+                    <button type="button" class="nav-pin-btn" onclick="event.preventDefault(); event.stopPropagation(); toggleFavoriteNav('<?= item.page ?>');" title="Pin ke Favorit">📌</button>
                   </a>
                 <? } else { ?>
-                  <span class="<?= classes ?>" title="Belum tersedia"><?= item.label ?></span>
+                  <span class="<?= classes ?>" title="Belum tersedia — segera hadir">
+                    <span class="nav-item-icon"><?= icon ?></span>
+                    <span class="nav-item-label"><?= item.label ?></span>
+                    <span class="nav-badge-soon">Segera</span>
+                  </span>
                 <? } ?>
               <? } ?>
             </div>
@@ -47,7 +75,14 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="nav-item nav-item-disabled">🔔 Notification</div>
+        <div class="sidebar-user-card" id="sidebarUserCard" style="display:none;">
+          <div class="sidebar-user-avatar" id="sidebarUserAvatar">U</div>
+          <div class="sidebar-user-text">
+            <div class="sidebar-user-name" id="sidebarUserName">-</div>
+            <div class="sidebar-user-role" id="sidebarUserRole">-</div>
+          </div>
+        </div>
+        <div class="nav-item nav-item-disabled"><span class="nav-item-icon">🔔</span><span class="nav-item-label">Notification</span></div>
       </div>
     </aside>
 
@@ -56,7 +91,7 @@
         <div class="topbar-left">
           <button class="icon-btn" onclick="toggleSidebar()" title="Tampilkan/sembunyikan menu">☰</button>
           <div class="breadcrumb" id="topbarBreadcrumb">
-            <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
+            <? if (breadcrumbGroup) { ?><span class="breadcrumb-muted breadcrumb-link" onclick="focusSidebarGroup('<?= breadcrumbGroup ?>')" title="Tunjukkan grup ini di sidebar"><?= breadcrumbGroup ?></span><span class="breadcrumb-sep">›</span><? } ?>
             <? if (breadcrumbParent) { ?><span class="breadcrumb-muted"><?= breadcrumbParent ?></span><span class="breadcrumb-sep">›</span><? } ?>
             <span class="breadcrumb-current"><?= pageTitle ?></span>
           </div>
@@ -112,6 +147,12 @@
     // supaya redirect juga selalu pakai URL absolut, bukan relatif.
     var TECHFORD_WEB_APP_URL = '<?= webAppUrl ?>';
 
+    // Collapse sidebar SEKARANG jadi rail ikon-saja (~56px, lihat CSS
+    // .sidebar-collapsed .sidebar di Style.html) alih-alih hilang total
+    // seperti sebelumnya — tetap bisa diklik untuk pindah halaman, label
+    // teksnya disembunyikan lewat CSS dan digantikan atribut title="..."
+    // (sudah dipasang di setiap <a>, lihat markup sidebar) sebagai tooltip
+    // native saat kursor diarahkan.
     function toggleSidebar() {
       document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
     }
@@ -138,7 +179,111 @@
           }
         } catch (e) {}
       });
+
+      // Auto-scroll ke grup yang sedang aktif — grup itu dijamin ter-expand
+      // (baris di atas), tapi kalau daftar menu sudah panjang, posisinya
+      // bisa saja berada di luar area sidebar yang terlihat tanpa scroll
+      // manual. block:'nearest' supaya tidak scroll sama sekali kalau
+      // grupnya memang sudah terlihat (menghindari jitter di halaman yang
+      // grup aktifnya ada di paling atas).
+      var activeGroup = document.querySelector('.nav-group .nav-item-active');
+      if (activeGroup) {
+        try { activeGroup.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      }
     })();
+
+    // Klik nama grup di breadcrumb topbar (mis. "Sales Module") -> expand
+    // grup yang sama di sidebar (kalau sedang collapsed) lalu scroll ke
+    // situ — menyatukan breadcrumb & sidebar yang sebelumnya menampilkan
+    // info yang sama tapi berdiri sendiri-sendiri tanpa saling terhubung.
+    function focusSidebarGroup(groupName) {
+      var group = document.querySelector('.nav-group[data-group="' + groupName + '"]');
+      if (!group) return;
+      if (group.classList.contains('collapsed')) {
+        group.classList.remove('collapsed');
+        try { localStorage.setItem(navGroupStorageKey(groupName), '0'); } catch (e) {}
+      }
+      try { group.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+      group.classList.add('nav-group-flash');
+      setTimeout(function () { group.classList.remove('nav-group-flash'); }, 900);
+    }
+
+    // ---- Kotak cari menu — filter item sidebar sambil mengetik ----
+    // Sengaja TIDAK mengubah struktur data menu, cuma toggle display item &
+    // grup yang cocok/tidak cocok. Grup yang punya minimal 1 item cocok
+    // otomatis di-expand sementara (dikembalikan ke state localStorage
+    // semula begitu pencarian dikosongkan) supaya hasil langsung terlihat
+    // tanpa perlu klik expand manual.
+    function filterSidebarMenu(query) {
+      var q = String(query || '').trim().toLowerCase();
+      document.getElementById('sidebarSearchClear').style.display = q ? '' : 'none';
+      var groups = document.querySelectorAll('#sidebarNav .nav-group');
+      groups.forEach(function (group) {
+        var items = group.querySelectorAll('.nav-item, .nav-item-disabled');
+        var anyMatch = false;
+        items.forEach(function (el) {
+          var label = (el.getAttribute('data-label') || el.textContent || '').toLowerCase();
+          var match = !q || label.indexOf(q) !== -1;
+          el.style.display = match ? '' : 'none';
+          if (match) anyMatch = true;
+        });
+        group.style.display = (!q || anyMatch) ? '' : 'none';
+        if (q) {
+          if (anyMatch) group.classList.add('search-force-open');
+        } else {
+          group.classList.remove('search-force-open');
+        }
+      });
+    }
+    function clearSidebarSearch() {
+      var input = document.getElementById('sidebarSearchInput');
+      input.value = '';
+      filterSidebarMenu('');
+      input.focus();
+    }
+
+    // ---- Grup "Favorit" — pin menu yang paling sering dipakai ----
+    // Disimpan di localStorage (per browser/device, bukan per akun — sama
+    // level persistensi dengan status collapse grup di atas). Grup aslinya
+    // di NavigationConfig.MENU TIDAK disentuh sama sekali; ini murni
+    // menyalin (clone) node <a> yang sudah ada ke satu wadah baru di atas.
+    var FAVORITE_STORAGE_KEY = 'techfordFavoriteNav';
+    function getFavoriteNavPages() {
+      try { return JSON.parse(localStorage.getItem(FAVORITE_STORAGE_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function setFavoriteNavPages(pages) {
+      try { localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(pages)); } catch (e) {}
+    }
+    function toggleFavoriteNav(page) {
+      var pages = getFavoriteNavPages();
+      var idx = pages.indexOf(page);
+      if (idx === -1) pages.push(page); else pages.splice(idx, 1);
+      setFavoriteNavPages(pages);
+      renderFavoriteNavGroup();
+    }
+    function renderFavoriteNavGroup() {
+      var pages = getFavoriteNavPages();
+      var wrap = document.getElementById('navGroupFavorite');
+      var divider = document.getElementById('navGroupFavoriteDivider');
+      var itemsHost = document.getElementById('navGroupFavoriteItems');
+      if (!wrap || !itemsHost) return;
+      itemsHost.innerHTML = '';
+      var found = 0;
+      pages.forEach(function (page) {
+        var original = document.querySelector('#sidebarNav .nav-item[data-page="' + page + '"]');
+        if (!original) return;
+        found++;
+        var clone = original.cloneNode(true);
+        clone.classList.toggle('nav-item-active', original.classList.contains('nav-item-active'));
+        var pinBtn = clone.querySelector('.nav-pin-btn');
+        if (pinBtn) pinBtn.title = 'Lepas dari Favorit';
+        clone.setAttribute('onclick', "return TechfordNav.onSidebarClick(event, '" + page + "');");
+        itemsHost.appendChild(clone);
+      });
+      wrap.style.display = found ? '' : 'none';
+      divider.style.display = found ? '' : 'none';
+    }
+    renderFavoriteNavGroup();
 
     // Pengaman terakhir sebelum aksi tulis (save/request/update) benar-benar
     // dikirim ke server — dipanggil dari halaman manapun (Sales Pipeline,
@@ -235,6 +380,11 @@
         document.querySelectorAll('.sidebar-nav .nav-item').forEach(function (a) {
           a.classList.toggle('nav-item-active', a.getAttribute('data-page') === page);
         });
+        // Grup Favorit dirakit dari clone node #sidebarNav (lihat
+        // renderFavoriteNavGroup di atas) — perlu dirakit ulang supaya
+        // highlight halaman aktif ikut tampil di sana juga, bukan cuma di
+        // grup aslinya.
+        if (typeof renderFavoriteNavGroup === 'function') renderFavoriteNavGroup();
       }
 
       // Badge notifikasi (mis. jumlah New Leads) dihitung server-side setiap
@@ -252,7 +402,7 @@
               if (!badgeEl) {
                 badgeEl = document.createElement('span');
                 badgeEl.className = 'nav-badge';
-                link.appendChild(badgeEl);
+                link.insertBefore(badgeEl, link.querySelector('.nav-pin-btn'));
               }
               badgeEl.innerText = item.badge;
             } else if (badgeEl) {
@@ -260,6 +410,7 @@
             }
           });
         });
+        if (typeof renderFavoriteNavGroup === 'function') renderFavoriteNavGroup();
       }
 
       function applyFragment(page, params, res) {
@@ -1120,6 +1271,21 @@
         var nameEl = document.getElementById('currentUserName');
         if (avatar) avatar.innerText = (user.Name || 'U').charAt(0).toUpperCase();
         if (nameEl) nameEl.innerText = user.Name + (user.Role ? ' (' + user.Role + ')' : '');
+
+        // Kartu identitas singkat di footer sidebar — TIDAK menggantikan
+        // 🔔 Notification yang sudah ada, cuma ditambahkan di atasnya.
+        // Berguna terutama di akun bersama/shared browser supaya jelas
+        // sedang login sebagai siapa tanpa harus buka menu user di topbar.
+        var card = document.getElementById('sidebarUserCard');
+        var sbAvatar = document.getElementById('sidebarUserAvatar');
+        var sbName = document.getElementById('sidebarUserName');
+        var sbRole = document.getElementById('sidebarUserRole');
+        if (card && sbAvatar && sbName && sbRole) {
+          sbAvatar.innerText = (user.Name || 'U').charAt(0).toUpperCase();
+          sbName.innerText = user.Name || '-';
+          sbRole.innerText = user.Role || '-';
+          card.style.display = '';
+        }
       }
 
       function checkLogin() {

@@ -95,12 +95,48 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: width 0.2s ease, opacity 0.15s ease;
+    transition: width 0.2s ease;
   }
-  .app-shell.sidebar-collapsed .sidebar { width: 0; opacity: 0; border-right: none; }
+  /* Collapse SEKARANG jadi rail ikon-saja (~56px), BUKAN hilang total
+     seperti sebelumnya — tetap bisa diklik untuk pindah halaman walau
+     sidebar "diciutkan". Label teks, kotak cari, grup Favorit, dan kartu
+     identitas user disembunyikan (butuh lebar penuh), ikon + badge tetap
+     tampil, dan title="..." pada tiap <a> (lihat Shell.html) jadi tooltip
+     native pengganti label saat kursor diarahkan. */
+  .app-shell.sidebar-collapsed .sidebar { width: 56px; }
+  .app-shell.sidebar-collapsed .sidebar-brand,
+  .app-shell.sidebar-collapsed .sidebar-search-wrap,
+  .app-shell.sidebar-collapsed .nav-group-favorite,
+  .app-shell.sidebar-collapsed #navGroupFavoriteDivider,
+  .app-shell.sidebar-collapsed .nav-item-label,
+  .app-shell.sidebar-collapsed .nav-group-count,
+  .app-shell.sidebar-collapsed .nav-badge-soon,
+  .app-shell.sidebar-collapsed .nav-pin-btn,
+  .app-shell.sidebar-collapsed .sidebar-user-card,
+  .app-shell.sidebar-collapsed .nav-group-chevron,
+  .app-shell.sidebar-collapsed .nav-group-label span:first-child { display: none; }
+  .app-shell.sidebar-collapsed .nav-group-label { justify-content: center; cursor: default; }
+  .app-shell.sidebar-collapsed .nav-group-items { max-height: none !important; }
+  .app-shell.sidebar-collapsed .nav-item,
+  .app-shell.sidebar-collapsed .nav-item-disabled { justify-content: center; padding: 8px 4px; }
+  .app-shell.sidebar-collapsed .nav-badge { position: absolute; top: 2px; right: 2px; }
+  .app-shell.sidebar-collapsed .nav-item { position: relative; }
   .sidebar-brand { padding: 20px 16px; border-bottom: 1px solid var(--border-soft); }
   .brand-title { font-size: 22px; font-weight: 700; color: var(--color-mineshaft); }
   .brand-subtitle { font-size: 12px; color: var(--text-muted); }
+
+  /* ---- Kotak cari menu (filterSidebarMenu, Shell.html) ---- */
+  .sidebar-search-wrap { position: relative; padding: 10px 16px 6px; }
+  .sidebar-search-input {
+    width: 100%; padding: 8px 28px 8px 10px; border: 1px solid var(--border-soft); border-radius: 6px;
+    font-size: 12.5px; font-family: inherit; background: var(--bg-tint);
+  }
+  .sidebar-search-input:focus { outline: none; border-color: var(--color-cerulean); background: var(--color-white); }
+  .sidebar-search-clear {
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%); border: none; background: none;
+    color: var(--text-faint); font-size: 15px; cursor: pointer; padding: 2px 4px; line-height: 1;
+  }
+  .sidebar-search-clear:hover { color: var(--color-mineshaft); }
 
   .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
   /* Label modul (grup menu) sengaja dibuat lebih besar & tegas daripada
@@ -112,6 +148,7 @@
     margin: 12px 16px 6px; padding: 0;
     display: flex; align-items: center; justify-content: space-between; cursor: pointer;
   }
+  .nav-group-count { font-size: 11px; font-weight: 700; color: var(--text-faint); }
   .nav-group-divider { height: 1px; background: var(--border-softer); margin: 4px 16px 0; }
   /* Klik label modul buat collapse/expand grup-nya (lihat toggleNavGroup di
      Shell.html) — supaya sidebar tidak penuh kalau modulnya banyak. Status
@@ -127,10 +164,17 @@
     transition: max-height 0.22s ease;
   }
   .nav-group.collapsed .nav-group-items { max-height: 0; }
+  /* Saat kotak cari aktif dan grup ini punya item yang cocok, paksa expand
+     terlepas dari status collapsed tersimpan (dikembalikan otomatis begitu
+     pencarian dikosongkan — lihat filterSidebarMenu). */
+  .nav-group.collapsed.search-force-open .nav-group-items { max-height: 800px; }
+  /* Highlight sesaat saat grup di-scroll-ke dari klik breadcrumb
+     (focusSidebarGroup, Shell.html) — supaya user tahu grup MANA yang
+     dimaksud, bukan cuma "sidebar di-scroll entah kemana". */
+  .nav-group-flash .nav-group-label { color: var(--color-cerulean); }
   .nav-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
     padding: 8px 16px;
     font-size: 14px;
@@ -140,8 +184,28 @@
   }
   .nav-item:hover { background: var(--bg-hover); }
   .nav-item-active { background: var(--color-mineshaft); color: var(--color-white); font-weight: 700; }
-  .nav-item-disabled { color: var(--bg-disabled); cursor: not-allowed; }
+  .nav-item-disabled { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 14px; color: var(--bg-disabled); cursor: not-allowed; }
   .nav-item-disabled:hover { background: transparent; }
+  .nav-item-icon { flex-shrink: 0; font-size: 14px; width: 18px; text-align: center; }
+  .nav-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Tag "Segera" pada menu enabled:false (NavigationConfig.MENU) — dulu
+     item non-aktif cuma abu-abu tanpa keterangan, mudah dikira menu yang
+     rusak/lupa dihapus alih-alih roadmap yang disengaja. */
+  .nav-badge-soon {
+    font-size: 9px; font-weight: 800; color: var(--text-faint); background: var(--bg-hover);
+    border-radius: 999px; padding: 1px 7px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+
+  /* Tombol pin ke grup Favorit (toggleFavoriteNav, Shell.html) — cuma
+     terlihat saat baris di-hover, supaya sidebar tidak penuh ikon pin
+     kalau tidak sedang dibutuhkan. */
+  .nav-pin-btn {
+    flex-shrink: 0; border: none; background: none; cursor: pointer; font-size: 12px; opacity: 0;
+    padding: 2px 4px; border-radius: 4px; line-height: 1;
+  }
+  .nav-item:hover .nav-pin-btn { opacity: 0.55; }
+  .nav-pin-btn:hover { opacity: 1 !important; background: rgba(255,255,255,0.25); }
 
   /* Badge notifikasi jumlah (mirip unread count inbox) di sidebar — misal
      jumlah New Leads / New Pipeline yang belum ditindaklanjuti. */
@@ -151,7 +215,20 @@
   }
   .nav-item-active .nav-badge { background: var(--color-white); color: var(--color-mineshaft); }
 
+  /* ---- Grup "Favorit" (renderFavoriteNavGroup, Shell.html) ---- */
+  .nav-group-favorite .nav-group-items { padding-bottom: 2px; }
+
   .sidebar-footer { border-top: 1px solid var(--border-soft); padding: 8px 0; }
+  /* Kartu identitas user singkat — DITAMBAHKAN di atas 🔔 Notification yang
+     sudah ada, bukan menggantikannya (lihat applyUserToChrome, Shell.html). */
+  .sidebar-user-card { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; }
+  .sidebar-user-avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--color-cerulean); color: var(--color-white);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;
+  }
+  .sidebar-user-text { min-width: 0; overflow: hidden; }
+  .sidebar-user-name { font-size: 12.5px; font-weight: 700; color: var(--color-mineshaft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-user-role { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---- Topbar ---- */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -166,6 +243,11 @@
   .topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .breadcrumb { font-size: 20px; white-space: nowrap; }
   .breadcrumb-muted { color: var(--text-faint); font-weight: normal; }
+  /* Klik nama grup di breadcrumb -> expand + scroll ke grup yang sama di
+     sidebar (focusSidebarGroup, Shell.html) — menyatukan breadcrumb & sidebar
+     yang sebelumnya menampilkan info sama tapi berdiri sendiri-sendiri. */
+  .breadcrumb-link { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: var(--border-soft); }
+  .breadcrumb-link:hover { color: var(--color-cerulean); }
   .breadcrumb-sep { color: var(--text-faint); margin: 0 8px; }
   .breadcrumb-current { font-weight: 700; }
   .topbar-right { display: flex; align-items: center; gap: 14px; }
@@ -1106,8 +1188,8 @@
   .pl-sc-k { font-size: 9.5px; font-weight: 800; color: var(--text-faint); letter-spacing: 0.05em; }
   .pl-sc-v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 800; }
   /* CATATAN: .pl-sc-note DIHAPUS — kalimat penjelas score card sekarang jadi
-     tooltip ikon "?" (.info-tip-wrap, komponen tooltip terpadu) menempel di
-     pojok kanan atas score row, bukan kalimat statis yang selalu terlihat. */
+     ikon "?" di topbar (helpText, sama pola dengan Lead Capturing), bukan
+     kalimat statis yang selalu terlihat di atas tabel. */
 
   /* ---- Bucket score card yang bisa diklik untuk memfilter Stage ---- */
   button.pipeline-bucket-item {

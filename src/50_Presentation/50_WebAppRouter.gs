@@ -37,7 +37,9 @@ var ROUTES = {
   'sales-pipeline': {
     content: '50_Presentation/html/Project/SalesPipelineContent',
     title: 'Sales Pipeline 💰',
-    headerActions: '<button class="btn-sync" onclick="openAddPipeline()">➕ ADD PIPELINE</button>'
+    headerActions: '<button class="btn-sync" onclick="openAddPipeline()">➕ ADD PIPELINE</button>',
+    helpText: 'Angka di score card di atas dihitung dari <strong>seluruh project</strong> (kecuali draft) — ' +
+      'sengaja tidak mengikuti filter yang sedang aktif di tabel, supaya tetap jadi acuan tetap.'
   },
   'document-pipeline': {
     content: '50_Presentation/html/Document/DocumentPipelineContent',
@@ -422,7 +424,8 @@ function buildMenuWithBadges() {
   var badgeCounts = {
     'lead-capturing': LeadService.countNewLeads(),
     'sales-pipeline': ProjectService.countDraftProjects(),
-    'document-pipeline': DocumentService.countNewRequests()
+    'document-pipeline': DocumentService.countNewRequests(),
+    'cost-monitoring': CostMonitoringService.countOverBudget()
   };
 
   menu.forEach(function (group) {
