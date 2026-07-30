@@ -1,50 +1,57 @@
 <div class="pipeline-score-row">
   <div class="pipeline-score-card pipeline-score-achieved">
-    <div class="pipeline-score-title">🏆 Deal Value
-      <span class="help-tooltip-wrap">
-        <span class="score-tooltip-icon">i</span>
-        <div class="score-tooltip" id="pipelineAchievedTooltip">Memuat...</div>
-      </span>
-    </div>
+    <div class="pipeline-score-title">🏆 Deal Value</div>
     <div class="pipeline-score-desc">Deal Value dari project status Won</div>
-    <div class="pipeline-score-value" id="pipelineAchievedValue">GDV : Rp0 | REV : Rp0</div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">GDV</span><span class="pl-sc-v" id="pipelineAchievedGdv">Rp0</span></div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">REV</span><span class="pl-sc-v" id="pipelineAchievedRev">Rp0</span></div>
   </div>
   <div class="pipeline-score-card pipeline-score-forecast">
-    <div class="pipeline-score-title">⏳ Forecast
-      <span class="help-tooltip-wrap">
-        <span class="score-tooltip-icon">i</span>
-        <div class="score-tooltip" id="pipelineForecastTooltip">Memuat...</div>
-      </span>
-    </div>
+    <div class="pipeline-score-title">⏳ Forecast</div>
     <div class="pipeline-score-desc">Forecast GDV &amp; Revenue in Pipeline (Pros + Nego)</div>
-    <div class="pipeline-score-value" id="pipelineForecastValue">GDV : Rp0 | REV : Rp0</div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">GDV</span><span class="pl-sc-v" id="pipelineForecastGdv">Rp0</span></div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">REV</span><span class="pl-sc-v" id="pipelineForecastRev">Rp0</span></div>
   </div>
   <div class="pipeline-bucket-card">
-    <div class="pipeline-bucket-item pipeline-bucket-pros">
+    <button type="button" class="pipeline-bucket-item pipeline-bucket-pros" id="pipelineBucketBtnPros" onclick="toggleBucketFilter('PROS')" title="Klik untuk memfilter tabel ke Prospect">
       <div class="pipeline-bucket-label">PROS</div>
       <div class="pipeline-bucket-value" id="pipelineBucketPros">0</div>
-    </div>
-    <div class="pipeline-bucket-item pipeline-bucket-nego">
+      <div class="pipeline-bucket-sub" id="pipelineBucketSubPros">Rp0</div>
+    </button>
+    <button type="button" class="pipeline-bucket-item pipeline-bucket-nego" id="pipelineBucketBtnNego" onclick="toggleBucketFilter('NEGO')" title="Klik untuk memfilter tabel ke Negotiation">
       <div class="pipeline-bucket-label">NEGO</div>
       <div class="pipeline-bucket-value" id="pipelineBucketNego">0</div>
-    </div>
-    <div class="pipeline-bucket-item pipeline-bucket-won">
+      <div class="pipeline-bucket-sub" id="pipelineBucketSubNego">Rp0</div>
+    </button>
+    <button type="button" class="pipeline-bucket-item pipeline-bucket-won" id="pipelineBucketBtnWon" onclick="toggleBucketFilter('WON')" title="Klik untuk memfilter tabel ke Won">
       <div class="pipeline-bucket-label">WON</div>
       <div class="pipeline-bucket-value" id="pipelineBucketWon">0</div>
-    </div>
-    <div class="pipeline-bucket-item pipeline-bucket-loss">
+      <div class="pipeline-bucket-sub" id="pipelineBucketSubWon">Rp0</div>
+    </button>
+    <button type="button" class="pipeline-bucket-item pipeline-bucket-loss" id="pipelineBucketBtnLoss" onclick="toggleBucketFilter('LOSS')" title="Klik untuk memfilter tabel ke Loss">
       <div class="pipeline-bucket-label">LOSS</div>
       <div class="pipeline-bucket-value" id="pipelineBucketLoss">0</div>
-    </div>
+      <div class="pipeline-bucket-sub" id="pipelineBucketSubLoss">Rp0</div>
+    </button>
   </div>
 </div>
 
+<div class="pl-sc-note">ℹ️ Angka di atas dihitung dari <b>seluruh project</b> (kecuali draft) — sengaja tidak mengikuti filter, supaya tetap jadi acuan tetap.</div>
+
 <div class="filter-bar">
-  <div class="search-field"><span class="search-ic">⌕</span><input id="pipelineSearch" placeholder="Search Entity Name, Project ID, Brand Name...." oninput="onPipelineFilterChange()"></div>
+  <div class="search-field" id="pipelineSearchField">
+    <span class="search-ic">⌕</span>
+    <input id="pipelineSearch" placeholder="Cari project, client, consultant, service..." oninput="onPipelineFilterChange()">
+    <button type="button" class="search-clear" onclick="clearPipelineSearch()" title="Kosongkan pencarian">&times;</button>
+  </div>
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="pipelineDateFilterBtn" onclick="toggleDateFilterDropdown()">Date ▾</button>
     <div class="status-filter-dropdown" id="pipelineDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
+      <div class="date-presets">
+        <button type="button" class="date-preset-btn" onclick="applyDatePreset('month')">Bulan ini</button>
+        <button type="button" class="date-preset-btn" onclick="applyDatePreset('quarter')">Kuartal ini</button>
+        <button type="button" class="date-preset-btn" onclick="applyDatePreset('year')">Tahun ini</button>
+      </div>
       <label style="display:block; margin-bottom:8px;">Dari
         <input type="date" id="pipelineDateFrom" style="width:100%; margin-top:4px;" oninput="onPipelineFilterChange()">
       </label>
@@ -73,9 +80,11 @@
     <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
   </label>
 
-  <button class="filter-reset" onclick="resetPipelineFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="pipelineResetBtn" onclick="resetPipelineFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="pipelineRefreshBtn" onclick="refreshAllPipelineData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
 </div>
+
+<div class="filter-chips" id="pipelineFilterChips" style="display:none;"></div>
 
 <div id="pipelineTableError" class="error"></div>
 
@@ -83,10 +92,12 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th>Client Info</th>
-        <th>Project Info</th>
-        <th>Owner &amp; Stage</th>
-        <th>Value</th>
+        <th class="sortable" onclick="setPipelineSort('stage')">Stage &amp; Client <span class="sort-icon" data-pl-sort="stage">⇕</span></th>
+        <th class="sortable" onclick="setPipelineSort('project')">Project <span class="sort-icon" data-pl-sort="project">⇕</span></th>
+        <th>Service</th>
+        <th class="sortable" onclick="setPipelineSort('consultant')">Owner <span class="sort-icon" data-pl-sort="consultant">⇕</span></th>
+        <th class="sortable num" onclick="setPipelineSort('value')">Value <span class="sort-icon" data-pl-sort="value">⇕</span></th>
+        <th class="sortable" onclick="setPipelineSort('created')">Dibuat <span class="sort-icon" data-pl-sort="created">⇕</span></th>
         <th>Action</th>
       </tr>
     </thead>
@@ -96,7 +107,8 @@
 
 <div class="pagination-bar">
   <div>
-    Show
+    <span class="pl-count" id="pipelineRowCount"></span>
+    &nbsp;·&nbsp; Show
     <select id="pipelinePageSize" onchange="onPipelineFilterChange()">
       <option value="10">10</option>
       <option value="25">25</option>
@@ -526,6 +538,24 @@
   // Tab skema aktif di popup Input GDV ('csr' | 'retainer' | 'ads').
   var gdvActiveTab = null;
 
+  // Urutan tabel. Sebelumnya dipaksa Created_Date terbaru tanpa bisa diubah;
+  // sekarang semua header utama bisa diklik, dengan default yang sama seperti
+  // dulu supaya tampilan awal tidak berubah bagi user yang sudah terbiasa.
+  var pipelineSort = { field: 'created', dir: 'desc' };
+
+  // Singkatan Service untuk kolom tabel — mengikuti SERVICE_TAXONOMY di
+  // Config.gs. Kolom tabel tidak boleh melebar tanpa batas saat satu project
+  // punya banyak service, jadi semuanya disingkat; nama panjang & category-nya
+  // tetap terbaca lewat tooltip di tiap chip.
+  var SERVICE_ABBR = {
+    'CSR': { ab: 'CSR', cls: 'svc-csr' },
+    'Sustainability Services': { ab: 'SS', cls: 'svc-other' },
+    'Event': { ab: 'EVNT', cls: 'svc-other' },
+    'Ads Sponsorship': { ab: 'ADS', cls: 'svc-ads' },
+    'Placement & Production': { ab: 'P&P', cls: 'svc-other' }
+  };
+  var SERVICE_CHIP_VISIBLE = 2; // sisanya diringkas jadi "+N"
+
   // ---- Bootstrap dengan retry otomatis (lihat pola yang sama di modul lain) ----
   // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allProjects.length`
   // — begitu fetchProjects berhasil, retry berhenti walau salah satu dari 6
@@ -809,12 +839,15 @@
   function renderPipelineScoreCards() {
     var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
     var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
+    var bucketValues = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
 
     // Draft (Is_Draft) belum benar-benar "di pipeline" — belum ada nama,
     // service, dsb — jadi tidak ikut dihitung score card.
     allProjects.filter(function (p) { return !p.Is_Draft; }).forEach(function (p) {
       var bucket = taxonomy.stageBucket[p.Stage] || 'PROS';
       buckets[bucket] = (buckets[bucket] || 0) + 1;
+      bucketValues[bucket] = (bucketValues[bucket] || 0) +
+        (Number(p.Total_GDV) || 0) + (Number(p.Total_Service_Revenue) || 0);
       if (bucket === 'WON') {
         achievedGdv += Number(p.Total_GDV) || 0;
         achievedRev += Number(p.Total_Service_Revenue) || 0;
@@ -824,14 +857,68 @@
       }
     });
 
-    document.getElementById('pipelineAchievedValue').innerText = 'GDV : ' + formatCompactRupiah(achievedGdv) + ' | REV : ' + formatCompactRupiah(achievedRev);
-    document.getElementById('pipelineForecastValue').innerText = 'GDV : ' + formatCompactRupiah(forecastGdv) + ' | REV : ' + formatCompactRupiah(forecastRev);
-    document.getElementById('pipelineAchievedTooltip').innerHTML = 'GDV: ' + formatRupiah(achievedGdv) + '<br>REV: ' + formatRupiah(achievedRev);
-    document.getElementById('pipelineForecastTooltip').innerHTML = 'GDV: ' + formatRupiah(forecastGdv) + '<br>REV: ' + formatRupiah(forecastRev);
-    document.getElementById('pipelineBucketPros').innerText = buckets.PROS;
-    document.getElementById('pipelineBucketNego').innerText = buckets.NEGO;
-    document.getElementById('pipelineBucketWon').innerText = buckets.WON;
-    document.getElementById('pipelineBucketLoss').innerText = buckets.LOSS;
+    // Angka PENUH ditampilkan langsung (dulu dipadatkan jadi "Rp2.0B" dan
+    // angka sebenarnya hanya bisa dilihat lewat hover ikon "i" — informasi
+    // yang paling dicari justru paling sulit dijangkau). Ikon tooltip-nya
+    // dihapus dari markup karena tidak ada lagi yang perlu disembunyikan.
+    document.getElementById('pipelineAchievedGdv').innerText = formatRupiah(achievedGdv);
+    document.getElementById('pipelineAchievedRev').innerText = formatRupiah(achievedRev);
+    document.getElementById('pipelineForecastGdv').innerText = formatRupiah(forecastGdv);
+    document.getElementById('pipelineForecastRev').innerText = formatRupiah(forecastRev);
+
+    var totalCount = buckets.PROS + buckets.NEGO + buckets.WON + buckets.LOSS;
+    ['PROS', 'NEGO', 'WON', 'LOSS'].forEach(function (key) {
+      var suffix = key.charAt(0) + key.slice(1).toLowerCase(); // PROS -> Pros
+      var pct = totalCount ? Math.round((buckets[key] / totalCount) * 100) : 0;
+      // Pill tetap berisi ANGKA SAJA — persentase & nilai ditaruh di baris
+      // bawahnya, bukan ikut masuk ke dalam pill (pill-nya sempit dan sudah
+      // berwarna, menjejalkan dua angka ke dalamnya membuat keduanya sulit
+      // dibaca dan "1" + "25%" bisa terbaca sebagai "125%").
+      document.getElementById('pipelineBucket' + suffix).innerText = buckets[key];
+      // Nilai per bucket (GDV+REV) — dulu tidak pernah dihitung sama sekali,
+      // termasuk untuk LOSS, padahal "berapa nilai yang hilang" itu angka
+      // yang sering ditanya.
+      document.getElementById('pipelineBucketSub' + suffix).innerHTML =
+        '<span class="pipeline-bucket-pct">' + pct + '%</span> · ' + escHtml(formatCompactRupiah(bucketValues[key]));
+    });
+
+    updateBucketActiveState();
+  }
+
+  /**
+   * Bucket score card mana yang sedang "menyala" — diturunkan dari isi filter
+   * Stage, BUKAN state terpisah. Dengan begitu chip filter, tombol Reset, dan
+   * dropdown Stage otomatis konsisten tanpa perlu disinkronkan manual.
+   */
+  function stagesForBucket(bucketKey) {
+    return (taxonomy.stages || []).filter(function (stage) {
+      return (taxonomy.stageBucket[stage] || 'PROS') === bucketKey;
+    });
+  }
+
+  function isBucketActive(bucketKey) {
+    var want = stagesForBucket(bucketKey);
+    if (!want.length || want.length !== pipelineStageFilterValues.length) return false;
+    return want.every(function (s) { return pipelineStageFilterValues.indexOf(s) !== -1; });
+  }
+
+  function updateBucketActiveState() {
+    ['PROS', 'NEGO', 'WON', 'LOSS'].forEach(function (key) {
+      var suffix = key.charAt(0) + key.slice(1).toLowerCase();
+      var btn = document.getElementById('pipelineBucketBtn' + suffix);
+      if (btn) btn.classList.toggle('bucket-active', isBucketActive(key));
+    });
+  }
+
+  /**
+   * Klik bucket = set filter Stage ke stage milik bucket itu (klik lagi untuk
+   * melepas). Menghemat langkah "lihat angka → buka dropdown Stage → centang →
+   * tutup" jadi satu klik, karena isi bucket memang persis kategori filternya.
+   */
+  function toggleBucketFilter(bucketKey) {
+    pipelineStageFilterValues = isBucketActive(bucketKey) ? [] : stagesForBucket(bucketKey);
+    renderStageFilterDropdown();
+    onPipelineFilterChange();
   }
 
   // ---- Filter, sort, paginate ----
@@ -846,11 +933,21 @@
 
     return allProjects.filter(function (p) {
       var client = getClientById(p.Client_ID) || {};
+      // Consultant & Service ikut disapu pencarian — dulu tidak, sehingga
+      // mengetik nama consultant atau "CSR" tidak menghasilkan apa pun walau
+      // datanya jelas ada. Singkatan service (CSR/SS/EVNT/ADS/P&P) juga
+      // dicocokkan supaya apa yang terlihat di kolom Service bisa dicari.
+      var serviceHaystack = (p.Services || []).map(function (s) {
+        var def = SERVICE_ABBR[s];
+        return s + ' ' + (def ? def.ab : '');
+      }).join(' ');
       var matchesSearch = !search ||
         String(p.Project_ID || '').toLowerCase().indexOf(search) !== -1 ||
         String(p.Project_Name || '').toLowerCase().indexOf(search) !== -1 ||
         String(client.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
-        String(client.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
+        String(client.Entity_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(p.Consultant || '').toLowerCase().indexOf(search) !== -1 ||
+        serviceHaystack.toLowerCase().indexOf(search) !== -1;
 
       var createdTime = new Date(p.Created_Date).getTime();
       var matchesFrom = !dateFrom || createdTime >= new Date(dateFrom).getTime();
@@ -860,9 +957,79 @@
       var matchesRetainer = !retainerOnly || !!p.Is_Retainer;
 
       return matchesSearch && matchesFrom && matchesTo && matchesConsultant && matchesStage && matchesRetainer;
-    }).sort(function (a, b) {
-      return new Date(b.Created_Date).getTime() - new Date(a.Created_Date).getTime();
-    });
+    }).sort(comparePipelineRows);
+  }
+
+  /**
+   * Pembanding untuk sorting tabel. Default-nya tetap Created_Date terbaru
+   * (sama seperti perilaku lama yang dipaksa), tapi sekarang bisa diganti
+   * lewat klik header.
+   *
+   * Draft SELALU didorong ke bawah apa pun kolom yang di-sort — datanya belum
+   * lengkap (tanpa nama/service/nilai), jadi kalau ikut diurutkan normal ia
+   * akan menumpuk di posisi teratas untuk hampir semua kolom dan menutupi
+   * project sebenarnya.
+   */
+  function comparePipelineRows(a, b) {
+    if (!!a.Is_Draft !== !!b.Is_Draft) return a.Is_Draft ? 1 : -1;
+
+    var dir = pipelineSort.dir === 'asc' ? 1 : -1;
+    var va, vb;
+
+    switch (pipelineSort.field) {
+      case 'value':
+        va = (Number(a.Total_GDV) || 0) + (Number(a.Total_Service_Revenue) || 0);
+        vb = (Number(b.Total_GDV) || 0) + (Number(b.Total_Service_Revenue) || 0);
+        break;
+      case 'created':
+        va = new Date(a.Created_Date).getTime() || 0;
+        vb = new Date(b.Created_Date).getTime() || 0;
+        break;
+      case 'stage':
+        // Diurutkan mengikuti urutan funnel (Prospect → Negotiation → Won →
+        // Loss), bukan alfabet — alfabet akan menaruh Loss sebelum Negotiation
+        // yang tidak berarti apa pun bagi user.
+        va = (taxonomy.stages || []).indexOf(a.Stage);
+        vb = (taxonomy.stages || []).indexOf(b.Stage);
+        break;
+      case 'consultant':
+        va = String(a.Consultant || '').toLowerCase();
+        vb = String(b.Consultant || '').toLowerCase();
+        break;
+      case 'project':
+        va = String(a.Project_ID || '').toLowerCase();
+        vb = String(b.Project_ID || '').toLowerCase();
+        break;
+      default:
+        va = 0; vb = 0;
+    }
+
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  }
+
+  function setPipelineSort(field) {
+    if (pipelineSort.field === field) {
+      pipelineSort.dir = pipelineSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      pipelineSort.field = field;
+      // Kolom angka & tanggal lebih berguna dimulai dari yang terbesar/terbaru;
+      // kolom teks lebih wajar dimulai A→Z.
+      pipelineSort.dir = (field === 'value' || field === 'created') ? 'desc' : 'asc';
+    }
+    pipelinePage = 1;
+    renderPipeline();
+  }
+
+  function updatePipelineSortIcons() {
+    var icons = document.querySelectorAll('[data-pl-sort]');
+    for (var i = 0; i < icons.length; i++) {
+      var el = icons[i];
+      el.innerText = el.getAttribute('data-pl-sort') === pipelineSort.field
+        ? (pipelineSort.dir === 'asc' ? '↑' : '↓')
+        : '⇕';
+    }
   }
 
   function onPipelineFilterChange() {
@@ -882,6 +1049,118 @@
     renderPipeline();
   }
 
+  // ================= Status filter yang terlihat =================
+  // Sebelumnya tidak ada cara mengetahui filter apa yang sedang aktif selain
+  // membuka satu-satu dropdown-nya — penyebab paling umum orang bingung "kok
+  // datanya kurang". Sekarang: tombol filter berubah warna + menyebut isinya,
+  // ada barisan chip yang bisa dilepas satu-satu, dan tombol Reset menyebut
+  // jumlahnya.
+
+  /** @returns {Array<{key:string,label:string}>} filter yang sedang aktif. */
+  function getActivePipelineFilters() {
+    var list = [];
+    var search = document.getElementById('pipelineSearch').value.trim();
+    var dateFrom = document.getElementById('pipelineDateFrom').value;
+    var dateTo = document.getElementById('pipelineDateTo').value;
+    var consultant = document.getElementById('pipelineConsultantFilter').value;
+    var retainerOnly = document.getElementById('pipelineRetainerFilter').checked;
+
+    if (search) list.push({ key: 'search', label: 'Cari: "' + search + '"' });
+    if (dateFrom || dateTo) {
+      list.push({
+        key: 'date',
+        label: (dateFrom ? formatDate(dateFrom) : 'awal') + ' – ' + (dateTo ? formatDate(dateTo) : 'sekarang')
+      });
+    }
+    if (consultant) list.push({ key: 'consultant', label: 'Consultant: ' + consultant });
+    if (pipelineStageFilterValues.length) {
+      list.push({ key: 'stage', label: 'Stage: ' + pipelineStageFilterValues.join(', ') });
+    }
+    if (retainerOnly) list.push({ key: 'retainer', label: 'Retainer saja' });
+    return list;
+  }
+
+  function removePipelineFilter(key) {
+    if (key === 'search') document.getElementById('pipelineSearch').value = '';
+    if (key === 'date') {
+      document.getElementById('pipelineDateFrom').value = '';
+      document.getElementById('pipelineDateTo').value = '';
+    }
+    if (key === 'consultant') document.getElementById('pipelineConsultantFilter').value = '';
+    if (key === 'retainer') document.getElementById('pipelineRetainerFilter').checked = false;
+    if (key === 'stage') {
+      pipelineStageFilterValues = [];
+      renderStageFilterDropdown();
+    }
+    onPipelineFilterChange();
+  }
+
+  function renderPipelineFilterChips(filters) {
+    var host = document.getElementById('pipelineFilterChips');
+    if (!filters.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    host.innerHTML = '<span class="filter-chips-label">Filter aktif:</span>' +
+      filters.map(function (f) {
+        return '<span class="filter-chip">' + escHtml(f.label) +
+          '<button type="button" onclick="removePipelineFilter(\'' + f.key + '\')" title="Hapus filter ini">&times;</button></span>';
+      }).join('');
+  }
+
+  /** Sinkronkan tampilan search box, tombol Date, dan tombol Reset. */
+  function updatePipelineFilterChrome(filters) {
+    var searchInput = document.getElementById('pipelineSearch');
+    document.getElementById('pipelineSearchField')
+      .classList.toggle('has-text', !!searchInput.value.trim());
+
+    // Tombol Date ikut menyebut rentangnya (dulu selalu berbunyi "Date ▾"
+    // baik saat kosong maupun saat menyaring). Tombol Stage sudah punya pola
+    // ini sejak awal — lihat updateStageFilterButtonLabel().
+    var dateFilter = filters.filter(function (f) { return f.key === 'date'; })[0];
+    var dateBtn = document.getElementById('pipelineDateFilterBtn');
+    dateBtn.innerText = (dateFilter ? dateFilter.label : 'Date') + ' ▾';
+    dateBtn.classList.toggle('has-value', !!dateFilter);
+
+    var resetBtn = document.getElementById('pipelineResetBtn');
+    resetBtn.disabled = filters.length === 0;
+    resetBtn.classList.toggle('has-active', filters.length > 0);
+    resetBtn.innerText = filters.length ? '↺ Reset Filter (' + filters.length + ')' : '↺ Reset Filter';
+  }
+
+  function clearPipelineSearch() {
+    document.getElementById('pipelineSearch').value = '';
+    onPipelineFilterChange();
+    document.getElementById('pipelineSearch').focus();
+  }
+
+  /**
+   * Preset rentang tanggal — Bulan/Kuartal/Tahun ini adalah rentang yang
+   * hampir selalu dipakai untuk laporan, dan mengisinya manual berarti
+   * mengetik dua tanggal setiap kali.
+   */
+  function applyDatePreset(kind) {
+    var now = new Date();
+    var start;
+    if (kind === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (kind === 'quarter') {
+      start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+    } else {
+      start = new Date(now.getFullYear(), 0, 1);
+    }
+    document.getElementById('pipelineDateFrom').value = toDateInputValue(start);
+    document.getElementById('pipelineDateTo').value = toDateInputValue(now);
+    onPipelineFilterChange();
+  }
+
+  // <input type="date"> hanya menerima YYYY-MM-DD dalam waktu LOKAL —
+  // toISOString() akan menggeser tanggal untuk zona waktu Indonesia (UTC+7)
+  // dan bisa memilih tanggal 1 hari lebih awal.
+  function toDateInputValue(d) {
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m) + '-' + (day.length < 2 ? '0' + day : day);
+  }
+
   function paginateProjects(list) {
     var pageSize = Number(document.getElementById('pipelinePageSize').value);
     var totalPages = Math.max(1, Math.ceil(list.length / pageSize));
@@ -893,10 +1172,17 @@
   function renderPipeline() {
     document.getElementById('pipelineTableError').innerText = '';
     renderPipelineScoreCards();
+
+    var activeFilters = getActivePipelineFilters();
+    updatePipelineFilterChrome(activeFilters);
+    renderPipelineFilterChips(activeFilters);
+    updatePipelineSortIcons();
+
     var filtered = getFilteredProjects();
     var paged = paginateProjects(filtered);
     renderPipelineTable(paged);
     renderPipelinePagination(paged);
+    renderPipelineRowCount(filtered.length);
 
     // Drawer Detail sekarang SENGAJA dibiarkan terbuka setelah menyimpan
     // (dulu ditutup total), jadi bagian bacanya harus ikut ter-render ulang
@@ -909,35 +1195,140 @@
     }
   }
 
+  var PIPELINE_TABLE_COLSPAN = 7;
+
+  // Kelas badge Stage — warnanya sengaja sama dengan bucket score card
+  // (.pipeline-bucket-*) supaya score card dan tabel bicara dengan bahasa
+  // visual yang sama.
+  function pipelineStageClass(stage, isDraft) {
+    if (isDraft) return 'pl-stage-draft';
+    var bucket = (taxonomy.stageBucket || {})[stage];
+    if (bucket === 'WON') return 'pl-stage-won';
+    if (bucket === 'LOSS') return 'pl-stage-loss';
+    if (bucket === 'NEGO') return 'pl-stage-nego';
+    return 'pl-stage-pros';
+  }
+
+  /** Chip singkatan Service; maksimal 2 lalu "+N", nama panjang di tooltip. */
+  function pipelineServiceChips(project) {
+    var services = project.Services || [];
+    if (!services.length) return '<span class="entity-pic">—</span>';
+    var categories = project.Service_Categories || {};
+
+    function fullLabel(key) {
+      var cats = categories[key] || [];
+      return key + (cats.length ? ' — ' + cats.join(', ') : '');
+    }
+
+    var chips = services.slice(0, SERVICE_CHIP_VISIBLE).map(function (key) {
+      var def = SERVICE_ABBR[key] || { ab: key, cls: 'svc-other' };
+      return '<span class="svc-chip ' + def.cls + '" title="' + escAttr(fullLabel(key)) + '">' + escHtml(def.ab) + '</span>';
+    });
+    if (services.length > SERVICE_CHIP_VISIBLE) {
+      var rest = services.slice(SERVICE_CHIP_VISIBLE).map(fullLabel).join('\n');
+      chips.push('<span class="svc-chip svc-more" title="' + escAttr(rest) + '">+' + (services.length - SERVICE_CHIP_VISIBLE) + '</span>');
+    }
+    return '<div class="svc-chips">' + chips.join('') + '</div>';
+  }
+
   function renderPipelineTable(paged) {
     var tbody = document.getElementById('pipelineTableBody');
     if (!paged.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      tbody.innerHTML = renderPipelineEmptyRow();
       return;
     }
     tbody.innerHTML = paged.items.map(function (p) {
       var client = getClientById(p.Client_ID) || {};
-      var retainerTag = p.Is_Retainer ? '<span class="badge-retainer">🔁 Retainer</span>' : '';
-      var projectInfoHtml = p.Is_Draft
-        ? '<span class="badge badge-other">NEW PIPELINE</span>'
-        : '<div class="entity-name">' + p.Project_ID + retainerTag + '</div><div class="entity-pic">' + (p.Project_Name || '-') + '</div>';
-      var actionHtml = p.Is_Draft
-        ? '<button class="btn-outline row-action-reveal" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">✏️ EDIT</button>'
-        : '<button class="btn-outline row-action-reveal" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">🔘 DETAIL</button>';
+      var isDraft = !!p.Is_Draft;
 
-      return '<tr>' +
-        '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
-        '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>' +
+      // Baris Loss diredupkan, Won diberi garis hijau di tepi kiri, draft
+      // garis abu — deal yang sudah mati tidak lagi menuntut perhatian yang
+      // sama dengan deal yang masih hidup.
+      var bucket = isDraft ? 'DRAFT' : ((taxonomy.stageBucket || {})[p.Stage] || 'PROS');
+      var rowClass = bucket === 'LOSS' ? 'pl-row-loss' : bucket === 'WON' ? 'pl-row-won' : isDraft ? 'pl-row-draft' : '';
+
+      // Kolom 1 — Stage di ATAS nama client (pola tabel Document Pipeline):
+      // status terbaca tepat di titik mata mulai memindai baris.
+      var stageLabel = isDraft ? 'DRAFT' : String(p.Stage || '-').toUpperCase();
+      var stageClientHtml =
+        '<div><span class="pl-stage ' + pipelineStageClass(p.Stage, isDraft) + '">' + escHtml(stageLabel) + '</span></div>' +
+        '<div class="entity-name" style="margin-top:5px;">' + escHtml(client.Brand_Name || '-') + '</div>' +
+        '<div class="entity-pic">' + escHtml(client.Entity_Name || '-') + '</div>';
+
+      // Draft tetap ditandai, tapi kini menampilkan keterangan — dulu cuma
+      // badge "NEW PIPELINE" tanpa apa pun, jadi beberapa draft berjejer
+      // terlihat identik dan tidak bisa dibedakan satu sama lain.
+      var retainerTag = p.Is_Retainer ? '<span class="badge-retainer">🔁 Retainer</span>' : '';
+      var projectInfoHtml = isDraft
+        ? '<div><span class="badge badge-other">NEW PIPELINE</span></div>' +
+          '<div class="entity-pic" style="margin-top:4px;">Belum dilengkapi</div>'
+        : '<div class="entity-name">' + escHtml(p.Project_ID) + retainerTag + '</div>' +
+          '<div class="entity-pic">' + escHtml(p.Project_Name || '-') + '</div>';
+
+      var ownerHtml = p.Consultant
+        ? '<div class="pl-owner"><span class="pl-av" style="background:' + avatarColorFor(p.Consultant) + ';">' +
+          escHtml(initialsOf(p.Consultant)) + '</span><span>' + escHtml(p.Consultant) + '</span></div>'
+        : '<span class="entity-pic">—</span>';
+
+      var valueHtml = isDraft
+        ? '<span class="entity-pic">—</span>'
+        : '<div class="pl-val-line"><span class="pl-val-lbl">GDV</span>' + formatRupiah(p.Total_GDV) + '</div>' +
+          '<div class="pl-val-line"><span class="pl-val-lbl">REV</span>' + formatRupiah(p.Total_Service_Revenue) + '</div>';
+
+      var ageDays = daysSince(p.Created_Date);
+      var createdHtml = '<div style="font-size:12px;">' + escHtml(formatDate(p.Created_Date)) + '</div>' +
+        (ageDays === null ? '' : '<div class="entity-pic">' + ageDays + ' hari</div>');
+
+      // Tombol TIDAK lagi disembunyikan sampai hover (dulu .row-action-reveal):
+      // Detail sekarang satu-satunya pintu masuk ke semua aksi project, dan
+      // layar sentuh tidak punya hover sama sekali.
+      var actionHtml = isDraft
+        ? '<button class="btn-outline" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">Lengkapi ›</button>'
+        : '<button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">Detail ›</button>';
+
+      return '<tr class="' + rowClass + '">' +
+        '<td>' + stageClientHtml + '</td>' +
         '<td>' + projectInfoHtml + '</td>' +
-        '<td><div>' + (p.Consultant || '-') + '</div>' +
-        '<div class="entity-pic">' + (p.Stage || '-') + '</div></td>' +
-        '<td class="nowrap-cell">' +
-        '<div class="pipeline-value-line"><span class="pipeline-value-label">GDV</span>' + formatRupiah(p.Total_GDV) + '</div>' +
-        '<div class="pipeline-value-line"><span class="pipeline-value-label">REV</span>' + formatRupiah(p.Total_Service_Revenue) + '</div>' +
-        '</td>' +
+        '<td>' + pipelineServiceChips(p) + '</td>' +
+        '<td>' + ownerHtml + '</td>' +
+        '<td class="pl-val nowrap-cell">' + valueHtml + '</td>' +
+        '<td class="nowrap-cell">' + createdHtml + '</td>' +
         '<td>' + actionHtml + '</td>' +
         '</tr>';
     }).join('');
+  }
+
+  /**
+   * Empty state yang membedakan "belum ada project sama sekali" dari "filter
+   * terlalu sempit" — dulu keduanya sama-sama berbunyi "Tidak ada data.",
+   * sehingga user tidak tahu apakah harus menambah data atau melonggarkan
+   * filter.
+   */
+  function renderPipelineEmptyRow() {
+    var hasAnyData = allProjects.length > 0;
+    var filters = getActivePipelineFilters();
+    if (hasAnyData && filters.length) {
+      return '<tr class="empty-row"><td colspan="' + PIPELINE_TABLE_COLSPAN + '">' +
+        'Tidak ada project yang cocok dengan ' + filters.length + ' filter yang aktif. ' +
+        '<button class="btn-outline" style="margin-left:8px;" onclick="resetPipelineFilter()">↺ Reset Filter</button>' +
+        '</td></tr>';
+    }
+    return '<tr class="empty-row"><td colspan="' + PIPELINE_TABLE_COLSPAN + '">' +
+      (hasAnyData ? 'Tidak ada data.' : 'Belum ada project. Klik ADD NEW PIPELINE untuk menambahkan.') +
+      '</td></tr>';
+  }
+
+  /**
+   * "Menampilkan X dari Y project" — tanpa ini user tidak punya cara tahu
+   * apakah filternya menyaring banyak atau sedikit.
+   */
+  function renderPipelineRowCount(filteredCount) {
+    var el = document.getElementById('pipelineRowCount');
+    if (!el) return;
+    var total = allProjects.length;
+    el.innerHTML = filteredCount === total
+      ? 'Menampilkan <b>' + total + '</b> project'
+      : 'Menampilkan <b>' + filteredCount + '</b> dari <b>' + total + '</b> project';
   }
 
   function renderPipelinePagination(paged) {
