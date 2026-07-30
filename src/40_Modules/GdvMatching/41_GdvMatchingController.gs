@@ -9,5 +9,11 @@ var GdvMatchingController = (function (module) {
     });
   };
 
+  module.getStatusForLinks = function (links) {
+    return ErrorHandler.handle('GdvMatchingController.getStatusForLinks', function () {
+      return GdvMatchingService.getStatusForLinks(links);
+    });
+  };
+
   return module;
 })(GdvMatchingController || {});

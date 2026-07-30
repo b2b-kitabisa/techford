@@ -154,5 +154,44 @@ var GdvMatchingService = (function (module) {
     return { rows: rows, summary: summary };
   };
 
+  /**
+   * Tahap 4 — versi ringan dari getMatching(), khusus dipakai di drawer
+   * Revenue Breakdown Sales Pipeline untuk menampilkan badge status sinkron
+   * per link SAAT drawer dibuka, TANPA perlu load seluruh tabel GDV
+   * Matching. Hanya menghitung status untuk link yang diminta (bukan semua
+   * link di GDV_Controller), tapi totalClaimed tetap dihitung LINTAS SEMUA
+   * PROJECT (bukan cuma project yang sedang dibuka) — konsisten dengan
+   * logika Department Portion di getMatching().
+   * @param {Array<string>} links
+   * @returns {Object} map link -> {hasRealized, realizedNominal, totalClaimed, departmentPortion, status}
+   */
+  module.getStatusForLinks = function (links) {
+    var wanted = {};
+    (links || []).forEach(function (l) {
+      var link = String(l || '').trim();
+      if (link) wanted[link] = true;
+    });
+
+    var realizedByLink = buildRealizedByLink();
+    var claimsByLink = buildClaimsByLink({});
+
+    var result = {};
+    Object.keys(wanted).forEach(function (link) {
+      var hasRealized = realizedByLink.hasOwnProperty(link);
+      var meta = realizedByLink[link] || { realizedNominal: 0 };
+      var claims = claimsByLink[link] || [];
+      var totalClaimed = claims.reduce(function (sum, c) { return sum + c.Amount; }, 0);
+      var departmentPortion = hasRealized ? Math.max(0, meta.realizedNominal - totalClaimed) : 0;
+      result[link] = {
+        hasRealized: hasRealized,
+        realizedNominal: meta.realizedNominal,
+        totalClaimed: totalClaimed,
+        departmentPortion: departmentPortion,
+        status: computeStatus(hasRealized, totalClaimed, meta.realizedNominal)
+      };
+    });
+    return result;
+  };
+
   return module;
 })(GdvMatchingService || {});

@@ -1566,6 +1566,7 @@
       : [];
 
     renderGdvSchemes(hasCsr, hasAds, isRetainer);
+    fetchGdvSyncStatus();
 
     var rows = getServiceRevenueRows(project);
     var savedServiceRows = savedRows.filter(function (r) { return r.Value_Type === 'SERVICE'; });
@@ -1606,6 +1607,47 @@
     container.innerHTML = html;
   }
 
+  // ---- Tahap 4: badge status sinkron GDV Matching per link ----
+  // Status (Sinkron/Belum Sinkron/Klaim Melebihi) dihitung LIVE oleh
+  // GdvMatchingService berdasarkan realisasi GDV_Controller (Tableau) vs
+  // total klaim manual LINTAS SEMUA PROJECT untuk link yang sama — lihat
+  // GdvMatchingContent.html untuk tampilan lengkapnya. Di drawer ini cukup
+  // ditampilkan sebagai badge kecil di samping tiap link, dihitung ulang
+  // tiap kali drawer dibuka (bukan live saat mengetik).
+  var gdvSyncStatusByLink = {};
+
+  function collectGdvLinksForSync() {
+    var links = {};
+    editGdvCsrCampaigns.forEach(function (c) { if (c.link) links[String(c.link).trim()] = true; });
+    editGdvRetainerLinks.forEach(function (l) { if (l.link) links[String(l.link).trim()] = true; });
+    editGdvAdsCampaigns.forEach(function (c) { if (c.link) links[String(c.link).trim()] = true; });
+    delete links[''];
+    return Object.keys(links);
+  }
+
+  function fetchGdvSyncStatus() {
+    var links = collectGdvLinksForSync();
+    if (!links.length) return;
+    gsRunWithRetry('gdvMatching_getStatusForLinks', [links], function (res) {
+      if (!res || !res.ok) return; // gagal diam-diam — badge cukup tidak muncul, bukan bagian kritikal alur simpan
+      gdvSyncStatusByLink = res.data || {};
+      renderGdvSchemes(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
+    }, function () { /* gagal diam-diam, sama seperti di atas */ });
+  }
+
+  function gdvSyncBadgeHtml(link) {
+    link = String(link || '').trim();
+    if (!link) return '';
+    var s = gdvSyncStatusByLink[link];
+    if (!s) return '';
+    var pillClass = s.status === 'SINKRON' ? 'good' : (s.status === 'KLAIM_MELEBIHI' ? 'bad' : 'neutral');
+    var pillLabel = s.status === 'SINKRON' ? 'Sinkron' : (s.status === 'KLAIM_MELEBIHI' ? 'Klaim Melebihi' : 'Belum Sinkron');
+    var title = s.hasRealized
+      ? 'Realisasi Tableau: Rp' + Math.round(s.realizedNominal).toLocaleString('id-ID') + ' — Total diklaim (semua project): Rp' + Math.round(s.totalClaimed).toLocaleString('id-ID')
+      : 'Link ini belum ada di GDV Controller (belum diupload dari Tableau, atau link tidak cocok persis).';
+    return '<span class="pill ' + pillClass + '" title="' + escAttr(title) + '">' + pillLabel + '</span>';
+  }
+
   function renderGdvCsrBlock() {
     if (!editGdvCsrCampaigns.length) editGdvCsrCampaigns = [{ link: '', amount: 0, notes: '' }];
     var rowsHtml = editGdvCsrCampaigns.map(function (c, idx) {
@@ -1613,12 +1655,13 @@
         '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
         '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
         '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
+        '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(c.link) + '</span>' +
         '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus">×</button>' +
         '</div>';
     }).join('');
     return '<div class="gdv-scheme-block">' +
       '<div class="gdv-scheme-label">CSR</div>' +
-      '<div class="revenue-row-labels"><span style="flex:2;">Campaign Link</span><span style="flex:1;">Nominal GDV</span><span style="flex:2;">Notes</span><span style="width:28px;"></span></div>' +
+      '<div class="revenue-row-labels"><span style="flex:2;">Campaign Link</span><span style="flex:1;">Nominal GDV</span><span style="flex:2;">Notes</span><span style="width:118px; flex-shrink:0;">Sync</span><span style="width:28px;"></span></div>' +
       rowsHtml +
       '<button type="button" class="btn-outline" onclick="addGdvCsrCampaignRow()">+ Tambah Campaign</button>' +
       '</div>';
@@ -1655,6 +1698,7 @@
       return '<div class="gdv-retainer-link-group">' +
         '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value">' +
+        '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(l.link) + '</span>' +
         '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
         '</div>' +
         '<div class="revenue-row-labels" style="padding-left:8px;"><span style="width:150px;">Tanggal Termin</span><span style="flex:1;">Nominal</span><span style="flex:2;">Notes</span><span style="width:28px;"></span></div>' +
@@ -1700,6 +1744,7 @@
     var rowsHtml = editGdvAdsCampaigns.map(function (c, idx) {
       return '<div class="revenue-row">' +
         '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
+        '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(c.link) + '</span>' +
         '<button type="button" class="pic-card-remove" style="position:static; flex-shrink:0; width:28px;" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus">×</button>' +
         '</div>';
     }).join('');
