@@ -97,8 +97,15 @@ var LeadService = (function (module) {
 
     var client = ClientService.createFromLead(lead, createdBy);
 
+    // Client_ID hasil Move dicatat di baris lead-nya supaya jejaknya tidak
+    // hilang — dari lead yang sudah Moved, admin bisa langsung tahu client
+    // mana yang lahir darinya (sebelumnya hanya bisa dicocokkan manual lewat
+    // nama di Client Monitoring). ensureColumns dipanggil lebih dulu supaya
+    // sheet lama ikut bermigrasi sendiri.
+    LeadRepository.ensureColumns(['Client_ID']);
     LeadRepository.update(inboundId, {
       Status: Config.LEAD_STATUS.MOVED,
+      Client_ID: client.Client_ID,
       Last_Updated: new Date()
     });
 

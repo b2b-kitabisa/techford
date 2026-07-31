@@ -1,7 +1,11 @@
 <div id="leadStats" class="stat-cards"></div>
 
 <div class="filter-bar">
-  <div class="search-field"><span class="search-ic">⌕</span><input id="leadSearch" placeholder="Search Entity Name...." oninput="onFilterChange()"></div>
+  <div class="search-field" id="leadSearchField">
+    <span class="search-ic">⌕</span>
+    <input id="leadSearch" placeholder="Cari entitas, PIC, email, telepon..." oninput="onFilterChange()">
+    <button type="button" class="search-clear" onclick="clearLeadSearch()" title="Hapus pencarian">×</button>
+  </div>
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="statusFilterBtn" onclick="toggleStatusFilterDropdown()">All Status ▾</button>
@@ -14,8 +18,44 @@
     </div>
   </div>
 
-  <button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>
+  <!-- Filter tanggal — pola & komponen sama persis dengan Sales Pipeline
+       (.date-preset-btn, .status-filter-dropdown) supaya tidak ada kebiasaan
+       baru yang perlu dipelajari admin. -->
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="leadDateFilterBtn" onclick="toggleLeadDateDropdown()">Tanggal ▾</button>
+    <div class="status-filter-dropdown" id="leadDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
+      <div class="date-presets">
+        <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('month')">Bulan ini</button>
+        <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('quarter')">Kuartal ini</button>
+        <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('year')">Tahun ini</button>
+      </div>
+      <label style="display:block; margin-bottom:8px;">Dari
+        <input type="date" id="leadDateFrom" style="width:100%; margin-top:4px;" oninput="onFilterChange()">
+      </label>
+      <label style="display:block;">Sampai
+        <input type="date" id="leadDateTo" style="width:100%; margin-top:4px;" oninput="onFilterChange()">
+      </label>
+    </div>
+  </div>
+
+  <button class="filter-reset" id="leadResetBtn" onclick="resetFilter()">↺ Reset Filter</button>
   <button class="filter-reset" onclick="fetchLeads()" title="Ambil ulang data dari server">🔄 Refresh</button>
+</div>
+
+<div class="filter-chips" id="leadFilterChips" style="display:none;"></div>
+
+<!-- Baris aksi massal — muncul hanya kalau ada baris yang dicentang. Status
+     "Moved" SENGAJA tidak ada di sini: Move adalah transaksi satu arah tanpa
+     undo yang melahirkan Client baru, jadi harus tetap satu per satu dengan
+     konfirmasinya sendiri. -->
+<div class="bulk-bar" id="leadBulkBar" style="display:none;">
+  <span class="bulk-count" id="leadBulkCount">0 dipilih</span>
+  <span class="bulk-sep"></span>
+  <span class="bulk-label">Ubah status jadi:</span>
+  <button class="btn-outline" onclick="applyBulkStatus('Contacted')">Contacted</button>
+  <button class="btn-outline" onclick="applyBulkStatus('Other')">Other</button>
+  <button class="btn-outline" onclick="applyBulkStatus('Spam')">Spam</button>
+  <button class="filter-reset" onclick="clearLeadSelection()">Batalkan pilihan</button>
 </div>
 
 <div id="tableError" class="error"></div>
@@ -24,8 +64,9 @@
   <table class="data-table">
     <thead>
       <tr>
+        <th style="width:34px;"><input type="checkbox" id="leadSelectAll" onchange="toggleSelectAllOnPage(this.checked)" title="Pilih semua di halaman ini"></th>
         <th class="sortable" onclick="setSort('Status')">Status <span class="sort-icon" data-field="Status">⇕</span></th>
-        <th class="sortable" onclick="setSort('Timestamp')">Date <span class="sort-icon" data-field="Timestamp">⇕</span></th>
+        <th class="sortable" onclick="setSort('Timestamp')">Masuk <span class="sort-icon" data-field="Timestamp">⇕</span></th>
         <th class="sortable" onclick="setSort('Entity_Name')">Entity Name <span class="sort-icon" data-field="Entity_Name">⇕</span></th>
         <th>Kontak</th>
         <th class="sortable" onclick="setSort('Detail_Interest')">Needs <span class="sort-icon" data-field="Detail_Interest">⇕</span></th>
@@ -46,6 +87,7 @@
       <option value="100" selected>100</option>
     </select>
     Entries
+    <span class="row-count" id="leadRowCount"></span>
   </div>
   <div class="page-buttons" id="pageButtons"></div>
 </div>
@@ -95,8 +137,9 @@
       <label>Other Notes<textarea id="editNotes" placeholder="Type your message here."></textarea></label>
     </div>
 
-    <div class="drawer-section" id="lockedNotice" style="display:none; background:#fef7e0;">
+    <div class="drawer-section" id="lockedNotice" style="display:none; background: var(--warn-tint);">
       <div class="drawer-field-value">🔒 Lead ini sudah menjadi Client dan tidak bisa diedit lagi dari Lead Capturing.</div>
+      <div id="movedClientLink" style="margin-top:8px;"></div>
     </div>
 
     <div class="drawer-section">
@@ -134,15 +177,19 @@
 </div>
 
 <div class="confirm-overlay" id="moveConfirm">
-  <div class="confirm-box" style="border-top: 4px solid #c5221f;">
+  <div class="confirm-box" style="border-top: 4px solid var(--bad);">
     <h3>⚠️ Pindahkan Lead menjadi Client?</h3>
     <p>
       <strong>Tindakan ini tidak dapat dibatalkan.</strong> Lead akan berpindah ke Client Monitoring
       dan tidak bisa diedit lagi dari Lead Capturing setelah ini.
     </p>
+    <p style="margin-top:8px;">
+      Client barunya akan berstatus <strong>Belum Lengkap</strong> — Entity Name dan Head Office
+      belum ditanyakan di form inbound, jadi perlu Anda lengkapi di Client Monitoring.
+    </p>
     <div class="confirm-actions">
       <button class="btn-outline" onclick="cancelMoveConfirm()">Cancel</button>
-      <button class="btn-save" style="background:#c5221f;" onclick="confirmMoveToClient()">Ya, Pindahkan</button>
+      <button class="btn-save" style="background: var(--bad);" onclick="confirmMoveToClient()">Ya, Pindahkan</button>
     </div>
   </div>
 </div>
@@ -157,6 +204,17 @@
   };
   var STATUS_ORDER = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam'];
 
+  // Ambang "sudah terlalu lama didiamkan" untuk lead yang masih New Leads.
+  // Kecepatan menanggapi adalah inti pekerjaan section ini, tapi sebelumnya
+  // tidak ada satu pun tanda soal itu di layar — lead yang menganggur 2 minggu
+  // tampil sama tenangnya dengan yang masuk pagi ini.
+  var LEAD_STALE_DAYS = 7;
+
+  // Jumlah tombol nomor halaman yang ditampilkan sekaligus. Tanpa ini,
+  // tombolnya tumbuh sebanyak jumlah halaman (100+ lead pada 10 entri per
+  // halaman = deretan panjang yang mendorong tombol Next keluar layar).
+  var PAGE_WINDOW = 7;
+
   // ---- Client-side cache: seluruh data diambil sekali, semua interaksi baca
   // (search/filter/sort/pagination/detail) beroperasi di array ini, tidak
   // ada round-trip ke server lagi. Lihat ARCHITECTURE.md - "Load Once, Filter Local".
@@ -165,7 +223,23 @@
   var currentDrawerLead = null;
   var pendingStatus = null;
   var currentSort = { field: 'Timestamp', dir: 'desc' };
-  var bootstrapRetried = false;
+  var selectedLeadIds = {};   // Inbound_ID -> true, pilihan untuk aksi massal
+
+  /**
+   * Penyaring HTML — WAJIB dipakai untuk SETIAP nilai lead yang ditulis ke
+   * halaman. Lead datang dari Typeform PUBLIK (siapa pun di internet bisa
+   * mengisinya), dan sebelumnya nilainya diinterpolasi mentah ke innerHTML.
+   * Nama PT yang mengandung "&" saja sudah cukup merusak tampilan baris, dan
+   * teks yang disusun sengaja bisa menyuntikkan HTML ke halaman admin.
+   * Pola & nama fungsinya sama dengan Sales Pipeline.
+   */
+  function escHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escAttr(value) {
+    return escHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
   function normalizeStatusKey(status) {
     var s = String(status || '').trim().toLowerCase();
@@ -188,116 +262,125 @@
     return String(a) === String(b);
   }
 
-  /**
-   * Pembungkus google.script.run yang tahan terhadap glitch sandbox Apps
-   * Script: kadang jembatan RPC memanggil success handler dengan `res`
-   * bernilai null (bukan objek {ok,...} yang kita harapkan) — kalau tidak
-   * dijaga, itu langsung crash dan membatalkan sisa logic (termasuk tutup
-   * drawer/tampilkan notifikasi sukses). Di sini kita retry sekali secara
-   * otomatis kalau itu terjadi, baru anggap gagal kalau retry-nya juga null.
-   */
-  function runServer(functionName, args, onSuccess, onError, retriesLeft) {
-    if (retriesLeft === undefined) retriesLeft = 1;
-    var runner = google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res) {
-          if (retriesLeft > 0) {
-            runServer(functionName, args, onSuccess, onError, retriesLeft - 1);
-          } else {
-            onError({ message: 'Tidak ada respons dari server, silakan coba lagi.' });
-          }
-          return;
-        }
-        onSuccess(res);
-      })
-      .withFailureHandler(onError);
-    runner[functionName].apply(runner, args || []);
-  }
-
   function showSuccessModal(message) {
     TechfordToast.show(message);
   }
 
-  // ---- Bootstrap dengan retry otomatis ----
-  // Jembatan google.script.run (sandbox iframe Apps Script) kadang belum
-  // sepenuhnya siap tepat saat halaman pertama kali dimuat, walau event
-  // "load" sudah terpicu. Simtomnya: data & score card kosong di load
-  // pertama, baru muncul setelah ada interaksi lain / refresh manual.
-  // Sekali retry ternyata kadang tidak cukup, jadi di sini kita ulang
-  // berkali-kali (bukan cuma sekali) sebelum benar-benar menyerah dan
-  // menampilkan pesan error.
-  var bootstrapAttempts = 0;
-  var BOOTSTRAP_MAX_ATTEMPTS = 8;
-  var BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  /* ============================================================
+     PEMUATAN DATA
+     ============================================================
+     BUG YANG DIPERBAIKI — sumber pesan "Tidak ada respons dari server":
+     tangga retry yang lama menjadwalkan ulang dirinya setiap 1.500 ms selama
+     `allLeads` masih kosong, TANPA pernah tahu apakah permintaan sebelumnya
+     masih berjalan. Selama data sedikit, satu pembacaan selesai di bawah
+     1.500 ms jadi tangganya berhenti di percobaan pertama. Begitu sheet Lead
+     menembus ~100 baris, satu lead_getAll butuh LEBIH lama dari itu — jadi
+     tangganya terus memanggil dirinya sampai 8 permintaan berat identik
+     menumpuk di jembatan google.script.run. Itu persis kondisi yang bikin
+     sebagian pulang res=null (lihat catatan gsRunWithRetry di Shell.html),
+     dan percobaan terakhir menampilkannya sebagai pesan gagal.
 
-  function bootstrap() {
-    bootstrapAttempts++;
-    fetchLeads();
-    setTimeout(function () {
-      if (allLeads.length || bootstrapRetried) return;
-      if (bootstrapAttempts < BOOTSTRAP_MAX_ATTEMPTS) {
-        bootstrap();
-      } else {
-        bootstrapRetried = true;
-        fetchLeads();
-      }
-    }, BOOTSTRAP_RETRY_INTERVAL_MS);
+     Sekarang: satu permintaan pada satu waktu (kunci in-flight), retry HANYA
+     kalau percobaan sebelumnya benar-benar GAGAL — bukan sekadar "belum
+     selesai" — dengan jeda yang naik bertahap. Satu pembacaan lambat jauh
+     lebih baik daripada delapan pembacaan yang saling mematikan. */
+  var leadFetchInFlight = false;
+  var leadFetchAttempt = 0;
+  var LEAD_MAX_ATTEMPTS = 5;
+
+  // Penanda "halaman ini masih terpasang". Nama fungsi seperti render() dan
+  // fetchProjects() dipakai oleh BEBERAPA halaman content (semuanya berbagi
+  // satu global scope di SPA — lihat TechfordNav di Shell.html), jadi respons
+  // RPC yang datang TERLAMBAT setelah user pindah section bisa memanggil
+  // fungsi milik halaman lain dan menyentuh elemen yang sudah tidak ada.
+  // Semua callback async di bawah berhenti lebih dulu kalau halaman sudah
+  // tidak terpasang.
+  var LEAD_PAGE_ROOT = document.getElementById('leadStats');
+  function leadPageMounted() {
+    return !!LEAD_PAGE_ROOT && document.body.contains(LEAD_PAGE_ROOT);
   }
 
-  function fetchLeads() {
-    runServer('lead_getAll', [], function (res) {
-      if (!res.ok) {
-        if (!bootstrapRetried) return; // masih ada percobaan retry lain yang berjalan
-        showTableError(res.error.message);
+  function leadRetryDelay(attempt) {
+    return Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s, 8s, 8s
+  }
+
+  /**
+   * @param {Function=} onLoaded dipanggil dengan (leadsSebelum) setelah data
+   *   baru masuk — dipakai sync untuk menghitung berapa lead yang benar-benar
+   *   baru muncul.
+   */
+  function fetchLeads(onLoaded) {
+    if (leadFetchInFlight) return;   // <-- inti perbaikannya
+    leadFetchInFlight = true;
+    leadFetchAttempt++;
+
+    var previousLeads = allLeads;
+
+    function fail(message) {
+      leadFetchInFlight = false;
+      if (!leadPageMounted()) return;
+      if (leadFetchAttempt < LEAD_MAX_ATTEMPTS) {
+        setTimeout(function () { fetchLeads(onLoaded); }, leadRetryDelay(leadFetchAttempt));
         return;
       }
-      bootstrapRetried = true;
-      allLeads = res.data;
-      currentPage = 1;
-      render();
-    }, function (err) {
-      if (!bootstrapRetried) return;
-      showTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-    });
+      showTableError(message);
+    }
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res) { fail('Gagal memuat data: tidak ada respons dari server setelah beberapa kali percobaan.'); return; }
+        if (!res.ok) { fail('Gagal memuat data: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+        leadFetchInFlight = false;
+        leadFetchAttempt = 0;
+        if (!leadPageMounted()) return;
+        allLeads = res.data;
+        document.getElementById('tableError').innerText = '';
+        render();
+        if (onLoaded) onLoaded(previousLeads);
+      })
+      .withFailureHandler(function (err) {
+        fail('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .lead_getAll();
   }
 
   function showTableError(message) {
     document.getElementById('tableError').innerText = message;
     document.getElementById('leadTableBody').innerHTML =
-      '<tr class="empty-row"><td colspan="6">' + message + '</td></tr>';
+      '<tr class="empty-row"><td colspan="7">' + escHtml(message) + '</td></tr>';
   }
 
-  // Render skeleton score card SEGERA (angka 0, sebelum data datang) supaya
-  // box-nya langsung kelihatan begitu halaman/section ini tampil — sama
-  // seperti Sales Pipeline & Document Pipeline yang score card-nya sudah
-  // statis di HTML. Di sini score card dibangun lewat JS (bukan HTML statis)
-  // karena butuh class "active" dari filter, jadi cukup dipanggil sekali di
-  // sini dengan data kosong, nanti ditimpa angka asli begitu fetchLeads()
-  // selesai lewat render() biasa.
+  // Render skeleton SEGERA (sebelum data datang) supaya area score card &
+  // tabel langsung punya tinggi, tidak collapse-lalu-muncul-tiba-tiba.
   renderStats(computeStats(allLeads));
   renderLeadSkeleton();
   function renderLeadSkeleton() {
     document.getElementById('leadTableBody').innerHTML = new Array(5).fill(
-      '<tr><td colspan="6" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+      '<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
     ).join('');
   }
 
   if (document.readyState === 'complete') {
-    bootstrap();
+    fetchLeads();
   } else {
-    window.addEventListener('load', bootstrap);
+    window.addEventListener('load', function () { fetchLeads(); });
   }
 
   function render() {
-    document.getElementById('tableError').innerText = '';
     var filtered = getFilteredSorted();
     var paged = paginate(filtered);
     renderStats(computeStats(allLeads));
     renderTable(paged);
     renderPagination(paged);
+    renderRowCount(paged, filtered);
     updateSortIndicators();
+    updateLeadFilterChrome();
+    renderBulkBar(paged);
   }
 
+  /* ============================================================
+     SCORE CARD
+     ============================================================ */
   function computeStats(leads) {
     var stats = {};
     STATUS_ORDER.forEach(function (status) { stats[status] = 0; });
@@ -307,10 +390,67 @@
       if (key) stats[key]++;
       if (key !== 'Spam') nonSpamTotal++;
     });
-    stats.movedPercentage = nonSpamTotal ? Math.round((stats['Moved'] / nonSpamTotal) * 100) : 0;
+    stats.total = leads.length;
+    stats.nonSpamTotal = nonSpamTotal;
+    stats.convertedPct = nonSpamTotal ? Math.round((stats['Moved'] / nonSpamTotal) * 100) : 0;
+    stats.spamPct = leads.length ? Math.round((stats['Spam'] / leads.length) * 100) : 0;
+    // Lead yang masih New Leads DAN sudah melewati ambang — penyakit inbound
+    // yang paling nyata: lead masuk tapi tidak ditindaklanjuti.
+    stats.staleCount = leads.filter(function (l) {
+      return normalizeStatusKey(l.Status) === 'New Leads' && isStale(l.Timestamp);
+    }).length;
     return stats;
   }
 
+  function daysSince(value) {
+    if (!value) return null;
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+
+  function isStale(timestamp) {
+    var age = daysSince(timestamp);
+    return age !== null && age > LEAD_STALE_DAYS;
+  }
+
+  function renderStats(stats) {
+    var selected = getSelectedStatuses();
+    var html = STATUS_ORDER.map(function (status) {
+      var meta = STATUS_META[status];
+      var isActive = selected.indexOf(status) !== -1 ? ' active' : '';
+      return '<div class="stat-card clickable ' + meta.cardClass + isActive + '" onclick="filterByStatus(\'' + escAttr(status) + '\')">' +
+        '<div class="stat-label">' + escHtml(status) + '</div>' +
+        '<div class="stat-desc">' + escHtml(meta.desc) + '</div>' +
+        '<div class="stat-value">' + (stats[status] || 0) + '</div>' +
+        '</div>';
+    }).join('');
+
+    // "Inbound Health" menggantikan "% Moved". Angka utamanya tetap konversi
+    // ke client (rumus sama seperti sebelumnya, supaya angka yang sudah Anda
+    // pantau tidak "pindah arti"), ditopang dua baris yang benar-benar
+    // menunjukkan sehat atau tidak: berapa yang didiamkan terlalu lama, dan
+    // seberapa besar porsi spam dari sumber inbound.
+    html += '<div class="stat-card stat-health">' +
+      '<div class="stat-label">Inbound Health</div>' +
+      '<div class="stat-desc">Konversi jadi client (tanpa Spam)</div>' +
+      '<div class="stat-value">' + stats.convertedPct + '%</div>' +
+      '<div class="stat-sub">' +
+        '<div class="stat-sub-row' + (stats.staleCount ? ' bad' : '') + '">' +
+          '<span>Didiamkan &gt;' + LEAD_STALE_DAYS + ' hari</span><strong>' + stats.staleCount + '</strong>' +
+        '</div>' +
+        '<div class="stat-sub-row">' +
+          '<span>Porsi spam</span><strong>' + stats.spamPct + '%</strong>' +
+        '</div>' +
+      '</div>' +
+      '</div>';
+
+    document.getElementById('leadStats').innerHTML = html;
+  }
+
+  /* ============================================================
+     SORT / FILTER / PAGINATION
+     ============================================================ */
   function compareValues(a, b, field) {
     var va = a[field], vb = b[field];
     if (field === 'Timestamp') {
@@ -349,7 +489,6 @@
     }
   }
 
-  // ---- Filter status: multi-select ----
   function getSelectedStatuses() {
     var boxes = document.querySelectorAll('#statusFilterDropdown input:checked');
     return Array.prototype.map.call(boxes, function (el) { return el.value; });
@@ -357,6 +496,10 @@
 
   function toggleStatusFilterDropdown() {
     document.getElementById('statusFilterDropdown').classList.toggle('open');
+  }
+
+  function toggleLeadDateDropdown() {
+    document.getElementById('leadDateFilterDropdown').classList.toggle('open');
   }
 
   function onStatusFilterChange() {
@@ -368,23 +511,52 @@
     var selected = getSelectedStatuses();
     var btn = document.getElementById('statusFilterBtn');
     btn.innerText = (selected.length === 0 ? 'All Status' : selected.length + ' Status Dipilih') + ' ▾';
+    btn.classList.toggle('has-value', selected.length > 0);
   }
 
   document.addEventListener('click', function (e) {
-    var wrap = document.querySelector('.status-filter-wrap');
-    if (wrap && !wrap.contains(e.target)) {
+    var statusWrap = document.querySelectorAll('.status-filter-wrap')[0];
+    if (statusWrap && !statusWrap.contains(e.target)) {
       document.getElementById('statusFilterDropdown').classList.remove('open');
     }
+    var dateWrap = document.querySelectorAll('.status-filter-wrap')[1];
+    if (dateWrap && !dateWrap.contains(e.target)) {
+      document.getElementById('leadDateFilterDropdown').classList.remove('open');
+    }
   });
+
+  // Pencarian sekarang menyapu PIC, email, telepon, dan kebutuhan — bukan
+  // cuma Entity_Name. Mengetik nama orang yang menghubungi, atau menempelkan
+  // alamat email dari inbox, sebelumnya tidak menghasilkan apa pun padahal
+  // itu dua cara paling wajar orang mencari sebuah lead.
+  function leadMatchesSearch(lead, search) {
+    if (!search) return true;
+    var haystack = [
+      lead.Entity_Name, lead.Entity_Type, lead.PIC_Name, lead.Email,
+      lead.Phone, lead.Detail_Interest, lead.Priority_Notes, lead.Other_Notes,
+      lead.Inbound_ID, lead.Client_ID
+    ].join(' ').toLowerCase();
+    return haystack.indexOf(search) !== -1;
+  }
 
   function getFilteredSorted() {
     var search = document.getElementById('leadSearch').value.toLowerCase().trim();
     var selectedStatuses = getSelectedStatuses();
+    var fromValue = document.getElementById('leadDateFrom').value;
+    var toValue = document.getElementById('leadDateTo').value;
+    var from = fromValue ? new Date(fromValue + 'T00:00:00') : null;
+    var to = toValue ? new Date(toValue + 'T23:59:59') : null;
 
     return allLeads.filter(function (lead) {
-      var matchesSearch = !search || String(lead.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
-      var matchesStatus = !selectedStatuses.length || selectedStatuses.indexOf(normalizeStatusKey(lead.Status)) !== -1;
-      return matchesSearch && matchesStatus;
+      if (!leadMatchesSearch(lead, search)) return false;
+      if (selectedStatuses.length && selectedStatuses.indexOf(normalizeStatusKey(lead.Status)) === -1) return false;
+      if (from || to) {
+        var t = new Date(lead.Timestamp);
+        if (isNaN(t.getTime())) return false;
+        if (from && t < from) return false;
+        if (to && t > to) return false;
+      }
+      return true;
     }).sort(function (a, b) {
       var cmp = compareValues(a, b, currentSort.field);
       return currentSort.dir === 'asc' ? cmp : -cmp;
@@ -404,27 +576,6 @@
     };
   }
 
-  function renderStats(stats) {
-    var selected = getSelectedStatuses();
-    var html = STATUS_ORDER.map(function (status) {
-      var meta = STATUS_META[status];
-      var isActive = selected.indexOf(status) !== -1 ? ' active' : '';
-      return '<div class="stat-card clickable ' + meta.cardClass + isActive + '" onclick="filterByStatus(\'' + status + '\')">' +
-        '<div class="stat-label">' + status + '</div>' +
-        '<div class="stat-desc">' + meta.desc + '</div>' +
-        '<div class="stat-value">' + (stats[status] || 0) + '</div>' +
-        '</div>';
-    }).join('');
-
-    html += '<div class="stat-card stat-moved-pct">' +
-      '<div class="stat-label">% Moved</div>' +
-      '<div class="stat-desc">Dari total leads (tanpa Spam)</div>' +
-      '<div class="stat-value">' + stats.movedPercentage + '%</div>' +
-      '</div>';
-
-    document.getElementById('leadStats').innerHTML = html;
-  }
-
   function filterByStatus(status) {
     var checkbox = document.querySelector('#statusFilterDropdown input[value="' + status + '"]');
     if (checkbox) checkbox.checked = !checkbox.checked;
@@ -437,42 +588,159 @@
     render();
   }
 
+  function clearLeadSearch() {
+    document.getElementById('leadSearch').value = '';
+    onFilterChange();
+  }
+
   function resetFilter() {
     document.getElementById('leadSearch').value = '';
     document.querySelectorAll('#statusFilterDropdown input').forEach(function (el) { el.checked = false; });
+    document.getElementById('leadDateFrom').value = '';
+    document.getElementById('leadDateTo').value = '';
     updateStatusFilterLabel();
     currentPage = 1;
     render();
   }
 
+  // ---- Preset tanggal (pola sama dengan Sales Pipeline) ----
+  function toDateInputValue(d) {
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m) + '-' + (day.length < 2 ? '0' + day : day);
+  }
+
+  function applyLeadDatePreset(kind) {
+    var now = new Date();
+    var from, to = now;
+    if (kind === 'month') {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (kind === 'quarter') {
+      from = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+    } else {
+      from = new Date(now.getFullYear(), 0, 1);
+    }
+    document.getElementById('leadDateFrom').value = toDateInputValue(from);
+    document.getElementById('leadDateTo').value = toDateInputValue(to);
+    onFilterChange();
+  }
+
+  // ---- Chip filter aktif + status tombol ----
+  function getActiveLeadFilters() {
+    var chips = [];
+    var search = document.getElementById('leadSearch').value.trim();
+    if (search) chips.push({ key: 'search', label: 'Cari: "' + search + '"' });
+    var statuses = getSelectedStatuses();
+    if (statuses.length) chips.push({ key: 'status', label: 'Status: ' + statuses.join(', ') });
+    var from = document.getElementById('leadDateFrom').value;
+    var to = document.getElementById('leadDateTo').value;
+    if (from || to) {
+      chips.push({
+        key: 'date',
+        label: (from ? formatDate(from) : 'awal') + ' – ' + (to ? formatDate(to) : 'sekarang')
+      });
+    }
+    return chips;
+  }
+
+  function removeLeadFilter(key) {
+    if (key === 'search') document.getElementById('leadSearch').value = '';
+    if (key === 'status') {
+      document.querySelectorAll('#statusFilterDropdown input').forEach(function (el) { el.checked = false; });
+      updateStatusFilterLabel();
+    }
+    if (key === 'date') {
+      document.getElementById('leadDateFrom').value = '';
+      document.getElementById('leadDateTo').value = '';
+    }
+    onFilterChange();
+  }
+
+  function updateLeadFilterChrome() {
+    var active = getActiveLeadFilters();
+
+    document.getElementById('leadSearchField')
+      .classList.toggle('has-text', !!document.getElementById('leadSearch').value.trim());
+
+    var from = document.getElementById('leadDateFrom').value;
+    var to = document.getElementById('leadDateTo').value;
+    var dateBtn = document.getElementById('leadDateFilterBtn');
+    if (from || to) {
+      dateBtn.innerText = (from ? formatDate(from) : 'awal') + ' – ' + (to ? formatDate(to) : 'sekarang') + ' ▾';
+      dateBtn.classList.add('has-value');
+    } else {
+      dateBtn.innerText = 'Tanggal ▾';
+      dateBtn.classList.remove('has-value');
+    }
+
+    var resetBtn = document.getElementById('leadResetBtn');
+    resetBtn.innerText = active.length ? '↺ Reset Filter (' + active.length + ')' : '↺ Reset Filter';
+    resetBtn.disabled = active.length === 0;
+    resetBtn.classList.toggle('has-active', active.length > 0);
+
+    var chipHost = document.getElementById('leadFilterChips');
+    if (!active.length) {
+      chipHost.style.display = 'none';
+      chipHost.innerHTML = '';
+      return;
+    }
+    chipHost.style.display = '';
+    chipHost.innerHTML = '<span class="filter-chips-label">Filter aktif:</span>' + active.map(function (f) {
+      return '<span class="filter-chip">' + escHtml(f.label) +
+        '<button type="button" onclick="removeLeadFilter(\'' + escAttr(f.key) + '\')" title="Hapus filter ini">×</button></span>';
+    }).join('');
+  }
+
+  /* ============================================================
+     TABEL
+     ============================================================ */
   function renderTable(paged) {
     var tbody = document.getElementById('leadTableBody');
     if (!paged.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Tidak ada data.</td></tr>';
+      var activeCount = getActiveLeadFilters().length;
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">' +
+        (activeCount
+          ? 'Tidak ada lead yang cocok dengan ' + activeCount + ' filter yang aktif. ' +
+            '<button class="filter-reset" onclick="resetFilter()">↺ Reset Filter</button>'
+          : 'Belum ada lead sama sekali. Klik <strong>SYNC NEW LEADS</strong> di atas untuk menarik data dari form inbound.') +
+        '</td></tr>';
       return;
     }
     tbody.innerHTML = paged.items.map(function (lead) {
       var meta = getStatusMeta(lead.Status);
+      var statusKey = normalizeStatusKey(lead.Status);
       var needs = lead.Detail_Interest || '-';
-      var needsShort = truncateText(needs, 30);
       var picName = toProperCase(lead.PIC_Name) || '-';
       var email = (lead.Email || '').toLowerCase();
       var phone = lead.Phone || '';
+      var age = daysSince(lead.Timestamp);
+      var stale = statusKey === 'New Leads' && isStale(lead.Timestamp);
+      var checked = selectedLeadIds[lead.Inbound_ID] ? 'checked' : '';
+      var isLocked = statusKey === 'Moved';
 
-      return '<tr>' +
-        '<td class="nowrap-cell"><span class="badge ' + meta.badgeClass + '">' + lead.Status + '</span></td>' +
-        '<td class="nowrap-cell">' + formatDate(lead.Timestamp) + '</td>' +
-        '<td><div class="entity-name">' + lead.Entity_Name + '</div>' +
-        '<div class="entity-pic">👤 ' + picName + '</div></td>' +
+      return '<tr' + (stale ? ' class="lead-row-stale"' : '') + '>' +
+        '<td>' + (isLocked
+          ? '<span class="chk-placeholder" title="Sudah jadi Client — tidak bisa diubah lagi">–</span>'
+          : '<input type="checkbox" ' + checked + ' onchange="toggleLeadSelection(\'' + escAttr(lead.Inbound_ID) + '\', this.checked)">') +
+        '</td>' +
+        '<td class="nowrap-cell"><span class="badge ' + meta.badgeClass + '">' + escHtml(lead.Status) + '</span></td>' +
+        '<td class="nowrap-cell"><div>' + escHtml(formatDate(lead.Timestamp)) + '</div>' +
+          (age === null ? '' : '<div class="cell-sub' + (stale ? ' bad' : '') + '">' +
+            (stale ? '⚠ ' : '') + age + ' hari</div>') +
+        '</td>' +
+        '<td><div class="entity-name">' + escHtml(lead.Entity_Name || '-') + '</div>' +
+          '<div class="entity-pic">👤 ' + escHtml(picName) + '</div></td>' +
         '<td class="contact-cell">' +
-          (phone ? '<a href="https://wa.me/' + normalizePhone(phone) + '" target="_blank">📱 ' + phone + '</a>' : '') +
-          (email ? '<a class="contact-email" href="mailto:' + email + '">✉ ' + email + '</a>' : '') +
+          (phone ? '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">📱 ' + escHtml(phone) + '</a>' : '') +
+          (email ? '<a class="contact-email" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
           (!phone && !email ? '-' : '') +
         '</td>' +
-        '<td title="' + needs + '">' + needsShort + '</td>' +
-        '<td><button class="btn-icon-round row-action-reveal" onclick="openDetail(\'' + lead.Inbound_ID + '\')" title="Lihat Detail">›</button></td>' +
+        '<td title="' + escAttr(needs) + '">' + escHtml(truncateText(needs, 30)) + '</td>' +
+        '<td><button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) + '\')" title="Lihat Detail">›</button></td>' +
         '</tr>';
     }).join('');
+
+    syncSelectAllCheckbox(paged);
   }
 
   function truncateText(text, maxLen) {
@@ -488,13 +756,34 @@
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   }
 
+  function renderRowCount(paged, filtered) {
+    var el = document.getElementById('leadRowCount');
+    if (!allLeads.length) { el.innerText = ''; return; }
+    el.innerText = 'Menampilkan ' + paged.items.length + ' dari ' + filtered.length +
+      (filtered.length !== allLeads.length ? ' (difilter dari ' + allLeads.length + ')' : '') + ' lead';
+  }
+
+  // Pagination berjendela — hanya PAGE_WINDOW nomor di sekitar halaman aktif,
+  // plus lompatan ke halaman pertama/terakhir.
   function renderPagination(paged) {
     var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') +
       ' onclick="goToPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
 
-    for (var p = 1; p <= paged.totalPages; p++) {
+    var half = Math.floor(PAGE_WINDOW / 2);
+    var start = Math.max(1, Math.min(paged.page - half, paged.totalPages - PAGE_WINDOW + 1));
+    var end = Math.min(paged.totalPages, start + PAGE_WINDOW - 1);
+
+    if (start > 1) {
+      buttons += '<button onclick="goToPage(1)">1</button>';
+      if (start > 2) buttons += '<span class="page-gap">…</span>';
+    }
+    for (var p = start; p <= end; p++) {
       buttons += '<button class="' + (p === paged.page ? 'active' : '') +
         '" onclick="goToPage(' + p + ')">' + p + '</button>';
+    }
+    if (end < paged.totalPages) {
+      if (end < paged.totalPages - 1) buttons += '<span class="page-gap">…</span>';
+      buttons += '<button onclick="goToPage(' + paged.totalPages + ')">' + paged.totalPages + '</button>';
     }
 
     buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') +
@@ -508,8 +797,110 @@
     render();
   }
 
-  // ---- Detail drawer: data sudah ada di cache (allLeads), jadi terbuka
-  // instan tanpa panggil server sama sekali.
+  /* ============================================================
+     AKSI MASSAL
+     ============================================================ */
+  function selectedIdList() {
+    return Object.keys(selectedLeadIds).filter(function (id) { return selectedLeadIds[id]; });
+  }
+
+  function toggleLeadSelection(inboundId, checked) {
+    if (checked) selectedLeadIds[inboundId] = true;
+    else delete selectedLeadIds[inboundId];
+    render();
+  }
+
+  function selectableOnPage(paged) {
+    return paged.items.filter(function (l) { return normalizeStatusKey(l.Status) !== 'Moved'; });
+  }
+
+  function toggleSelectAllOnPage(checked) {
+    var paged = paginate(getFilteredSorted());
+    selectableOnPage(paged).forEach(function (lead) {
+      if (checked) selectedLeadIds[lead.Inbound_ID] = true;
+      else delete selectedLeadIds[lead.Inbound_ID];
+    });
+    render();
+  }
+
+  function syncSelectAllCheckbox(paged) {
+    var box = document.getElementById('leadSelectAll');
+    if (!box) return;
+    var selectable = selectableOnPage(paged);
+    var chosen = selectable.filter(function (l) { return selectedLeadIds[l.Inbound_ID]; });
+    box.checked = selectable.length > 0 && chosen.length === selectable.length;
+    box.indeterminate = chosen.length > 0 && chosen.length < selectable.length;
+  }
+
+  function clearLeadSelection() {
+    selectedLeadIds = {};
+    render();
+  }
+
+  function renderBulkBar(paged) {
+    var ids = selectedIdList();
+    var bar = document.getElementById('leadBulkBar');
+    bar.style.display = ids.length ? '' : 'none';
+    document.getElementById('leadBulkCount').innerText = ids.length + ' lead dipilih';
+  }
+
+  /**
+   * Ubah status banyak lead sekaligus. Dikirim BERURUTAN (bukan paralel) —
+   * pola yang sama dengan applyStagedPicRemovals di Client Monitoring, dan
+   * sengaja begitu: menembak puluhan google.script.run bersamaan adalah
+   * penyebab persis dari bug "tidak ada respons" yang baru kita perbaiki.
+   */
+  function applyBulkStatus(newStatus) {
+    var ids = selectedIdList();
+    if (!ids.length) return;
+    if (!techfordConfirm('Ubah status ' + ids.length + ' lead menjadi "' + newStatus + '"?')) return;
+
+    var failed = 0;
+    TechfordLoading.show('Mengubah status 0/' + ids.length + '...');
+
+    function step(index) {
+      if (index >= ids.length) {
+        TechfordLoading.hide();
+        selectedLeadIds = {};
+        render();
+        if (failed) {
+          alert(failed + ' dari ' + ids.length + ' lead gagal diubah. Silakan cek dan coba lagi untuk yang tersisa.');
+        } else {
+          showSuccessModal(ids.length + ' lead berhasil diubah menjadi ' + newStatus + '.');
+        }
+        return;
+      }
+
+      TechfordLoading.show('Mengubah status ' + (index + 1) + '/' + ids.length + '...');
+      var inboundId = ids[index];
+
+      google.script.run
+        .withSuccessHandler(function () {
+          // Optimistic: begitu tidak ada exception, terapkan ke cache lokal.
+          for (var i = 0; i < allLeads.length; i++) {
+            if (sameId(allLeads[i].Inbound_ID, inboundId)) {
+              allLeads[i].Status = newStatus;
+              allLeads[i].Last_Updated = new Date().toISOString();
+              break;
+            }
+          }
+          TechfordLoading.hide();
+          step(index + 1);
+        })
+        .withFailureHandler(function () {
+          failed++;
+          TechfordLoading.hide();
+          step(index + 1);
+        })
+        .lead_update(inboundId, { Status: newStatus });
+    }
+
+    step(0);
+  }
+
+  /* ============================================================
+     DRAWER DETAIL
+     ============================================================ */
   function openDetail(inboundId) {
     var lead = allLeads.filter(function (l) { return sameId(l.Inbound_ID, inboundId); })[0];
     if (!lead) return;
@@ -526,10 +917,10 @@
     document.getElementById('drawerPicName').innerText = toProperCase(lead.PIC_Name) || '-';
 
     document.getElementById('drawerPhone').innerHTML = lead.Phone
-      ? '<a href="https://wa.me/' + normalizePhone(lead.Phone) + '" target="_blank">' + lead.Phone + '</a>'
+      ? '<a href="https://wa.me/' + escAttr(normalizePhone(lead.Phone)) + '" target="_blank" rel="noopener">' + escHtml(lead.Phone) + '</a>'
       : '-';
     document.getElementById('drawerEmail').innerHTML = lead.Email
-      ? '<a href="mailto:' + lead.Email.toLowerCase() + '">' + lead.Email.toLowerCase() + '</a>'
+      ? '<a href="mailto:' + escAttr(lead.Email.toLowerCase()) + '">' + escHtml(lead.Email.toLowerCase()) + '</a>'
       : '-';
 
     document.getElementById('drawerNeeds').innerText = lead.Detail_Interest || '-';
@@ -558,6 +949,23 @@
     document.querySelector('.drawer-action-row').style.display = isLocked ? 'none' : 'flex';
     document.getElementById('lockedNotice').style.display = isLocked ? 'block' : 'none';
     document.querySelector('.drawer-footer .btn-save').style.display = isLocked ? 'none' : 'inline-block';
+
+    // Jejak Move: tunjukkan client mana yang lahir dari lead ini. Untuk lead
+    // yang sudah di-Move SEBELUM kolom Client_ID ada, jejaknya memang tidak
+    // tersimpan — dikatakan terang-terangan alih-alih dibiarkan kosong.
+    var linkHost = document.getElementById('movedClientLink');
+    if (isLocked) {
+      linkHost.innerHTML = lead.Client_ID
+        ? 'Menjadi client <strong>' + escHtml(lead.Client_ID) + '</strong> — ' +
+          '<a href="#" onclick="goToClientMonitoring(); return false;">buka di Client Monitoring ↗</a>'
+        : '<span class="drawer-field-label">Client hasilnya tidak tercatat (lead ini dipindahkan sebelum jejak Client ID mulai disimpan).</span>';
+    } else {
+      linkHost.innerHTML = '';
+    }
+  }
+
+  function goToClientMonitoring() {
+    TechfordNav.navigateTo('client-monitoring', {});
   }
 
   function setStatusBadge(status) {
@@ -635,10 +1043,14 @@
           allLeads[idx].Status = 'Moved';
           allLeads[idx].Last_Updated = new Date().toISOString();
         }
+        delete selectedLeadIds[inboundId];
 
         closeDetail();
         render();
-        showSuccessModal('Lead berhasil dipindahkan menjadi Client.');
+        showSuccessModal('Lead berhasil dipindahkan menjadi Client. Lengkapi datanya di Client Monitoring.');
+        // Ambil ulang supaya Client_ID hasil Move (ditulis server) ikut masuk
+        // ke cache — jejaknya yang ditampilkan di drawer berasal dari sana.
+        fetchLeads();
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -672,13 +1084,9 @@
     // Optimistic update: google.script.run terbukti berkali-kali gagal
     // mengirim balik BODY respons yang bisa dibaca untuk endpoint ini
     // (res selalu null di success handler), walau penulisan ke sheet
-    // SELALU berhasil (dikonfirmasi lewat pengecekan manual & console).
-    // Karena itu kita tidak lagi bergantung pada isi respons untuk
-    // memperbarui tampilan — begitu withSuccessHandler terpanggil (artinya
-    // tidak ada exception yang dilempar), kita anggap berhasil dan
-    // terapkan sendiri perubahan yang baru diketik ke cache lokal.
-    // withFailureHandler tetap menangani error asli (sudah terbukti
-    // selalu berfungsi benar untuk kasus gagal sungguhan).
+    // SELALU berhasil. Karena itu kita tidak bergantung pada isi respons —
+    // begitu withSuccessHandler terpanggil (artinya tidak ada exception),
+    // kita terapkan sendiri perubahan yang baru diketik ke cache lokal.
     google.script.run
       .withSuccessHandler(function () {
         TechfordLoading.hide();
@@ -710,6 +1118,9 @@
       .lead_update(inboundId, patch);
   }
 
+  /* ============================================================
+     SYNC
+     ============================================================ */
   function syncNewLeads() {
     var btn = document.querySelector('.btn-sync');
     if (btn) { btn.disabled = true; btn.innerText = 'Syncing...'; }
@@ -723,7 +1134,25 @@
         TechfordLoading.hide();
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
         if (res && res.ok === false) return alert(res.error.message);
-        fetchLeads();
+
+        // Jumlah lead baru dihitung dari SELISIH array sebelum & sesudah,
+        // bukan dari nilai balik server — server memang menghitungnya
+        // (importedCount) tapi mengirim objek tunggal lewat jembatan ini
+        // sudah berkali-kali terbukti tidak dapat diandalkan untuk modul
+        // Lead. Selisih di sisi client justru lebih tepat menjawab
+        // pertanyaan aslinya: "berapa lead baru yang muncul di layar saya".
+        fetchLeads(function (previousLeads) {
+          var before = {};
+          previousLeads.forEach(function (l) { before[l.Inbound_ID] = true; });
+          var added = allLeads.filter(function (l) { return !before[l.Inbound_ID]; }).length;
+          if (!previousLeads.length) {
+            showSuccessModal('Sinkronisasi selesai — ' + allLeads.length + ' lead dimuat.');
+          } else if (added > 0) {
+            showSuccessModal('Sinkronisasi selesai — ' + added + ' lead baru masuk.');
+          } else {
+            showSuccessModal('Sinkronisasi selesai — tidak ada lead baru.');
+          }
+        });
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();

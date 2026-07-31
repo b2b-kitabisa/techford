@@ -34,7 +34,8 @@ var ClientService = (function (module) {
     });
   }
 
-  function createPicRow(clientId, pic, now) {
+  function createPicRow(clientId, pic, now, isPrimary) {
+    PicClientRepository.ensureColumns(['Is_Primary']);
     PicClientRepository.create({
       PIC_ID: Utils.generateId('PIC'),
       Client_ID: clientId,
@@ -42,7 +43,8 @@ var ClientService = (function (module) {
       Title: pic.title || '',
       Email: pic.email || '',
       Phone: pic.phone || '',
-      Created_Date: now
+      Created_Date: now,
+      Is_Primary: !!isPrimary
     });
   }
 
@@ -77,12 +79,13 @@ var ClientService = (function (module) {
     ClientRepository.create(client);
 
     if (!Utils.isBlank(lead.PIC_Name)) {
+      // PIC satu-satunya dari lead otomatis jadi PIC utama.
       createPicRow(client.Client_ID, {
         name: lead.PIC_Name,
         title: '',
         email: lead.Email || '',
         phone: lead.Phone || ''
-      }, now);
+      }, now, true);
     }
 
     Log.info('ClientService', 'Client dibuat dari Lead: ' + client.Client_ID);
@@ -120,8 +123,13 @@ var ClientService = (function (module) {
       Last_Updated: now
     });
 
+    // PIC pertama yang valid otomatis jadi PIC utama — bisa diganti nanti
+    // lewat setPrimaryPic dari Client Monitoring.
+    var primaryAssigned = false;
     (input.pics || []).forEach(function (pic) {
-      if (!Utils.isBlank(pic.name)) createPicRow(clientId, pic, now);
+      if (Utils.isBlank(pic.name)) return;
+      createPicRow(clientId, pic, now, !primaryAssigned);
+      primaryAssigned = true;
     });
 
     Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy + ': ' + clientId);
@@ -168,8 +176,76 @@ var ClientService = (function (module) {
       throw new AppError('CLIENT_NOT_FOUND', 'Client tidak ditemukan.');
     }
 
-    createPicRow(clientId, picInput, new Date());
+    // Kalau ini PIC pertama client tersebut, otomatis jadi PIC utama —
+    // supaya tidak pernah ada client yang punya PIC tapi tanpa PIC utama.
+    var isFirst = PicClientRepository.findByClientId(clientId).length === 0;
+    createPicRow(clientId, picInput, new Date(), isFirst);
     return PicClientRepository.findAll();
+  };
+
+  /**
+   * Tetapkan PIC utama secara sadar. Sebelum ini "PIC Utama" di tabel Client
+   * Monitoring cuma PIC yang kebetulan tersimpan paling awal di sheet, bukan
+   * pilihan siapa pun — untuk client dengan beberapa PIC, yang tampil bisa
+   * jadi bukan kontak utama sebenarnya.
+   */
+  module.setPrimaryPic = function (clientId, picId) {
+    if (Utils.isBlank(clientId) || Utils.isBlank(picId)) {
+      throw new AppError('VALIDATION_ERROR', 'Client ID dan PIC ID wajib diisi.');
+    }
+    var pics = PicClientRepository.findByClientId(clientId);
+    if (!pics.some(function (p) { return p.PIC_ID === picId; })) {
+      throw new AppError('PIC_NOT_FOUND', 'PIC tidak ditemukan pada client ini.');
+    }
+
+    PicClientRepository.ensureColumns(['Is_Primary']);
+    // Hanya boleh ada satu PIC utama per client — yang lain dimatikan.
+    pics.forEach(function (p) {
+      PicClientRepository.update(p.PIC_ID, { Is_Primary: p.PIC_ID === picId });
+    });
+    return PicClientRepository.findAll();
+  };
+
+  /**
+   * Cari client yang namanya mirip — dipakai Client Monitoring untuk
+   * memperingatkan kemungkinan duplikat SEBELUM menyimpan. Sebelumnya
+   * pencegahan duplikat sepenuhnya bergantung pada ingatan admin (kotak
+   * konfirmasinya hanya MEMINTA admin memeriksa sendiri).
+   *
+   * Kemiripan disengaja dibuat sederhana & mudah dijelaskan: cocok kalau
+   * salah satu nama mengandung yang lain setelah dinormalkan (huruf kecil,
+   * tanpa bentuk badan hukum & tanda baca) — bukan algoritma jarak string,
+   * supaya hasilnya selalu bisa dipahami admin yang melihatnya.
+   */
+  function normalizeName(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\b(pt|cv|yayasan|tbk|persero|ltd|inc|llc)\b/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  module.findSimilarClients = function (brandName, entityName) {
+    var candidates = [normalizeName(brandName), normalizeName(entityName)]
+      .filter(function (n) { return n.length >= 3; });
+    if (!candidates.length) return [];
+
+    return ClientRepository.findAll().filter(function (c) {
+      var existing = [normalizeName(c.Brand_Name), normalizeName(c.Entity_Name)]
+        .filter(function (n) { return n.length >= 3; });
+      return existing.some(function (e) {
+        return candidates.some(function (n) {
+          return e === n || e.indexOf(n) !== -1 || n.indexOf(e) !== -1;
+        });
+      });
+    }).map(function (c) {
+      return {
+        Client_ID: c.Client_ID,
+        Brand_Name: c.Brand_Name,
+        Entity_Name: c.Entity_Name,
+        Client_Source: c.Client_Source
+      };
+    });
   };
 
   module.removePic = function (picId) {

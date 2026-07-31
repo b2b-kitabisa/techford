@@ -42,5 +42,17 @@ var ClientController = (function (module) {
     });
   };
 
+  module.setPrimaryPic = function (clientId, picId) {
+    return ErrorHandler.handle('ClientController.setPrimaryPic', function () {
+      return ClientService.setPrimaryPic(clientId, picId);
+    });
+  };
+
+  module.findSimilar = function (brandName, entityName) {
+    return ErrorHandler.handle('ClientController.findSimilar', function () {
+      return ClientService.findSimilarClients(brandName, entityName);
+    });
+  };
+
   return module;
 })(ClientController || {});

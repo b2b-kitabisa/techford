@@ -27,3 +27,11 @@ function client_addPic(clientId, picInput) {
 function client_removePic(picId) {
   return ClientController.removePic(picId);
 }
+
+function client_setPrimaryPic(clientId, picId) {
+  return ClientController.setPrimaryPic(clientId, picId);
+}
+
+function client_findSimilar(brandName, entityName) {
+  return ClientController.findSimilar(brandName, entityName);
+}

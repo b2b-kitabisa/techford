@@ -1237,4 +1237,69 @@
      bersih tidak melakukan apa pun, jadi jangan tampak bisa diklik. */
   .filter-reset:disabled { opacity: 0.4; cursor: default; }
   .filter-reset.has-active { color: var(--color-cerulean); font-weight: 700; }
+
+  /* ============================================================
+     Lead Capturing & Client Monitoring
+     ============================================================ */
+
+  /* Kartu "Inbound Health" — satu angka utama (konversi) ditopang baris-baris
+     kecil berlabel. Menggantikan kartu "% Moved" yang cuma satu persentase
+     tanpa konteks apakah inbound-nya sehat atau tidak. */
+  .stat-health .stat-label, .stat-health .stat-value { color: var(--color-cerulean); }
+  .stat-sub { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-softer); display: flex; flex-direction: column; gap: 3px; }
+  .stat-sub-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); }
+  .stat-sub-row strong { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 800; color: var(--color-mineshaft); }
+  .stat-sub-row.bad { color: var(--bad); }
+  .stat-sub-row.bad strong { color: var(--bad); }
+
+  /* Baris kedua di dalam sel tabel (mis. umur lead di bawah tanggal masuk). */
+  .cell-sub { font-size: 10.5px; color: var(--text-faint); margin-top: 2px; }
+  .cell-sub.bad { color: var(--bad); font-weight: 700; }
+
+  /* Lead yang masih New Leads tapi sudah didiamkan melewati ambang — diberi
+     garis merah di tepi kiri, bukan seluruh baris diwarnai, supaya menonjol
+     tanpa membuat tabel jadi ramai. */
+  .data-table tbody tr.lead-row-stale td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+
+  /* Sel checkbox yang sengaja kosong (baris yang tidak bisa dipilih). */
+  .chk-placeholder { color: var(--text-faint); font-size: 12px; }
+
+  /* Baris aksi massal — muncul di atas tabel begitu ada baris dicentang. */
+  .bulk-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--accent-tint); border: 1px solid var(--color-cerulean);
+    border-radius: 8px; padding: 9px 14px; margin-bottom: 12px;
+  }
+  .bulk-count { font-weight: 800; font-size: 13px; color: var(--color-cerulean); white-space: nowrap; }
+  .bulk-sep { width: 1px; height: 18px; background: var(--color-cerulean); opacity: 0.35; }
+  .bulk-label { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+  .bulk-bar .btn-outline { padding: 5px 12px; font-size: 12.5px; }
+
+  /* Penghitung baris di kaki tabel. */
+  .row-count { margin-left: 12px; font-size: 12px; color: var(--text-muted); }
+
+  /* Pemisah "…" pada pagination berjendela. */
+  .page-gap { padding: 0 4px; color: var(--text-faint); }
+
+  /* Penanda kelengkapan data client (Client Monitoring). Client hasil Move
+     dari Lead selalu lahir belum lengkap — Entity Name & Head Office tidak
+     ditanyakan di form inbound. */
+  .stat-incomplete .stat-label, .stat-incomplete .stat-value { color: var(--warn); }
+  .completeness { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .completeness-missing { font-size: 10.5px; color: var(--text-faint); margin-top: 3px; line-height: 1.4; white-space: normal; }
+  .data-table tbody tr.client-row-incomplete td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+  /* Kartu PIC utama di carousel — dibedakan dari PIC biasa, dan PIC biasa
+     dapat tombol "Jadikan utama" saat mode edit. */
+  .pic-card.pic-card-primary { border-color: var(--color-cerulean); background: var(--accent-tint); }
+  .pic-primary-tag { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-cerulean); background: var(--color-white); border: 1px solid var(--color-cerulean); border-radius: 999px; padding: 1px 6px; margin-bottom: 4px; }
+  .pic-set-primary-btn { margin-top: 6px; font-family: inherit; font-size: 10.5px; font-weight: 700; color: var(--text-muted); background: none; border: 1px dashed var(--border-soft); border-radius: 5px; padding: 3px 8px; cursor: pointer; }
+  .pic-set-primary-btn:hover { color: var(--color-cerulean); border-color: var(--color-cerulean); }
+
+  /* Peringatan kemungkinan duplikat client sebelum menyimpan. */
+  .dup-warn { background: var(--warn-tint); border: 1px solid var(--warn); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; text-align: left; }
+  .dup-warn-title { font-size: 12.5px; font-weight: 800; color: var(--warn); margin-bottom: 7px; }
+  .dup-warn-list { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto; }
+  .dup-warn-item { font-size: 12px; color: var(--color-mineshaft); background: var(--color-white); border-radius: 5px; padding: 5px 9px; }
+  .dup-warn-item span { color: var(--text-muted); }
 </style>

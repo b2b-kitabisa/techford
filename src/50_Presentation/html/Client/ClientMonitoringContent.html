@@ -1,12 +1,30 @@
 <div id="clientStats" class="stat-cards"></div>
 
 <div class="filter-bar">
-  <div class="search-field"><span class="search-ic">⌕</span><input id="clientSearch" placeholder="Search Entity Name...." oninput="onClientFilterChange()"></div>
+  <div class="search-field" id="clientSearchField">
+    <span class="search-ic">⌕</span>
+    <input id="clientSearch" placeholder="Cari brand, entitas, PIC..." oninput="onClientFilterChange()">
+    <button type="button" class="search-clear" onclick="clearClientSearch()" title="Hapus pencarian">×</button>
+  </div>
   <select id="clientSourceFilter" onchange="onClientFilterChange()">
     <option value="">All Source</option>
   </select>
-  <button class="filter-reset" onclick="resetClientFilter()">↺ Reset Filter</button>
+  <select id="clientEntityTypeFilter" onchange="onClientFilterChange()">
+    <option value="">All Entity Type</option>
+  </select>
+  <select id="clientIndustryFilter" onchange="onClientFilterChange()">
+    <option value="">All Industry</option>
+  </select>
+  <select id="clientCompletenessFilter" onchange="onClientFilterChange()">
+    <option value="">Semua Kelengkapan</option>
+    <option value="incomplete">Belum Lengkap</option>
+    <option value="complete">Lengkap</option>
+  </select>
+  <button class="filter-reset" id="clientResetBtn" onclick="resetClientFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" onclick="fetchClients()" title="Ambil ulang data dari server">🔄 Refresh</button>
 </div>
+
+<div class="filter-chips" id="clientFilterChips" style="display:none;"></div>
 
 <div id="clientTableError" class="error"></div>
 
@@ -15,8 +33,10 @@
     <thead>
       <tr>
         <th class="sortable" onclick="setClientSort('Brand_Name')">Brand &amp; Entity <span class="sort-icon" data-field="Brand_Name">⇕</span></th>
+        <th>Kelengkapan</th>
         <th class="sortable" onclick="setClientSort('Client_Source')">Source <span class="sort-icon" data-field="Client_Source">⇕</span></th>
-        <th>PIC Utama</th>
+        <th class="sortable" onclick="setClientSort('__pic')">PIC Utama <span class="sort-icon" data-field="__pic">⇕</span></th>
+        <th class="sortable" onclick="setClientSort('__projects')">Project <span class="sort-icon" data-field="__projects">⇕</span></th>
         <th class="sortable" onclick="setClientSort('Created_Date')">Dibuat <span class="sort-icon" data-field="Created_Date">⇕</span></th>
         <th>Action</th>
       </tr>
@@ -35,6 +55,7 @@
       <option value="100" selected>100</option>
     </select>
     Entries
+    <span class="row-count" id="clientRowCount"></span>
   </div>
   <div class="page-buttons" id="clientPageButtons"></div>
 </div>
@@ -110,10 +131,20 @@
 </div>
 
 <div class="confirm-overlay" id="addClientConfirm">
-  <div class="confirm-box" style="width:420px;">
+  <div class="confirm-box" style="width:460px;">
     <h3>Konfirmasi Simpan Client</h3>
-    <p>Apakah Anda yakin untuk menyimpan informasi client ini? Tindakan ini dapat di edit nantinya pada menu edit client.
-      Mohon di cek kembali data yang di simpan untuk menghindari nama client yang sama sebelum klik Save.</p>
+    <!-- Daftar kemungkinan duplikat diisi client_findSimilar sebelum kotak ini
+         terbuka. Sebelumnya pencegahan duplikat sepenuhnya bergantung pada
+         ingatan admin — kotak ini hanya MEMINTA admin memeriksa sendiri. -->
+    <div class="dup-warn" id="dupWarnBox" style="display:none;">
+      <div class="dup-warn-title">⚠️ Ada client dengan nama mirip</div>
+      <div class="dup-warn-list" id="dupWarnList"></div>
+      <div style="font-size:11.5px; color: var(--text-muted); margin-top:8px;">
+        Pastikan ini benar-benar client yang berbeda sebelum menyimpan.
+      </div>
+    </div>
+    <p>Apakah Anda yakin untuk menyimpan informasi client ini? Data ini masih bisa diedit
+      nanti lewat menu Edit Info pada Client Detail.</p>
     <div class="confirm-actions">
       <button class="btn-outline" onclick="cancelAddClientConfirm()">Cancel</button>
       <button class="btn-save" onclick="submitAddClient()">Save</button>
@@ -129,6 +160,13 @@
         <h2 style="color: var(--color-white); font-size:18px; margin:0;">CLIENT DETAIL</h2>
         <button class="drawer-close" onclick="closeClientDetail()">&times;</button>
       </div>
+    </div>
+
+    <!-- Panel kelengkapan — menyebut sisa kekurangan secara eksplisit, supaya
+         admin tahu persis apa yang harus diisi, bukan cuma "belum lengkap". -->
+    <div class="drawer-section" id="clientCompletenessPanel" style="display:none; background: var(--warn-tint);">
+      <div class="drawer-field-value" id="clientCompletenessText"></div>
+      <button class="btn-outline" style="margin-top:9px;" onclick="startCompleteClient()">✏️ Lengkapi Sekarang</button>
     </div>
 
     <div class="drawer-section">
@@ -154,7 +192,7 @@
             <div class="drawer-field-label" style="margin-top:10px;">Client Source</div>
             <div class="drawer-field-value" id="viewClientSource">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">Total Project</div>
-            <div class="drawer-field-value">0</div>
+            <div class="drawer-field-value" id="viewTotalProject">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">Website</div>
             <div class="drawer-field-value" id="viewWebsite">-</div>
           </div>
@@ -164,11 +202,14 @@
             <div class="drawer-field-label" style="margin-top:10px;">Entity Type</div>
             <div class="drawer-field-value" id="viewEntityType">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">GDV Value</div>
-            <div class="drawer-field-value">-</div>
+            <div class="drawer-field-value" id="viewGdvValue">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">Service Revenue</div>
-            <div class="drawer-field-value">-</div>
+            <div class="drawer-field-value" id="viewServiceRevenue">-</div>
           </div>
         </div>
+
+        <div class="drawer-field-label" style="margin-top:12px;">Riwayat</div>
+        <div class="drawer-field-value" id="viewAuditTrail" style="font-size:12px;">-</div>
       </div>
 
       <div class="drawer-edit-form" id="clientEditForm">
@@ -253,6 +294,7 @@
   <div class="success-box">
     <div class="success-icon">✓</div>
     <h3 id="clientSuccessMessage">Berhasil.</h3>
+    <div id="clientSuccessSubtext" style="font-size:12.5px; color: var(--text-muted); margin:-4px 0 12px;"></div>
     <button class="btn-outline" id="clientSuccessGoToPipelineBtn" style="display:none; margin-bottom:10px;" onclick="createDraftProjectAndGo()">🚀 Buat Project di Sales Pipeline</button>
     <button class="btn-save" onclick="closeClientSuccessModal()">OK</button>
   </div>
@@ -264,58 +306,189 @@
   var allClients = [];
   var allPics = [];
   var allMasterData = [];
-  var allProjects = []; // dipakai untuk cek eligibility tombol "Buat Project" (hindari dobel)
+  var allProjects = [];
   var clientPage = 1;
   var currentClientDrawerId = null;
   var clientSort = { field: 'Created_Date', dir: 'desc' };
-  var clientBootstrapRetried = false;
   var picPopupContext = null; // 'new' | 'detail'
   var editModePendingNewPics = []; // PIC baru yang ditambahkan selagi edit info, belum di-save
   var editModeRemovedPicIds = []; // PIC_ID yang ditandai hapus selagi edit info, belum di-save
+  var PAGE_WINDOW = 7;
 
-  // Jembatan google.script.run kadang belum sepenuhnya siap tepat saat
-  // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
-  // respons. Retry sekali kadang tidak cukup, jadi diulang berkali-kali
-  // sebelum benar-benar menyerah dan menampilkan pesan error.
-  //
-  // BUG YANG DIPERBAIKI: retry sebelumnya cuma mengecek `allClients.length`
-  // — begitu fetchClients berhasil, retry berhenti walau fetchMasterData/
-  // fetchProjectsForPipelineCheck/fetchPics belum tentu ikut berhasil.
-  // Sekarang semua harus melapor sukses dulu sebelum retry berhenti.
-  var clientBootstrapAttempts = 0;
-  var CLIENT_BOOTSTRAP_MAX_ATTEMPTS = 10;
-  var CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
-  var cClientsLoaded = false, cMasterDataLoaded = false, cProjectsLoaded = false, cPicsLoaded = false;
-
-  function bootstrapClients() {
-    clientBootstrapAttempts++;
-    fetchClients();
-    fetchMasterData();
-    fetchProjectsForPipelineCheck();
-    setTimeout(function () {
-      var allLoaded = cClientsLoaded && cMasterDataLoaded && cProjectsLoaded && cPicsLoaded;
-      if (allLoaded || clientBootstrapRetried) return;
-      if (clientBootstrapAttempts < CLIENT_BOOTSTRAP_MAX_ATTEMPTS) {
-        bootstrapClients();
-      } else {
-        clientBootstrapRetried = true;
-        fetchClients();
-        fetchMasterData();
-        fetchProjectsForPipelineCheck();
-      }
-    }, CLIENT_BOOTSTRAP_RETRY_INTERVAL_MS);
+  /**
+   * Penyaring HTML — WAJIB dipakai untuk SETIAP nilai client/PIC yang ditulis
+   * ke halaman. Sebagian nilainya (Brand_Name, PIC_Name, email, telepon)
+   * berasal dari Lead, artinya berasal dari form Typeform PUBLIK. Sebelumnya
+   * diinterpolasi mentah ke innerHTML. Pola & nama fungsinya sama dengan
+   * Sales Pipeline & Lead Capturing.
+   */
+  function escHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
-  // Render skeleton score card SEGERA (sebelum data/taxonomy datang) supaya
-  // area ini langsung punya tinggi & tampil, tidak collapse-lalu-muncul-
-  // tiba-tiba begitu fetch selesai (yang bikin filter bar di bawahnya ikut
-  // kelihatan "menunggu load") — sama seperti Sales Pipeline & Document
-  // Pipeline yang score card-nya sudah statis di HTML sejak awal.
-  renderClientStats(allClients);
+  function escAttr(value) {
+    return escHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ============================================================
+     KELENGKAPAN DATA CLIENT
+     ============================================================
+     Patokan "satu client sudah lengkap": Brand Name, Entity Name, Head
+     Office, Entity Type, Client Source, dan minimal 1 PIC.
+
+     Client hasil Move dari Lead SELALU lahir belum lengkap — Entity Name &
+     Head Office tidak ditanyakan di form inbound, jadi memang titik serah
+     terimanya ke admin. Definisi ini dipakai bersama oleh: penanda baris
+     tabel, panel di drawer, filter kelengkapan, kartu score card, DAN gerbang
+     tombol "Buat Project di Sales Pipeline" — satu sumber kebenaran, supaya
+     tidak mungkin lagi ada tombol yang syaratnya beda dari yang ditampilkan.
+
+     CATATAN BUG: sebelumnya Head Office TIDAK pernah ikut diperiksa di
+     gerbang tombol pipeline, padahal ikut jadi syarat lengkap. */
+  var COMPLETENESS_FIELDS = [
+    { key: 'Brand_Name', label: 'Brand Name' },
+    { key: 'Entity_Name', label: 'Entity Name' },
+    { key: 'Head_Office', label: 'Head Office' },
+    { key: 'Entity_Type', label: 'Entity Type' },
+    { key: 'Client_Source', label: 'Client Source' }
+  ];
+
+  function picCountFor(clientId) {
+    return allPics.filter(function (p) { return p.Client_ID === clientId; }).length;
+  }
+
+  /**
+   * @param {Object} client
+   * @param {number=} picCountOverride dipakai saat jumlah PIC final sudah
+   *   diketahui tapi allPics belum di-fetch ulang (mis. tepat setelah Save).
+   * @returns {{complete: boolean, missing: string[]}}
+   */
+  function evaluateCompleteness(client, picCountOverride) {
+    var missing = COMPLETENESS_FIELDS.filter(function (f) {
+      return !String(client[f.key] || '').trim();
+    }).map(function (f) { return f.label; });
+
+    var picCount = picCountOverride === undefined ? picCountFor(client.Client_ID) : picCountOverride;
+    if (picCount < 1) missing.push('PIC');
+
+    return { complete: missing.length === 0, missing: missing };
+  }
+
+  /* ============================================================
+     PEMUATAN DATA
+     ============================================================
+     BUG YANG DIPERBAIKI: tangga retry lama menembak 3 permintaan per
+     percobaan (client_getAll, masterdata_getAll, project_getAll) dan salah
+     satunya merantai permintaan ke-4 (client_getAllPics) — dikali 10
+     percobaan berbasis timer, jadi sampai ±40 permintaan berbarengan. Itu
+     penyebab yang sama persis dengan pesan "Tidak ada respons dari server"
+     di Lead Capturing, cuma belum meledak di sini karena jumlah client masih
+     lebih sedikit. project_getAll sendiri adalah pembacaan terberat di
+     seluruh aplikasi.
+
+     Sekarang: setiap permintaan punya kunci in-flight sendiri, retry HANYA
+     kalau percobaan sebelumnya benar-benar GAGAL (bukan sekadar "belum
+     selesai"), dengan jeda naik bertahap. */
+  // Penanda "halaman ini masih terpasang". Nama fungsi seperti fetchProjects()
+  // dan fetchClients() dipakai oleh BEBERAPA halaman content (Document
+  // Pipeline & Sales Pipeline juga punya), dan semuanya berbagi satu global
+  // scope di SPA (lihat TechfordNav di Shell.html). Respons RPC yang datang
+  // TERLAMBAT setelah user pindah section karena itu bisa menyentuh elemen
+  // yang sudah tidak ada — semua callback di bawah berhenti lebih dulu kalau
+  // halaman sudah tidak terpasang.
+  var CLIENT_PAGE_ROOT = document.getElementById('clientStats');
+  function clientPageMounted() {
+    return !!CLIENT_PAGE_ROOT && document.body.contains(CLIENT_PAGE_ROOT);
+  }
+
+  function makeLoader(rpcName, onData, options) {
+    var inFlight = false;
+    var attempt = 0;
+    var maxAttempts = (options && options.maxAttempts) || 5;
+    var onGiveUp = options && options.onGiveUp;
+
+    return function load() {
+      if (inFlight) return;
+      inFlight = true;
+      attempt++;
+
+      function fail(message) {
+        inFlight = false;
+        if (!clientPageMounted()) return;
+        if (attempt < maxAttempts) {
+          setTimeout(load, Math.min(1000 * Math.pow(2, attempt - 1), 8000));
+          return;
+        }
+        if (onGiveUp) onGiveUp(message);
+      }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res) { fail('Tidak ada respons dari server setelah beberapa kali percobaan.'); return; }
+          if (!res.ok) { fail((res.error && res.error.message) || 'Terjadi kesalahan.'); return; }
+          inFlight = false;
+          attempt = 0;
+          if (!clientPageMounted()) return;
+          onData(res.data);
+        })
+        .withFailureHandler(function (err) {
+          fail(err && err.message ? err.message : String(err));
+        })[rpcName]();
+    };
+  }
+
+  var fetchClients = makeLoader('client_getAll', function (data) {
+    allClients = data;
+    document.getElementById('clientTableError').innerText = '';
+    renderClients();
+    fetchPics();
+  }, {
+    onGiveUp: function (message) { showClientTableError('Gagal memuat data: ' + message); }
+  });
+
+  var fetchPics = makeLoader('client_getAllPics', function (data) {
+    allPics = data;
+    renderClients();
+    if (currentClientDrawerId) {
+      renderPicCarousel('detailPicCarousel', currentClientDrawerId);
+      var c = allClients.filter(function (x) { return x.Client_ID === currentClientDrawerId; })[0];
+      if (c) renderCompletenessPanel(c);
+    }
+  });
+
+  var fetchMasterData = makeLoader('masterdata_getAll', function (data) {
+    allMasterData = data;
+    populateMasterDataDropdowns();
+    // fetchClients()/fetchPics() jalan paralel dengan ini — kalau tabel Client
+    // sudah lebih dulu ter-render sebelum Master Data datang, badge
+    // Client_Source & stat card akan salah/kosong sampai ada trigger render
+    // lain. Render ulang di sini supaya langsung benar.
+    renderClients();
+  });
+
+  // Dipakai untuk kolom Project, field Total Project/GDV/Service Revenue di
+  // drawer, DAN gerbang tombol "Buat Project" (hindari draft dobel).
+  var fetchProjects = makeLoader('project_getAll', function (data) {
+    allProjects = data;
+    renderClients();
+    if (currentClientDrawerId) {
+      var c = allClients.filter(function (x) { return x.Client_ID === currentClientDrawerId; })[0];
+      if (c) renderClientMetrics(c);
+    }
+  });
+
+  renderClientStats();
   renderClientSkeleton();
   function renderClientSkeleton() {
     document.getElementById('clientTableBody').innerHTML = new Array(5).fill(
-      '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+      '<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
     ).join('');
+  }
+
+  function bootstrapClients() {
+    fetchClients();
+    fetchMasterData();
+    fetchProjects();
   }
 
   if (document.readyState === 'complete') {
@@ -324,73 +497,14 @@
     window.addEventListener('load', bootstrapClients);
   }
 
-  function fetchClients() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res || !res.ok) {
-          if (!clientBootstrapRetried) return;
-          showClientTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
-          return;
-        }
-        clientBootstrapRetried = true;
-        cClientsLoaded = true;
-        allClients = res.data;
-        fetchPics();
-      })
-      .withFailureHandler(function (err) {
-        if (!clientBootstrapRetried) return;
-        showClientTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .client_getAll();
-  }
-
-  function fetchPics() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok) { cPicsLoaded = true; allPics = res.data; }
-        renderClients();
-        if (currentClientDrawerId) renderPicCarousel('detailPicCarousel', currentClientDrawerId);
-      })
-      .withFailureHandler(function () { renderClients(); })
-      .client_getAllPics();
-  }
-
-  function fetchMasterData() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (res && res.ok) {
-          cMasterDataLoaded = true;
-          allMasterData = res.data;
-          populateMasterDataDropdowns();
-          // fetchClients()/fetchPics() jalan paralel dengan fetchMasterData()
-          // saat bootstrap — kalau tabel Client sudah lebih dulu ter-render
-          // sebelum Master Data ini datang, badge Client_Source & stat card
-          // akan salah/kosong (fallback ke urutan pertama) sampai ada trigger
-          // render lain. Render ulang di sini supaya langsung benar.
-          renderClients();
-        }
-      })
-      .withFailureHandler(function () {})
-      .masterdata_getAll();
-  }
-
-  // Hanya dipakai untuk cek "client ini sudah punya project belum" (gate
-  // tombol "Buat Project di Sales Pipeline") — tidak perlu pola render-ulang
-  // race-safe yang ketat karena cuma dipakai saat tombol Save diklik, bukan
-  // dirender terus-menerus.
-  function fetchProjectsForPipelineCheck() {
-    google.script.run
-      .withSuccessHandler(function (res) { if (res && res.ok) { cProjectsLoaded = true; allProjects = res.data; } })
-      .withFailureHandler(function () {})
-      .project_getAll();
-  }
-
   function optionsForCategory(category) {
     return allMasterData.filter(function (row) { return row.Category === category; });
   }
 
   function populateMasterDataDropdowns() {
     fillSelect('clientSourceFilter', optionsForCategory('Client_Source'), 'All Source', true);
+    fillSelect('clientEntityTypeFilter', optionsForCategory('Entity_Type'), 'All Entity Type', true);
+    fillSelect('clientIndustryFilter', optionsForCategory('Industry'), 'All Industry', true);
     fillSelect('newEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
     fillSelect('newClientSource', optionsForCategory('Client_Source'), 'Pilih Client Source...');
     fillSelect('editEntityType', optionsForCategory('Entity_Type'), 'Pilih Entity Type...');
@@ -408,27 +522,98 @@
     var el = document.getElementById(selectId);
     if (!el) return;
     var currentValue = el.value;
-    el.innerHTML = '<option value="">' + placeholderLabel + '</option>' +
-      options.map(function (o) { return '<option value="' + o.Value + '">' + o.Value + '</option>'; }).join('');
-    if (!isFilter && currentValue) el.value = currentValue;
+    el.innerHTML = '<option value="">' + escHtml(placeholderLabel) + '</option>' +
+      options.map(function (o) {
+        return '<option value="' + escAttr(o.Value) + '">' + escHtml(o.Value) + '</option>';
+      }).join('');
+    if (currentValue) el.value = currentValue;
+  }
+
+  /**
+   * Pasang nilai ke <select> DENGAN AMAN.
+   *
+   * BUG YANG DIPERBAIKI: kalau nilainya tidak ada di antara <option>, browser
+   * TIDAK melempar error — dia diam-diam menyetel .value jadi string kosong.
+   * Client hasil Move dari Lead membawa Entity_Type mentah dari Typeform
+   * ("Jenis organisasi") yang hampir pasti tidak persis sama dengan opsi
+   * Master Data, jadi sekali admin membuka Edit Info lalu Save, patch-nya
+   * mengirim Entity_Type: '' — Entity Type-nya HILANG, dan karena itu salah
+   * satu syarat kelengkapan, tombol "Buat Project" tidak akan pernah muncul.
+   *
+   * Sekarang nilai yang tidak dikenal DITAHAN sebagai opsi sementara yang
+   * ditandai, jadi datanya tidak pernah terhapus tanpa sepengetahuan admin,
+   * dan admin bisa memilih padanan resminya secara sadar.
+   */
+  function setSelectValueSafely(selectId, value) {
+    var el = document.getElementById(selectId);
+    if (!el) return;
+    var wanted = String(value || '');
+    if (!wanted) { el.value = ''; return; }
+
+    var exists = Array.prototype.some.call(el.options, function (o) { return o.value === wanted; });
+    if (!exists) {
+      // Cocokkan tanpa peduli huruf besar/kecil & spasi dulu — sering kali
+      // nilainya "sama" tapi beda kapitalisasi saja.
+      var normalized = wanted.trim().toLowerCase();
+      var match = Array.prototype.filter.call(el.options, function (o) {
+        return o.value.trim().toLowerCase() === normalized;
+      })[0];
+      if (match) {
+        el.value = match.value;
+        return;
+      }
+      var opt = document.createElement('option');
+      opt.value = wanted;
+      opt.text = wanted + ' (belum ada di Master Data)';
+      opt.setAttribute('data-unlisted', '1');
+      el.appendChild(opt);
+    }
+    el.value = wanted;
   }
 
   function showClientTableError(message) {
     document.getElementById('clientTableError').innerText = message;
-    document.getElementById('clientTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+    document.getElementById('clientTableBody').innerHTML =
+      '<tr class="empty-row"><td colspan="7">' + escHtml(message) + '</td></tr>';
   }
 
+  /**
+   * PIC utama — sekarang penunjukan yang SADAR (kolom Is_Primary), dengan
+   * fallback ke PIC pertama untuk client lama yang belum pernah ditandai.
+   * Sebelumnya "PIC Utama" di tabel sebenarnya cuma PIC yang KEBETULAN
+   * tersimpan paling awal di sheet, bukan pilihan siapa pun.
+   */
   function getPrimaryPic(clientId) {
-    return allPics.filter(function (p) { return p.Client_ID === clientId; })[0] || null;
+    var pics = allPics.filter(function (p) { return p.Client_ID === clientId; });
+    if (!pics.length) return null;
+    return pics.filter(function (p) { return isTruthyFlag(p.Is_Primary); })[0] || pics[0];
+  }
+
+  // Boolean dari sheet bisa datang sebagai true, 'TRUE', 'true', atau 1.
+  function isTruthyFlag(value) {
+    if (value === true) return true;
+    var s = String(value == null ? '' : value).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === 'ya';
+  }
+
+  function projectsForClient(clientId) {
+    return allProjects.filter(function (p) { return p.Client_ID === clientId; });
+  }
+
+  function formatRupiah(value) {
+    var n = Math.round(Number(value) || 0);
+    return 'Rp' + n.toLocaleString('id-ID');
   }
 
   function renderClients() {
-    document.getElementById('clientTableError').innerText = '';
     var filtered = getFilteredClients();
-    renderClientStats(allClients);
+    renderClientStats();
     var paged = paginateClients(filtered);
     renderClientTable(paged);
     renderClientPagination(paged);
+    renderClientRowCount(paged, filtered);
+    updateClientSortIndicators();
+    updateClientFilterChrome();
   }
 
   function badgeClassForSource(source) {
@@ -437,56 +622,107 @@
     return SOURCE_BADGE_CYCLE[idx >= 0 ? idx % SOURCE_BADGE_CYCLE.length : 0];
   }
 
-  function renderClientStats(clients) {
-    var total = clients.length;
-    var counts = {};
-    clients.forEach(function (c) {
-      counts[c.Client_Source] = (counts[c.Client_Source] || 0) + 1;
-    });
-
-    function pct(n) { return total ? Math.round((n / total) * 100) : 0; }
-
+  /**
+   * Score card. Kartu "Belum Lengkap" ditaruh PALING DEPAN dan bisa diklik
+   * untuk langsung menyaring tabel — menjawab "apa yang harus saya kerjakan
+   * hari ini", bukan cuma "dari mana mereka datang" seperti kartu per Source.
+   */
+  function renderClientStats() {
+    var host = document.getElementById('clientStats');
     var sources = optionsForCategory('Client_Source');
-    if (!sources.length) sources = Object.keys(counts).map(function (v) { return { Value: v }; });
 
-    if (!sources.length) {
-      // Taxonomy (nama kategori Client_Source) & data client SAMA-SAMA
-      // belum datang — daripada box kosong total (bikin filter bar di
-      // bawahnya kelihatan "ikut nunggu load" karena box ini collapse ke
-      // tinggi 0 lalu tiba-tiba muncul), tampilkan 1 kartu placeholder
-      // dengan spinner supaya tinggi area tetap terjaga dari awal.
-      document.getElementById('clientStats').innerHTML =
-        '<div class="stat-card"><div class="stat-label"><span class="inline-spinner"></span>Memuat ringkasan...</div></div>';
+    if (!allClients.length && !sources.length) {
+      host.innerHTML = '<div class="stat-card"><div class="stat-label">' +
+        '<span class="inline-spinner"></span>Memuat ringkasan...</div></div>';
       return;
     }
 
-    document.getElementById('clientStats').innerHTML = sources.map(function (s) {
-      return '<div class="stat-card"><div class="stat-label">' + s.Value + '</div>' +
-        '<div class="stat-desc">' + s.Value + ' Client</div>' +
+    var total = allClients.length;
+    function pct(n) { return total ? Math.round((n / total) * 100) : 0; }
+
+    var incomplete = allClients.filter(function (c) {
+      return !evaluateCompleteness(c).complete;
+    }).length;
+
+    var activeCompleteness = document.getElementById('clientCompletenessFilter').value;
+    var html = '<div class="stat-card clickable stat-incomplete' +
+      (activeCompleteness === 'incomplete' ? ' active' : '') + '" onclick="toggleIncompleteFilter()">' +
+      '<div class="stat-label">Belum Lengkap</div>' +
+      '<div class="stat-desc">Perlu dilengkapi sebelum bisa jadi project</div>' +
+      '<div class="stat-value">' + incomplete + '</div>' +
+      '<div class="stat-sub"><div class="stat-sub-row' + (incomplete ? ' bad' : '') + '">' +
+      '<span>dari ' + total + ' client</span><strong>' + pct(incomplete) + '%</strong>' +
+      '</div></div>' +
+      '</div>';
+
+    var counts = {};
+    allClients.forEach(function (c) {
+      counts[c.Client_Source] = (counts[c.Client_Source] || 0) + 1;
+    });
+    if (!sources.length) sources = Object.keys(counts).map(function (v) { return { Value: v }; });
+
+    html += sources.map(function (s) {
+      var isActive = document.getElementById('clientSourceFilter').value === s.Value ? ' active' : '';
+      return '<div class="stat-card clickable' + isActive + '" onclick="toggleSourceFilter(\'' + escAttr(s.Value) + '\')">' +
+        '<div class="stat-label">' + escHtml(s.Value) + '</div>' +
+        '<div class="stat-desc">' + escHtml(s.Value) + ' Client</div>' +
         '<div class="stat-value">' + (counts[s.Value] || 0) + '</div>' +
         '<div class="stat-desc">' + pct(counts[s.Value] || 0) + '%</div></div>';
     }).join('');
+
+    host.innerHTML = html;
+  }
+
+  function toggleIncompleteFilter() {
+    var el = document.getElementById('clientCompletenessFilter');
+    el.value = el.value === 'incomplete' ? '' : 'incomplete';
+    onClientFilterChange();
+  }
+
+  function toggleSourceFilter(source) {
+    var el = document.getElementById('clientSourceFilter');
+    el.value = el.value === source ? '' : source;
+    onClientFilterChange();
+  }
+
+  function clientSortValue(client, field) {
+    if (field === '__pic') {
+      var pic = getPrimaryPic(client.Client_ID);
+      return pic ? String(pic.PIC_Name || '').toLowerCase() : '';
+    }
+    if (field === '__projects') return projectsForClient(client.Client_ID).length;
+    if (field === 'Created_Date') return new Date(client[field]).getTime() || 0;
+    return String(client[field] || '').toLowerCase();
   }
 
   function getFilteredClients() {
     var search = document.getElementById('clientSearch').value.toLowerCase().trim();
     var source = document.getElementById('clientSourceFilter').value;
+    var entityType = document.getElementById('clientEntityTypeFilter').value;
+    var industry = document.getElementById('clientIndustryFilter').value;
+    var completeness = document.getElementById('clientCompletenessFilter').value;
 
     return allClients.filter(function (c) {
-      var matchesSearch = !search ||
-        String(c.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
-        String(c.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
-      var matchesSource = !source || c.Client_Source === source;
-      return matchesSearch && matchesSource;
-    }).sort(function (a, b) {
-      var va = a[clientSort.field], vb = b[clientSort.field];
-      if (clientSort.field === 'Created_Date') {
-        va = new Date(va).getTime() || 0;
-        vb = new Date(vb).getTime() || 0;
-      } else {
-        va = String(va || '').toLowerCase();
-        vb = String(vb || '').toLowerCase();
+      if (search) {
+        var pics = allPics.filter(function (p) { return p.Client_ID === c.Client_ID; });
+        var haystack = [
+          c.Brand_Name, c.Entity_Name, c.Client_ID, c.Head_Office, c.Industry, c.Entity_Type,
+          pics.map(function (p) { return [p.PIC_Name, p.Email, p.Phone].join(' '); }).join(' ')
+        ].join(' ').toLowerCase();
+        if (haystack.indexOf(search) === -1) return false;
       }
+      if (source && c.Client_Source !== source) return false;
+      if (entityType && c.Entity_Type !== entityType) return false;
+      if (industry && c.Industry !== industry) return false;
+      if (completeness) {
+        var isComplete = evaluateCompleteness(c).complete;
+        if (completeness === 'incomplete' && isComplete) return false;
+        if (completeness === 'complete' && !isComplete) return false;
+      }
+      return true;
+    }).sort(function (a, b) {
+      var va = clientSortValue(a, clientSort.field);
+      var vb = clientSortValue(b, clientSort.field);
       var cmp = va < vb ? -1 : (va > vb ? 1 : 0);
       return clientSort.dir === 'asc' ? cmp : -cmp;
     });
@@ -502,16 +738,92 @@
     renderClients();
   }
 
+  function updateClientSortIndicators() {
+    var icons = document.querySelectorAll('.sort-icon');
+    for (var i = 0; i < icons.length; i++) {
+      var field = icons[i].getAttribute('data-field');
+      if (field === clientSort.field) {
+        icons[i].innerText = clientSort.dir === 'asc' ? '▲' : '▼';
+        icons[i].style.opacity = '1';
+      } else {
+        icons[i].innerText = '⇕';
+        icons[i].style.opacity = '0.5';
+      }
+    }
+  }
+
   function onClientFilterChange() {
     clientPage = 1;
     renderClients();
   }
 
+  function clearClientSearch() {
+    document.getElementById('clientSearch').value = '';
+    onClientFilterChange();
+  }
+
   function resetClientFilter() {
     document.getElementById('clientSearch').value = '';
     document.getElementById('clientSourceFilter').value = '';
+    document.getElementById('clientEntityTypeFilter').value = '';
+    document.getElementById('clientIndustryFilter').value = '';
+    document.getElementById('clientCompletenessFilter').value = '';
     clientPage = 1;
     renderClients();
+  }
+
+  // ---- Chip filter aktif ----
+  function getActiveClientFilters() {
+    var chips = [];
+    var search = document.getElementById('clientSearch').value.trim();
+    if (search) chips.push({ key: 'search', label: 'Cari: "' + search + '"' });
+    var pairs = [
+      { key: 'source', id: 'clientSourceFilter', prefix: 'Source' },
+      { key: 'entityType', id: 'clientEntityTypeFilter', prefix: 'Entity Type' },
+      { key: 'industry', id: 'clientIndustryFilter', prefix: 'Industry' }
+    ];
+    pairs.forEach(function (p) {
+      var v = document.getElementById(p.id).value;
+      if (v) chips.push({ key: p.key, label: p.prefix + ': ' + v });
+    });
+    var completeness = document.getElementById('clientCompletenessFilter').value;
+    if (completeness) {
+      chips.push({ key: 'completeness', label: completeness === 'incomplete' ? 'Belum Lengkap' : 'Lengkap' });
+    }
+    return chips;
+  }
+
+  function removeClientFilter(key) {
+    var map = {
+      search: 'clientSearch', source: 'clientSourceFilter', entityType: 'clientEntityTypeFilter',
+      industry: 'clientIndustryFilter', completeness: 'clientCompletenessFilter'
+    };
+    if (map[key]) document.getElementById(map[key]).value = '';
+    onClientFilterChange();
+  }
+
+  function updateClientFilterChrome() {
+    var active = getActiveClientFilters();
+
+    document.getElementById('clientSearchField')
+      .classList.toggle('has-text', !!document.getElementById('clientSearch').value.trim());
+
+    var resetBtn = document.getElementById('clientResetBtn');
+    resetBtn.innerText = active.length ? '↺ Reset Filter (' + active.length + ')' : '↺ Reset Filter';
+    resetBtn.disabled = active.length === 0;
+    resetBtn.classList.toggle('has-active', active.length > 0);
+
+    var chipHost = document.getElementById('clientFilterChips');
+    if (!active.length) {
+      chipHost.style.display = 'none';
+      chipHost.innerHTML = '';
+      return;
+    }
+    chipHost.style.display = '';
+    chipHost.innerHTML = '<span class="filter-chips-label">Filter aktif:</span>' + active.map(function (f) {
+      return '<span class="filter-chip">' + escHtml(f.label) +
+        '<button type="button" onclick="removeClientFilter(\'' + escAttr(f.key) + '\')" title="Hapus filter ini">×</button></span>';
+    }).join('');
   }
 
   function paginateClients(list) {
@@ -533,28 +845,78 @@
   function renderClientTable(paged) {
     var tbody = document.getElementById('clientTableBody');
     if (!paged.items.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Tidak ada data.</td></tr>';
+      var activeCount = getActiveClientFilters().length;
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">' +
+        (activeCount
+          ? 'Tidak ada client yang cocok dengan ' + activeCount + ' filter yang aktif. ' +
+            '<button class="filter-reset" onclick="resetClientFilter()">↺ Reset Filter</button>'
+          : 'Belum ada client. Klik <strong>ADD NEW CLIENT</strong> di atas, atau pindahkan lead dari Lead Capturing.') +
+        '</td></tr>';
       return;
     }
     tbody.innerHTML = paged.items.map(function (c) {
       var pic = getPrimaryPic(c.Client_ID);
-      return '<tr>' +
-        '<td><div class="entity-name">' + (c.Brand_Name || '-') + '</div>' +
-        '<div class="entity-pic">' + (c.Entity_Name || '-') + '</div></td>' +
-        '<td class="nowrap-cell"><span class="badge ' + badgeClassForSource(c.Client_Source) + '">' + (c.Client_Source || '').toUpperCase() + '</span></td>' +
-        '<td>' + (pic ? pic.PIC_Name : '-') + '</td>' +
-        '<td class="nowrap-cell">' + formatDate(c.Created_Date) + '</td>' +
-        '<td><button class="btn-icon-round row-action-reveal" onclick="openClientDetail(\'' + c.Client_ID + '\')" title="Lihat Detail">›</button></td>' +
+      var status = evaluateCompleteness(c);
+      var projects = projectsForClient(c.Client_ID);
+
+      var completenessHtml = status.complete
+        ? '<span class="completeness"><span class="pill good">LENGKAP</span></span>'
+        : '<span class="completeness"><span class="pill warn">BELUM LENGKAP</span></span>' +
+          '<div class="completeness-missing">kurang ' + escHtml(status.missing.join(', ')) + '</div>';
+
+      var actionHtml = status.complete
+        ? '<button class="btn-icon-round" onclick="openClientDetail(\'' + escAttr(c.Client_ID) + '\')" title="Lihat Detail">›</button>'
+        : '<button class="btn-outline" style="padding:4px 10px; font-size:12px; white-space:nowrap;" ' +
+          'onclick="openClientDetail(\'' + escAttr(c.Client_ID) + '\', true)">Lengkapi ›</button>';
+
+      return '<tr' + (status.complete ? '' : ' class="client-row-incomplete"') + '>' +
+        '<td><div class="entity-name">' + escHtml(c.Brand_Name || '-') + '</div>' +
+        '<div class="entity-pic">' + escHtml(c.Entity_Name || '-') + '</div></td>' +
+        '<td>' + completenessHtml + '</td>' +
+        '<td class="nowrap-cell"><span class="badge ' + badgeClassForSource(c.Client_Source) + '">' +
+          escHtml(String(c.Client_Source || '').toUpperCase()) + '</span></td>' +
+        '<td>' + (pic
+          ? escHtml(pic.PIC_Name || '-') + (pic.Title ? '<div class="cell-sub">' + escHtml(pic.Title) + '</div>' : '')
+          : '<span class="cell-sub">belum ada PIC</span>') + '</td>' +
+        '<td class="nowrap-cell">' + (projects.length
+          ? projects.length + ' project'
+          : '<span class="cell-sub">–</span>') + '</td>' +
+        '<td class="nowrap-cell">' + escHtml(formatDate(c.Created_Date)) + '</td>' +
+        '<td>' + actionHtml + '</td>' +
         '</tr>';
     }).join('');
   }
 
+  function renderClientRowCount(paged, filtered) {
+    var el = document.getElementById('clientRowCount');
+    if (!allClients.length) { el.innerText = ''; return; }
+    el.innerText = 'Menampilkan ' + paged.items.length + ' dari ' + filtered.length +
+      (filtered.length !== allClients.length ? ' (difilter dari ' + allClients.length + ')' : '') + ' client';
+  }
+
   function renderClientPagination(paged) {
-    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToClientPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
-    for (var p = 1; p <= paged.totalPages; p++) {
-      buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToClientPage(' + p + ')">' + p + '</button>';
+    var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') +
+      ' onclick="goToClientPage(' + (paged.page - 1) + ')">&lt; Previous</button>';
+
+    var half = Math.floor(PAGE_WINDOW / 2);
+    var start = Math.max(1, Math.min(paged.page - half, paged.totalPages - PAGE_WINDOW + 1));
+    var end = Math.min(paged.totalPages, start + PAGE_WINDOW - 1);
+
+    if (start > 1) {
+      buttons += '<button onclick="goToClientPage(1)">1</button>';
+      if (start > 2) buttons += '<span class="page-gap">…</span>';
     }
-    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToClientPage(' + (paged.page + 1) + ')">Next &gt;</button>';
+    for (var p = start; p <= end; p++) {
+      buttons += '<button class="' + (p === paged.page ? 'active' : '') +
+        '" onclick="goToClientPage(' + p + ')">' + p + '</button>';
+    }
+    if (end < paged.totalPages) {
+      if (end < paged.totalPages - 1) buttons += '<span class="page-gap">…</span>';
+      buttons += '<button onclick="goToClientPage(' + paged.totalPages + ')">' + paged.totalPages + '</button>';
+    }
+
+    buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') +
+      ' onclick="goToClientPage(' + (paged.page + 1) + ')">Next &gt;</button>';
     document.getElementById('clientPageButtons').innerHTML = buttons;
   }
 
@@ -563,23 +925,20 @@
     renderClients();
   }
 
-  // ---- Formatting helpers (konsisten dengan Lead Capturing) ----
   function toProperCase(str) {
     return String(str || '').toLowerCase().replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
-  // ---- Add New Client ----
+  /* ============================================================
+     ADD NEW CLIENT
+     ============================================================ */
   var pendingNewPics = [];
 
   function openAddClient() {
-    document.getElementById('newBrandName').value = '';
-    document.getElementById('newEntityName').value = '';
-    document.getElementById('newWebsite').value = '';
-    document.getElementById('newHeadOffice').value = '';
-    document.getElementById('newIndustry').value = '';
-    document.getElementById('newEntityType').value = '';
-    document.getElementById('newClientSource').value = '';
-    document.getElementById('newOtherNotes').value = '';
+    ['newBrandName', 'newEntityName', 'newWebsite', 'newHeadOffice', 'newIndustry',
+     'newEntityType', 'newClientSource', 'newOtherNotes'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
     pendingNewPics = [];
     renderPendingPics();
     document.getElementById('addClientDrawer').classList.add('open');
@@ -597,11 +956,12 @@
       return;
     }
     el.innerHTML = pendingNewPics.map(function (p, idx) {
-      return '<div class="pic-card">' +
+      return '<div class="pic-card' + (idx === 0 ? ' pic-card-primary' : '') + '">' +
         '<button class="pic-card-remove" onclick="removePendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
-        '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
-        '<div style="font-size:12px; color: var(--text-muted);">' + (p.email || '-') + '</div>' +
-        '<div style="font-size:12px; color: var(--text-muted);">' + (p.phone || '-') + '</div>' +
+        (idx === 0 ? '<div class="pic-primary-tag">PIC Utama</div>' : '') +
+        '<div style="font-weight:bold;">' + escHtml(p.name) + (p.title ? ' — ' + escHtml(p.title) : '') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + escHtml(p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + escHtml(p.phone || '-') + '</div>' +
         '</div>';
     }).join('');
   }
@@ -614,7 +974,29 @@
   function openAddClientConfirm() {
     if (!document.getElementById('newBrandName').value.trim()) { alert('Brand Name wajib diisi.'); return; }
     if (!document.getElementById('newClientSource').value) { alert('Client Source wajib dipilih.'); return; }
+
+    // Cek kemungkinan duplikat SEBELUM kotak konfirmasi ditampilkan —
+    // pemeriksaan yang dulu hanya "dititipkan" ke ingatan admin lewat kalimat
+    // di kotak konfirmasi.
+    var brand = document.getElementById('newBrandName').value.trim();
+    var entity = document.getElementById('newEntityName').value.trim();
+    var box = document.getElementById('dupWarnBox');
+    box.style.display = 'none';
+    document.getElementById('dupWarnList').innerHTML = '';
     document.getElementById('addClientConfirm').classList.add('open');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok || !res.data || !res.data.length) return;
+        document.getElementById('dupWarnList').innerHTML = res.data.map(function (c) {
+          return '<div class="dup-warn-item"><strong>' + escHtml(c.Brand_Name || '-') + '</strong> ' +
+            '<span>' + escHtml(c.Entity_Name || '-') + ' · ' + escHtml(c.Client_ID) + ' · ' +
+            escHtml(c.Client_Source || '-') + '</span></div>';
+        }).join('');
+        box.style.display = '';
+      })
+      .withFailureHandler(function () { /* pemeriksaan duplikat bersifat bantuan — jangan halangi Save kalau gagal */ })
+      .client_findSimilar(brand, entity);
   }
   function cancelAddClientConfirm() {
     document.getElementById('addClientConfirm').classList.remove('open');
@@ -635,6 +1017,7 @@
       pics: pendingNewPics
     };
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    var picCount = pendingNewPics.length;
 
     TechfordLoading.show('Menyimpan client...');
     google.script.run
@@ -643,13 +1026,19 @@
         if (res && res.ok === false) return alert(res.error.message);
         closeAddClient();
         fetchClients();
+        fetchProjects();
 
-        // client_create sekarang mengembalikan { client, clients } (bukan
-        // cuma array) supaya kita tahu persis Client_ID yang baru dibuat,
-        // dipakai untuk tombol "Buat Project" di reminder sukses.
-        var newClient = res.data && res.data.client;
-        var eligible = newClient && isEligibleForPipeline(newClient.Brand_Name, newClient.Entity_Name, newClient.Entity_Type, newClient.Client_Source, pendingNewPics.length, newClient.Client_ID);
-        showClientSuccess('Client baru berhasil ditambahkan.', eligible ? newClient.Client_ID : null);
+        var newClient = res && res.data && res.data.client;
+        if (!newClient) {
+          showClientSuccess('Client baru berhasil ditambahkan.', null, '');
+          return;
+        }
+        var status = evaluateCompleteness(newClient, picCount);
+        showClientSuccess(
+          'Client baru berhasil ditambahkan.',
+          status.complete && !projectsForClient(newClient.Client_ID).length ? newClient.Client_ID : null,
+          status.complete ? '' : 'Masih perlu dilengkapi: ' + status.missing.join(', ') + '.'
+        );
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -658,19 +1047,10 @@
       .client_create(input, createdBy);
   }
 
-  // Syarat minimum supaya tombol "Buat Project di Sales Pipeline" muncul di
-  // reminder sukses: Brand Name, Entity Name, Entity Type, Client Source
-  // terisi, minimal 1 PIC, dan client itu belum punya project sama sekali
-  // (hindari draft/dobel kalau sudah ada).
-  function isEligibleForPipeline(brandName, entityName, entityType, source, picCount, clientId) {
-    if (!brandName || !entityName || !entityType || !source) return false;
-    if (!picCount || picCount < 1) return false;
-    if (clientId && allProjects.some(function (p) { return p.Client_ID === clientId; })) return false;
-    return true;
-  }
-
-  // ---- Client Detail Drawer ----
-  function openClientDetail(clientId) {
+  /* ============================================================
+     CLIENT DETAIL DRAWER
+     ============================================================ */
+  function openClientDetail(clientId, startInEditMode) {
     var client = allClients.filter(function (c) { return c.Client_ID === clientId; })[0];
     if (!client) return;
     currentClientDrawerId = clientId;
@@ -678,16 +1058,70 @@
     document.getElementById('clientDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
 
-    // allPics bisa saja belum terisi PIC yang baru dibuat bersamaan dengan
-    // Client-nya (fetchPics dari fetchClients mungkin belum selesai saat
-    // user langsung klik detail) — tarik ulang supaya carousel selalu fresh.
+    // allPics bisa saja belum memuat PIC yang baru dibuat bersamaan dengan
+    // Client-nya — tarik ulang supaya carousel & kelengkapan selalu fresh.
     fetchPics();
+
+    // Tombol "Lengkapi" di tabel langsung membuka mode edit, jadi admin tidak
+    // perlu klik EDIT INFO lagi setelah tahu datanya kurang.
+    if (startInEditMode) startCompleteClient();
+  }
+
+  function startCompleteClient() {
+    var editForm = document.getElementById('clientEditForm');
+    if (!editForm.classList.contains('open')) toggleClientEditInfo();
+    var missingFirst = document.getElementById('editEntityNameField');
+    if (missingFirst) missingFirst.focus();
   }
 
   function closeClientDetail() {
     document.getElementById('clientDrawer').classList.remove('open');
     document.body.classList.remove('drawer-open');
     currentClientDrawerId = null;
+  }
+
+  function renderCompletenessPanel(client) {
+    var panel = document.getElementById('clientCompletenessPanel');
+    var status = evaluateCompleteness(client);
+    if (status.complete) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    document.getElementById('clientCompletenessText').innerHTML =
+      '⚠️ <strong>Data client ini belum lengkap.</strong> Masih perlu diisi: <strong>' +
+      escHtml(status.missing.join(', ')) + '</strong>.' +
+      (isTruthyFlag(client.Is_From_Lead)
+        ? '<div style="font-size:11.5px; color: var(--text-muted); margin-top:6px;">' +
+          'Client ini berasal dari Lead — Entity Name dan Head Office tidak ditanyakan di form inbound, ' +
+          'jadi memang perlu Anda lengkapi di sini.</div>'
+        : '');
+  }
+
+  /**
+   * Total Project / GDV Value / Service Revenue — sebelumnya bertuliskan
+   * "0", "-", "-" yang ditulis langsung di HTML dan tidak pernah dihitung,
+   * padahal datanya sudah ada di halaman ini (allProjects). Total_GDV &
+   * Total_Service_Revenue sudah disimpan per baris Project oleh
+   * ProjectService, jadi cukup dijumlahkan.
+   */
+  function renderClientMetrics(client) {
+    var projects = projectsForClient(client.Client_ID);
+    var realProjects = projects.filter(function (p) { return !p.Is_Draft; });
+    var draftCount = projects.length - realProjects.length;
+
+    var gdv = 0, rev = 0;
+    projects.forEach(function (p) {
+      gdv += Number(p.Total_GDV) || 0;
+      rev += Number(p.Total_Service_Revenue) || 0;
+    });
+
+    document.getElementById('viewTotalProject').innerHTML = projects.length
+      ? escHtml(String(realProjects.length)) + ' project' +
+        (draftCount ? ' <span class="cell-sub">+ ' + draftCount + ' draft belum dilengkapi</span>' : '')
+      : '0';
+    document.getElementById('viewGdvValue').innerText = projects.length ? formatRupiah(gdv) : '-';
+    document.getElementById('viewServiceRevenue').innerText = projects.length ? formatRupiah(rev) : '-';
   }
 
   function renderClientDrawer(client) {
@@ -702,17 +1136,30 @@
     document.getElementById('viewIndustry').innerText = client.Industry || '-';
     document.getElementById('viewEntityType').innerText = client.Entity_Type || '-';
 
+    // Riwayat singkat — Created_By & Last_Updated sudah dicatat rapi di sheet
+    // setiap kali ada perubahan, tapi sebelumnya tidak pernah ditampilkan.
+    var trail = [];
+    if (client.Created_By) trail.push('Dibuat oleh <strong>' + escHtml(client.Created_By) + '</strong>');
+    trail.push('pada ' + escHtml(formatDate(client.Created_Date)));
+    var lastUpdated = client.Last_Updated ? formatDate(client.Last_Updated) : '';
+    if (lastUpdated && lastUpdated !== formatDate(client.Created_Date)) {
+      trail.push('· terakhir diubah ' + escHtml(lastUpdated));
+    }
+    document.getElementById('viewAuditTrail').innerHTML = trail.join(' ');
+
     document.getElementById('drawerClientNotesDisplay').innerText = client.Other_Notes || 'Belum ada catatan.';
 
     document.getElementById('editBrandName').value = client.Brand_Name || '';
     document.getElementById('editEntityNameField').value = client.Entity_Name || '';
     setSearchableSelectValue('editHeadOffice', client.Head_Office || '');
     setSearchableSelectValue('editIndustry', client.Industry || '');
-    document.getElementById('editEntityType').value = client.Entity_Type || '';
-    document.getElementById('editClientSource').value = client.Client_Source || '';
+    // Lewat setSelectValueSafely, BUKAN .value langsung — lihat catatan bug
+    // di fungsi itu (Entity Type dari Lead bisa terhapus diam-diam).
+    setSelectValueSafely('editEntityType', client.Entity_Type || '');
+    setSelectValueSafely('editClientSource', client.Client_Source || '');
     // Client hasil Move dari Lead PASTI Inbound — kunci dropdown-nya supaya
     // tidak bisa diubah (server juga menolak kalau tetap dipaksa lewat API).
-    document.getElementById('editClientSource').disabled = !!client.Is_From_Lead;
+    document.getElementById('editClientSource').disabled = isTruthyFlag(client.Is_From_Lead);
     document.getElementById('editWebsite').value = client.Website || '';
     document.getElementById('editOtherNotes').value = client.Other_Notes || '';
 
@@ -724,12 +1171,12 @@
     document.getElementById('clientEditInfoToggleBtn').innerHTML = '✏️ EDIT INFO';
     document.getElementById('detailAddPicBtn').style.display = 'none';
 
-    // Batalkan/reset staging PIC (penambahan & penghapusan) yang belum
-    // di-save — setiap kali drawer dibuka/ditutup dari mode edit, state
-    // harus kembali bersih supaya tidak "nyangkut" ke sesi edit berikutnya.
+    // Batalkan/reset staging PIC yang belum di-save.
     editModePendingNewPics = [];
     editModeRemovedPicIds = [];
 
+    renderCompletenessPanel(client);
+    renderClientMetrics(client);
     renderPicCarousel('detailPicCarousel', client.Client_ID);
   }
 
@@ -739,33 +1186,60 @@
       return p.Client_ID === clientId && editModeRemovedPicIds.indexOf(p.PIC_ID) === -1;
     });
     var el = document.getElementById(elementId);
+    var primary = getPrimaryPic(clientId);
+    var primaryId = primary && editModeRemovedPicIds.indexOf(primary.PIC_ID) === -1 ? primary.PIC_ID : null;
 
     var existingHtml = pics.map(function (p) {
-      return '<div class="pic-card">' +
-        (editing ? '<button class="pic-card-remove" onclick="stageExistingPicRemoval(\'' + p.PIC_ID + '\')" title="Hapus PIC">×</button>' : '') +
-        '<div style="font-weight:bold;">' + p.PIC_Name + '</div>' +
-        (p.Title ? '<div style="font-size:11px; color: var(--text-muted);">' + p.Title + '</div>' : '') +
-        '<div style="font-size:12px; margin-top:6px;">Email : ' + (p.Email || '-') + '</div>' +
-        '<div style="font-size:12px;">Phone : ' + (p.Phone || '-') + '</div>' +
+      var isPrimary = p.PIC_ID === primaryId;
+      return '<div class="pic-card' + (isPrimary ? ' pic-card-primary' : '') + '">' +
+        (editing ? '<button class="pic-card-remove" onclick="stageExistingPicRemoval(\'' + escAttr(p.PIC_ID) + '\')" title="Hapus PIC">×</button>' : '') +
+        (isPrimary ? '<div class="pic-primary-tag">PIC Utama</div>' : '') +
+        '<div style="font-weight:bold;">' + escHtml(p.PIC_Name) + '</div>' +
+        (p.Title ? '<div style="font-size:11px; color: var(--text-muted);">' + escHtml(p.Title) + '</div>' : '') +
+        '<div style="font-size:12px; margin-top:6px;">Email : ' + escHtml(p.Email || '-') + '</div>' +
+        '<div style="font-size:12px;">Phone : ' + escHtml(p.Phone || '-') + '</div>' +
+        (!isPrimary && pics.length > 1
+          ? '<button type="button" class="pic-set-primary-btn" onclick="setPrimaryPic(\'' + escAttr(p.PIC_ID) + '\')">Jadikan PIC utama</button>'
+          : '') +
         '</div>';
     }).join('');
 
     var pendingHtml = editing ? editModePendingNewPics.map(function (p, idx) {
       return '<div class="pic-card">' +
         '<button class="pic-card-remove" onclick="removeEditPendingPic(' + idx + ')" title="Hapus PIC">×</button>' +
-        '<div style="font-weight:bold;">' + p.name + (p.title ? ' — ' + p.title : '') + '</div>' +
-        '<div style="font-size:12px; color: var(--text-muted);">' + (p.email || '-') + '</div>' +
-        '<div style="font-size:12px; color: var(--text-muted);">' + (p.phone || '-') + '</div>' +
+        '<div style="font-weight:bold;">' + escHtml(p.name) + (p.title ? ' — ' + escHtml(p.title) : '') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + escHtml(p.email || '-') + '</div>' +
+        '<div style="font-size:12px; color: var(--text-muted);">' + escHtml(p.phone || '-') + '</div>' +
+        '<div class="cell-sub">baru — tersimpan saat SAVE</div>' +
         '</div>';
     }).join('') : '';
 
-    var combined = existingHtml + pendingHtml;
-    el.innerHTML = combined || '<div class="drawer-field-value">Belum ada PIC.</div>';
+    el.innerHTML = (existingHtml + pendingHtml) || '<div class="drawer-field-value">Belum ada PIC.</div>';
   }
 
-  // PIC dihapus/ditambah di sini HANYA ditandai secara lokal (belum
-  // menyentuh server) — perubahan baru benar-benar diterapkan saat user
-  // klik SAVE di saveClientInfo(), konsisten dengan field lain di edit info.
+  // Penunjukan PIC utama langsung dikirim ke server (bukan di-stage seperti
+  // penambahan/penghapusan PIC) — ini perubahan satu klik yang tidak punya
+  // form untuk dibatalkan, jadi menahannya sampai SAVE cuma membingungkan.
+  function setPrimaryPic(picId) {
+    if (!currentClientDrawerId) return;
+    var clientId = currentClientDrawerId;
+    TechfordLoading.show('Menetapkan PIC utama...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        if (res && res.ok) allPics = res.data;
+        renderPicCarousel('detailPicCarousel', clientId);
+        renderClients();
+        TechfordToast.show('PIC utama diperbarui.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menetapkan PIC utama: ' + (err && err.message ? err.message : err));
+      })
+      .client_setPrimaryPic(clientId, picId);
+  }
+
   function stageExistingPicRemoval(picId) {
     if (editModeRemovedPicIds.indexOf(picId) === -1) editModeRemovedPicIds.push(picId);
     renderPicCarousel('detailPicCarousel', currentClientDrawerId);
@@ -791,8 +1265,7 @@
     document.getElementById('detailAddPicBtn').style.display = isOpen ? 'inline-flex' : 'none';
 
     if (!isOpen && currentClientDrawerId) {
-      // Batal edit — kembalikan form (termasuk staging PIC) ke data asli
-      // supaya perubahan yang belum disimpan tidak nyangkut.
+      // Batal edit — kembalikan form (termasuk staging PIC) ke data asli.
       var client = allClients.filter(function (c) { return c.Client_ID === currentClientDrawerId; })[0];
       if (client) renderClientDrawer(client);
       return;
@@ -801,7 +1274,9 @@
     if (currentClientDrawerId) renderPicCarousel('detailPicCarousel', currentClientDrawerId);
   }
 
-  // ---- Add PIC popup (dipakai Add Client & Client Detail) ----
+  /* ============================================================
+     ADD PIC POPUP
+     ============================================================ */
   function openAddPicPopup(context) {
     picPopupContext = context;
     document.getElementById('picName').value = '';
@@ -835,8 +1310,7 @@
 
     if (picPopupContext === 'detail') {
       if (!currentClientDrawerId) { closeAddPicPopup(); return; }
-      // Hanya ditandai lokal dulu — baru dikirim ke server saat SAVE,
-      // sama seperti perubahan field lain di edit info.
+      // Hanya ditandai lokal dulu — baru dikirim ke server saat SAVE.
       editModePendingNewPics.push(picInput);
       renderPicCarousel('detailPicCarousel', currentClientDrawerId);
       closeAddPicPopup();
@@ -896,12 +1370,12 @@
         }
 
         // Baru sekarang terapkan penghapusan & penambahan PIC yang di-stage,
-        // secara berurutan (bukan paralel) supaya sederhana untuk di-debug.
+        // secara berurutan (bukan paralel) supaya sederhana untuk di-debug
+        // DAN supaya tidak menembak banyak RPC bersamaan.
         applyStagedPicRemovals(removedPicIds, 0, function () {
           applyStagedPicAdditions(newPics, clientId, 0, function () {
-            // Hitung jumlah PIC final SEBELUM staging di-reset — dipakai
-            // untuk cek eligibility tombol "Buat Project", tanpa perlu
-            // menunggu fetchPics() (async) selesai dulu.
+            // Jumlah PIC final dihitung SEBELUM staging di-reset — dipakai
+            // untuk cek kelengkapan, tanpa perlu menunggu fetchPics() selesai.
             var picCountAfterSave = allPics.filter(function (p) {
               return p.Client_ID === clientId && removedPicIds.indexOf(p.PIC_ID) === -1;
             }).length + newPics.length;
@@ -916,11 +1390,20 @@
             renderClients();
 
             var updatedClient = idx !== -1 ? allClients[idx] : null;
-            var eligible = updatedClient && isEligibleForPipeline(
-              updatedClient.Brand_Name, updatedClient.Entity_Name, updatedClient.Entity_Type,
-              updatedClient.Client_Source, picCountAfterSave, clientId
+            if (!updatedClient) {
+              showClientSuccess('Data client berhasil disimpan.', null, '');
+              return;
+            }
+
+            var status = evaluateCompleteness(updatedClient, picCountAfterSave);
+            var alreadyHasProject = projectsForClient(clientId).length > 0;
+            showClientSuccess(
+              'Data client berhasil disimpan.',
+              status.complete && !alreadyHasProject ? clientId : null,
+              status.complete
+                ? (alreadyHasProject ? 'Client ini sudah punya project di Sales Pipeline.' : '')
+                : 'Masih perlu dilengkapi: ' + status.missing.join(', ') + '.'
             );
-            showClientSuccess('Data client berhasil disimpan.', eligible ? clientId : null);
           });
         });
       })
@@ -949,10 +1432,14 @@
       .client_addPic(clientId, pics[index]);
   }
 
+  /* ============================================================
+     REMINDER SUKSES + LANJUT KE PIPELINE
+     ============================================================ */
   var clientSuccessPipelineTargetId = null;
 
-  function showClientSuccess(message, pipelineEligibleClientId) {
+  function showClientSuccess(message, pipelineEligibleClientId, subtext) {
     document.getElementById('clientSuccessMessage').innerText = message;
+    document.getElementById('clientSuccessSubtext').innerText = subtext || '';
     var btn = document.getElementById('clientSuccessGoToPipelineBtn');
     btn.disabled = false;
     btn.innerText = '🚀 Buat Project di Sales Pipeline';
@@ -970,14 +1457,13 @@
     clientSuccessPipelineTargetId = null;
   }
 
-  // Dipicu tombol "🚀 Buat Project di Sales Pipeline" di reminder sukses —
-  // bikin draft project (belum ada Project ID) untuk client ini, lalu
-  // langsung pindah ke halaman Sales Pipeline supaya konsultan lanjut
-  // mengisi lewat tombol EDIT pada baris "NEW PIPELINE".
+  // Bikin draft project (belum ada Project ID) untuk client ini, lalu langsung
+  // pindah ke Sales Pipeline supaya konsultan lanjut mengisi lewat tombol
+  // "Lengkapi" pada baris "NEW PIPELINE".
   function createDraftProjectAndGo() {
     if (!clientSuccessPipelineTargetId) return;
     var btn = document.getElementById('clientSuccessGoToPipelineBtn');
-    if (btn.disabled) return; // cegah dobel klik selama proses berjalan — halaman redirect setelah ini jadi tidak ada momen untuk "restore" tombol
+    if (btn.disabled) return; // cegah dobel klik
     btn.disabled = true;
     btn.innerText = '⏳ Memproses...';
 
@@ -991,11 +1477,9 @@
           btn.innerText = '🚀 Buat Project di Sales Pipeline';
           return alert(res.error.message);
         }
-        // Dulu window.top.location.href (full reload). Sekarang lewat
-        // router SPA (TechfordNav) supaya pindah ke Sales Pipeline instan
-        // — TechfordLoading WAJIB di-hide dulu di sini karena beda dari
-        // reload penuh (yang otomatis membuang overlay bersama halaman
-        // lama), navigasi SPA tetap di dokumen yang sama.
+        // TechfordLoading WAJIB di-hide dulu di sini: navigasi SPA tetap di
+        // dokumen yang sama (beda dari reload penuh yang otomatis membuang
+        // overlay bersama halaman lama).
         TechfordLoading.hide();
         TechfordNav.navigateTo('sales-pipeline', {});
       })
