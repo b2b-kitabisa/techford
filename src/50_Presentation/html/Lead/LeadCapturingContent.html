@@ -304,44 +304,89 @@
     return Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s, 8s, 8s
   }
 
+  // Ukuran satu halaman pembacaan. Dibatasi juga di server (maks 200) — nilai
+  // ini kompromi antara jumlah round-trip dan ukuran payload per panggilan.
+  var LEAD_FETCH_CHUNK = 100;
+
   /**
-   * @param {Function=} onLoaded dipanggil dengan (leadsSebelum) setelah data
-   *   baru masuk — dipakai sync untuk menghitung berapa lead yang benar-benar
-   *   baru muncul.
+   * Muat SELURUH lead lewat beberapa panggilan berhalaman, lalu kumpulkan jadi
+   * satu array di client (pola "Load Once, Filter Local" tetap dipertahankan —
+   * yang berubah cuma CARA mengangkutnya dari server).
+   *
+   * Sebelumnya satu panggilan lead_getAll mengangkut seluruh dataset dalam
+   * sekali jalan, dan begitu jumlah lead menembus ~100 payload-nya tidak lagi
+   * sampai ke client (success handler dipanggil dengan res=null) sehingga
+   * halaman tidak bisa memuat apa pun. Lihat catatan diagnosis lengkap di
+   * LeadService.
+   *
+   * @param {Function=} onLoaded dipanggil dengan (leadsSebelum) setelah SEMUA
+   *   halaman masuk — dipakai sync untuk melaporkan hasil.
    */
   function fetchLeads(onLoaded) {
-    if (leadFetchInFlight) return;   // <-- inti perbaikannya
+    if (leadFetchInFlight) return;   // satu pemuatan pada satu waktu
     leadFetchInFlight = true;
-    leadFetchAttempt++;
+    leadFetchAttempt = 0;
 
     var previousLeads = allLeads;
+    var collected = [];
 
-    function fail(message) {
+    function finish() {
       leadFetchInFlight = false;
       if (!leadPageMounted()) return;
-      if (leadFetchAttempt < LEAD_MAX_ATTEMPTS) {
-        setTimeout(function () { fetchLeads(onLoaded); }, leadRetryDelay(leadFetchAttempt));
-        return;
-      }
-      showTableError(message);
+      allLeads = collected;
+      document.getElementById('tableError').innerText = '';
+      render();
+      if (onLoaded) onLoaded(previousLeads);
     }
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res) { fail('Gagal memuat data: tidak ada respons dari server setelah beberapa kali percobaan.'); return; }
-        if (!res.ok) { fail('Gagal memuat data: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+    function loadFrom(offset) {
+      function fail(message) {
+        if (!leadPageMounted()) { leadFetchInFlight = false; return; }
+        leadFetchAttempt++;
+        if (leadFetchAttempt < LEAD_MAX_ATTEMPTS) {
+          setTimeout(function () { loadFrom(offset); }, leadRetryDelay(leadFetchAttempt));
+          return;
+        }
         leadFetchInFlight = false;
-        leadFetchAttempt = 0;
-        if (!leadPageMounted()) return;
-        allLeads = res.data;
-        document.getElementById('tableError').innerText = '';
-        render();
-        if (onLoaded) onLoaded(previousLeads);
-      })
-      .withFailureHandler(function (err) {
-        fail('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .lead_getAll();
+        // Kalau sebagian halaman sudah berhasil, tampilkan yang ada daripada
+        // mengosongkan tabel total — lebih berguna daripada layar kosong.
+        if (collected.length) {
+          allLeads = collected;
+          render();
+          showPartialLoadWarning(collected.length, message);
+        } else {
+          showTableError(message);
+        }
+      }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res) { fail('Gagal memuat data: server tidak mengirim respons. Coba klik 🔄 Refresh.'); return; }
+          if (!res.ok) { fail('Gagal memuat data: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.')); return; }
+          if (!leadPageMounted()) { leadFetchInFlight = false; return; }
+
+          leadFetchAttempt = 0;
+          var page = res.data;
+          collected = collected.concat(page.rows || []);
+
+          if (collected.length < page.total && (page.rows || []).length > 0) {
+            loadFrom(collected.length);   // masih ada sisa — lanjut halaman berikutnya
+          } else {
+            finish();
+          }
+        })
+        .withFailureHandler(function (err) {
+          fail('Gagal memuat data: ' + (err && err.message ? err.message : err));
+        })
+        .lead_getPage(offset, LEAD_FETCH_CHUNK);
+    }
+
+    loadFrom(0);
+  }
+
+  function showPartialLoadWarning(loadedCount, message) {
+    document.getElementById('tableError').innerText =
+      'Sebagian data berhasil dimuat (' + loadedCount + ' lead), sisanya gagal. ' + message;
   }
 
   function showTableError(message) {
@@ -514,16 +559,29 @@
     btn.classList.toggle('has-value', selected.length > 0);
   }
 
-  document.addEventListener('click', function (e) {
-    var statusWrap = document.querySelectorAll('.status-filter-wrap')[0];
-    if (statusWrap && !statusWrap.contains(e.target)) {
-      document.getElementById('statusFilterDropdown').classList.remove('open');
-    }
-    var dateWrap = document.querySelectorAll('.status-filter-wrap')[1];
-    if (dateWrap && !dateWrap.contains(e.target)) {
-      document.getElementById('leadDateFilterDropdown').classList.remove('open');
-    }
-  });
+  /**
+   * Menutup dropdown saat klik di luar.
+   *
+   * BUG YANG DIPERBAIKI: listener ini dipasang ke `document` dan TIDAK pernah
+   * dilepas. Karena SPA menjalankan ulang seluruh script halaman setiap kali
+   * section ini dibuka (lihat execScripts di Shell.html), listener-nya
+   * MENUMPUK — dan yang lama tetap hidup setelah user pindah section, lalu
+   * memanggil getElementById() yang sudah null sehingga setiap klik di mana
+   * pun melempar error. Sekarang: hanya dipasang sekali (ditandai lewat flag
+   * di window), dan selalu memeriksa elemennya masih ada.
+   */
+  function closeLeadDropdownsOnOutsideClick(e) {
+    var wraps = document.querySelectorAll('.status-filter-wrap');
+    var statusDd = document.getElementById('statusFilterDropdown');
+    var dateDd = document.getElementById('leadDateFilterDropdown');
+    if (!statusDd || !dateDd) return;   // halaman sudah tidak terpasang
+    if (wraps[0] && !wraps[0].contains(e.target)) statusDd.classList.remove('open');
+    if (wraps[1] && !wraps[1].contains(e.target)) dateDd.classList.remove('open');
+  }
+  if (!window.__leadOutsideClickBound) {
+    window.__leadOutsideClickBound = true;
+    document.addEventListener('click', closeLeadDropdownsOnOutsideClick);
+  }
 
   // Pencarian sekarang menyapu PIC, email, telepon, dan kebutuhan — bukan
   // cuma Entity_Name. Mengetik nama orang yang menghubungi, atau menempelkan
@@ -875,8 +933,17 @@
       var inboundId = ids[index];
 
       google.script.run
-        .withSuccessHandler(function () {
-          // Optimistic: begitu tidak ada exception, terapkan ke cache lokal.
+        .withSuccessHandler(function (res) {
+          // Server bisa MENOLAK dengan { ok:false } (mis. lead sudah jadi
+          // Client di tab lain) — itu bukan keberhasilan. Dulu respons tidak
+          // diperiksa sama sekali, sehingga penolakan server tetap dihitung
+          // sebagai berhasil dan cache lokal jadi berbeda dari isi sheet.
+          if (res && res.ok === false) {
+            failed++;
+            TechfordLoading.hide();
+            step(index + 1);
+            return;
+          }
           for (var i = 0; i < allLeads.length; i++) {
             if (sameId(allLeads[i].Inbound_ID, inboundId)) {
               allLeads[i].Status = newStatus;
@@ -1030,10 +1097,14 @@
     TechfordLoading.show('Memindahkan lead...');
 
     google.script.run
-      .withSuccessHandler(function () {
+      .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
+        if (res && res.ok === false) {
+          alert('Gagal memindahkan: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+          return;
+        }
 
         var idx = -1;
         for (var i = 0; i < allLeads.length; i++) {
@@ -1042,15 +1113,17 @@
         if (idx !== -1) {
           allLeads[idx].Status = 'Moved';
           allLeads[idx].Last_Updated = new Date().toISOString();
+          // Client_ID sekarang IKUT di respons (payload kecil) — tidak perlu
+          // lagi memuat ulang seluruh dataset cuma untuk mendapatkan ini.
+          if (res && res.data && res.data.clientId) {
+            allLeads[idx].Client_ID = res.data.clientId;
+          }
         }
         delete selectedLeadIds[inboundId];
 
         closeDetail();
         render();
         showSuccessModal('Lead berhasil dipindahkan menjadi Client. Lengkapi datanya di Client Monitoring.');
-        // Ambil ulang supaya Client_ID hasil Move (ditulis server) ikut masuk
-        // ke cache — jejaknya yang ditampilkan di drawer berasal dari sana.
-        fetchLeads();
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -1088,21 +1161,35 @@
     // begitu withSuccessHandler terpanggil (artinya tidak ada exception),
     // kita terapkan sendiri perubahan yang baru diketik ke cache lokal.
     google.script.run
-      .withSuccessHandler(function () {
+      .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         btn.disabled = false;
         btn.innerText = '💾 SAVE';
+
+        // Penolakan server ({ ok:false }, mis. lead sudah terkunci jadi Client
+        // dari tab lain) dulu tetap dilaporkan "berhasil disimpan" karena
+        // respons tidak pernah diperiksa.
+        if (res && res.ok === false) {
+          alert('Gagal menyimpan: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+          return;
+        }
 
         var idx = -1;
         for (var i = 0; i < allLeads.length; i++) {
           if (sameId(allLeads[i].Inbound_ID, inboundId)) { idx = i; break; }
         }
         if (idx !== -1) {
-          var updated = {};
-          for (var key in allLeads[idx]) { updated[key] = allLeads[idx][key]; }
-          for (var field in patch) { updated[field] = patch[field]; }
-          updated.Last_Updated = new Date().toISOString();
-          allLeads[idx] = updated;
+          // Kalau server mengirim baris hasilnya (payload kecil), pakai itu —
+          // lebih tepat daripada menebak dari nilai yang baru diketik.
+          if (res && res.data && res.data.lead) {
+            allLeads[idx] = res.data.lead;
+          } else {
+            var updated = {};
+            for (var key in allLeads[idx]) { updated[key] = allLeads[idx][key]; }
+            for (var field in patch) { updated[field] = patch[field]; }
+            updated.Last_Updated = new Date().toISOString();
+            allLeads[idx] = updated;
+          }
         }
 
         closeDetail();
@@ -1135,19 +1222,21 @@
         if (btn) { btn.disabled = false; btn.innerText = '☁️ SYNC NEW LEADS'; }
         if (res && res.ok === false) return alert(res.error.message);
 
-        // Jumlah lead baru dihitung dari SELISIH array sebelum & sesudah,
-        // bukan dari nilai balik server — server memang menghitungnya
-        // (importedCount) tapi mengirim objek tunggal lewat jembatan ini
-        // sudah berkali-kali terbukti tidak dapat diandalkan untuk modul
-        // Lead. Selisih di sisi client justru lebih tepat menjawab
-        // pertanyaan aslinya: "berapa lead baru yang muncul di layar saya".
+        // Jumlah lead baru sekarang datang LANGSUNG dari server
+        // (importedCount) — dulu dihitung di server tapi tenggelam bersama
+        // payload array penuh yang gagal terkirim. Kalau respons tetap tidak
+        // terbaca, jatuh kembali ke selisih array sebelum/sesudah.
+        var reported = res && res.data && typeof res.data.importedCount === 'number'
+          ? res.data.importedCount : null;
+
         fetchLeads(function (previousLeads) {
-          var before = {};
-          previousLeads.forEach(function (l) { before[l.Inbound_ID] = true; });
-          var added = allLeads.filter(function (l) { return !before[l.Inbound_ID]; }).length;
-          if (!previousLeads.length) {
-            showSuccessModal('Sinkronisasi selesai — ' + allLeads.length + ' lead dimuat.');
-          } else if (added > 0) {
+          var added = reported;
+          if (added === null) {
+            var before = {};
+            previousLeads.forEach(function (l) { before[l.Inbound_ID] = true; });
+            added = allLeads.filter(function (l) { return !before[l.Inbound_ID]; }).length;
+          }
+          if (added > 0) {
             showSuccessModal('Sinkronisasi selesai — ' + added + ' lead baru masuk.');
           } else {
             showSuccessModal('Sinkronisasi selesai — tidak ada lead baru.');

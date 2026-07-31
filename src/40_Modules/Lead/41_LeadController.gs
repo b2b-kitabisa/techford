@@ -12,6 +12,12 @@ var LeadController = (function (module) {
     });
   };
 
+  module.getPage = function (offset, limit) {
+    return ErrorHandler.handle('LeadController.getPage', function () {
+      return LeadService.getLeadPage(offset, limit);
+    });
+  };
+
   module.update = function (inboundId, patch) {
     return ErrorHandler.handle('LeadController.update', function () {
       return LeadService.updateLead(inboundId, patch);

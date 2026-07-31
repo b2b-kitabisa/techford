@@ -11,14 +11,70 @@
  * round-trip ke server tiap ketikan. Server hanya dipanggil untuk
  * ambil data awal, sinkronisasi manual, dan operasi tulis (update).
  *
- * Semua endpoint tulis di sini SENGAJA mengembalikan SELURUH dataset Lead
- * (bukan satu objek saja) — google.script.run terbukti gagal mengirim
- * balik respons berbentuk objek tunggal untuk modul ini walau operasi di
- * sheet-nya sendiri selalu berhasil. Array persis seperti getAllLeads()
- * terbukti selalu sampai ke client, jadi semua endpoint tulis mengikuti
- * bentuk yang sama.
+ * ============================================================
+ * KOREKSI DIAGNOSIS PENTING (baca sebelum mengubah bentuk return)
+ * ============================================================
+ * Catatan lama di file ini menyimpulkan: "google.script.run gagal mengirim
+ * balik respons berbentuk OBJEK TUNGGAL untuk modul ini, sedangkan array
+ * seperti getAllLeads() selalu sampai" — karena itu SEMUA endpoint (baca
+ * maupun tulis) dibuat mengembalikan seluruh dataset Lead.
+ *
+ * Kesimpulan itu TERBALIK. Yang sebenarnya terjadi: yang gagal dikirim
+ * justru SELURUH ARRAY Lead-nya, karena payload-nya terlalu besar untuk
+ * jembatan HtmlService. Bentuk objek tunggal tidak pernah jadi masalah.
+ *
+ * Gejalanya cocok sempurna: setiap endpoint di modul ini mengembalikan array
+ * penuh, dan SEMUANYA melaporkan res=null di client (lihat komentar
+ * "optimistic update" di LeadCapturingContent.html). Selama jumlah lead masih
+ * kecil, payload-nya masih lolos sehingga hanya endpoint tulis yang
+ * kelihatan bermasalah; begitu sheet menembus ~100 baris, pembacaan
+ * lead_getAll pun ikut gagal — dan seluruh halaman tidak bisa memuat apa pun.
+ *
+ * Karena itu SEKARANG:
+ * - Pembacaan dipecah per halaman (getLeadPage) supaya ukuran payload
+ *   SELALU terbatas, berapa pun jumlah lead di sheet.
+ * - Endpoint tulis mengembalikan payload KECIL saja (status/ID/jumlah),
+ *   bukan seluruh dataset. Client memperbarui cache lokalnya sendiri.
+ * - Tanggal dikirim sebagai string ISO, bukan objek Date, dan kolom yang
+ *   tidak dipakai UI (UTM_*) tidak ikut dikirim — dua-duanya memperkecil
+ *   payload sekaligus menghilangkan ketergantungan pada serialisasi Date.
  */
 var LeadService = (function (module) {
+
+  /**
+   * Kolom yang benar-benar dipakai Lead Capturing. UTM_Source/Medium/Campaign
+   * SENGAJA tidak ikut — tersimpan di sheet untuk analisis, tapi tidak pernah
+   * ditampilkan, jadi tidak perlu membebani payload tiap pembacaan.
+   */
+  var UI_FIELDS = [
+    'Inbound_ID', 'Timestamp', 'Status', 'Entity_Name', 'Entity_Type',
+    'PIC_Name', 'Email', 'Phone', 'Detail_Interest', 'Priority_Notes',
+    'Other_Notes', 'Client_ID', 'Last_Updated'
+  ];
+
+  function toUiLead(lead) {
+    var out = {};
+    UI_FIELDS.forEach(function (field) {
+      var value = lead[field];
+      if (value instanceof Date) {
+        out[field] = value.toISOString();
+      } else {
+        out[field] = value == null ? '' : value;
+      }
+    });
+    return out;
+  }
+
+  /**
+   * Baris tanpa Inbound_ID dibuang — sheet yang pernah dibersihkan manual
+   * bisa menyisakan banyak baris kosong yang masih terbaca getDataRange(),
+   * dan itu membengkakkan payload tanpa menambah informasi apa pun.
+   */
+  function realLeads() {
+    return LeadRepository.findAll().filter(function (lead) {
+      return String(lead.Inbound_ID || '').trim() !== '';
+    });
+  }
 
   // Field yang boleh diubah lewat updateLead. "Status" boleh diisi status
   // apa pun KECUALI Moved — perpindahan ke Moved wajib lewat moveToClient()
@@ -26,6 +82,29 @@ var LeadService = (function (module) {
   // entitas Client baru.
   var EDITABLE_FIELDS = ['Status', 'Entity_Name', 'Entity_Type', 'PIC_Name', 'Email', 'Phone', 'Other_Notes'];
 
+  /**
+   * Pembacaan BERHALAMAN — pengganti getAllLeads() untuk UI. Ukuran payload
+   * per panggilan selalu terbatas (lihat catatan diagnosis di atas), jadi
+   * jumlah lead di sheet tidak lagi bisa membuat halaman gagal memuat.
+   *
+   * @returns {{rows: Object[], total: number, offset: number}}
+   */
+  module.getLeadPage = function (offset, limit) {
+    var all = realLeads();
+    var start = Math.max(0, Number(offset) || 0);
+    var size = Math.min(Math.max(1, Number(limit) || 100), 200);
+    return {
+      rows: all.slice(start, start + size).map(toUiLead),
+      total: all.length,
+      offset: start
+    };
+  };
+
+  /**
+   * Masih dipakai internal (countNewLeads) & tetap tersedia untuk pemakaian
+   * server-side. TIDAK dipakai lagi sebagai respons RPC ke UI — payload-nya
+   * yang justru jadi penyebab kegagalan (lihat catatan diagnosis di atas).
+   */
   module.getAllLeads = function () {
     return LeadRepository.findAll();
   };
@@ -73,7 +152,10 @@ var LeadService = (function (module) {
     LeadRepository.update(inboundId, safePatch);
     Log.info('LeadService', 'Lead updated: ' + inboundId);
 
-    return LeadRepository.findAll();
+    // Payload KECIL: cukup baris yang baru diubah. Mengembalikan seluruh
+    // dataset di sini adalah penyebab res=null yang selama ini ditutup dengan
+    // optimistic update di client (lihat catatan diagnosis di atas).
+    return { updated: true, lead: toUiLead(LeadRepository.findById(inboundId) || {}) };
   };
 
   /**
@@ -110,7 +192,9 @@ var LeadService = (function (module) {
     });
 
     Log.info('LeadService', 'Lead ' + inboundId + ' moved to Client ' + client.Client_ID);
-    return LeadRepository.findAll();
+    // Payload kecil — client-nya butuh Client_ID hasil Move, bukan seluruh
+    // dataset (yang justru gagal terkirim).
+    return { moved: true, clientId: client.Client_ID, inboundId: inboundId };
   };
 
   /**
@@ -162,7 +246,9 @@ var LeadService = (function (module) {
     }
 
     Log.info('LeadService', 'Sync selesai, ' + importedCount + ' lead baru diimpor.');
-    return LeadRepository.findAll();
+    // Jumlah lead baru akhirnya bisa sampai ke UI — dulu dihitung di sini tapi
+    // tenggelam bersama payload array penuh yang gagal terkirim.
+    return { importedCount: importedCount };
   };
 
   return module;

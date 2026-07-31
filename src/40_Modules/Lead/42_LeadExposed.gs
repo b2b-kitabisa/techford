@@ -8,6 +8,15 @@ function lead_getAll() {
   return LeadController.getAll();
 }
 
+/**
+ * Pembacaan berhalaman — dipakai Lead Capturing. Payload per panggilan selalu
+ * terbatas, jadi jumlah lead di sheet tidak bisa lagi membuat halaman gagal
+ * memuat (lihat catatan diagnosis di LeadService).
+ */
+function lead_getPage(offset, limit) {
+  return LeadController.getPage(offset, limit);
+}
+
 function lead_update(inboundId, patch) {
   return LeadController.update(inboundId, patch);
 }

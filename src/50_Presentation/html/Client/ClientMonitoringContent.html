@@ -353,6 +353,12 @@
     { key: 'Client_Source', label: 'Client Source' }
   ];
 
+  // Daftar PIC dimuat TERPISAH & setelah daftar client, jadi ada jeda saat
+  // allPics masih kosong padahal client-nya punya PIC. Tanpa penanda ini,
+  // setiap client sesaat dinilai "kurang PIC" — tabel berkedip menampilkan
+  // BELUM LENGKAP dan kartu "Belum Lengkap" menunjukkan angka yang salah.
+  var picsLoaded = false;
+
   function picCountFor(clientId) {
     return allPics.filter(function (p) { return p.Client_ID === clientId; }).length;
   }
@@ -368,10 +374,13 @@
       return !String(client[f.key] || '').trim();
     }).map(function (f) { return f.label; });
 
+    // Selama daftar PIC belum selesai dimuat, JANGAN menuduh client kekurangan
+    // PIC — lebih baik menunggu daripada menampilkan status yang salah.
+    var picKnown = picCountOverride !== undefined || picsLoaded;
     var picCount = picCountOverride === undefined ? picCountFor(client.Client_ID) : picCountOverride;
-    if (picCount < 1) missing.push('PIC');
+    if (picKnown && picCount < 1) missing.push('PIC');
 
-    return { complete: missing.length === 0, missing: missing };
+    return { complete: missing.length === 0, missing: missing, picKnown: picKnown };
   }
 
   /* ============================================================
@@ -448,6 +457,7 @@
 
   var fetchPics = makeLoader('client_getAllPics', function (data) {
     allPics = data;
+    picsLoaded = true;
     renderClients();
     if (currentClientDrawerId) {
       renderPicCarousel('detailPicCarousel', currentClientDrawerId);
@@ -860,7 +870,9 @@
       var projects = projectsForClient(c.Client_ID);
 
       var completenessHtml = status.complete
-        ? '<span class="completeness"><span class="pill good">LENGKAP</span></span>'
+        ? (status.picKnown
+            ? '<span class="completeness"><span class="pill good">LENGKAP</span></span>'
+            : '<span class="cell-sub"><span class="inline-spinner"></span>memeriksa PIC...</span>')
         : '<span class="completeness"><span class="pill warn">BELUM LENGKAP</span></span>' +
           '<div class="completeness-missing">kurang ' + escHtml(status.missing.join(', ')) + '</div>';
 
@@ -1354,7 +1366,19 @@
     // berhasil — kita terapkan langsung ke cache lokal (optimistic update)
     // tanpa bergantung pada isi respons, konsisten dengan pola di modul Lead.
     google.script.run
-      .withSuccessHandler(function () {
+      .withSuccessHandler(function (res) {
+        // Penolakan server ({ ok:false }, mis. Client Source terkunci untuk
+        // client yang berasal dari Lead) dulu tetap dilaporkan "berhasil
+        // disimpan" karena respons tidak pernah diperiksa — cache lokal jadi
+        // berbeda dari isi sheet tanpa ada tanda apa pun.
+        if (res && res.ok === false) {
+          btn.disabled = false;
+          btn.innerText = '💾 SAVE';
+          TechfordLoading.hide();
+          alert('Gagal menyimpan: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+          return;
+        }
+
         var idx = -1;
         for (var i = 0; i < allClients.length; i++) {
           if (allClients[i].Client_ID === clientId) { idx = i; break; }
@@ -1372,6 +1396,7 @@
         // Baru sekarang terapkan penghapusan & penambahan PIC yang di-stage,
         // secara berurutan (bukan paralel) supaya sederhana untuk di-debug
         // DAN supaya tidak menembak banyak RPC bersamaan.
+        picApplyFailures = 0;
         applyStagedPicRemovals(removedPicIds, 0, function () {
           applyStagedPicAdditions(newPics, clientId, 0, function () {
             // Jumlah PIC final dihitung SEBELUM staging di-reset — dipakai
@@ -1392,6 +1417,14 @@
             var updatedClient = idx !== -1 ? allClients[idx] : null;
             if (!updatedClient) {
               showClientSuccess('Data client berhasil disimpan.', null, '');
+              return;
+            }
+
+            // Kalau ada perubahan PIC yang gagal, JANGAN melaporkan sukses
+            // penuh — beri tahu supaya admin bisa memeriksa & mengulang.
+            if (picApplyFailures) {
+              alert('Data client tersimpan, tetapi ' + picApplyFailures +
+                ' perubahan PIC gagal disimpan. Silakan buka lagi Edit Info dan ulangi bagian PIC-nya.');
               return;
             }
 
@@ -1416,19 +1449,36 @@
       .client_update(clientId, patch);
   }
 
+  /**
+   * Perubahan PIC dikirim berurutan. BUG YANG DIPERBAIKI: dulu kegagalan
+   * ditelan sepenuhnya (baik withFailureHandler maupun respons { ok:false })
+   * sehingga PIC yang gagal ditambahkan/dihapus tetap dilaporkan berhasil —
+   * admin menutup drawer dengan yakin padahal datanya tidak tersimpan.
+   * Sekarang kegagalan dihitung dan dilaporkan lewat picApplyFailures.
+   */
+  var picApplyFailures = 0;
+
   function applyStagedPicRemovals(picIds, index, done) {
     if (index >= picIds.length) return done();
+    function next(failedThisOne) {
+      if (failedThisOne) picApplyFailures++;
+      applyStagedPicRemovals(picIds, index + 1, done);
+    }
     google.script.run
-      .withSuccessHandler(function () { applyStagedPicRemovals(picIds, index + 1, done); })
-      .withFailureHandler(function () { applyStagedPicRemovals(picIds, index + 1, done); })
+      .withSuccessHandler(function (res) { next(res && res.ok === false); })
+      .withFailureHandler(function () { next(true); })
       .client_removePic(picIds[index]);
   }
 
   function applyStagedPicAdditions(pics, clientId, index, done) {
     if (index >= pics.length) return done();
+    function next(failedThisOne) {
+      if (failedThisOne) picApplyFailures++;
+      applyStagedPicAdditions(pics, clientId, index + 1, done);
+    }
     google.script.run
-      .withSuccessHandler(function () { applyStagedPicAdditions(pics, clientId, index + 1, done); })
-      .withFailureHandler(function () { applyStagedPicAdditions(pics, clientId, index + 1, done); })
+      .withSuccessHandler(function (res) { next(res && res.ok === false); })
+      .withFailureHandler(function () { next(true); })
       .client_addPic(clientId, pics[index]);
   }
 
