@@ -92,7 +92,7 @@ var LeadService = (function (module) {
   module.getLeadPage = function (offset, limit) {
     var all = realLeads();
     var start = Math.max(0, Number(offset) || 0);
-    var size = Math.min(Math.max(1, Number(limit) || 100), 200);
+    var size = Math.min(Math.max(1, Number(limit) || 100), 500);
     return {
       rows: all.slice(start, start + size).map(toUiLead),
       total: all.length,

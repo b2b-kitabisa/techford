@@ -304,9 +304,15 @@
     return Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s, 8s, 8s
   }
 
-  // Ukuran satu halaman pembacaan. Dibatasi juga di server (maks 200) — nilai
-  // ini kompromi antara jumlah round-trip dan ukuran payload per panggilan.
-  var LEAD_FETCH_CHUNK = 100;
+  // Ukuran satu halaman pembacaan (server membatasi maks 500).
+  //
+  // Setiap panggilan ke server punya ongkos tetap (round-trip ~0,3–1 detik)
+  // yang TIDAK tergantung banyaknya baris, jadi potongan yang terlalu kecil
+  // justru memperlambat: 1.000 lead pada 100/panggilan = 10 kali menunggu
+  // berturut-turut. Dengan 400, jumlahnya turun jadi 3 — sementara payload
+  // per panggilan tetap aman karena baris yang dikirim sudah diringkas
+  // (tanpa kolom UTM, tanggal sebagai string).
+  var LEAD_FETCH_CHUNK = 400;
 
   /**
    * Muat SELURUH lead lewat beberapa panggilan berhalaman, lalu kumpulkan jadi

@@ -421,12 +421,26 @@ function doPost(e) {
  */
 function buildMenuWithBadges() {
   var menu = JSON.parse(JSON.stringify(NavigationConfig.MENU));
-  var badgeCounts = {
-    'lead-capturing': LeadService.countNewLeads(),
-    'sales-pipeline': ProjectService.countDraftProjects(),
-    'document-pipeline': DocumentService.countNewRequests(),
-    'cost-monitoring': CostMonitoringService.countOverBudget()
-  };
+
+  // PENTING UNTUK PERFORMA: fungsi ini dipanggil di SETIAP perpindahan
+  // section (lihat app_getPageFragment), dan menghitung badge-nya mahal —
+  // countOverBudget() saja menarik DocumentPipeline, CorHeader,
+  // CorBudgetItem, CorDisbursement, Project, Client, plus COR_Result per
+  // dokumen. Tanpa cache, seluruh biaya itu dibayar ulang setiap kali user
+  // klik menu, bahkan untuk halaman yang tidak butuh data itu sama sekali —
+  // ini penyebab utama "lambat saat berpindah section".
+  //
+  // Hasilnya kecil (cuma beberapa angka) jadi selalu muat dalam satu key.
+  // TTL pendek: badge yang telat maksimal semenit masih jauh lebih baik
+  // daripada setiap navigasi tertahan beberapa detik.
+  var badgeCounts = CacheHelper.getOrSet('nav:badgeCounts', 60, function () {
+    return {
+      'lead-capturing': LeadService.countNewLeads(),
+      'sales-pipeline': ProjectService.countDraftProjects(),
+      'document-pipeline': DocumentService.countNewRequests(),
+      'cost-monitoring': CostMonitoringService.countOverBudget()
+    };
+  });
 
   menu.forEach(function (group) {
     group.items.forEach(function (item) {
