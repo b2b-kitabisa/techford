@@ -61,11 +61,15 @@ var ClientService = (function (module) {
    */
   module.createFromLead = function (lead, createdBy) {
     var now = new Date();
+    // Teks asli Entity Type ikut dibawa ke Client supaya keterangan "Other"
+    // tetap bisa ditampilkan di Client Monitoring, tidak putus di Lead saja.
+    ClientRepository.ensureColumns(['Entity_Type_Other']);
     var client = {
       Client_ID: 'CL' + SequenceService.next('CLIENT', CLIENT_ID_DIGITS),
       Brand_Name: String(lead.Entity_Name || '').toUpperCase(),
       Entity_Name: '',
       Entity_Type: lead.Entity_Type || '',
+      Entity_Type_Other: lead.Entity_Type_Other || '',
       Head_Office: '',
       Website: '',
       Industry: '',

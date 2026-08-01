@@ -36,6 +36,13 @@ var PicClientRepository = (function (module) {
     CacheHelper.invalidate('picClient:all');
   };
 
+  /** Insert banyak PIC sekaligus — dipakai migrasi data. */
+  module.createMany = function (pics) {
+    var n = base.insertMany(pics);
+    if (n) CacheHelper.invalidate('picClient:all');
+    return n;
+  };
+
   module.deleteById = function (picId) {
     var deleted = base.deleteWhere(function (row) {
       return row.PIC_ID === picId;

@@ -48,8 +48,12 @@ var LeadService = (function (module) {
    */
   var UI_FIELDS = [
     'Inbound_ID', 'Timestamp', 'Status', 'Entity_Name', 'Entity_Type',
-    'PIC_Name', 'Email', 'Phone', 'Detail_Interest', 'Priority_Notes',
-    'Other_Notes', 'Client_ID', 'Last_Updated'
+    'Entity_Type_Other', 'PIC_Name', 'Email', 'Phone', 'Detail_Interest',
+    'Priority_Notes', 'Other_Notes', 'Client_ID', 'Last_Updated',
+    // UTM DIKEMBALIKAN ke payload: sebelumnya dibuang untuk menghemat ukuran
+    // ("tidak pernah ditampilkan"), tapi sekarang ditampilkan di drawer dan
+    // akan jadi sumber angka score card.
+    'UTM_Source', 'UTM_Medium', 'UTM_Campaign'
   ];
 
   function toUiLead(lead) {
@@ -80,7 +84,8 @@ var LeadService = (function (module) {
   // apa pun KECUALI Moved — perpindahan ke Moved wajib lewat moveToClient()
   // karena itu bukan sekadar ubah kolom, tapi transaksi yang melahirkan
   // entitas Client baru.
-  var EDITABLE_FIELDS = ['Status', 'Entity_Name', 'Entity_Type', 'PIC_Name', 'Email', 'Phone', 'Other_Notes'];
+  var EDITABLE_FIELDS = ['Status', 'Entity_Name', 'Entity_Type', 'Entity_Type_Other',
+    'PIC_Name', 'Email', 'Phone', 'Other_Notes'];
 
   /**
    * Pembacaan BERHALAMAN — pengganti getAllLeads() untuk UI. Ukuran payload
@@ -210,33 +215,61 @@ var LeadService = (function (module) {
     var maxSeen = lastSyncedAt;
     var importedCount = 0;
 
+    LeadRepository.ensureColumns(['Entity_Type_Other', 'Source_Token']);
+
+    // ANTI-DUPLIKAT: kumpulkan token yang SUDAH pernah masuk. Sebelumnya
+    // dedup hanya mengandalkan bookmark waktu (SyncStateService), yang tidak
+    // pernah memeriksa isi sheet Lead sama sekali — jadi data hasil migrasi
+    // (atau dobel-klik tombol Sync) bisa masuk dua kali. Token dari Typeform
+    // unik per respons, jadi jauh lebih dapat diandalkan daripada waktu.
+    var tokenSudahAda = {};
+    LeadRepository.findAll().forEach(function (lead) {
+      var t = String(lead.Source_Token || '').trim();
+      if (t) tokenSudahAda[t] = true;
+    });
+
     rawRows.forEach(function (row) {
-      var submittedAt = row['Submitted At'];
+      var submittedAt = row[Config.INBOUND_RAW_HEADERS.SUBMITTED_AT];
       if (!submittedAt) return;
 
       var submittedDate = new Date(submittedAt);
-      if (isNaN(submittedDate.getTime()) || submittedDate <= lastSyncedAt) return;
+      if (isNaN(submittedDate.getTime())) return;
 
-      var picName = (String(row['First name'] || '') + ' ' + String(row['Last name'] || '')).trim();
+      var token = String(row[Config.INBOUND_RAW_HEADERS.TOKEN] || '').trim();
+      if (token && tokenSudahAda[token]) return;          // sudah pernah masuk
+      if (!token && submittedDate <= lastSyncedAt) return; // tanpa token: pakai bookmark waktu
+
+      var picName = (
+        String(row[Config.INBOUND_RAW_HEADERS.FIRST_NAME] || '') + ' ' +
+        String(row[Config.INBOUND_RAW_HEADERS.LAST_NAME] || '')
+      ).trim();
+
+      var ent = Config.normalizeEntityType(row[Config.INBOUND_RAW_HEADERS.ENTITY_TYPE]);
 
       LeadRepository.insertNew({
         Inbound_ID: 'INB' + SequenceService.next('INBOUND', 5),
         Timestamp: submittedDate,
         Status: Config.LEAD_STATUS.NEW,
-        Entity_Name: row['nama perusahaan/organisasi'] || '',
-        Entity_Type: row['Jenis organisasi'] || '',
+        Entity_Name: row[Config.INBOUND_RAW_HEADERS.ENTITY_NAME] || '',
+        Entity_Type: ent.type,
+        Entity_Type_Other: ent.other,
         PIC_Name: picName,
-        Email: row['Email'] || '',
-        Phone: row['Phone number'] || '',
-        Detail_Interest: row['kebutuhan'] || '',
-        Priority_Notes: row['prioritas'] || '',
-        UTM_Source: row['utm_source'] || '',
-        UTM_Medium: row['utm_medium'] || '',
-        UTM_Campaign: row['utm_campaign'] || '',
+        Email: row[Config.INBOUND_RAW_HEADERS.EMAIL] || '',
+        Phone: row[Config.INBOUND_RAW_HEADERS.PHONE] || '',
+        // Pemetaan SENGAJA menyilang, sesuai keputusan bisnis:
+        // pertanyaan "kebutuhan"  -> Priority_Notes
+        // pertanyaan "prioritas"  -> Detail_Interest
+        Detail_Interest: row[Config.INBOUND_RAW_HEADERS.PRIORITAS] || '',
+        Priority_Notes: row[Config.INBOUND_RAW_HEADERS.KEBUTUHAN] || '',
+        UTM_Source: row[Config.INBOUND_RAW_HEADERS.UTM_SOURCE] || '',
+        UTM_Medium: row[Config.INBOUND_RAW_HEADERS.UTM_MEDIUM] || '',
+        UTM_Campaign: row[Config.INBOUND_RAW_HEADERS.UTM_CAMPAIGN] || '',
+        Source_Token: token,
         Last_Updated: '',
         Other_Notes: ''
       });
 
+      if (token) tokenSudahAda[token] = true;
       importedCount++;
       if (submittedDate > maxSeen) maxSeen = submittedDate;
     });

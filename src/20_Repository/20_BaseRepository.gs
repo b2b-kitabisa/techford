@@ -75,6 +75,32 @@ BaseRepository.prototype.insert = function (rowObject) {
 };
 
 /**
+ * Insert BANYAK baris sekaligus dalam SATU operasi tulis.
+ *
+ * appendRow() menembak satu panggilan API per baris — untuk impor ribuan
+ * baris itu memakan menit dan menabrak batas waktu eksekusi Apps Script
+ * (6 menit). setValues() sekali jalan menyelesaikannya dalam hitungan detik.
+ *
+ * @param {Object[]} rowObjects
+ * @returns {number} jumlah baris yang ditulis.
+ */
+BaseRepository.prototype.insertMany = function (rowObjects) {
+  if (!rowObjects || !rowObjects.length) return 0;
+  var sheet = this._getSheet();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  var matrix = rowObjects.map(function (obj) {
+    return headers.map(function (header) {
+      return obj.hasOwnProperty(header) ? obj[header] : '';
+    });
+  });
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, matrix.length, headers.length)
+    .setValues(matrix);
+  return matrix.length;
+};
+
+/**
  * Update baris pertama yang cocok dengan predicateFn. Dibungkus lock karena
  * proses "cari baris lalu tulis" tidak atomik dan rawan race condition
  * kalau dua eksekusi berjalan bersamaan.

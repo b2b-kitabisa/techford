@@ -101,6 +101,7 @@
       </div>
       <h2 id="drawerEntityName"></h2>
       <div class="drawer-entity-type" id="drawerEntityType"></div>
+      <div id="drawerDupWarn" class="drawer-dup-warn" style="display:none;"></div>
     </div>
 
     <div class="drawer-contact-row">
@@ -151,6 +152,17 @@
     <div class="drawer-section" id="drawerPrioritySection">
       <div class="drawer-field-label">Prioritas :</div>
       <div class="drawer-field-value" id="drawerPriority"></div>
+    </div>
+
+    <!-- Sumber trafik (UTM) — dari mana lead ini datang. Akan jadi sumber
+         angka score card, jadi ditampilkan lengkap di sini. -->
+    <div class="drawer-section" id="drawerUtmSection">
+      <h3>Sumber Trafik</h3>
+      <div class="utm-grid">
+        <div><span class="drawer-field-label">Source</span><div class="drawer-field-value" id="drawerUtmSource">-</div></div>
+        <div><span class="drawer-field-label">Medium</span><div class="drawer-field-value" id="drawerUtmMedium">-</div></div>
+        <div><span class="drawer-field-label">Campaign</span><div class="drawer-field-value" id="drawerUtmCampaign">-</div></div>
+      </div>
     </div>
 
     <div class="drawer-section">
@@ -432,6 +444,7 @@
   }
 
   function render() {
+    rebuildDuplicateIndex();
     var filtered = getFilteredSorted();
     var paged = paginate(filtered);
     renderStats(computeStats(allLeads));
@@ -464,7 +477,63 @@
     stats.staleCount = leads.filter(function (l) {
       return normalizeStatusKey(l.Status) === 'New Leads' && isStale(l.Timestamp);
     }).length;
+    stats.dupCount = leads.filter(function (l) { return duplicateInfo(l).isDup; }).length;
     return stats;
+  }
+
+  /* ============================================================
+     POTENSI DUPLIKAT
+     ============================================================
+     Satu orang sering mengisi form berkali-kali. Dua lead dianggap
+     berpotensi kembar kalau EMAIL-nya sama, atau NOMOR TELEPON-nya sama
+     setelah dinormalkan (spasi/tanda hubung dibuang, 0 di depan jadi 62)
+     supaya "0812-3456" dan "+62812 3456" dikenali sebagai satu nomor.
+     Semua data tetap disimpan apa adanya — ini murni penanda visual supaya
+     admin sadar dan bisa memutuskan sendiri.
+     Dihitung ulang setiap render dari SELURUH lead yang sudah termuat,
+     bukan cuma halaman yang sedang tampil. */
+  var dupGroups = { email: {}, phone: {} };
+
+  function normalizePhoneKey(phone) {
+    var digits = String(phone || '').replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    if (digits.indexOf('0') === 0) digits = '62' + digits.slice(1);
+    if (digits.length < 8) return '';   // terlalu pendek untuk dipercaya
+    return digits;
+  }
+
+  function rebuildDuplicateIndex() {
+    var byEmail = {}, byPhone = {};
+    allLeads.forEach(function (lead) {
+      var e = String(lead.Email || '').trim().toLowerCase();
+      if (e) (byEmail[e] = byEmail[e] || []).push(lead.Inbound_ID);
+      var p = normalizePhoneKey(lead.Phone);
+      if (p) (byPhone[p] = byPhone[p] || []).push(lead.Inbound_ID);
+    });
+    dupGroups = { email: byEmail, phone: byPhone };
+  }
+
+  /** @returns {{isDup: boolean, count: number, alasan: string}} */
+  function duplicateInfo(lead) {
+    var e = String(lead.Email || '').trim().toLowerCase();
+    var p = normalizePhoneKey(lead.Phone);
+    var grupEmail = e ? (dupGroups.email[e] || []) : [];
+    var grupPhone = p ? (dupGroups.phone[p] || []) : [];
+
+    var alasan = [];
+    if (grupEmail.length > 1) alasan.push('email sama');
+    if (grupPhone.length > 1) alasan.push('telepon sama');
+    if (!alasan.length) return { isDup: false, count: 0, alasan: '' };
+
+    // Gabungkan supaya satu lead yang kembar lewat email DAN telepon tidak
+    // dihitung dua kali.
+    var semua = {};
+    grupEmail.concat(grupPhone).forEach(function (id) { semua[id] = true; });
+    return {
+      isDup: true,
+      count: Object.keys(semua).length,
+      alasan: alasan.join(' & ')
+    };
   }
 
   function daysSince(value) {
@@ -506,6 +575,9 @@
         '</div>' +
         '<div class="stat-sub-row">' +
           '<span>Porsi spam</span><strong>' + stats.spamPct + '%</strong>' +
+        '</div>' +
+        '<div class="stat-sub-row' + (stats.dupCount ? ' bad' : '') + '">' +
+          '<span>Potensi duplikat</span><strong>' + stats.dupCount + '</strong>' +
         '</div>' +
       '</div>' +
       '</div>';
@@ -795,6 +867,7 @@
       var stale = statusKey === 'New Leads' && isStale(lead.Timestamp);
       var checked = selectedLeadIds[lead.Inbound_ID] ? 'checked' : '';
       var isLocked = statusKey === 'Moved';
+      var dup = duplicateInfo(lead);
 
       return '<tr' + (stale ? ' class="lead-row-stale"' : '') + '>' +
         '<td>' + (isLocked
@@ -806,7 +879,10 @@
           (age === null ? '' : '<div class="cell-sub' + (stale ? ' bad' : '') + '">' +
             (stale ? '⚠ ' : '') + age + ' hari</div>') +
         '</td>' +
-        '<td><div class="entity-name">' + escHtml(lead.Entity_Name || '-') + '</div>' +
+        '<td><div class="entity-name">' + escHtml(lead.Entity_Name || '-') +
+          (dup.isDup ? ' <span class="dup-tag" title="' +
+            escAttr('Ada ' + dup.count + ' lead dengan ' + dup.alasan + ' — periksa sebelum menindaklanjuti') +
+            '">⧉ Potensi Duplikat</span>' : '') + '</div>' +
           '<div class="entity-pic">👤 ' + escHtml(picName) + '</div></td>' +
         '<td class="contact-cell">' +
           (phone ? '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">📱 ' + escHtml(phone) + '</a>' : '') +
@@ -1024,6 +1100,21 @@
     var priority = lead.Priority_Notes || '';
     document.getElementById('drawerPrioritySection').style.display = priority ? '' : 'none';
     document.getElementById('drawerPriority').innerText = priority;
+
+    var dupDrawer = duplicateInfo(lead);
+    var dupBox = document.getElementById('drawerDupWarn');
+    if (dupDrawer.isDup) {
+      dupBox.style.display = '';
+      dupBox.innerHTML = '⧉ <strong>Potensi Duplikat</strong> — ada ' + dupDrawer.count +
+        ' lead dengan ' + escHtml(dupDrawer.alasan) + '. Cari alamat email atau nomornya di kotak pencarian untuk membandingkan.';
+    } else {
+      dupBox.style.display = 'none';
+      dupBox.innerHTML = '';
+    }
+
+    document.getElementById('drawerUtmSource').innerText = lead.UTM_Source || '-';
+    document.getElementById('drawerUtmMedium').innerText = lead.UTM_Medium || '-';
+    document.getElementById('drawerUtmCampaign').innerText = lead.UTM_Campaign || '-';
 
     document.getElementById('drawerNotesDisplay').innerText = lead.Other_Notes || 'Belum ada catatan.';
     document.getElementById('editNotes').value = lead.Other_Notes || '';

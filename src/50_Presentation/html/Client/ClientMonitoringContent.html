@@ -201,6 +201,7 @@
             <div class="drawer-field-value" id="viewIndustry">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">Entity Type</div>
             <div class="drawer-field-value" id="viewEntityType">-</div>
+            <div id="viewEntityTypeOther" class="entity-other-text" style="display:none;"></div>
             <div class="drawer-field-label" style="margin-top:10px;">GDV Value</div>
             <div class="drawer-field-value" id="viewGdvValue">-</div>
             <div class="drawer-field-label" style="margin-top:10px;">Service Revenue</div>
@@ -1154,7 +1155,20 @@
     document.getElementById('viewClientSource').innerText = client.Client_Source || '-';
     document.getElementById('viewWebsite').innerText = client.Website || '-';
     document.getElementById('viewIndustry').innerText = client.Industry || '-';
-    document.getElementById('viewEntityType').innerText = client.Entity_Type || '-';
+    // Entity Type "Other": teks asli yang ditulis pengisi form disembunyikan
+    // di balik tombol, supaya baris tetap ringkas tapi informasinya tidak
+    // hilang (di data nyata ada 246 variasi seperti "Ojek online", "Band").
+    var etOther = String(client.Entity_Type_Other || '').trim();
+    var etHost = document.getElementById('viewEntityType');
+    if (etOther) {
+      etHost.innerHTML = escHtml(client.Entity_Type || '-') +
+        '<button type="button" class="entity-other-btn" onclick="toggleEntityOther()">Lihat keterangan</button>';
+    } else {
+      etHost.innerText = client.Entity_Type || '-';
+    }
+    var otherBox = document.getElementById('viewEntityTypeOther');
+    otherBox.style.display = 'none';
+    otherBox.innerText = etOther ? 'Ditulis oleh client: "' + etOther + '"' : '';
 
     // Riwayat singkat — Created_By & Last_Updated sudah dicatat rapi di sheet
     // setiap kali ada perubahan, tapi sebelumnya tidak pernah ditampilkan.
@@ -1198,6 +1212,16 @@
     renderCompletenessPanel(client);
     renderClientMetrics(client);
     renderPicCarousel('detailPicCarousel', client.Client_ID);
+  }
+
+  /**
+   * Buka/tutup teks asli Entity Type "Other" yang ditulis pengisi form.
+   * Dipanggil dari tombol "Lihat keterangan" pada baris Entity Type.
+   */
+  function toggleEntityOther() {
+    var box = document.getElementById('viewEntityTypeOther');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
   }
 
   function renderPicCarousel(elementId, clientId) {

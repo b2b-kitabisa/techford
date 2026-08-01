@@ -45,7 +45,10 @@ var Config = (function (module) {
     QUOTATION_ITEM: 'Quotation_Item',
     AUDIT_LOG: 'AuditLog',
     GDV_CONTROLLER: 'GDV_Controller',
-    GDV_CONTROLLER_UPLOAD_LOG: 'GDV_Controller_Upload_Log'
+    GDV_CONTROLLER_UPLOAD_LOG: 'GDV_Controller_Upload_Log',
+    // Sheet staging berisi data lead lama hasil impor CSV. Dibaca SEKALI
+    // oleh MigrationService, tidak pernah disentuh aplikasi sehari-hari.
+    LEAD_MIGRATION: 'Lead_Migration'
   };
 
   // Kategori opsi dropdown yang dikelola lewat Setting > Master Data
@@ -73,6 +76,59 @@ var Config = (function (module) {
   // tetap — lihat Master_Data kategori CLIENT_SOURCE. Validasi input
   // manual dicek terhadap Master_Data, bukan daftar hardcode di sini.
   module.CLIENT_SOURCE_INBOUND = 'Inbound';
+
+  // Entity Type baku. Form inbound membiarkan pengisi mengetik bebas, dan
+  // hasilnya ratusan variasi ("Ojek online", "Dog rescue", "Band", ...).
+  // Nilai yang tidak termasuk 3 baku ini dinormalkan jadi 'Other', TAPI teks
+  // asli yang ditulis pengisi tetap disimpan di kolom Entity_Type_Other —
+  // supaya bisa ditampilkan lewat tombol "Other" di Client Monitoring dan
+  // tidak ada informasi yang hilang.
+  module.ENTITY_TYPE_BAKU = ['Perusahaan', 'Institusi Sosial', 'Institusi Grants'];
+  module.ENTITY_TYPE_OTHER = 'Other';
+
+  /**
+   * Nama kolom di sheet Inbound_Raw — HARUS sama persis dengan teks
+   * pertanyaan di Typeform, karena IMPORTRANGE membawa nama pertanyaan apa
+   * adanya sebagai header.
+   *
+   * Dipusatkan di sini supaya kalau pertanyaan Typeform diubah redaksinya,
+   * yang perlu disunting hanya file ini — bukan berburu string di dalam
+   * LeadService. Nilai lama di kode sempat salah (memakai nama singkat
+   * seperti 'kebutuhan'/'Jenis organisasi') sehingga Sync memetakan kolom ke
+   * field yang keliru.
+   */
+  module.INBOUND_RAW_HEADERS = {
+    FIRST_NAME: 'First name',
+    LAST_NAME: 'Last name',
+    ENTITY_TYPE: 'Halo, {{field:3a839e5b-f122-4ec3-ba5f-90f17d278950}}. Anda mewakili *jenis organisasi* apa?',
+    ENTITY_NAME: 'Boleh kami tahu *nama organisasi* atau *perusahaan* Anda?',
+    KEBUTUHAN: 'Apa *kebutuhan* yang ingin Anda *diskusikan dengan kami*?',
+    PRIORITAS: 'Kami ingin memahami prioritas Anda.',
+    PHONE: 'Phone number',
+    EMAIL: 'Email',
+    UTM_SOURCE: 'utm_source',
+    UTM_MEDIUM: 'utm_medium',
+    UTM_CAMPAIGN: 'utm_campaign',
+    SUBMITTED_AT: 'Submitted At',
+    TOKEN: 'Token'
+  };
+
+  /**
+   * @returns {{type: string, other: string}} type selalu salah satu dari
+   *   ENTITY_TYPE_BAKU atau 'Other'; other berisi teks asli hanya kalau
+   *   nilainya tidak dikenali.
+   */
+  module.normalizeEntityType = function (raw) {
+    var v = String(raw == null ? '' : raw).trim();
+    if (!v) return { type: module.ENTITY_TYPE_OTHER, other: '' };
+    var lower = v.toLowerCase();
+    for (var i = 0; i < module.ENTITY_TYPE_BAKU.length; i++) {
+      if (module.ENTITY_TYPE_BAKU[i].toLowerCase() === lower) {
+        return { type: module.ENTITY_TYPE_BAKU[i], other: '' };
+      }
+    }
+    return { type: module.ENTITY_TYPE_OTHER, other: v };
+  };
 
   // Semua login admin diasumsikan pakai domain perusahaan ini — dicek di
   // AuthService supaya email di luar domain langsung ditolak.

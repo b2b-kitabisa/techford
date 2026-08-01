@@ -1305,4 +1305,40 @@
   .dup-warn-list { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto; }
   .dup-warn-item { font-size: 12px; color: var(--color-mineshaft); background: var(--color-white); border-radius: 5px; padding: 5px 9px; }
   .dup-warn-item span { color: var(--text-muted); }
+
+  /* ---- Penanda "Potensi Duplikat" (Lead Capturing) ----
+     Satu orang sering mengisi form berkali-kali. Semua data tetap disimpan;
+     ini murni penanda supaya admin sadar sebelum menindaklanjuti. */
+  .dup-tag {
+    display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: 0.03em;
+    color: var(--warn); background: var(--warn-tint); border: 1px solid var(--warn);
+    border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle;
+    white-space: nowrap; cursor: help;
+  }
+  .drawer-dup-warn {
+    margin-top: 10px; background: var(--warn-tint); border-left: 3px solid var(--warn);
+    border-radius: 0 6px 6px 0; padding: 9px 12px; font-size: 12px; line-height: 1.5;
+    color: var(--color-mineshaft);
+  }
+
+  /* ---- Sumber trafik (UTM) di drawer Lead ---- */
+  .utm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+  @media (max-width: 520px) { .utm-grid { grid-template-columns: 1fr; } }
+
+  /* ---- Keterangan Entity Type "Other" ----
+     Form inbound membiarkan pengisi mengetik bebas (246 variasi di data
+     nyata). Nilainya dinormalkan jadi 'Other', teks aslinya ditampilkan
+     lewat tombol ini supaya tidak ada informasi yang hilang. */
+  .entity-other-btn {
+    margin-left: 6px; font-family: inherit; font-size: 10px; font-weight: 700;
+    color: var(--color-cerulean); background: var(--accent-tint);
+    border: 1px solid var(--color-cerulean); border-radius: 999px;
+    padding: 1px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .entity-other-btn:hover { background: var(--accent-tint-strong); }
+  .entity-other-text {
+    margin-top: 6px; font-size: 12px; color: var(--color-mineshaft);
+    background: var(--bg-tint); border: 1px dashed var(--border-soft);
+    border-radius: 6px; padding: 7px 10px;
+  }
 </style>

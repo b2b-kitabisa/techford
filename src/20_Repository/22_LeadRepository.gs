@@ -39,6 +39,16 @@ var LeadRepository = (function (module) {
   };
 
   /**
+   * Insert banyak lead dalam SATU operasi tulis — dipakai migrasi data.
+   * Cache dibersihkan sekali di akhir, bukan per baris.
+   */
+  module.insertMany = function (leads) {
+    var n = base.insertMany(leads);
+    if (n) module.invalidateCache();
+    return n;
+  };
+
+  /**
    * @returns {boolean} true kalau ada baris yang cocok & terupdate.
    */
   module.update = function (inboundId, patch) {
