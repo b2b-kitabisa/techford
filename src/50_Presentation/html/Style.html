@@ -1352,20 +1352,19 @@
      Lead Capturing & Client Monitoring — perbaikan tampilan
      ============================================================ */
 
-  /* ---- Score card Lead: 6 kartu ringkas (2 kolom × 3 baris) + Inbound
+  /* ---- Score card Lead: 6 kartu ringkas (3 kolom x 2 baris) + Inbound
      Health membentang di kolom kanan.
-     max-width DISENGAJA: tanpa batas ini grid ikut melebar sampai ujung
-     layar lebar dan kartunya jadi kotak-kotak raksasa yang memakan sepertiga
-     tinggi halaman hanya untuk enam angka. Kartunya juga dipadatkan — nilai
-     dan persentasenya duduk di SATU baris, bukan bertumpuk. ---- */
+     TANPA max-width — sebelumnya dibatasi 900px supaya kartunya tidak jadi
+     kotak-kotak raksasa, tapi di layar lebar itu malah menyisakan area kosong
+     mencolok di sisi kanan (sekitar lebar satu kartu lagi). Grid sekarang
+     mengisi penuh lebar kontainernya; kartunya tetap padat (nilai & persentase
+     duduk di satu baris) jadi tidak terasa kosong meski lebih lebar. ---- */
   .stat-cards-lead {
     display: grid;
     /* 3 kolom untuk 6 kartu ringkas (3 per baris x 2 baris) + 1 kolom untuk
-       Inbound Health yang membentang kedua barisnya. Sebelumnya kartu ringkas
-       hanya diberi 2 kolom (2 per baris x 3 baris) — lebih sempit dan
-       berjejal daripada perlu, padahal ruang kolom ke-4 sudah tersedia. */
+       Inbound Health yang membentang kedua barisnya. */
     grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.15fr);
-    gap: 8px; margin-bottom: 14px; max-width: 900px;
+    gap: 8px; margin-bottom: 14px;
   }
   .stat-mini {
     background: var(--color-white); border: 1px solid var(--border-soft);
