@@ -12,6 +12,12 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.getClientProjectSummary = function () {
+    return ErrorHandler.handle('ProjectController.getClientProjectSummary', function () {
+      return ProjectService.getClientProjectSummary();
+    });
+  };
+
   module.getTaxonomy = function () {
     return ErrorHandler.handle('ProjectController.getTaxonomy', function () {
       return ProjectService.getTaxonomy();

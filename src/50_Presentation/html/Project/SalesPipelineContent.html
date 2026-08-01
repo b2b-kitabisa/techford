@@ -643,15 +643,28 @@
   // documentTaxonomy/revenueBreakdown) belum tentu ikut berhasil (masing2
   // failure handler-nya kosong, tidak retry sendiri). Sekarang SEMUA fetch
   // harus melapor sukses (flag *Loaded) dulu sebelum retry berhenti.
-  var pipelineBootstrapAttempts = 0;
-  var pipelineBootstrapRetried = false;
-  var PIPELINE_BOOTSTRAP_MAX_ATTEMPTS = 10;
-  var PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  // ============================================================
+  // PERBAIKAN PERFORMA — tangga retry berbasis timer DIHAPUS
+  // ============================================================
+  // Versi lama menembak KETUJUH permintaan ini, lalu 1,5 detik kemudian
+  // menembak KETUJUHNYA LAGI kalau belum semua selesai — sampai 10 kali.
+  // Patokannya cuma waktu, bukan apakah permintaan sebelumnya masih berjalan.
+  //
+  // Selama data masih sedikit, semuanya selesai di bawah 1,5 detik jadi
+  // tangganya berhenti di percobaan pertama dan tidak pernah terlihat. Begitu
+  // datanya besar, satu putaran TIDAK PERNAH selesai dalam 1,5 detik, jadi
+  // tangganya selalu terpicu: 7 × 10 = sampai 70 eksekusi Apps Script
+  // berjalan bersamaan, masing-masing membaca sheet penuh. Halaman jadi
+  // sangat lambat justru karena mekanisme yang dimaksudkan menolongnya.
+  //
+  // Sekarang: ditembak SEKALI saja. Tiap permintaan sudah punya retry
+  // berjeda sendiri lewat gsRunWithRetry (lihat Shell.html), yang hanya
+  // mengulang kalau percobaan sebelumnya benar-benar GAGAL — bukan sekadar
+  // "belum selesai".
   var pProjectsLoaded = false, pClientsLoaded = false, pEmployeesLoaded = false,
     pTaxonomyLoaded = false, pDocumentsLoaded = false, pDocTaxonomyLoaded = false, pRevenueLoaded = false;
 
   function bootstrapPipeline() {
-    pipelineBootstrapAttempts++;
     fetchProjects();
     fetchClients();
     fetchEmployees();
@@ -659,23 +672,6 @@
     fetchDocuments();
     fetchDocumentTaxonomy();
     fetchRevenueBreakdown();
-    setTimeout(function () {
-      var allLoaded = pProjectsLoaded && pClientsLoaded && pEmployeesLoaded &&
-        pTaxonomyLoaded && pDocumentsLoaded && pDocTaxonomyLoaded && pRevenueLoaded;
-      if (allLoaded || pipelineBootstrapRetried) return;
-      if (pipelineBootstrapAttempts < PIPELINE_BOOTSTRAP_MAX_ATTEMPTS) {
-        bootstrapPipeline();
-      } else {
-        pipelineBootstrapRetried = true;
-        fetchProjects();
-        fetchClients();
-        fetchEmployees();
-        fetchTaxonomy();
-        fetchDocuments();
-        fetchDocumentTaxonomy();
-        fetchRevenueBreakdown();
-      }
-    }, PIPELINE_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
   renderPipelineSkeleton();
   function renderPipelineSkeleton() {
@@ -693,22 +689,22 @@
   function fetchProjects() {
     gsRunWithRetry('project_getAll', [], function (res) {
       if (!res || !res.ok) {
-        if (!pipelineBootstrapRetried) return;
+        // gsRunWithRetry sudah mengulang beberapa kali dengan jeda sebelum
+        // sampai ke sini, jadi kegagalan di titik ini memang layak
+        // ditampilkan — tidak perlu lagi ditahan oleh flag tangga retry
+        // (yang sekarang sudah dihapus).
+        //
         // Kalau sudah pernah berhasil load sebelumnya, JANGAN timpa tabel
-        // yang sudah terisi dengan pesan error hanya karena 1 kali gagal
-        // (glitch google.script.run) — cukup tampilkan banner, data lama
-        // tetap terlihat. Tabel baru ditimpa error kalau memang belum
-        // pernah ada data sama sekali.
+        // yang sudah terisi dengan pesan error — cukup tampilkan banner,
+        // data lama tetap terlihat.
         if (pProjectsLoaded) { showPipelineTableError('Gagal memuat ulang data terbaru: ' + ((res && res.error && res.error.message) || 'Tidak ada respons dari server.'), true); return; }
         showPipelineTableError(res && res.error ? res.error.message : 'Tidak ada respons dari server.');
         return;
       }
-      pipelineBootstrapRetried = true;
       pProjectsLoaded = true;
       allProjects = res.data;
       renderPipeline();
     }, function (err) {
-      if (!pipelineBootstrapRetried) return;
       if (pProjectsLoaded) { showPipelineTableError('Gagal memuat ulang data terbaru: ' + (err && err.message ? err.message : err), true); return; }
       showPipelineTableError('Gagal memuat data: ' + (err && err.message ? err.message : err));
     });

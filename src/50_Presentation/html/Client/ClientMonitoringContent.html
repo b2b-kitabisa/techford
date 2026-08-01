@@ -306,7 +306,8 @@
   var allClients = [];
   var allPics = [];
   var allMasterData = [];
-  var allProjects = [];
+  // Ringkasan project per client dari server: {Client_ID: {total, drafts, gdv, rev}}
+  var projectSummary = {};
   var clientPage = 1;
   var currentClientDrawerId = null;
   var clientSort = { field: 'Created_Date', dir: 'desc' };
@@ -478,8 +479,13 @@
 
   // Dipakai untuk kolom Project, field Total Project/GDV/Service Revenue di
   // drawer, DAN gerbang tombol "Buat Project" (hindari draft dobel).
-  var fetchProjects = makeLoader('project_getAll', function (data) {
-    allProjects = data;
+  //
+  // PERFORMA: dulu memanggil project_getAll — menarik SELURUH dataset project
+  // (pembacaan terberat di aplikasi) padahal yang dipakai cuma empat angka
+  // per client. Sekarang server yang meringkasnya lebih dulu, jadi payload-nya
+  // kecil dan tidak ikut membengkak seiring detail project bertambah.
+  var fetchProjects = makeLoader('project_getClientProjectSummary', function (data) {
+    projectSummary = data || {};
     renderClients();
     if (currentClientDrawerId) {
       var c = allClients.filter(function (x) { return x.Client_ID === currentClientDrawerId; })[0];
@@ -606,8 +612,17 @@
     return s === 'true' || s === '1' || s === 'ya';
   }
 
-  function projectsForClient(clientId) {
-    return allProjects.filter(function (p) { return p.Client_ID === clientId; });
+  // Ringkasan project satu client. Selalu mengembalikan objek (bukan null)
+  // supaya pemanggilnya tidak perlu menjaga-jaga sendiri.
+  function projectSummaryFor(clientId) {
+    return projectSummary[clientId] || { total: 0, drafts: 0, gdv: 0, rev: 0 };
+  }
+
+  // Jumlah SELURUH project client (termasuk draft) — dipakai gerbang tombol
+  // "Buat Project" supaya tidak lahir draft dobel.
+  function projectCountFor(clientId) {
+    var s = projectSummaryFor(clientId);
+    return s.total + s.drafts;
   }
 
   function formatRupiah(value) {
@@ -700,7 +715,7 @@
       var pic = getPrimaryPic(client.Client_ID);
       return pic ? String(pic.PIC_Name || '').toLowerCase() : '';
     }
-    if (field === '__projects') return projectsForClient(client.Client_ID).length;
+    if (field === '__projects') return projectCountFor(client.Client_ID);
     if (field === 'Created_Date') return new Date(client[field]).getTime() || 0;
     return String(client[field] || '').toLowerCase();
   }
@@ -867,7 +882,7 @@
     tbody.innerHTML = paged.items.map(function (c) {
       var pic = getPrimaryPic(c.Client_ID);
       var status = evaluateCompleteness(c);
-      var projects = projectsForClient(c.Client_ID);
+      var projects = projectSummaryFor(c.Client_ID);
 
       var completenessHtml = status.complete
         ? (status.picKnown
@@ -890,8 +905,8 @@
         '<td>' + (pic
           ? escHtml(pic.PIC_Name || '-') + (pic.Title ? '<div class="cell-sub">' + escHtml(pic.Title) + '</div>' : '')
           : '<span class="cell-sub">belum ada PIC</span>') + '</td>' +
-        '<td class="nowrap-cell">' + (projects.length
-          ? projects.length + ' project'
+        '<td class="nowrap-cell">' + ((projects.total + projects.drafts)
+          ? (projects.total + projects.drafts) + ' project'
           : '<span class="cell-sub">–</span>') + '</td>' +
         '<td class="nowrap-cell">' + escHtml(formatDate(c.Created_Date)) + '</td>' +
         '<td>' + actionHtml + '</td>' +
@@ -1048,7 +1063,7 @@
         var status = evaluateCompleteness(newClient, picCount);
         showClientSuccess(
           'Client baru berhasil ditambahkan.',
-          status.complete && !projectsForClient(newClient.Client_ID).length ? newClient.Client_ID : null,
+          status.complete && !projectCountFor(newClient.Client_ID) ? newClient.Client_ID : null,
           status.complete ? '' : 'Masih perlu dilengkapi: ' + status.missing.join(', ') + '.'
         );
       })
@@ -1112,28 +1127,21 @@
 
   /**
    * Total Project / GDV Value / Service Revenue — sebelumnya bertuliskan
-   * "0", "-", "-" yang ditulis langsung di HTML dan tidak pernah dihitung,
-   * padahal datanya sudah ada di halaman ini (allProjects). Total_GDV &
-   * Total_Service_Revenue sudah disimpan per baris Project oleh
-   * ProjectService, jadi cukup dijumlahkan.
+   * "0", "-", "-" yang ditulis langsung di HTML dan tidak pernah dihitung.
+   * Angkanya sekarang datang sudah jadi dari server (project_getClientProjectSummary)
+   * — Total_GDV & Total_Service_Revenue memang sudah disimpan per baris
+   * Project oleh ProjectService, jadi server tinggal menjumlahkannya.
    */
   function renderClientMetrics(client) {
-    var projects = projectsForClient(client.Client_ID);
-    var realProjects = projects.filter(function (p) { return !p.Is_Draft; });
-    var draftCount = projects.length - realProjects.length;
+    var summary = projectSummaryFor(client.Client_ID);
+    var totalAll = summary.total + summary.drafts;
 
-    var gdv = 0, rev = 0;
-    projects.forEach(function (p) {
-      gdv += Number(p.Total_GDV) || 0;
-      rev += Number(p.Total_Service_Revenue) || 0;
-    });
-
-    document.getElementById('viewTotalProject').innerHTML = projects.length
-      ? escHtml(String(realProjects.length)) + ' project' +
-        (draftCount ? ' <span class="cell-sub">+ ' + draftCount + ' draft belum dilengkapi</span>' : '')
+    document.getElementById('viewTotalProject').innerHTML = totalAll
+      ? escHtml(String(summary.total)) + ' project' +
+        (summary.drafts ? ' <span class="cell-sub">+ ' + summary.drafts + ' draft belum dilengkapi</span>' : '')
       : '0';
-    document.getElementById('viewGdvValue').innerText = projects.length ? formatRupiah(gdv) : '-';
-    document.getElementById('viewServiceRevenue').innerText = projects.length ? formatRupiah(rev) : '-';
+    document.getElementById('viewGdvValue').innerText = totalAll ? formatRupiah(summary.gdv) : '-';
+    document.getElementById('viewServiceRevenue').innerText = totalAll ? formatRupiah(summary.rev) : '-';
   }
 
   function renderClientDrawer(client) {
@@ -1429,7 +1437,7 @@
             }
 
             var status = evaluateCompleteness(updatedClient, picCountAfterSave);
-            var alreadyHasProject = projectsForClient(clientId).length > 0;
+            var alreadyHasProject = projectCountFor(clientId) > 0;
             showClientSuccess(
               'Data client berhasil disimpan.',
               status.complete && !alreadyHasProject ? clientId : null,

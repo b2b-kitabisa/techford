@@ -292,16 +292,24 @@
   // kosong SELAMANYA sampai halaman di-reload manual — ini penyebab utama
   // "kadang tabel/tombol/dropdown kosong, harus refresh". Sekarang SEMUA
   // fetch harus melapor sukses (via flag *Loaded) sebelum retry berhenti.
-  var docBootstrapAttempts = 0;
-  var docBootstrapRetried = false;
-  var DOC_BOOTSTRAP_MAX_ATTEMPTS = 10;
-  var DOC_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  // ============================================================
+  // PERBAIKAN PERFORMA — tangga retry berbasis timer DIHAPUS
+  // ============================================================
+  // Sama persis dengan kasus di Sales Pipeline: versi lama menembak
+  // KEDELAPAN permintaan ini, lalu 1,5 detik kemudian menembak
+  // KEDELAPANNYA LAGI kalau belum semua selesai — sampai 10 kali, tanpa
+  // pernah memeriksa apakah putaran sebelumnya masih berjalan. Pada data
+  // besar satu putaran tidak pernah selesai dalam 1,5 detik, sehingga
+  // sampai 8 × 10 = 80 eksekusi Apps Script berjalan bersamaan.
+  //
+  // Sekarang ditembak sekali; retry ditangani gsRunWithRetry per permintaan
+  // (berjeda, dan hanya saat benar-benar gagal).
+  var docBootstrapRetried = true;   // dipertahankan: dipakai failure handler tiap fetch
   var docsLoaded = false, projectsLoaded = false, clientsLoaded = false,
     taxonomyLoaded = false, corHeadersLoaded = false, corTaxonomyLoaded = false,
     quotationHeadersLoaded = false, quotationTaxonomyLoaded = false;
 
   function bootstrapDocuments() {
-    docBootstrapAttempts++;
     fetchDocuments();
     fetchProjects();
     fetchClients();
@@ -310,27 +318,6 @@
     fetchCorTaxonomy();
     fetchQuotationHeaders();
     fetchQuotationTaxonomy();
-    setTimeout(function () {
-      var allLoaded = docsLoaded && projectsLoaded && clientsLoaded &&
-        taxonomyLoaded && corHeadersLoaded && corTaxonomyLoaded && quotationHeadersLoaded && quotationTaxonomyLoaded;
-      if (allLoaded || docBootstrapRetried) return;
-      if (docBootstrapAttempts < DOC_BOOTSTRAP_MAX_ATTEMPTS) {
-        bootstrapDocuments();
-      } else {
-        // Percobaan terakhir — tandai retry selesai supaya failure handler
-        // masing-masing fetch (yang tadinya diam) akhirnya menampilkan
-        // error kalau memang masih gagal, alih-alih diam untuk selamanya.
-        docBootstrapRetried = true;
-        fetchDocuments();
-        fetchProjects();
-        fetchClients();
-        fetchTaxonomy();
-        fetchCorHeaders();
-        fetchCorTaxonomy();
-        fetchQuotationHeaders();
-        fetchQuotationTaxonomy();
-      }
-    }, DOC_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
   renderDocSkeleton();
   function renderDocSkeleton() {

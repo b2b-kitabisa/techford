@@ -8,6 +8,15 @@ function project_getAll() {
   return ProjectController.getAllProjects();
 }
 
+/**
+ * Ringkasan project per client (jumlah, draft, GDV, revenue) — dipakai Client
+ * Monitoring supaya tidak perlu menarik seluruh dataset project hanya untuk
+ * menampilkan empat angka per client.
+ */
+function project_getClientProjectSummary() {
+  return ProjectController.getClientProjectSummary();
+}
+
 function project_getTaxonomy() {
   return ProjectController.getTaxonomy();
 }

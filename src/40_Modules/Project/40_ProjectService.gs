@@ -86,6 +86,29 @@ var ProjectService = (function (module) {
    * (draft belum dilengkapi) di sidebar — dipanggil langsung server-side
    * saat render Shell, bukan lewat RPC.
    */
+  /**
+   * Ringkasan project PER CLIENT — {Client_ID: {total, drafts, gdv, rev}}.
+   *
+   * Dibuat khusus untuk Client Monitoring, yang sebelumnya menarik SELURUH
+   * dataset project (project_getAll — pembacaan terberat di aplikasi) padahal
+   * yang dipakai cuma empat angka per client: jumlah project, jumlah draft,
+   * total GDV, dan total Service Revenue. Payload-nya kecil dan tidak tumbuh
+   * seiring detail project bertambah, cuma seiring jumlah client.
+   */
+  module.getClientProjectSummary = function () {
+    var summary = {};
+    ProjectRepository.findAll().forEach(function (p) {
+      var clientId = p.Client_ID;
+      if (!clientId) return;
+      if (!summary[clientId]) summary[clientId] = { total: 0, drafts: 0, gdv: 0, rev: 0 };
+      var entry = summary[clientId];
+      if (p.Is_Draft) entry.drafts++; else entry.total++;
+      entry.gdv += Number(p.Total_GDV) || 0;
+      entry.rev += Number(p.Total_Service_Revenue) || 0;
+    });
+    return summary;
+  };
+
   module.countDraftProjects = function () {
     return ProjectRepository.findAll().filter(function (p) {
       return p.Is_Draft;

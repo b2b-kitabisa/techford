@@ -288,6 +288,11 @@
   var leadFetchAttempt = 0;
   var LEAD_MAX_ATTEMPTS = 5;
 
+  // Status pemuatan bertahap: tabel sudah tampil dengan sebagian data,
+  // sisanya masih menyusul di latar belakang.
+  var leadLoadingRest = false;
+  var leadLoadingProgress = { loaded: 0, total: 0 };
+
   // Penanda "halaman ini masih terpasang". Nama fungsi seperti render() dan
   // fetchProjects() dipakai oleh BEBERAPA halaman content (semuanya berbagi
   // satu global scope di SPA — lihat TechfordNav di Shell.html), jadi respons
@@ -338,6 +343,7 @@
 
     function finish() {
       leadFetchInFlight = false;
+      leadLoadingRest = false;
       if (!leadPageMounted()) return;
       allLeads = collected;
       document.getElementById('tableError').innerText = '';
@@ -376,7 +382,15 @@
           collected = collected.concat(page.rows || []);
 
           if (collected.length < page.total && (page.rows || []).length > 0) {
-            loadFrom(collected.length);   // masih ada sisa — lanjut halaman berikutnya
+            // PEMUATAN BERTAHAP: tampilkan yang sudah ada SEKARANG, jangan
+            // menunggu seluruh potongan selesai. Tabel terisi dalam hitungan
+            // detik pertama, sisanya menyusul diam-diam di latar belakang —
+            // pencarian & filter tetap bekerja lokal (instan) sepanjang waktu.
+            allLeads = collected;
+            leadLoadingRest = true;
+            leadLoadingProgress = { loaded: collected.length, total: page.total };
+            render();
+            loadFrom(collected.length);
           } else {
             finish();
           }
@@ -822,9 +836,18 @@
 
   function renderRowCount(paged, filtered) {
     var el = document.getElementById('leadRowCount');
-    if (!allLeads.length) { el.innerText = ''; return; }
-    el.innerText = 'Menampilkan ' + paged.items.length + ' dari ' + filtered.length +
+    if (!allLeads.length) { el.innerHTML = ''; return; }
+    var text = 'Menampilkan ' + paged.items.length + ' dari ' + filtered.length +
       (filtered.length !== allLeads.length ? ' (difilter dari ' + allLeads.length + ')' : '') + ' lead';
+
+    // Saat sisa data masih menyusul, katakan terang-terangan — supaya angka
+    // yang sedang bertambah tidak terlihat seperti data yang tidak konsisten.
+    if (leadLoadingRest) {
+      el.innerHTML = escHtml(text) + ' <span class="loading-rest"><span class="inline-spinner"></span>' +
+        'memuat sisanya (' + leadLoadingProgress.loaded + '/' + leadLoadingProgress.total + ')</span>';
+    } else {
+      el.innerText = text;
+    }
   }
 
   // Pagination berjendela — hanya PAGE_WINDOW nomor di sekitar halaman aktif,
