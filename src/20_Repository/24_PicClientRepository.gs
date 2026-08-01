@@ -31,6 +31,12 @@ var PicClientRepository = (function (module) {
     });
   };
 
+  module.findById = function (picId) {
+    return module.findAll().filter(function (pic) {
+      return pic.PIC_ID === picId;
+    })[0] || null;
+  };
+
   module.create = function (pic) {
     base.insert(pic);
     CacheHelper.invalidate('picClient:all');

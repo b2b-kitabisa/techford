@@ -188,6 +188,37 @@ var ClientService = (function (module) {
   };
 
   /**
+   * Perbaiki data PIC yang sudah tersimpan.
+   *
+   * Sebelum ini PIC hanya bisa DITAMBAH dan DIHAPUS, jadi satu salah ketik
+   * nomor telepon memaksa admin menghapus lalu membuat ulang — yang berarti
+   * PIC_ID-nya berganti dan status PIC utamanya hilang.
+   *
+   * Nama sengaja tetap wajib: PIC tanpa nama tidak bisa dikenali di kartu
+   * mana pun. Is_Primary TIDAK bisa diubah dari sini — itu tugas
+   * setPrimaryPic(), yang harus mematikan PIC utama lama dalam satu operasi.
+   */
+  module.updatePic = function (picId, picInput) {
+    if (Utils.isBlank(picId)) {
+      throw new AppError('VALIDATION_ERROR', 'PIC ID wajib diisi.');
+    }
+    if (!picInput || Utils.isBlank(picInput.name)) {
+      throw new AppError('VALIDATION_ERROR', 'Nama PIC wajib diisi.');
+    }
+    if (!PicClientRepository.findById(picId)) {
+      throw new AppError('PIC_NOT_FOUND', 'PIC tidak ditemukan.');
+    }
+
+    PicClientRepository.update(picId, {
+      PIC_Name: String(picInput.name).trim(),
+      Email: String(picInput.email == null ? '' : picInput.email).trim(),
+      Phone: String(picInput.phone == null ? '' : picInput.phone).trim(),
+      Title: String(picInput.title == null ? '' : picInput.title).trim()
+    });
+    return PicClientRepository.findAll();
+  };
+
+  /**
    * Tetapkan PIC utama secara sadar. Sebelum ini "PIC Utama" di tabel Client
    * Monitoring cuma PIC yang kebetulan tersimpan paling awal di sheet, bukan
    * pilihan siapa pun — untuk client dengan beberapa PIC, yang tampil bisa

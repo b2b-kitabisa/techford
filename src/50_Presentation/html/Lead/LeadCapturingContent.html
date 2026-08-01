@@ -1,4 +1,4 @@
-<div id="leadStats" class="stat-cards"></div>
+<div id="leadStats" class="stat-cards-lead"></div>
 
 <div class="filter-bar">
   <div class="search-field" id="leadSearchField">
@@ -40,6 +40,14 @@
 
   <button class="filter-reset" id="leadResetBtn" onclick="resetFilter()">↺ Reset Filter</button>
   <button class="filter-reset" onclick="fetchLeads()" title="Ambil ulang data dari server">🔄 Refresh</button>
+
+  <!-- Kerapatan baris — mode Padat menyembunyikan baris kedua tiap sel
+       (nama PIC, umur lead) dan memuat kira-kira dua kali lipat baris per
+       layar. Pilihannya diingat lewat localStorage. -->
+  <div class="density-switch" id="leadDensitySwitch" title="Kerapatan baris tabel">
+    <button type="button" data-density="comfortable" onclick="setLeadDensity('comfortable')">Nyaman</button>
+    <button type="button" data-density="compact" onclick="setLeadDensity('compact')">Padat</button>
+  </div>
 </div>
 
 <div class="filter-chips" id="leadFilterChips" style="display:none;"></div>
@@ -61,7 +69,7 @@
 <div id="tableError" class="error"></div>
 
 <div class="table-scroll">
-  <table class="data-table">
+  <table class="data-table" id="leadTable">
     <thead>
       <tr>
         <th style="width:34px;"><input type="checkbox" id="leadSelectAll" onchange="toggleSelectAllOnPage(this.checked)" title="Pilih semua di halaman ini"></th>
@@ -93,49 +101,63 @@
 </div>
 
 <div class="drawer-overlay" id="detailDrawer" onclick="if (event.target === this) closeDetail();">
-  <div class="drawer-panel">
+  <div class="drawer-panel drawer-sticky-chrome">
+    <!-- Header = blok identitas + seluruh kontrol status.
+         Kontrol status ada DI SINI (bukan di baris aksi bawah) supaya tetap
+         terlihat saat drawer di-scroll, dan punya tombol UPDATE sendiri —
+         perubahan status tidak lagi menumpang tombol SAVE, yang sekarang
+         hanya mengurus isi form Edit Info. -->
     <div class="drawer-header">
       <div class="drawer-header-top">
         <span class="badge" id="drawerStatusBadge"></span>
-        <button class="drawer-close" onclick="closeDetail()">&times;</button>
+        <span class="drawer-id" id="drawerInboundId"></span>
+        <button class="drawer-close" style="margin-left:auto;" onclick="closeDetail()">&times;</button>
       </div>
       <h2 id="drawerEntityName"></h2>
-      <div class="drawer-entity-type" id="drawerEntityType"></div>
+      <div><span class="drawer-type-chip" id="drawerEntityType"></span></div>
+      <div class="drawer-timeline" id="drawerTimeline"></div>
+
+      <div class="drawer-head-actions" id="drawerHeadActions">
+        <div class="status-dropdown-wrap">
+          <button class="btn-onhead" id="statusPickBtn" onclick="toggleStatusDropdown()">▾ Status</button>
+          <div class="status-dropdown" id="statusDropdown">
+            <div class="status-option status-option-contacted" onclick="selectStatus('Contacted')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.06L2 22l5.11-1.34A9.94 9.94 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.3 1.2-1.8 1.27-.46.07-1.04.1-1.68-.1-.39-.12-.89-.29-1.53-.57-2.7-1.17-4.45-3.9-4.58-4.08-.13-.18-1.1-1.46-1.1-2.79 0-1.32.7-1.97.94-2.24.24-.27.53-.34.71-.34h.5c.16 0 .38-.03.59.45.22.5.74 1.8.8 1.93.07.13.11.28.02.45-.09.17-.14.28-.27.43-.13.15-.28.34-.4.46-.13.13-.27.27-.12.53.16.27.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.13.44.11.6-.07.16-.18.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.27.13.44.2.5.31.07.11.07.62-.15 1.24z"/></svg>
+              CONTACTED
+            </div>
+            <div class="status-option status-option-new" onclick="selectStatus('New Leads')">◦ NEW LEADS</div>
+            <div class="status-option status-option-other" onclick="selectStatus('Other')">⋯ OTHER</div>
+            <div class="status-option status-option-spam" onclick="selectStatus('Spam')">⚠ SPAM</div>
+          </div>
+        </div>
+        <button class="btn-onhead primary" id="statusUpdateBtn" onclick="submitStatusUpdate()">Update</button>
+        <span class="spacer"></span>
+        <button class="btn-onhead" id="editInfoToggleBtn" onclick="toggleEditInfo()">✏️ Edit Info</button>
+        <!-- Move Client dikeluarkan dari dropdown status: dia melahirkan Client
+             baru dan tidak bisa dibatalkan, jadi tidak pantas duduk sebaris
+             dengan status yang semuanya bisa diubah bolak-balik. -->
+        <button class="btn-onhead accent" id="moveClientBtn" onclick="openMoveConfirm()">» Move Client</button>
+      </div>
+
       <div id="drawerDupWarn" class="drawer-dup-warn" style="display:none;"></div>
     </div>
 
     <div class="drawer-contact-row">
-      <div class="drawer-avatar">👤</div>
+      <div class="pic-initial" id="drawerPicInitial">–</div>
       <div class="drawer-contact-info">
         <div class="drawer-pic-name" id="drawerPicName"></div>
-        <div class="drawer-contact-line" id="drawerPhone"></div>
-        <div class="drawer-contact-line" id="drawerEmail"></div>
+        <div class="drawer-contact-line contact-line-row" id="drawerPhone"></div>
+        <div class="drawer-contact-line contact-line-row" id="drawerEmail"></div>
       </div>
     </div>
 
-    <div class="drawer-action-row">
-      <button class="btn-outline" onclick="toggleEditInfo()">✏️ EDIT INFO</button>
-      <div class="status-dropdown-wrap">
-        <button class="btn-outline" onclick="toggleStatusDropdown()">▾ STATUS</button>
-        <div class="status-dropdown" id="statusDropdown">
-          <div class="status-option status-option-contacted" onclick="selectStatus('Contacted')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.06L2 22l5.11-1.34A9.94 9.94 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.3 1.2-1.8 1.27-.46.07-1.04.1-1.68-.1-.39-.12-.89-.29-1.53-.57-2.7-1.17-4.45-3.9-4.58-4.08-.13-.18-1.1-1.46-1.1-2.79 0-1.32.7-1.97.94-2.24.24-.27.53-.34.71-.34h.5c.16 0 .38-.03.59.45.22.5.74 1.8.8 1.93.07.13.11.28.02.45-.09.17-.14.28-.27.43-.13.15-.28.34-.4.46-.13.13-.27.27-.12.53.16.27.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.13.44.11.6-.07.16-.18.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.27.13.44.2.5.31.07.11.07.62-.15 1.24z"/></svg>
-            CONTACTED
-          </div>
-          <div class="status-option status-option-other" onclick="selectStatus('Other')">⋯ OTHER</div>
-          <div class="status-option status-option-spam" onclick="selectStatus('Spam')">⚠ SPAM</div>
-          <div class="status-option status-option-moved" onclick="selectStatus('Moved')">» MOVE CLIENT</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="drawer-edit-form" id="drawerEditForm">
-      <label>Entity Name<input id="editEntityName"></label>
-      <label>Entity Type<input id="editEntityType"></label>
-      <label>PIC Name<input id="editPicName"></label>
-      <label>Phone<input id="editPhone"></label>
-      <label>Email<input id="editEmail"></label>
-      <label>Other Notes<textarea id="editNotes" placeholder="Type your message here."></textarea></label>
+    <div class="drawer-edit-form form-2col" id="drawerEditForm">
+      <label data-field="Entity_Name">Entity Name<input id="editEntityName" oninput="markLeadFieldDirty(this)"></label>
+      <label data-field="Entity_Type">Entity Type<input id="editEntityType" oninput="markLeadFieldDirty(this)"></label>
+      <label data-field="PIC_Name">PIC Name<input id="editPicName" oninput="markLeadFieldDirty(this)"></label>
+      <label data-field="Phone">Phone<input id="editPhone" oninput="markLeadFieldDirty(this)"></label>
+      <label data-field="Email">Email<input id="editEmail" oninput="markLeadFieldDirty(this)"></label>
+      <label class="field-wide" data-field="Other_Notes">Other Notes<textarea id="editNotes" placeholder="Type your message here." oninput="markLeadFieldDirty(this)"></textarea></label>
     </div>
 
     <div class="drawer-section" id="lockedNotice" style="display:none; background: var(--warn-tint);">
@@ -143,35 +165,32 @@
       <div id="movedClientLink" style="margin-top:8px;"></div>
     </div>
 
+    <!-- Kebutuhan & Prioritas berasal dari dua pertanyaan bersebelahan di form
+         inbound dan selalu dibaca bersama — digabung jadi satu section. -->
     <div class="drawer-section">
-      <h3>Interest Detail</h3>
-      <div class="drawer-field-label">Kebutuhan :</div>
+      <div class="drawer-eyebrow">Interest</div>
+      <div class="drawer-field-label">Kebutuhan</div>
       <div class="drawer-field-value" id="drawerNeeds"></div>
-    </div>
-
-    <div class="drawer-section" id="drawerPrioritySection">
-      <div class="drawer-field-label">Prioritas :</div>
-      <div class="drawer-field-value" id="drawerPriority"></div>
-    </div>
-
-    <!-- Sumber trafik (UTM) — dari mana lead ini datang. Akan jadi sumber
-         angka score card, jadi ditampilkan lengkap di sini. -->
-    <div class="drawer-section" id="drawerUtmSection">
-      <h3>Sumber Trafik</h3>
-      <div class="utm-grid">
-        <div><span class="drawer-field-label">Source</span><div class="drawer-field-value" id="drawerUtmSource">-</div></div>
-        <div><span class="drawer-field-label">Medium</span><div class="drawer-field-value" id="drawerUtmMedium">-</div></div>
-        <div><span class="drawer-field-label">Campaign</span><div class="drawer-field-value" id="drawerUtmCampaign">-</div></div>
+      <div id="drawerPrioritySection" style="margin-top:11px;">
+        <div class="drawer-field-label">Prioritas</div>
+        <div class="drawer-field-value" id="drawerPriority"></div>
       </div>
     </div>
 
+    <div class="drawer-section" id="drawerUtmSection">
+      <div class="drawer-eyebrow">Sumber Trafik</div>
+      <div id="drawerUtmBody"></div>
+    </div>
+
     <div class="drawer-section">
-      <div class="drawer-field-label">Other Notes :</div>
+      <div class="drawer-eyebrow">Other Notes</div>
       <div class="drawer-field-value" id="drawerNotesDisplay">Belum ada catatan.</div>
     </div>
 
-    <div class="drawer-footer">
+    <!-- Footer hanya berisi SAVE, dan hanya muncul saat Edit Info terbuka. -->
+    <div class="drawer-footer" id="leadDrawerFooter" style="display:none;">
       <span class="save-hint" id="saveHint"></span>
+      <button class="btn-outline" onclick="toggleEditInfo()">Batal</button>
       <button class="btn-save" onclick="openSaveConfirm()">💾 SAVE</button>
     </div>
   </div>
@@ -196,7 +215,7 @@
       dan tidak bisa diedit lagi dari Lead Capturing setelah ini.
     </p>
     <p style="margin-top:8px;">
-      Client barunya akan berstatus <strong>Belum Lengkap</strong> — Entity Name dan Head Office
+      Client barunya akan berstatus <strong>Incomplete</strong> — Entity Name dan Head Office
       belum ditanyakan di form inbound, jadi perlu Anda lengkapi di Client Monitoring.
     </p>
     <div class="confirm-actions">
@@ -437,6 +456,11 @@
     ).join('');
   }
 
+  // Kerapatan baris dipulihkan dari pilihan terakhir admin sebelum data
+  // datang — kalau dipasang belakangan, tabelnya akan sempat berkedip dari
+  // mode Nyaman ke Padat di depan mata.
+  restoreLeadDensity();
+
   if (document.readyState === 'complete') {
     fetchLeads();
   } else {
@@ -468,9 +492,17 @@
       if (key) stats[key]++;
       if (key !== 'Spam') nonSpamTotal++;
     });
-    stats.total = leads.length;
+    // "Total Leads" = seluruh lead KECUALI Spam. Dia jadi pembagi tunggal
+    // untuk persentase New Leads / Contacted / Moved / Other, sehingga
+    // keempatnya selalu berjumlah 100% — lead sampah tidak boleh mengencerkan
+    // gambaran kinerja inbound.
+    stats.grandTotal = leads.length;      // termasuk Spam
+    stats.total = nonSpamTotal;           // tanpa Spam — inilah "Total Leads"
     stats.nonSpamTotal = nonSpamTotal;
     stats.convertedPct = nonSpamTotal ? Math.round((stats['Moved'] / nonSpamTotal) * 100) : 0;
+    // Porsi spam sengaja memakai pembagi BERBEDA: seluruh lead yang pernah
+    // masuk (termasuk spam itu sendiri). Pertanyaannya bukan "berapa persen
+    // dari lead yang layak", tapi "seberapa kotor sumber inbound ini".
     stats.spamPct = leads.length ? Math.round((stats['Spam'] / leads.length) * 100) : 0;
     // Lead yang masih New Leads DAN sudah melewati ambang — penyakit inbound
     // yang paling nyata: lead masuk tapi tidak ditindaklanjuti.
@@ -548,39 +580,112 @@
     return age !== null && age > LEAD_STALE_DAYS;
   }
 
+  /**
+   * Ubah beberapa angka jadi persentase bulat yang jumlahnya TEPAT 100
+   * (metode sisa terbesar / largest remainder).
+   *
+   * @param {number[]} angka
+   * @param {number} pembagi
+   * @returns {number[]} persentase bulat, sejajar dengan urutan masukan.
+   */
+  function hitungPersenUtuh(angka, pembagi) {
+    if (!pembagi) return angka.map(function () { return 0; });
+
+    var mentah = angka.map(function (n) { return n / pembagi * 100; });
+    var bulat = mentah.map(function (v) { return Math.floor(v); });
+    var kurang = 100 - bulat.reduce(function (a, b) { return a + b; }, 0);
+
+    // Bagikan sisanya ke desimal terbesar lebih dulu. Kalau ada angka nol,
+    // dia tidak boleh ikut kebagian — 0 lead tidak boleh tampil sebagai 1%.
+    var urut = mentah.map(function (v, i) { return { i: i, sisa: v - Math.floor(v), nol: angka[i] === 0 }; })
+      .filter(function (x) { return !x.nol; })
+      .sort(function (a, b) { return b.sisa - a.sisa; });
+
+    for (var k = 0; k < kurang && urut.length; k++) bulat[urut[k % urut.length].i]++;
+    return bulat;
+  }
+
+  /**
+   * Score card. Tata letaknya: grid 3 kolom — enam kartu ringkas mengisi
+   * kolom 1–2 (dua per baris, tiga baris), dan Inbound Health membentang
+   * setinggi ketiganya di kolom 3.
+   *
+   * Kartunya SENGAJA dipadatkan (nilai dan persentase duduk satu baris, tanpa
+   * kalimat penjelas) dan grid-nya dibatasi max-width di CSS: score card tidak
+   * boleh memakan sepertiga tinggi halaman hanya untuk enam angka, sementara
+   * tabelnya — yang jadi pekerjaan sebenarnya — terdorong ke bawah layar.
+   */
   function renderStats(stats) {
     var selected = getSelectedStatuses();
-    var html = STATUS_ORDER.map(function (status) {
-      var meta = STATUS_META[status];
-      var isActive = selected.indexOf(status) !== -1 ? ' active' : '';
-      return '<div class="stat-card clickable ' + meta.cardClass + isActive + '" onclick="filterByStatus(\'' + escAttr(status) + '\')">' +
-        '<div class="stat-label">' + escHtml(status) + '</div>' +
-        '<div class="stat-desc">' + escHtml(meta.desc) + '</div>' +
-        '<div class="stat-value">' + (stats[status] || 0) + '</div>' +
+    var TONE = {
+      'New Leads': 'tone-new', 'Contacted': 'tone-contacted', 'Moved': 'tone-moved',
+      'Other': 'tone-other', 'Spam': 'tone-spam'
+    };
+
+    // Pembulatan sisa-terbesar, BUKAN Math.round per kartu.
+    //
+    // Dengan pembulatan biasa, 4/9 + 2/9 + 2/9 + 1/9 menghasilkan
+    // 44 + 22 + 22 + 11 = 99% — angka yang hilang 1% tanpa penjelasan di
+    // score card yang seharusnya menggambarkan satu keseluruhan utuh. Di sini
+    // sisa desimal terbesar dibulatkan ke atas sampai jumlahnya tepat 100.
+    var pctNonSpam = hitungPersenUtuh(
+      ['New Leads', 'Contacted', 'Moved', 'Other'].map(function (k) { return stats[k] || 0; }),
+      stats.total
+    );
+    var PCT = { 'New Leads': pctNonSpam[0], 'Contacted': pctNonSpam[1],
+                'Moved': pctNonSpam[2], 'Other': pctNonSpam[3], 'Spam': stats.spamPct };
+
+    function pctOf(status) { return PCT[status] || 0; }
+
+    // Urutan penulisan mengikuti aliran grid: kartu 1, kartu 2, lalu kartu
+    // Inbound Health (dia mengklaim kolom 3 baris 1–3 lewat CSS), lalu sisanya.
+    var urutan = ['New Leads', 'Contacted', '__health', 'Moved', 'Other', 'Spam', '__total'];
+
+    var html = urutan.map(function (key) {
+      if (key === '__health') {
+        return '<div class="stat-mini stat-health-tall">' +
+          '<div class="stat-mini-label">Inbound Health</div>' +
+          '<div class="stat-mini-note">Moved ÷ Total Leads</div>' +
+          '<div class="stat-mini-value">' + stats.convertedPct + '%</div>' +
+          '<div class="stat-sub">' +
+            '<div class="stat-sub-row' + (stats.staleCount ? ' bad' : '') + '">' +
+              '<span>Didiamkan &gt;' + LEAD_STALE_DAYS + ' hari</span><strong>' + stats.staleCount + '</strong>' +
+            '</div>' +
+            '<div class="stat-sub-row">' +
+              '<span>Porsi spam</span><strong>' + stats.spamPct + '%</strong>' +
+            '</div>' +
+            '<div class="stat-sub-row' + (stats.dupCount ? ' bad' : '') + '">' +
+              '<span>Potensi duplikat</span><strong>' + stats.dupCount + '</strong>' +
+            '</div>' +
+          '</div>' +
+          '</div>';
+      }
+      if (key === '__total') {
+        // Tidak bisa diklik: "menyaring semuanya" tidak menyaring apa pun —
+        // pekerjaan itu sudah dipegang tombol Reset Filter.
+        return '<div class="stat-mini tone-total" title="Seluruh lead kecuali Spam — pembagi untuk keempat persentase di atas">' +
+          '<div class="stat-mini-label">Total Leads</div>' +
+          '<div class="stat-mini-row">' +
+            '<span class="stat-mini-value">' + stats.total.toLocaleString('id-ID') + '</span>' +
+            '<span class="stat-mini-pct">100%</span>' +
+          '</div>' +
+          '<div class="stat-mini-note">tanpa Spam</div>' +
+          '</div>';
+      }
+
+      var isActive = selected.indexOf(key) !== -1 ? ' active' : '';
+      var note = key === 'Spam' ? 'dari total termasuk spam' : 'dari Total Leads';
+      return '<div class="stat-mini clickable ' + TONE[key] + isActive +
+        '" onclick="filterByStatus(\'' + escAttr(key) + '\')" title="' +
+        escAttr(STATUS_META[key].desc) + '">' +
+        '<div class="stat-mini-label">' + escHtml(key) + '</div>' +
+        '<div class="stat-mini-row">' +
+          '<span class="stat-mini-value">' + (stats[key] || 0).toLocaleString('id-ID') + '</span>' +
+          '<span class="stat-mini-pct">' + pctOf(key) + '%</span>' +
+        '</div>' +
+        '<div class="stat-mini-note">' + note + '</div>' +
         '</div>';
     }).join('');
-
-    // "Inbound Health" menggantikan "% Moved". Angka utamanya tetap konversi
-    // ke client (rumus sama seperti sebelumnya, supaya angka yang sudah Anda
-    // pantau tidak "pindah arti"), ditopang dua baris yang benar-benar
-    // menunjukkan sehat atau tidak: berapa yang didiamkan terlalu lama, dan
-    // seberapa besar porsi spam dari sumber inbound.
-    html += '<div class="stat-card stat-health">' +
-      '<div class="stat-label">Inbound Health</div>' +
-      '<div class="stat-desc">Konversi jadi client (tanpa Spam)</div>' +
-      '<div class="stat-value">' + stats.convertedPct + '%</div>' +
-      '<div class="stat-sub">' +
-        '<div class="stat-sub-row' + (stats.staleCount ? ' bad' : '') + '">' +
-          '<span>Didiamkan &gt;' + LEAD_STALE_DAYS + ' hari</span><strong>' + stats.staleCount + '</strong>' +
-        '</div>' +
-        '<div class="stat-sub-row">' +
-          '<span>Porsi spam</span><strong>' + stats.spamPct + '%</strong>' +
-        '</div>' +
-        '<div class="stat-sub-row' + (stats.dupCount ? ' bad' : '') + '">' +
-          '<span>Potensi duplikat</span><strong>' + stats.dupCount + '</strong>' +
-        '</div>' +
-      '</div>' +
-      '</div>';
 
     document.getElementById('leadStats').innerHTML = html;
   }
@@ -869,32 +974,88 @@
       var isLocked = statusKey === 'Moved';
       var dup = duplicateInfo(lead);
 
-      return '<tr' + (stale ? ' class="lead-row-stale"' : '') + '>' +
+      // Umur lead diberi warna, bukan hanya angka: hijau ≤2 hari, kuning 3–7,
+      // merah >7. Sebelumnya semua umur ditulis abu-abu seragam, jadi
+      // menemukan lead yang terlantar berarti membaca seratus angka satu-satu.
+      var ageHtml = '';
+      if (age !== null) {
+        var tone = age <= 2 ? 'fresh' : (age <= LEAD_STALE_DAYS ? 'warm' : 'cold');
+        var subClass = tone === 'cold' ? ' bad' : (tone === 'warm' ? ' warm' : '');
+        ageHtml = '<div class="cell-sub compact-hide' + subClass + '">' +
+          '<span class="age-dot ' + tone + '"></span>' + age + ' hari</div>';
+      }
+
+      var rowClass = [];
+      if (stale) rowClass.push('lead-row-stale');
+      if (dup.isDup) rowClass.push('lead-row-dup');
+
+      // Aksi cepat: WhatsApp & Email muncul saat baris disorot — dua tindakan
+      // yang paling sering dilakukan, sekarang tanpa perlu membuka drawer.
+      var quick = '<span class="row-quick">';
+      if (phone) {
+        quick += '<a class="quick-btn quick-hidden" href="https://wa.me/' + escAttr(normalizePhone(phone)) +
+          '" target="_blank" rel="noopener" title="Hubungi via WhatsApp">WA</a>';
+      }
+      if (email) {
+        quick += '<a class="quick-btn quick-hidden" href="mailto:' + escAttr(email) + '" title="Kirim email">✉</a>';
+      }
+      quick += '<button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) +
+        '\')" title="Lihat Detail">›</button></span>';
+
+      return '<tr' + (rowClass.length ? ' class="' + rowClass.join(' ') + '"' : '') + '>' +
         '<td>' + (isLocked
           ? '<span class="chk-placeholder" title="Sudah jadi Client — tidak bisa diubah lagi">–</span>'
           : '<input type="checkbox" ' + checked + ' onchange="toggleLeadSelection(\'' + escAttr(lead.Inbound_ID) + '\', this.checked)">') +
         '</td>' +
         '<td class="nowrap-cell"><span class="badge ' + meta.badgeClass + '">' + escHtml(lead.Status) + '</span></td>' +
-        '<td class="nowrap-cell"><div>' + escHtml(formatDate(lead.Timestamp)) + '</div>' +
-          (age === null ? '' : '<div class="cell-sub' + (stale ? ' bad' : '') + '">' +
-            (stale ? '⚠ ' : '') + age + ' hari</div>') +
-        '</td>' +
+        '<td class="nowrap-cell"><div>' + escHtml(formatDate(lead.Timestamp)) + '</div>' + ageHtml + '</td>' +
         '<td><div class="entity-name">' + escHtml(lead.Entity_Name || '-') +
           (dup.isDup ? ' <span class="dup-tag" title="' +
             escAttr('Ada ' + dup.count + ' lead dengan ' + dup.alasan + ' — periksa sebelum menindaklanjuti') +
-            '">⧉ Potensi Duplikat</span>' : '') + '</div>' +
-          '<div class="entity-pic">👤 ' + escHtml(picName) + '</div></td>' +
+            '">⧉ ' + dup.count + '</span>' : '') + '</div>' +
+          '<div class="entity-pic compact-hide">👤 ' + escHtml(picName) + '</div></td>' +
         '<td class="contact-cell">' +
           (phone ? '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">📱 ' + escHtml(phone) + '</a>' : '') +
-          (email ? '<a class="contact-email" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
+          (email ? '<a class="contact-email compact-hide" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
           (!phone && !email ? '-' : '') +
         '</td>' +
         '<td title="' + escAttr(needs) + '">' + escHtml(truncateText(needs, 30)) + '</td>' +
-        '<td><button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) + '\')" title="Lihat Detail">›</button></td>' +
+        '<td>' + quick + '</td>' +
         '</tr>';
     }).join('');
 
     syncSelectAllCheckbox(paged);
+  }
+
+  /* ============================================================
+     KERAPATAN BARIS
+     ============================================================
+     Mode Padat menyembunyikan baris kedua tiap sel (nama PIC, umur, email)
+     lewat class .compact-hide, jadi tidak ada baris yang perlu di-render
+     ulang — cukup satu class di elemen <table>. */
+  var LEAD_DENSITY_KEY = 'techford.leadDensity';
+
+  function setLeadDensity(mode) {
+    var compact = mode === 'compact';
+    var table = document.getElementById('leadTable');
+    if (table) table.classList.toggle('density-compact', compact);
+
+    var sw = document.getElementById('leadDensitySwitch');
+    if (sw) {
+      var btns = sw.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', btns[i].getAttribute('data-density') === (compact ? 'compact' : 'comfortable'));
+      }
+    }
+    // localStorage bisa dilarang (mode privat / iframe ketat) — kegagalan
+    // menyimpan preferensi tidak boleh merusak tabelnya.
+    try { window.localStorage.setItem(LEAD_DENSITY_KEY, compact ? 'compact' : 'comfortable'); } catch (e) {}
+  }
+
+  function restoreLeadDensity() {
+    var saved = 'comfortable';
+    try { saved = window.localStorage.getItem(LEAD_DENSITY_KEY) || 'comfortable'; } catch (e) {}
+    setLeadDensity(saved);
   }
 
   function truncateText(text, maxLen) {
@@ -1082,18 +1243,97 @@
     document.body.classList.add('drawer-open');
   }
 
+  /**
+   * Inisial dari nama, untuk avatar berwarna. Menggantikan emoji 👤 yang
+   * identik untuk semua lead dan karena itu tidak menyampaikan apa pun.
+   */
+  function initialsOf(name) {
+    var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '–';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  /**
+   * Baris kontak: teks tetap teks biasa (bisa disorot & dibaca), dengan satu
+   * tombol ⧉ di kanannya untuk menyalin. Menempelkan nomor ke WhatsApp adalah
+   * hal yang paling sering dilakukan di halaman ini.
+   */
+  function contactLineHtml(value, hrefPrefix, kosong) {
+    var teks = String(value || '').trim();
+    if (!teks) return '<span style="color: var(--text-faint);">' + escHtml(kosong) + '</span>';
+
+    // Yang DITAMPILKAN adalah teks aslinya, tapi yang masuk ke tautan wa.me
+    // harus nomor yang sudah dinormalkan — wa.me/081234 tidak akan membuka
+    // percakapan apa pun, harus wa.me/6281234.
+    var isWa = hrefPrefix.indexOf('wa.me') !== -1;
+    var target = isWa ? normalizePhone(teks) : teks;
+
+    var isi = '<a href="' + escAttr(hrefPrefix + target) + '"' +
+      (hrefPrefix.indexOf('http') === 0 ? ' target="_blank" rel="noopener"' : '') +
+      '>' + escHtml(teks) + '</a>';
+
+    // Yang DISALIN adalah teks aslinya — itu yang admin tempelkan ke tempat
+    // lain, dan format yang diketik pengisi form sering punya makna sendiri.
+    return isi + '<button type="button" class="copy-chip" title="Salin" ' +
+      'onclick="copyToClipboard(this, \'' + escAttr(teks) + '\')">⧉</button>';
+  }
+
+  /**
+   * Salin ke clipboard. navigator.clipboard butuh konteks aman DAN tidak ada
+   * di semua browser yang dipakai admin, jadi ada jalur cadangan lewat
+   * textarea + execCommand — kalau dua-duanya gagal, teksnya diseleksi supaya
+   * admin masih bisa menekan Ctrl+C sendiri.
+   */
+  function copyToClipboard(btn, text) {
+    function sukses() {
+      var asli = btn.innerHTML;
+      btn.innerHTML = '✓';
+      btn.classList.add('copied');
+      setTimeout(function () { btn.innerHTML = asli; btn.classList.remove('copied'); }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(sukses, function () { copyFallback(text, sukses); });
+    } else {
+      copyFallback(text, sukses);
+    }
+  }
+
+  function copyFallback(text, sukses) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) sukses();
+    else TechfordToast.show('Browser menolak menyalin otomatis — sorot teksnya lalu tekan Ctrl+C.');
+  }
+
   function renderDrawer(lead) {
     setStatusBadge(lead.Status);
+    document.getElementById('drawerInboundId').innerText = lead.Inbound_ID || '';
     document.getElementById('drawerEntityName').innerText = lead.Entity_Name || '-';
     document.getElementById('drawerEntityType').innerText = (lead.Entity_Type || '-').toUpperCase();
     document.getElementById('drawerPicName').innerText = toProperCase(lead.PIC_Name) || '-';
+    document.getElementById('drawerPicInitial').innerText = initialsOf(lead.PIC_Name);
 
-    document.getElementById('drawerPhone').innerHTML = lead.Phone
-      ? '<a href="https://wa.me/' + escAttr(normalizePhone(lead.Phone)) + '" target="_blank" rel="noopener">' + escHtml(lead.Phone) + '</a>'
-      : '-';
-    document.getElementById('drawerEmail').innerHTML = lead.Email
-      ? '<a href="mailto:' + escAttr(lead.Email.toLowerCase()) + '">' + escHtml(lead.Email.toLowerCase()) + '</a>'
-      : '-';
+    document.getElementById('drawerPhone').innerHTML =
+      contactLineHtml(lead.Phone, 'https://wa.me/', 'Nomor telepon tidak diisi');
+    document.getElementById('drawerEmail').innerHTML =
+      contactLineHtml((lead.Email || '').toLowerCase(), 'mailto:', 'Email tidak diisi');
+
+    // Umur lead sebelumnya hanya ada di tabel, padahal justru di drawer inilah
+    // admin memutuskan mau menghubungi atau tidak.
+    var umur = daysSince(lead.Timestamp);
+    var jejak = ['Masuk ' + formatDate(lead.Timestamp)];
+    if (umur !== null) jejak.push(umur + ' hari lalu');
+    if (lead.Last_Updated) jejak.push('diubah ' + formatDate(lead.Last_Updated));
+    document.getElementById('drawerTimeline').innerText = jejak.join(' · ');
 
     document.getElementById('drawerNeeds').innerText = lead.Detail_Interest || '-';
 
@@ -1101,20 +1341,8 @@
     document.getElementById('drawerPrioritySection').style.display = priority ? '' : 'none';
     document.getElementById('drawerPriority').innerText = priority;
 
-    var dupDrawer = duplicateInfo(lead);
-    var dupBox = document.getElementById('drawerDupWarn');
-    if (dupDrawer.isDup) {
-      dupBox.style.display = '';
-      dupBox.innerHTML = '⧉ <strong>Potensi Duplikat</strong> — ada ' + dupDrawer.count +
-        ' lead dengan ' + escHtml(dupDrawer.alasan) + '. Cari alamat email atau nomornya di kotak pencarian untuk membandingkan.';
-    } else {
-      dupBox.style.display = 'none';
-      dupBox.innerHTML = '';
-    }
-
-    document.getElementById('drawerUtmSource').innerText = lead.UTM_Source || '-';
-    document.getElementById('drawerUtmMedium').innerText = lead.UTM_Medium || '-';
-    document.getElementById('drawerUtmCampaign').innerText = lead.UTM_Campaign || '-';
+    renderDupPanel(lead);
+    renderUtmPanel(lead);
 
     document.getElementById('drawerNotesDisplay').innerText = lead.Other_Notes || 'Belum ada catatan.';
     document.getElementById('editNotes').value = lead.Other_Notes || '';
@@ -1125,7 +1353,7 @@
     document.getElementById('editPhone').value = lead.Phone || '';
     document.getElementById('editEmail').value = (lead.Email || '').toLowerCase();
 
-    document.getElementById('drawerEditForm').classList.remove('open');
+    closeLeadEditForm();
     document.getElementById('statusDropdown').classList.remove('open');
     document.getElementById('saveHint').innerText = '';
 
@@ -1133,9 +1361,8 @@
     // bisa dikelola lewat Client Monitoring. Ditegakkan juga di server
     // (LeadService.updateLead), ini cuma kenyamanan tampilan.
     var isLocked = normalizeStatusKey(lead.Status) === 'Moved';
-    document.querySelector('.drawer-action-row').style.display = isLocked ? 'none' : 'flex';
+    document.getElementById('drawerHeadActions').style.display = isLocked ? 'none' : 'flex';
     document.getElementById('lockedNotice').style.display = isLocked ? 'block' : 'none';
-    document.querySelector('.drawer-footer .btn-save').style.display = isLocked ? 'none' : 'inline-block';
 
     // Jejak Move: tunjukkan client mana yang lahir dari lead ini. Untuk lead
     // yang sudah di-Move SEBELUM kolom Client_ID ada, jejaknya memang tidak
@@ -1151,6 +1378,115 @@
     }
   }
 
+  /**
+   * Daftar lead kembar di dalam drawer. Sebelumnya kotak ini hanya menyebut
+   * JUMLAHNYA ("ada 3 lead dengan email sama") lalu menyuruh admin mencari
+   * sendiri di kotak pencarian. Sekarang tiap ID-nya tercantum, bisa diklik
+   * untuk langsung berpindah, dan menyebutkan alasan kembarnya masing-masing —
+   * supaya keputusan "mana yang dijadikan Spam" bisa diambil di satu tempat.
+   */
+  function renderDupPanel(lead) {
+    var box = document.getElementById('drawerDupWarn');
+    var info = duplicateInfo(lead);
+    if (!info.isDup) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+
+    var kembar = duplicateSiblings(lead);
+    box.style.display = '';
+    box.innerHTML =
+      '<button type="button" class="dup-list-toggle" onclick="toggleDupList()">' +
+        '<span>⧉ <strong>Potensi Duplikat</strong> — ' + kembar.length +
+          ' lead lain dengan ' + escHtml(info.alasan) + '</span>' +
+        '<span class="dup-caret" id="dupCaret">lihat ▾</span>' +
+      '</button>' +
+      '<div class="dup-list" id="dupList">' +
+        kembar.map(function (k) {
+          var meta = getStatusMeta(k.lead.Status);
+          return '<div class="dup-list-row">' +
+            '<button type="button" class="dup-id-link" onclick="openDetailFromDup(\'' +
+              escAttr(k.lead.Inbound_ID) + '\')">' + escHtml(k.lead.Inbound_ID) + '</button>' +
+            '<span class="badge ' + meta.badgeClass + '">' + escHtml(k.lead.Status) + '</span>' +
+            '<span class="dup-why">' + escHtml(formatDate(k.lead.Timestamp)) + ' · ' + escHtml(k.alasan) + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
+  /**
+   * Lead lain yang kembar dengan lead ini, beserta alasannya masing-masing.
+   * Lead-nya sendiri tidak ikut. Diurutkan dari yang paling lama.
+   */
+  function duplicateSiblings(lead) {
+    var e = String(lead.Email || '').trim().toLowerCase();
+    var p = normalizePhoneKey(lead.Phone);
+    var perId = {};
+
+    function catat(ids, alasan) {
+      ids.forEach(function (id) {
+        if (sameId(id, lead.Inbound_ID)) return;
+        if (!perId[id]) perId[id] = [];
+        if (perId[id].indexOf(alasan) === -1) perId[id].push(alasan);
+      });
+    }
+    if (e && dupGroups.email[e]) catat(dupGroups.email[e], 'email sama');
+    if (p && dupGroups.phone[p]) catat(dupGroups.phone[p], 'telepon sama');
+
+    var hasil = [];
+    Object.keys(perId).forEach(function (id) {
+      var other = allLeads.filter(function (l) { return sameId(l.Inbound_ID, id); })[0];
+      if (other) hasil.push({ lead: other, alasan: perId[id].join(' & ') });
+    });
+    hasil.sort(function (a, b) {
+      return (new Date(a.lead.Timestamp).getTime() || 0) - (new Date(b.lead.Timestamp).getTime() || 0);
+    });
+    return hasil;
+  }
+
+  function toggleDupList() {
+    var list = document.getElementById('dupList');
+    if (!list) return;
+    var open = list.classList.toggle('open');
+    var caret = document.getElementById('dupCaret');
+    if (caret) caret.innerText = open ? 'tutup ▴' : 'lihat ▾';
+  }
+
+  /**
+   * Pindah ke lead kembar tanpa menutup drawer — isi drawer diganti di
+   * tempat, jadi admin bisa bolak-balik membandingkan beberapa lead.
+   */
+  function openDetailFromDup(inboundId) {
+    var lead = allLeads.filter(function (l) { return sameId(l.Inbound_ID, inboundId); })[0];
+    if (!lead) return TechfordToast.show('Lead itu tidak ada di data yang sudah termuat.');
+    currentDrawerLead = lead;
+    renderDrawer(lead);
+    document.querySelector('#detailDrawer .drawer-panel').scrollTop = 0;
+  }
+
+  /**
+   * UTM sebagai chip. Mayoritas lead lama tidak punya UTM sama sekali, jadi
+   * grid 3 kolom sebelumnya biasanya cuma memajang tiga tanda "-".
+   */
+  function renderUtmPanel(lead) {
+    var isi = [
+      { label: 'source', value: lead.UTM_Source },
+      { label: 'medium', value: lead.UTM_Medium },
+      { label: 'campaign', value: lead.UTM_Campaign }
+    ].filter(function (u) { return String(u.value || '').trim(); });
+
+    var host = document.getElementById('drawerUtmBody');
+    if (!isi.length) {
+      host.innerHTML = '<div class="utm-empty">Tidak ada data UTM — lead datang langsung ' +
+        'atau dari kanal offline.</div>';
+      return;
+    }
+    host.innerHTML = '<div class="utm-chips">' + isi.map(function (u) {
+      return '<span class="utm-chip">' + u.label + ' <strong>' + escHtml(u.value) + '</strong></span>';
+    }).join('') + '</div>';
+  }
+
   function goToClientMonitoring() {
     TechfordNav.navigateTo('client-monitoring', {});
   }
@@ -1161,10 +1497,59 @@
     var badge = document.getElementById('drawerStatusBadge');
     badge.className = 'badge ' + meta.badgeClass;
     badge.innerText = pendingStatus;
+    var pick = document.getElementById('statusPickBtn');
+    if (pick) pick.innerHTML = '▾ ' + escHtml(pendingStatus);
+    syncStatusUpdateButton();
   }
 
+  /**
+   * Buka/tutup form Edit Info. Tombolnya sendiri berubah jadi ✕ saat form
+   * terbuka — sebelumnya tetap bertuliskan "EDIT INFO" sehingga tidak ada
+   * cara yang jelas untuk menutup form selain menutup seluruh drawer.
+   *
+   * Footer (tombol SAVE) ikut buka-tutup bersamanya: SAVE sekarang HANYA
+   * mengurus isi form ini. Perubahan status punya tombol Update sendiri.
+   */
   function toggleEditInfo() {
-    document.getElementById('drawerEditForm').classList.toggle('open');
+    var form = document.getElementById('drawerEditForm');
+    if (form.classList.contains('open')) {
+      closeLeadEditForm();
+      // Batal edit — kembalikan isi form ke data asli.
+      if (currentDrawerLead) renderDrawer(currentDrawerLead);
+      return;
+    }
+    form.classList.add('open');
+    document.getElementById('leadDrawerFooter').style.display = 'flex';
+    document.getElementById('editInfoToggleBtn').innerHTML = '✕ Tutup';
+  }
+
+  function closeLeadEditForm() {
+    var form = document.getElementById('drawerEditForm');
+    form.classList.remove('open');
+    document.getElementById('leadDrawerFooter').style.display = 'none';
+    document.getElementById('editInfoToggleBtn').innerHTML = '✏️ Edit Info';
+    // Penanda "field ini berubah" dibersihkan supaya tidak terbawa ke lead
+    // berikutnya yang dibuka.
+    var labels = form.querySelectorAll('label');
+    for (var i = 0; i < labels.length; i++) labels[i].classList.remove('field-dirty');
+  }
+
+  /**
+   * Tandai field yang nilainya sudah berbeda dari data aslinya, dengan garis
+   * kiri cerulean. Sebelum menekan Save, terlihat persis apa yang tersentuh —
+   * penting karena form ini punya enam field dan mudah salah ketik di satu
+   * field tanpa sadar.
+   */
+  function markLeadFieldDirty(input) {
+    var label = input.closest ? input.closest('label') : input.parentNode;
+    if (!label || !currentDrawerLead) return;
+    var field = label.getAttribute('data-field');
+    var asli = String(currentDrawerLead[field] == null ? '' : currentDrawerLead[field]).trim();
+    var sekarang = String(input.value || '').trim();
+    // Perbandingan tidak peka huruf besar/kecil: Entity Type & Email memang
+    // dinormalkan saat ditampilkan, jadi tanpa ini keduanya akan selalu
+    // terlihat "berubah" begitu diketik satu huruf.
+    label.classList.toggle('field-dirty', asli.toLowerCase() !== sekarang.toLowerCase());
   }
 
   function toggleStatusDropdown() {
@@ -1174,6 +1559,75 @@
   function selectStatus(status) {
     setStatusBadge(status);
     document.getElementById('statusDropdown').classList.remove('open');
+    var btn = document.getElementById('statusPickBtn');
+    if (btn) btn.innerHTML = '▾ ' + escHtml(status);
+    // Tombol Update baru berarti kalau statusnya benar-benar berbeda dari
+    // yang tersimpan — mencegah penulisan sia-sia ke sheet.
+    syncStatusUpdateButton();
+  }
+
+  function syncStatusUpdateButton() {
+    var btn = document.getElementById('statusUpdateBtn');
+    if (!btn || !currentDrawerLead) return;
+    var berubah = pendingStatus !== normalizeStatusKey(currentDrawerLead.Status);
+    btn.disabled = !berubah;
+    btn.title = berubah ? 'Simpan perubahan status' : 'Pilih status yang berbeda dulu';
+  }
+
+  /**
+   * Kirim HANYA perubahan status. Terpisah dari SAVE supaya mengubah status
+   * tidak menuntut admin membuka form Edit Info lebih dulu, dan supaya isi
+   * form yang belum selesai diketik tidak ikut tersimpan tanpa diminta.
+   */
+  function submitStatusUpdate() {
+    if (!currentDrawerLead) return;
+    var inboundId = currentDrawerLead.Inbound_ID;
+    var statusBaru = pendingStatus;
+    if (statusBaru === normalizeStatusKey(currentDrawerLead.Status)) return;
+
+    var btn = document.getElementById('statusUpdateBtn');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    TechfordLoading.show('Mengubah status...');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.innerText = 'Update';
+        if (res && res.ok === false) {
+          btn.disabled = false;
+          return alert('Gagal mengubah status: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+        }
+
+        for (var i = 0; i < allLeads.length; i++) {
+          if (sameId(allLeads[i].Inbound_ID, inboundId)) {
+            if (res && res.data && res.data.lead) {
+              allLeads[i] = res.data.lead;
+            } else {
+              allLeads[i].Status = statusBaru;
+              allLeads[i].Last_Updated = new Date().toISOString();
+            }
+            currentDrawerLead = allLeads[i];
+            break;
+          }
+        }
+        renderDrawer(currentDrawerLead);
+        render();
+        TechfordToast.show('Status jadi ' + statusBaru + '.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Update';
+        alert('Gagal mengubah status: ' + (err && err.message ? err.message : err));
+      })
+      .lead_update(inboundId, { Status: statusBaru });
+  }
+
+  /** Move Client — tombol tersendiri, bukan salah satu pilihan status. */
+  function openMoveConfirm() {
+    if (!currentDrawerLead) return;
+    document.getElementById('moveConfirm').classList.add('open');
   }
 
   function normalizePhone(phone) {
@@ -1185,16 +1639,19 @@
   function closeDetail() {
     document.getElementById('detailDrawer').classList.remove('open');
     document.body.classList.remove('drawer-open');
+    // Form edit ditutup juga, kalau tidak drawer berikutnya yang dibuka akan
+    // terlanjur menampilkan form + footer SAVE milik lead sebelumnya.
+    closeLeadEditForm();
     currentDrawerLead = null;
   }
 
+  /**
+   * SAVE sekarang hanya untuk isi form Edit Info — tidak ada lagi percabangan
+   * ke konfirmasi Move di sini, karena Move punya tombolnya sendiri.
+   */
   function openSaveConfirm() {
     if (!currentDrawerLead) return;
-    if (pendingStatus === 'Moved') {
-      document.getElementById('moveConfirm').classList.add('open');
-    } else {
-      document.getElementById('saveConfirm').classList.add('open');
-    }
+    document.getElementById('saveConfirm').classList.add('open');
   }
 
   function cancelSaveConfirm() {
@@ -1211,7 +1668,9 @@
 
     var inboundId = currentDrawerLead.Inbound_ID;
     var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
-    var btn = document.querySelector('.drawer-footer .btn-save');
+    // Tombol yang dinonaktifkan adalah tombol Move di header — SAVE di footer
+    // sekarang milik form Edit Info dan bisa jadi sedang tidak tampil.
+    var btn = document.getElementById('moveClientBtn');
     btn.disabled = true;
     btn.innerText = 'Memproses...';
     TechfordLoading.show('Memindahkan lead...');
@@ -1220,7 +1679,7 @@
       .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         btn.disabled = false;
-        btn.innerText = '💾 SAVE';
+        btn.innerText = '» Move Client';
         if (res && res.ok === false) {
           alert('Gagal memindahkan: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
           return;
@@ -1248,7 +1707,7 @@
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
         btn.disabled = false;
-        btn.innerText = '💾 SAVE';
+        btn.innerText = '» Move Client';
         alert('Gagal memindahkan: ' + (err && err.message ? err.message : err));
       })
       .lead_moveToClient(inboundId, createdBy);
@@ -1258,8 +1717,10 @@
     document.getElementById('saveConfirm').classList.remove('open');
     if (!currentDrawerLead) return;
 
+    // Status SENGAJA tidak ikut di sini. Dulu SAVE mengirim status sekaligus,
+    // jadi membuka drawer lalu memperbaiki satu typo juga menuliskan ulang
+    // statusnya. Sekarang status punya jalurnya sendiri (submitStatusUpdate).
     var patch = {
-      Status: pendingStatus,
       Entity_Name: document.getElementById('editEntityName').value,
       Entity_Type: document.getElementById('editEntityType').value.toUpperCase(),
       PIC_Name: toProperCase(document.getElementById('editPicName').value),
@@ -1269,7 +1730,7 @@
     };
 
     var inboundId = currentDrawerLead.Inbound_ID;
-    var btn = document.querySelector('.drawer-footer .btn-save');
+    var btn = document.querySelector('#leadDrawerFooter .btn-save');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
     TechfordLoading.show('Menyimpan data lead...');

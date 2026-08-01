@@ -24,6 +24,10 @@ function client_addPic(clientId, picInput) {
   return ClientController.addPic(clientId, picInput);
 }
 
+function client_updatePic(picId, picInput) {
+  return ClientController.updatePic(picId, picInput);
+}
+
 function client_removePic(picId) {
   return ClientController.removePic(picId);
 }

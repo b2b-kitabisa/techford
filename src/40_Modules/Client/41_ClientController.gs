@@ -36,6 +36,12 @@ var ClientController = (function (module) {
     });
   };
 
+  module.updatePic = function (picId, picInput) {
+    return ErrorHandler.handle('ClientController.updatePic', function () {
+      return ClientService.updatePic(picId, picInput);
+    });
+  };
+
   module.removePic = function (picId) {
     return ErrorHandler.handle('ClientController.removePic', function () {
       return ClientService.removePic(picId);
