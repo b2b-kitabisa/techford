@@ -40,14 +40,6 @@
 
   <button class="filter-reset" id="leadResetBtn" onclick="resetFilter()">↺ Reset Filter</button>
   <button class="filter-reset" onclick="fetchLeads()" title="Ambil ulang data dari server">🔄 Refresh</button>
-
-  <!-- Kerapatan baris — mode Padat menyembunyikan baris kedua tiap sel
-       (nama PIC, umur lead) dan memuat kira-kira dua kali lipat baris per
-       layar. Pilihannya diingat lewat localStorage. -->
-  <div class="density-switch" id="leadDensitySwitch" title="Kerapatan baris tabel">
-    <button type="button" data-density="comfortable" onclick="setLeadDensity('comfortable')">Nyaman</button>
-    <button type="button" data-density="compact" onclick="setLeadDensity('compact')">Padat</button>
-  </div>
 </div>
 
 <div class="filter-chips" id="leadFilterChips" style="display:none;"></div>
@@ -109,9 +101,11 @@
          hanya mengurus isi form Edit Info. -->
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <span class="badge" id="drawerStatusBadge"></span>
-        <span class="drawer-id" id="drawerInboundId"></span>
-        <button class="drawer-close" style="margin-left:auto;" onclick="closeDetail()">&times;</button>
+        <div class="drawer-header-left">
+          <span class="badge" id="drawerStatusBadge"></span>
+          <span class="drawer-id" id="drawerInboundId"></span>
+        </div>
+        <button class="drawer-close" onclick="closeDetail()">&times;</button>
       </div>
       <h2 id="drawerEntityName"></h2>
       <div><span class="drawer-type-chip" id="drawerEntityType"></span></div>
@@ -455,11 +449,6 @@
       '<tr><td colspan="7" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
     ).join('');
   }
-
-  // Kerapatan baris dipulihkan dari pilihan terakhir admin sebelum data
-  // datang — kalau dipasang belakangan, tabelnya akan sempat berkedip dari
-  // mode Nyaman ke Padat di depan mata.
-  restoreLeadDensity();
 
   if (document.readyState === 'complete') {
     fetchLeads();
@@ -854,6 +843,10 @@
     document.getElementById('leadDateFrom').value = '';
     document.getElementById('leadDateTo').value = '';
     updateStatusFilterLabel();
+    // Pilihan checkbox massal ikut dibersihkan — tanpa ini, centang yang
+    // dibuat sebelum reset tetap "menempel" walau baris yang tercentang
+    // sudah tidak lagi cocok dengan filter yang baru.
+    selectedLeadIds = {};
     currentPage = 1;
     render();
   }
@@ -981,7 +974,7 @@
       if (age !== null) {
         var tone = age <= 2 ? 'fresh' : (age <= LEAD_STALE_DAYS ? 'warm' : 'cold');
         var subClass = tone === 'cold' ? ' bad' : (tone === 'warm' ? ' warm' : '');
-        ageHtml = '<div class="cell-sub compact-hide' + subClass + '">' +
+        ageHtml = '<div class="cell-sub' + subClass + '">' +
           '<span class="age-dot ' + tone + '"></span>' + age + ' hari</div>';
       }
 
@@ -1013,10 +1006,10 @@
           (dup.isDup ? ' <span class="dup-tag" title="' +
             escAttr('Ada ' + dup.count + ' lead dengan ' + dup.alasan + ' — periksa sebelum menindaklanjuti') +
             '">⧉ ' + dup.count + '</span>' : '') + '</div>' +
-          '<div class="entity-pic compact-hide">👤 ' + escHtml(picName) + '</div></td>' +
+          '<div class="entity-pic">👤 ' + escHtml(picName) + '</div></td>' +
         '<td class="contact-cell">' +
           (phone ? '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">📱 ' + escHtml(phone) + '</a>' : '') +
-          (email ? '<a class="contact-email compact-hide" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
+          (email ? '<a class="contact-email" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
           (!phone && !email ? '-' : '') +
         '</td>' +
         '<td title="' + escAttr(needs) + '">' + escHtml(truncateText(needs, 30)) + '</td>' +
@@ -1025,37 +1018,6 @@
     }).join('');
 
     syncSelectAllCheckbox(paged);
-  }
-
-  /* ============================================================
-     KERAPATAN BARIS
-     ============================================================
-     Mode Padat menyembunyikan baris kedua tiap sel (nama PIC, umur, email)
-     lewat class .compact-hide, jadi tidak ada baris yang perlu di-render
-     ulang — cukup satu class di elemen <table>. */
-  var LEAD_DENSITY_KEY = 'techford.leadDensity';
-
-  function setLeadDensity(mode) {
-    var compact = mode === 'compact';
-    var table = document.getElementById('leadTable');
-    if (table) table.classList.toggle('density-compact', compact);
-
-    var sw = document.getElementById('leadDensitySwitch');
-    if (sw) {
-      var btns = sw.querySelectorAll('button');
-      for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.toggle('active', btns[i].getAttribute('data-density') === (compact ? 'compact' : 'comfortable'));
-      }
-    }
-    // localStorage bisa dilarang (mode privat / iframe ketat) — kegagalan
-    // menyimpan preferensi tidak boleh merusak tabelnya.
-    try { window.localStorage.setItem(LEAD_DENSITY_KEY, compact ? 'compact' : 'comfortable'); } catch (e) {}
-  }
-
-  function restoreLeadDensity() {
-    var saved = 'comfortable';
-    try { saved = window.localStorage.getItem(LEAD_DENSITY_KEY) || 'comfortable'; } catch (e) {}
-    setLeadDensity(saved);
   }
 
   function truncateText(text, maxLen) {

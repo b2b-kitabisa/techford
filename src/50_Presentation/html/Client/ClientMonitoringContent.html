@@ -22,11 +22,6 @@
   </select>
   <button class="filter-reset" id="clientResetBtn" onclick="resetClientFilter()">↺ Reset Filter</button>
   <button class="filter-reset" onclick="fetchClients()" title="Ambil ulang data dari server">🔄 Refresh</button>
-
-  <div class="density-switch" id="clientDensitySwitch" title="Kerapatan baris tabel">
-    <button type="button" data-density="comfortable" onclick="setClientDensity('comfortable')">Nyaman</button>
-    <button type="button" data-density="compact" onclick="setClientDensity('compact')">Padat</button>
-  </div>
 </div>
 
 <div class="filter-chips" id="clientFilterChips" style="display:none;"></div>
@@ -34,7 +29,7 @@
 <div id="clientTableError" class="error"></div>
 
 <div class="table-scroll">
-  <table class="data-table" id="clientTable">
+  <table class="data-table density-compact" id="clientTable">
     <thead>
       <tr>
         <th class="sortable" onclick="setClientSort('Brand_Name')">Brand &amp; Entity <span class="sort-icon" data-field="Brand_Name">⇕</span></th>
@@ -165,30 +160,25 @@
          bawah. -->
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <span class="badge" id="clientStatusBadge"></span>
-        <span class="drawer-id" id="clientIdDisplay"></span>
-        <button class="drawer-close" style="margin-left:auto;" onclick="closeClientDetail()">&times;</button>
+        <div class="drawer-header-left">
+          <span class="badge" id="clientStatusBadge"></span>
+          <span class="drawer-id" id="clientIdDisplay"></span>
+        </div>
+        <div class="drawer-header-right">
+          <button class="btn-onhead" id="clientEditInfoToggleBtn" onclick="toggleClientEditInfo()">✏️ Edit Info</button>
+          <button class="drawer-close" onclick="closeClientDetail()">&times;</button>
+        </div>
       </div>
       <h2 id="clientBrandName"></h2>
       <div class="drawer-type-chip" id="clientEntityNameDisplay"></div>
       <div class="drawer-timeline" id="clientCreatedDateDisplay"></div>
-      <div class="drawer-head-actions">
-        <button class="btn-onhead" id="clientEditInfoToggleBtn" onclick="toggleClientEditInfo()">✏️ Edit Info</button>
-        <button class="btn-onhead" id="detailAddPicBtn" style="display:none;" onclick="openAddPicPopup('detail')">+ Add PIC</button>
-      </div>
-    </div>
 
-    <!-- Panel kelengkapan sebagai checklist: kalimat "kurang Head Office,
-         Entity Type" memaksa admin mencocokkan sendiri mana yang sudah
-         terisi. Di sini keenam syaratnya terlihat sekaligus. -->
-    <div class="drawer-section" id="clientCompletenessPanel" style="display:none; background: var(--warn-tint);">
-      <div class="cc-head">
-        <span>Kelengkapan data</span>
-        <span class="cc-count" id="ccCount">0 / 6</span>
-      </div>
-      <div class="cc-bar" id="ccBar"><span style="width:0%;"></span></div>
-      <div class="cc-grid" id="ccGrid"></div>
-      <button class="btn-outline" style="margin-top:11px;" id="ccCompleteBtn" onclick="startCompleteClient()">✏️ Lengkapi Sekarang</button>
+      <!-- Kelengkapan data sebagai chip, pola yang sama dengan Sumber Trafik
+           di Lead Capturing — menggantikan panel checklist + bar kemajuan
+           yang sebelumnya memakan satu section penuh. Tombol "Lengkapi
+           Sekarang" dicabut: aksi yang sama sudah ada di tombol
+           "Lengkapi ›" pada baris tabel. -->
+      <div class="cc-chip-row" id="ccChipRow" style="display:none;"></div>
     </div>
 
     <div class="drawer-section">
@@ -264,7 +254,10 @@
     <!-- Grid, bukan carousel: panah ‹ › menyembunyikan PIC di luar layar dan
          admin tidak tahu ada berapa PIC tanpa mengekliknya lebih dulu. -->
     <div class="drawer-section">
-      <div class="drawer-eyebrow">PIC Client</div>
+      <div class="section-title-row">
+        <div class="drawer-eyebrow" style="flex:1; margin-bottom:0;">PIC Client</div>
+        <button class="btn-outline" id="detailAddPicBtn" style="display:none;" onclick="openAddPicPopup('detail')">+ Add PIC</button>
+      </div>
       <div class="pic-grid" id="detailPicCarousel"></div>
       <button type="button" class="pic-more-btn" id="picMoreBtn" style="display:none;" onclick="toggleShowAllPics()"></button>
     </div>
@@ -539,10 +532,6 @@
     fetchMasterData();
     fetchProjects();
   }
-
-  // Kerapatan baris dipulihkan sebelum data datang, supaya tabelnya tidak
-  // berkedip dari mode Nyaman ke Padat di depan mata.
-  restoreClientDensity();
 
   if (document.readyState === 'complete') {
     bootstrapClients();
@@ -979,32 +968,6 @@
     return digits;
   }
 
-  /* ============================================================
-     KERAPATAN BARIS
-     ============================================================ */
-  var CLIENT_DENSITY_KEY = 'techford.clientDensity';
-
-  function setClientDensity(mode) {
-    var compact = mode === 'compact';
-    var table = document.getElementById('clientTable');
-    if (table) table.classList.toggle('density-compact', compact);
-
-    var sw = document.getElementById('clientDensitySwitch');
-    if (sw) {
-      var btns = sw.querySelectorAll('button');
-      for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.toggle('active', btns[i].getAttribute('data-density') === (compact ? 'compact' : 'comfortable'));
-      }
-    }
-    try { window.localStorage.setItem(CLIENT_DENSITY_KEY, compact ? 'compact' : 'comfortable'); } catch (e) {}
-  }
-
-  function restoreClientDensity() {
-    var saved = 'comfortable';
-    try { saved = window.localStorage.getItem(CLIENT_DENSITY_KEY) || 'comfortable'; } catch (e) {}
-    setClientDensity(saved);
-  }
-
   function renderClientRowCount(paged, filtered) {
     var el = document.getElementById('clientRowCount');
     if (!allClients.length) { el.innerText = ''; return; }
@@ -1215,16 +1178,18 @@
    * isi form. Di sini keenam syaratnya tampil sekaligus dengan tanda ✓ / ○,
    * jadi tidak ada yang perlu dicocokkan di kepala.
    *
-   * Panelnya kini juga tampil saat client SUDAH lengkap — sebagai konfirmasi
-   * hijau 6/6, bukan menghilang tanpa jejak.
+   * Chip-nya kini juga tampil saat client SUDAH lengkap — sebagai konfirmasi
+   * hijau 6/6, bukan menghilang tanpa jejak. Tidak ada tombol aksi di sini —
+   * "Lengkapi ›" di tabel sudah menjadi satu-satunya pintu masuk mode edit
+   * dari luar drawer, supaya tidak ada dua tombol untuk hal yang sama.
    */
   function renderCompletenessPanel(client) {
-    var panel = document.getElementById('clientCompletenessPanel');
+    var row = document.getElementById('ccChipRow');
     var status = evaluateCompleteness(client);
 
     // Selama daftar PIC belum termuat, penilaiannya belum bisa dipercaya —
-    // lebih baik panelnya belum tampil daripada menuduh "kurang PIC".
-    if (!status.picKnown) { panel.style.display = 'none'; return; }
+    // lebih baik chip-nya belum tampil daripada menuduh "kurang PIC".
+    if (!status.picKnown) { row.style.display = 'none'; return; }
 
     var syarat = COMPLETENESS_FIELDS.map(function (f) {
       return { label: f.label, ok: !!String(client[f.key] || '').trim() };
@@ -1232,25 +1197,11 @@
     var jumlahPic = picCountFor(client.Client_ID);
     syarat.push({ label: 'PIC' + (jumlahPic ? ' (' + jumlahPic + ')' : ''), ok: jumlahPic >= 1 });
 
-    var terisi = syarat.filter(function (s) { return s.ok; }).length;
-    var lengkap = terisi === syarat.length;
-
-    panel.style.display = '';
-    panel.style.background = lengkap ? 'var(--good-tint)' : 'var(--warn-tint)';
-    document.getElementById('ccCount').innerText = terisi + ' / ' + syarat.length;
-
-    var bar = document.getElementById('ccBar');
-    bar.classList.toggle('done', lengkap);
-    bar.firstChild.style.width = Math.round(terisi / syarat.length * 100) + '%';
-
-    document.getElementById('ccGrid').innerHTML = syarat.map(function (s) {
-      return '<div' + (s.ok ? '' : ' class="cc-row-missing"') + '>' +
-        '<span class="' + (s.ok ? 'cc-ok' : 'cc-no') + '">' + (s.ok ? '✓' : '○') + '</span>' +
-        escHtml(s.label) + '</div>';
+    row.style.display = 'flex';
+    row.innerHTML = syarat.map(function (s) {
+      return '<span class="cc-chip ' + (s.ok ? 'ok' : 'missing') + '">' +
+        (s.ok ? '✓' : '○') + ' ' + escHtml(s.label) + '</span>';
     }).join('');
-
-    var btn = document.getElementById('ccCompleteBtn');
-    btn.style.display = lengkap ? 'none' : 'inline-flex';
   }
 
   /**

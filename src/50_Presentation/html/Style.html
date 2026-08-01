@@ -566,7 +566,12 @@
 
   .status-dropdown-wrap { position: relative; }
   .status-dropdown {
-    display: none; position: absolute; right: 0; top: calc(100% + 4px); background: var(--color-white);
+    /* left:0 (bukan right:0) — di drawer Lead, wrap-nya duduk di AWAL baris
+       aksi header, dekat sisi kiri. right:0 dulu menganchor tepi kanan
+       dropdown ke tepi kanan wrap yang sempit itu, jadi kotak 180px-nya
+       menjorok ke KIRI sampai keluar panel drawer (terpotong, hanya
+       separuh kanan tiap opsi yang terlihat: "NTACTED", "LEADS", dst). */
+    display: none; position: absolute; left: 0; top: calc(100% + 4px); background: var(--color-white);
     border: 1px solid var(--border-soft); border-radius: 6px; box-shadow: 0 4px 12px rgba(var(--color-mineshaft-rgb), 0.15);
     min-width: 180px; z-index: 10; overflow: hidden;
   }
@@ -1355,8 +1360,12 @@
      dan persentasenya duduk di SATU baris, bukan bertumpuk. ---- */
   .stat-cards-lead {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
-    gap: 8px; margin-bottom: 14px; max-width: 780px;
+    /* 3 kolom untuk 6 kartu ringkas (3 per baris x 2 baris) + 1 kolom untuk
+       Inbound Health yang membentang kedua barisnya. Sebelumnya kartu ringkas
+       hanya diberi 2 kolom (2 per baris x 3 baris) — lebih sempit dan
+       berjejal daripada perlu, padahal ruang kolom ke-4 sudah tersedia. */
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.15fr);
+    gap: 8px; margin-bottom: 14px; max-width: 900px;
   }
   .stat-mini {
     background: var(--color-white); border: 1px solid var(--border-soft);
@@ -1385,16 +1394,19 @@
   .stat-mini.tone-spam .stat-mini-label, .stat-mini.tone-spam .stat-mini-value { color: var(--bad); }
   .stat-mini.tone-total { border-color: rgba(var(--color-mineshaft-rgb), 0.4); }
   .stat-cards-lead .stat-health-tall {
-    grid-column: 3; grid-row: 1 / span 3;
+    grid-column: 4; grid-row: 1 / span 2;
     display: flex; flex-direction: column;
     border-color: var(--accent-border); background: var(--accent-tint);
   }
   .stat-health-tall .stat-mini-label, .stat-health-tall .stat-mini-value { color: var(--color-cerulean); }
   .stat-health-tall .stat-mini-value { font-size: 30px; }
   .stat-health-tall .stat-sub { margin-top: auto; }
-  @media (max-width: 700px) {
-    .stat-cards-lead { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 900px) {
+    .stat-cards-lead { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .stat-cards-lead .stat-health-tall { grid-column: 1 / -1; grid-row: auto; }
+  }
+  @media (max-width: 560px) {
+    .stat-cards-lead { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
   /* ---- Header & footer drawer menempel saat di-scroll ----
@@ -1410,7 +1422,15 @@
     box-shadow: 0 -4px 14px rgba(var(--color-mineshaft-rgb), 0.07);
   }
 
-  /* ---- Blok identitas di header drawer ---- */
+  /* ---- Blok identitas di header drawer ----
+     .drawer-header-left/.drawer-header-right mengelompokkan anak-anak
+     .drawer-header-top jadi dua grup supaya justify-content:space-between
+     bawaannya (dipakai bersama drawer lain: Sales/Document/Cost) tetap
+     mendorong grupnya ke ujung kiri/kanan, TANPA mengubah aturan globalnya —
+     gap di dalam grup kiri sendiri yang memberi jarak antara badge & ID. */
+  .drawer-header-left, .drawer-header-right {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+  }
   .drawer-id {
     font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em;
     color: rgba(255, 255, 255, 0.72);
@@ -1527,13 +1547,11 @@
   }
   .quick-btn:hover { border-color: var(--color-cerulean); color: var(--color-cerulean); }
 
-  /* ---- Sakelar kerapatan baris ---- */
-  .density-switch { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
-  .density-switch button {
-    font-family: inherit; font-size: 11px; font-weight: 700; padding: 6px 10px;
-    border: none; background: var(--color-white); color: var(--text-muted); cursor: pointer;
-  }
-  .density-switch button.active { background: var(--color-mineshaft); color: var(--color-white); }
+  /* ---- Kerapatan baris tabel ----
+     Sakelar Nyaman/Padat dicoba, lalu dicabut atas permintaan: Lead selalu
+     Nyaman, Client selalu Padat. .density-compact tetap dipertahankan sebagai
+     class permanen di tabel Client (bukan sakelar) — baris kedua tiap sel
+     (nama PIC, title, entity name) selalu disembunyikan di sana. */
   .data-table.density-compact tbody td { padding: 5px 12px; }
   .data-table.density-compact .compact-hide { display: none; }
 
@@ -1555,20 +1573,27 @@
   .dup-id-link:hover { color: var(--color-mineshaft); border-bottom-color: var(--color-mineshaft); }
   .dup-list-row .dup-why { color: var(--text-muted); font-size: 11px; }
 
-  /* ---- Panel kelengkapan client sebagai checklist + bar kemajuan ----
-     Kalimat "kurang Head Office, Entity Type" memaksa admin mencocokkan
-     sendiri mana yang sudah terisi. ---- */
-  .cc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; font-weight: 800; }
-  .cc-head .cc-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .cc-bar { height: 4px; border-radius: 2px; background: var(--border-soft); overflow: hidden; margin: 8px 0 4px; }
-  .cc-bar > span { display: block; height: 100%; background: var(--warn); transition: width 0.2s ease; }
-  .cc-bar.done > span { background: var(--good); }
-  .cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12.5px; margin-top: 8px; }
-  .cc-grid > div { display: flex; align-items: center; gap: 7px; }
-  .cc-ok { color: var(--good); font-weight: 800; }
-  .cc-no { color: var(--warn); font-weight: 800; }
-  .cc-grid > div.cc-row-missing { font-weight: 700; }
-  @media (max-width: 560px) { .cc-grid { grid-template-columns: 1fr; } }
+  /* ---- Kelengkapan data client sebagai chip di HEADER drawer ----
+     Sebelumnya panel checklist terpisah (bar kemajuan + tombol "Lengkapi
+     Sekarang") memakan satu section penuh. Dipindah ke header sebagai
+     deretan chip — pola yang sama dengan chip Sumber Trafik di Lead
+     Capturing — supaya tinggi drawer tidak melonjak, dan tombolnya dicabut
+     karena aksi yang sama sudah ada di tombol "Lengkapi ›" pada tabel. */
+  .cc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .cc-chip {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.65); background: rgba(255, 255, 255, 0.06);
+  }
+  /* Terisi: ditenangkan (hijau redup) — bukan lagi yang perlu diperhatikan.
+     Kosong: ditonjolkan (kuning) — itulah yang harus admin lengkapi. */
+  .cc-chip.ok {
+    color: #a8e6bd; border-color: rgba(107, 214, 143, 0.45); background: rgba(107, 214, 143, 0.12);
+  }
+  .cc-chip.missing {
+    color: #ffd479; border-color: rgba(255, 193, 71, 0.5); background: rgba(255, 193, 71, 0.14);
+    font-weight: 700;
+  }
 
   /* ---- Kartu PIC: grid 2 kolom, avatar inisial, aksi berkumpul di bawah ----
      Panah carousel ‹ › menyembunyikan PIC di luar layar — admin tidak tahu
