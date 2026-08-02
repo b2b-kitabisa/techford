@@ -81,6 +81,14 @@ var ProjectService = (function (module) {
     return ProjectRepository.findAll().map(decorate);
   };
 
+  /** Satu project, sudah didekode — dipakai endpoint tulis di bawah supaya
+   * mereka tidak perlu mengirim balik SELURUH tabel Project (lihat catatan
+   * di masing-masing fungsi). */
+  function findDecorated(projectId) {
+    var row = ProjectRepository.findById(projectId);
+    return row ? decorate(row) : null;
+  }
+
   /**
    * Dipakai WebAppRouter untuk badge notifikasi jumlah "New Pipeline"
    * (draft belum dilengkapi) di sidebar — dipanggil langsung server-side
@@ -129,7 +137,13 @@ var ProjectService = (function (module) {
       stages: Config.PIPELINE_STAGE_LIST,
       stageBucket: Config.PIPELINE_STAGE_BUCKET,
       defaultStage: Config.PIPELINE_DEFAULT_STAGE,
-      consultantRole: Config.CONSULTANT_ROLE
+      consultantRole: Config.CONSULTANT_ROLE,
+      // Dulu di-duplikasi sebagai konstanta terpisah di JS halaman ini
+      // (SERVICE_REVENUE_EXCLUDED_KEYS) — itulah penyebab bug nyata
+      // sebelumnya: Ads Sponsorship terlihat tersimpan di layar tapi diam-diam
+      // dibuang di sini karena kedua daftar sempat tidak sinkron. Sekarang
+      // ikut dibundel dari sini, satu sumber kebenaran.
+      revenueServiceExcludedKeys: Config.REVENUE_SERVICE_EXCLUDED_KEYS
     };
   };
 
@@ -167,6 +181,7 @@ var ProjectService = (function (module) {
       Is_Retainer: !!input.isRetainer,
       Allow_Manual_Deal: false,
       Stage: Config.PIPELINE_DEFAULT_STAGE,
+      Stage_Changed_Date: now,
       Total_GDV: 0,
       Total_Service_Revenue: 0,
       Other_Document_Links: encodeJson([]),
@@ -178,7 +193,11 @@ var ProjectService = (function (module) {
 
     ProjectRepository.create(project);
     Log.info('ProjectService', 'Project dibuat oleh ' + createdBy + ': ' + project.Project_ID);
-    return module.getAllProjects();
+    // Hanya project yang baru dibuat, BUKAN seluruh tabel — lihat catatan di
+    // findDecorated(). `project` di sini sudah persis bentuk row (Services/
+    // Service_Categories/Issues sudah di-encode), jadi decorate() langsung
+    // membalikkannya tanpa perlu baca ulang dari sheet.
+    return decorate(project);
   };
 
   /**
@@ -213,6 +232,7 @@ var ProjectService = (function (module) {
       Is_Retainer: false,
       Allow_Manual_Deal: false,
       Stage: Config.PIPELINE_DEFAULT_STAGE,
+      Stage_Changed_Date: now,
       Total_GDV: 0,
       Total_Service_Revenue: 0,
       Other_Document_Links: encodeJson([]),
@@ -224,7 +244,7 @@ var ProjectService = (function (module) {
 
     ProjectRepository.create(project);
     Log.info('ProjectService', 'Draft project dibuat untuk client ' + clientId + ' oleh ' + createdBy + ': ' + project.Project_ID);
-    return module.getAllProjects();
+    return decorate(project);
   };
 
   /**
@@ -267,7 +287,11 @@ var ProjectService = (function (module) {
     });
 
     Log.info('ProjectService', 'Draft ' + draftProjectId + ' dilengkapi oleh ' + createdBy + ' -> ' + realProjectId);
-    return module.getAllProjects();
+    // Project_ID-nya BERUBAH (draft -> nomor resmi), jadi dibaca ulang dari
+    // sheet dengan ID barunya — bukan disusun manual dari `input`, supaya
+    // field yang tidak disentuh completeDraftProject (Client_ID, Stage,
+    // Total_GDV, dst.) tetap ikut lengkap di respons.
+    return findDecorated(realProjectId);
   };
 
   /**
@@ -340,7 +364,7 @@ var ProjectService = (function (module) {
     safePatch.Last_Updated = new Date();
 
     ProjectRepository.update(projectId, safePatch);
-    return module.getAllProjects();
+    return findDecorated(projectId);
   };
 
   /**
@@ -370,8 +394,10 @@ var ProjectService = (function (module) {
       );
     }
 
-    ProjectRepository.update(projectId, { Stage: stage, Last_Updated: new Date() });
-    return module.getAllProjects();
+    ProjectRepository.ensureColumns(['Stage_Changed_Date']);
+    var stageChangeNow = new Date();
+    ProjectRepository.update(projectId, { Stage: stage, Stage_Changed_Date: stageChangeNow, Last_Updated: stageChangeNow });
+    return findDecorated(projectId);
   };
 
   /**
@@ -532,7 +558,7 @@ var ProjectService = (function (module) {
       Last_Updated: now
     });
 
-    return module.getAllProjects();
+    return findDecorated(projectId);
   };
 
   /**
@@ -555,7 +581,7 @@ var ProjectService = (function (module) {
     if (!updated) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }
-    return module.getAllProjects();
+    return findDecorated(projectId);
   };
 
   /**
@@ -581,13 +607,15 @@ var ProjectService = (function (module) {
     if (project.Stage === 'Won') {
       throw new AppError('VALIDATION_ERROR', 'Project yang sudah Won tidak bisa ditandai Loss.');
     }
-    ProjectRepository.ensureColumns(['Pre_Loss_Stage']);
+    ProjectRepository.ensureColumns(['Pre_Loss_Stage', 'Stage_Changed_Date']);
+    var lossNow = new Date();
     ProjectRepository.update(projectId, {
       Stage: 'Loss',
       Pre_Loss_Stage: project.Stage,
-      Last_Updated: new Date()
+      Stage_Changed_Date: lossNow,
+      Last_Updated: lossNow
     });
-    return module.getAllProjects();
+    return findDecorated(projectId);
   };
 
   /**
@@ -604,12 +632,19 @@ var ProjectService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'Project ini sedang tidak berstatus Loss.');
     }
     var restoreStage = project.Pre_Loss_Stage || Config.PIPELINE_DEFAULT_STAGE;
+    ProjectRepository.ensureColumns(['Stage_Changed_Date']);
+    var undoNow = new Date();
     ProjectRepository.update(projectId, {
       Stage: restoreStage,
       Pre_Loss_Stage: '',
-      Last_Updated: new Date()
+      // Stage_Changed_Date direset ke SAAT UNDO, bukan dikembalikan ke waktu
+      // sebelum Loss — "sudah berapa lama di stage ini" seharusnya dihitung
+      // dari kapan project ini benar-benar kembali aktif, bukan pura-pura
+      // seolah tidak pernah di-Loss-kan.
+      Stage_Changed_Date: undoNow,
+      Last_Updated: undoNow
     });
-    return module.getAllProjects();
+    return findDecorated(projectId);
   };
 
   /**
@@ -639,7 +674,9 @@ var ProjectService = (function (module) {
     var targetRank = STAGE_BUCKET_RANK[targetBucket] || 0;
 
     if (targetRank > currentRank) {
-      ProjectRepository.update(projectId, { Stage: targetStage, Last_Updated: new Date() });
+      ProjectRepository.ensureColumns(['Stage_Changed_Date']);
+      var advanceNow = new Date();
+      ProjectRepository.update(projectId, { Stage: targetStage, Stage_Changed_Date: advanceNow, Last_Updated: advanceNow });
       Log.info('ProjectService', 'Stage project ' + projectId + ' otomatis maju ke ' + targetStage + ' (dipicu Document Pipeline).');
     }
   };

@@ -1,4 +1,9 @@
-<div class="pipeline-score-row">
+<div class="pl-score-panel">
+  <div class="pl-score-panel-title">
+    <span>Ringkasan Pipeline</span>
+    <span id="pipelineScorePanelSub"></span>
+  </div>
+  <div class="pipeline-score-row">
   <div class="pipeline-score-card pipeline-score-achieved">
     <div class="pipeline-score-title">🏆 Deal Value</div>
     <div class="pipeline-score-desc">Deal Value dari project status Won</div>
@@ -32,6 +37,14 @@
       <div class="pipeline-bucket-value" id="pipelineBucketLoss">0</div>
       <div class="pipeline-bucket-sub" id="pipelineBucketSubLoss">Rp0</div>
     </button>
+  </div>
+  </div>
+
+  <div class="pl-funnel" id="pipelineFunnelBar" title="Proporsi Prospek → Negosiasi → Won → Loss">
+    <span class="pl-funnel-pros" id="pipelineFunnelPros"></span>
+    <span class="pl-funnel-nego" id="pipelineFunnelNego"></span>
+    <span class="pl-funnel-won" id="pipelineFunnelWon"></span>
+    <span class="pl-funnel-loss" id="pipelineFunnelLoss"></span>
   </div>
 </div>
 
@@ -92,7 +105,7 @@
 
 <div id="pipelineTableError" class="error"></div>
 
-<div class="table-scroll">
+<div class="table-scroll table-scroll-sticky" style="max-height: 640px;">
   <table class="data-table">
     <thead>
       <tr>
@@ -213,30 +226,39 @@
      (bukan lewat popup) karena sifatnya kontrol status, bukan pengisian
      data. -->
 <div class="drawer-overlay" id="pipelineDrawer" onclick="if (event.target === this) closePipelineDetail();">
-  <div class="drawer-panel drawer-panel-wide">
+  <div class="drawer-panel drawer-panel-wide drawer-sticky-chrome">
+    <!-- Header dipecah jadi identitas + baris chip aksi — sebelumnya PID,
+         judul, ringkasan nilai deal, sakelar Izinkan Deal Manual, dropdown
+         Stage, tombol Update, dan Mark/Undo LOSS semuanya duduk di satu blok
+         tanpa pengelompokan. Pola yang sama dengan drawer Lead & Client. -->
     <div class="drawer-header">
       <div class="drawer-header-top">
-        <div>
-          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="projectIdHeaderDisplay"></div>
-          <h2 style="color: var(--color-white); font-size:18px; margin:0;">PROJECT DETAIL</h2>
-          <div style="font-size:11.5px; color:rgba(255,255,255,0.82); margin-top:4px;" id="projectDealValueHeader"></div>
+        <div class="drawer-header-left">
+          <span class="pl-stage" id="drawerStageBadge"></span>
+          <span class="drawer-id" id="projectIdHeaderDisplay"></span>
         </div>
-        <div style="display:flex; align-items:center; gap:14px;">
-          <label class="switch-wrap" style="color: var(--color-white);" title="Izinkan Stage diubah manual — kalau OFF, Stage hanya bisa maju otomatis lewat Document Pipeline">Izinkan Deal Manual
-            <span class="switch switch-on-dark"><input type="checkbox" id="allowManualDealToggle" onchange="onAllowManualDealToggle()"><span class="switch-slider"></span></span>
-          </label>
-          <select id="detailStageSelect" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;"></select>
-          <button class="btn-outline" id="stageUpdateBtn" onclick="submitStageUpdate()">Update</button>
-          <button class="btn-outline" id="markLossBtn" onclick="openMarkLossConfirm()" style="display:none; color:#c5221f; border-color:#f09595;" title="Tandai deal ini batal — bisa di-Undo">🚫 Tandai LOSS</button>
-          <button class="btn-outline" id="undoLossBtn" onclick="openUndoLossConfirm()" style="display:none;" title="Kembalikan Stage ke sebelum ditandai Loss">↩️ Undo LOSS</button>
+        <div class="drawer-header-right">
           <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
         </div>
+      </div>
+      <h2 id="drawerProjectNameHeader" style="color: var(--color-white); font-size:18px; margin:0;"></h2>
+      <div class="drawer-timeline" id="projectDealValueHeader"></div>
+
+      <div class="drawer-head-actions" id="pipelineHeadActions">
+        <select id="detailStageSelect" style="padding:6px 9px; border-radius:6px; border:none; font-family:inherit; font-size:11.5px;"></select>
+        <button class="btn-onhead primary" id="stageUpdateBtn" onclick="submitStageUpdate()">Update</button>
+        <span class="spacer"></span>
+        <label class="switch-wrap" style="color: var(--color-white); font-size:11px;" title="Izinkan Stage diubah manual — kalau OFF, Stage hanya bisa maju otomatis lewat Document Pipeline">Izinkan Deal Manual
+          <span class="switch switch-on-dark"><input type="checkbox" id="allowManualDealToggle" onchange="onAllowManualDealToggle()"><span class="switch-slider"></span></span>
+        </label>
+        <button class="btn-onhead danger" id="markLossBtn" onclick="openMarkLossConfirm()" style="display:none;" title="Tandai deal ini batal — bisa di-Undo">🚫 Tandai LOSS</button>
+        <button class="btn-onhead" id="undoLossBtn" onclick="openUndoLossConfirm()" style="display:none;" title="Kembalikan Stage ke sebelum ditandai Loss">↩️ Undo LOSS</button>
       </div>
     </div>
 
     <div class="drawer-section">
       <div class="section-title-row">
-        <h3>Project Information</h3>
+        <div class="drawer-eyebrow" style="flex:1; margin-bottom:0;">Project Information</div>
         <button class="btn-outline" id="projectEditInfoToggleBtn" onclick="openEditProjectDrawer()">✏️ EDIT PROJECT</button>
       </div>
 
@@ -279,7 +301,7 @@
     </div>
 
     <div class="drawer-section" id="revenueBreakdownSection">
-      <div class="section-title-row"><h3>Revenue Breakdown</h3></div>
+      <div class="drawer-eyebrow">Revenue Breakdown</div>
 
       <div class="revenue-subsection">
         <div class="revenue-subsection-header">
@@ -307,7 +329,7 @@
 
     <div class="drawer-section" id="documentRequestSection">
       <div class="section-title-row">
-        <h3>Document Request</h3>
+        <div class="drawer-eyebrow" style="flex:1; margin-bottom:0;">Document Request</div>
         <button class="btn-outline" onclick="openRequestDocDrawer()">📄 REQUEST DOCUMENT</button>
       </div>
       <div id="documentRequestView"></div>
@@ -315,7 +337,7 @@
 
     <div class="drawer-section" id="otherDocSection">
       <div class="section-title-row">
-        <h3>Other Document Related</h3>
+        <div class="drawer-eyebrow" style="flex:1; margin-bottom:0;">Other Document Related</div>
         <button class="btn-outline" onclick="openOtherDocDrawer()">✏️ KELOLA DOKUMEN</button>
       </div>
       <div id="otherDocView"></div>
@@ -539,6 +561,20 @@
   var docTaxonomy = { documentTypes: [], quotationEntities: [] };
   var pendingDocRequestKeys = {}; // key -> true, dokumen yang ditoggle ON tapi belum dikirim lewat REQUEST
 
+  // Jumlah kolom tabel (lihat <thead> di markup) — dipakai skeleton, baris
+  // error, dan baris kosong supaya ketiganya selalu selebar tabel yang
+  // sebenarnya. Sebelumnya skeleton & baris error menulis colspan="5" secara
+  // manual walau tabelnya sudah 7 kolom, jadi 2 kolom tampil sebagai sel
+  // kosong bergaris di kanan selama loading/gagal fetch.
+  var PIPELINE_TABLE_COLSPAN = 7;
+  // Jumlah tombol nomor halaman yang ditampilkan sekaligus — sama seperti
+  // Lead Capturing & Client Monitoring, supaya tidak memanjang tanpa henti
+  // begitu jumlah project bertambah banyak.
+  var PIPELINE_PAGE_WINDOW = 7;
+  // Ambang "sudah lama macet di stage yang sama" — dipakai warna titik umur
+  // stage di tabel (hijau <=7 hari, kuning <=14 hari, merah di atas itu).
+  var PIPELINE_STAGE_STALE_DAYS = 14;
+
   // ---- State untuk preview COR/Quotation dari Document Request (lihat
   // openPipelineCorPreview/openPipelineQuotationPreview) — pola & nama
   // variabel sama persis dengan Document Pipeline (DocumentPipelineContent.html)
@@ -676,7 +712,7 @@
   renderPipelineSkeleton();
   function renderPipelineSkeleton() {
     document.getElementById('pipelineTableBody').innerHTML = new Array(5).fill(
-      '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
+      '<tr><td colspan="' + PIPELINE_TABLE_COLSPAN + '" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
     ).join('');
   }
 
@@ -684,6 +720,50 @@
     bootstrapPipeline();
   } else {
     window.addEventListener('load', bootstrapPipeline);
+  }
+
+  /**
+   * Terapkan SATU project yang baru dikembalikan server (dari
+   * create/update/updateStage/markLoss/undoLoss/setAllowManualDeal/
+   * updateRevenueBreakdown) ke cache lokal, lalu render ulang — tanpa
+   * menarik ulang SELURUH tabel Project via fetchProjects().
+   *
+   * Sebelumnya endpoint-endpoint itu mengirim balik `getAllProjects()`
+   * (seluruh sheet, didekode) tapi client SAMA SEKALI TIDAK memakainya —
+   * yang dipanggil selalu fetchProjects() terpisah, yang menarik ulang
+   * SELURUH tabel lewat project_getAll (disebut sendiri di komentar
+   * ProjectService sebagai "pembacaan terberat di aplikasi"). Jadi setiap
+   * ganti Stage, Mark Loss, Undo Loss, dst. selama ini diam-diam menanggung
+   * DUA ongkos: payload penuh yang dibuang percuma, DAN full refetch
+   * terpisah sesudahnya. Sekarang satu project yang berubah cukup ditempel
+   * ke array yang sudah ada di memori.
+   *
+   * @param {Object=} updatedProject dari res.data — kalau kosong (respons
+   *   tidak terbaca, pola google.script.run yang sudah beberapa kali
+   *   terdokumentasi di modul lain), jatuh kembali ke fetchProjects() supaya
+   *   tampilan tetap benar walau lebih lambat.
+   */
+  function applyProjectPatch(updatedProject) {
+    if (!updatedProject || !updatedProject.Project_ID) { fetchProjects(); return; }
+    var idx = -1;
+    for (var i = 0; i < allProjects.length; i++) {
+      if (allProjects[i].Project_ID === updatedProject.Project_ID) { idx = i; break; }
+    }
+    if (idx === -1) allProjects.push(updatedProject);
+    else allProjects[idx] = updatedProject;
+    renderPipeline();
+  }
+
+  /**
+   * Sama seperti applyProjectPatch, tapi untuk project yang Project_ID-nya
+   * BERUBAH (completeDraftProject: ID placeholder draft -> nomor resmi) —
+   * baris draft lama harus dibuang, bukan ditimpa.
+   */
+  function applyProjectPatchReplacingId(oldProjectId, updatedProject) {
+    if (!updatedProject || !updatedProject.Project_ID) { fetchProjects(); return; }
+    allProjects = allProjects.filter(function (p) { return p.Project_ID !== oldProjectId; });
+    allProjects.push(updatedProject);
+    renderPipeline();
   }
 
   function fetchProjects() {
@@ -866,7 +946,7 @@
     // dibiarkan apa adanya (lihat catatan di fetchProjects soal glitch
     // google.script.run yang bisa gagal transient walau sukses di server).
     if (soft) return;
-    document.getElementById('pipelineTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
+    document.getElementById('pipelineTableBody').innerHTML = '<tr class="empty-row"><td colspan="' + PIPELINE_TABLE_COLSPAN + '">' + message + '</td></tr>';
   }
 
   function getClientById(clientId) {
@@ -921,9 +1001,17 @@
     var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
     var bucketValues = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
 
+    // Stage yang tidak dikenal taxonomy dikumpulkan di sini — bukan untuk
+    // mengubah cara menghitungnya (tetap jatuh ke Prospek, fallback yang
+    // aman), tapi supaya kesalahan taksonomi/penulisan Stage tidak lolos
+    // diam-diam. Dicatat ke console, bukan alert — ini untuk ditemukan saat
+    // menelusuri bug, bukan mengganggu admin yang sedang bekerja.
+    var unknownStageIds = [];
+
     // Draft (Is_Draft) belum benar-benar "di pipeline" — belum ada nama,
     // service, dsb — jadi tidak ikut dihitung score card.
     allProjects.filter(function (p) { return !p.Is_Draft; }).forEach(function (p) {
+      if (p.Stage && !taxonomy.stageBucket.hasOwnProperty(p.Stage)) unknownStageIds.push(p.Project_ID + ' ("' + p.Stage + '")');
       var bucket = taxonomy.stageBucket[p.Stage] || 'PROS';
       buckets[bucket] = (buckets[bucket] || 0) + 1;
       bucketValues[bucket] = (bucketValues[bucket] || 0) +
@@ -947,9 +1035,11 @@
     document.getElementById('pipelineForecastRev').innerText = formatRupiah(forecastRev);
 
     var totalCount = buckets.PROS + buckets.NEGO + buckets.WON + buckets.LOSS;
+    var bucketPct = {};
     ['PROS', 'NEGO', 'WON', 'LOSS'].forEach(function (key) {
       var suffix = key.charAt(0) + key.slice(1).toLowerCase(); // PROS -> Pros
       var pct = totalCount ? Math.round((buckets[key] / totalCount) * 100) : 0;
+      bucketPct[key] = pct;
       // Pill tetap berisi ANGKA SAJA — persentase & nilai ditaruh di baris
       // bawahnya, bukan ikut masuk ke dalam pill (pill-nya sempit dan sudah
       // berwarna, menjejalkan dua angka ke dalamnya membuat keduanya sulit
@@ -962,7 +1052,27 @@
         '<span class="pipeline-bucket-pct">' + pct + '%</span> · ' + escHtml(formatCompactRupiah(bucketValues[key]));
     });
 
+    document.getElementById('pipelineScorePanelSub').innerText = totalCount + ' project aktif';
+
+    // Funnel mini — representasi visual dari bucketPct yang sudah dihitung
+    // di atas, bukan angka baru. min-width 2px di CSS supaya bucket dengan
+    // 0 project tetap terlihat sebagai garis tipis, bukan lenyap total.
+    document.getElementById('pipelineFunnelPros').style.width = bucketPct.PROS + '%';
+    document.getElementById('pipelineFunnelNego').style.width = bucketPct.NEGO + '%';
+    document.getElementById('pipelineFunnelWon').style.width = bucketPct.WON + '%';
+    document.getElementById('pipelineFunnelLoss').style.width = bucketPct.LOSS + '%';
+
     updateBucketActiveState();
+
+    if (unknownStageIds.length && taxonomy.stages && taxonomy.stages.length) {
+      // taxonomy.stages.length dijadikan syarat supaya tidak berteriak di
+      // saat taxonomy memang belum selesai dimuat (race yang sudah dikenal,
+      // lihat catatan fetchTaxonomy) — hanya melapor kalau taxonomy SUDAH ada
+      // isinya tapi Stage project ini tetap tidak cocok dengan satu pun.
+      console.warn('[Sales Pipeline] ' + unknownStageIds.length +
+        ' project dengan Stage yang tidak dikenal taxonomy (dihitung sebagai Prospect): ' +
+        unknownStageIds.join(', '));
+    }
   }
 
   /**
@@ -1274,8 +1384,6 @@
     }
   }
 
-  var PIPELINE_TABLE_COLSPAN = 7;
-
   // Kelas badge Stage — warnanya sengaja sama dengan bucket score card
   // (.pipeline-bucket-*) supaya score card dan tabel bicara dengan bahasa
   // visual yang sama.
@@ -1323,6 +1431,13 @@
       // Baris Loss diredupkan, Won diberi garis hijau di tepi kiri, draft
       // garis abu — deal yang sudah mati tidak lagi menuntut perhatian yang
       // sama dengan deal yang masih hidup.
+      //
+      // "|| 'PROS'" adalah fallback yang AMAN (skor tidak pernah error),
+      // tapi diam-diam — Stage yang salah tulis atau taxonomy yang belum
+      // termuat akan ikut terhitung sebagai Prospek tanpa tanda apa pun.
+      // stageBucketKnown membedakan "memang Prospek" dari "tidak dikenal,
+      // jatuh ke Prospek", supaya yang kedua bisa ditandai di tabel.
+      var stageBucketKnown = isDraft || !p.Stage || (taxonomy.stageBucket || {}).hasOwnProperty(p.Stage);
       var bucket = isDraft ? 'DRAFT' : ((taxonomy.stageBucket || {})[p.Stage] || 'PROS');
       var rowClass = bucket === 'LOSS' ? 'pl-row-loss' : bucket === 'WON' ? 'pl-row-won' : isDraft ? 'pl-row-draft' : '';
 
@@ -1330,7 +1445,10 @@
       // status terbaca tepat di titik mata mulai memindai baris.
       var stageLabel = isDraft ? 'DRAFT' : String(p.Stage || '-').toUpperCase();
       var stageClientHtml =
-        '<div><span class="pl-stage ' + pipelineStageClass(p.Stage, isDraft) + '">' + escHtml(stageLabel) + '</span></div>' +
+        '<div><span class="pl-stage ' + pipelineStageClass(p.Stage, isDraft) + '">' + escHtml(stageLabel) + '</span>' +
+        (stageBucketKnown ? '' : '<span class="pl-stage-unknown" title="' +
+          escAttr('Stage "' + p.Stage + '" tidak dikenal taxonomy — sementara dihitung sebagai Prospect di score card.') +
+          '">⚠ tidak dikenal</span>') + '</div>' +
         '<div class="entity-name" style="margin-top:5px;">' + escHtml(client.Brand_Name || '-') + '</div>' +
         '<div class="entity-pic">' + escHtml(client.Entity_Name || '-') + '</div>';
 
@@ -1355,8 +1473,26 @@
           '<div class="pl-val-line"><span class="pl-val-lbl">REV</span>' + formatRupiah(p.Total_Service_Revenue) + '</div>';
 
       var ageDays = daysSince(p.Created_Date);
+      // "Umur total" (sejak Created_Date) mencampur umur pipeline dengan umur
+      // di stage SAAT INI — deal yang baru pindah ke Negotiation kemarin dan
+      // deal yang sudah macet di Negotiation 3 bulan terlihat sama kalau
+      // keduanya dibuat di tanggal yang sama. Baris kedua ini menjawab
+      // pertanyaan yang biasanya lebih ingin diketahui admin: "sudah berapa
+      // lama MACET di stage ini", bukan "sudah berapa lama sejak dibuat".
+      // Stage_Changed_Date kosong untuk project lama (sebelum kolom ini ada)
+      // — baris kedua cukup tidak ditampilkan, bukan menunjukkan angka keliru.
+      var stageAgeDays = (isDraft || bucket === 'WON' || bucket === 'LOSS' || !p.Stage_Changed_Date)
+        ? null : daysSince(p.Stage_Changed_Date);
+      var stageAgeHtml = '';
+      if (stageAgeDays !== null) {
+        var stageAgeTone = stageAgeDays <= 7 ? 'fresh' : (stageAgeDays <= PIPELINE_STAGE_STALE_DAYS ? 'warm' : 'cold');
+        var stageAgeClass = stageAgeTone === 'cold' ? ' bad' : (stageAgeTone === 'warm' ? ' warm' : '');
+        stageAgeHtml = '<div class="cell-sub' + stageAgeClass + '">' +
+          '<span class="age-dot ' + stageAgeTone + '"></span>' + stageAgeDays + ' hari di ' + escHtml(p.Stage) + '</div>';
+      }
       var createdHtml = '<div style="font-size:12px;">' + escHtml(formatDate(p.Created_Date)) + '</div>' +
-        (ageDays === null ? '' : '<div class="entity-pic">' + ageDays + ' hari</div>');
+        (ageDays === null ? '' : '<div class="entity-pic">' + ageDays + ' hari total</div>') +
+        stageAgeHtml;
 
       // Tombol TIDAK lagi disembunyikan sampai hover (dulu .row-action-reveal):
       // Detail sekarang satu-satunya pintu masuk ke semua aksi project, dan
@@ -1405,16 +1541,43 @@
     var el = document.getElementById('pipelineRowCount');
     if (!el) return;
     var total = allProjects.length;
-    el.innerHTML = filteredCount === total
+    el.innerHTML = (filteredCount === total
       ? 'Menampilkan <b>' + total + '</b> project'
-      : 'Menampilkan <b>' + filteredCount + '</b> dari <b>' + total + '</b> project';
+      : 'Menampilkan <b>' + filteredCount + '</b> dari <b>' + total + '</b> project') +
+      // Draft SELALU ditahan di baris teratas apa pun sort yang dipilih
+      // (lihat comparePipelineRows) — tanpa keterangan ini, admin yang baru
+      // saja mengurutkan berdasarkan Value/Project bisa membaca urutannya
+      // sebagai sortir yang rusak begitu draft tetap nangkring di atas.
+      (allProjects.some(function (p) { return p.Is_Draft; })
+        ? ' <span class="pl-draft-pinned-note">· Draft selalu di atas</span>' : '');
   }
 
+  /**
+   * Tombol nomor halaman dibatasi ke PIPELINE_PAGE_WINDOW sekaligus (sama
+   * pola dengan Lead Capturing & Client Monitoring). Sebelumnya SELURUH
+   * nomor halaman dirender tanpa batas — begitu jumlah project menembus
+   * beberapa ratus baris dengan Show=10, deretan tombolnya memanjang sampai
+   * mendorong tombol lain keluar layar.
+   */
   function renderPipelinePagination(paged) {
     var buttons = '<button ' + (paged.page <= 1 ? 'disabled' : '') + ' onclick="goToPipelinePage(' + (paged.page - 1) + ')">&lt; Previous</button>';
-    for (var p = 1; p <= paged.totalPages; p++) {
+
+    var half = Math.floor(PIPELINE_PAGE_WINDOW / 2);
+    var start = Math.max(1, Math.min(paged.page - half, paged.totalPages - PIPELINE_PAGE_WINDOW + 1));
+    var end = Math.min(paged.totalPages, start + PIPELINE_PAGE_WINDOW - 1);
+
+    if (start > 1) {
+      buttons += '<button onclick="goToPipelinePage(1)">1</button>';
+      if (start > 2) buttons += '<span class="page-gap">…</span>';
+    }
+    for (var p = start; p <= end; p++) {
       buttons += '<button class="' + (p === paged.page ? 'active' : '') + '" onclick="goToPipelinePage(' + p + ')">' + p + '</button>';
     }
+    if (end < paged.totalPages) {
+      if (end < paged.totalPages - 1) buttons += '<span class="page-gap">…</span>';
+      buttons += '<button onclick="goToPipelinePage(' + paged.totalPages + ')">' + paged.totalPages + '</button>';
+    }
+
     buttons += '<button ' + (paged.page >= paged.totalPages ? 'disabled' : '') + ' onclick="goToPipelinePage(' + (paged.page + 1) + ')">Next &gt;</button>';
     document.getElementById('pipelinePageButtons').innerHTML = buttons;
   }
@@ -1721,7 +1884,7 @@
           currentDraftProjectId = null;
           closeAddPipeline();
           showPipelineSuccess('Pipeline berhasil dilengkapi — Project ID sudah dibuat.');
-          fetchProjects();
+          applyProjectPatchReplacingId(draftId, res && res.data);
         })
         .withFailureHandler(function (err) {
           TechfordLoading.hide();
@@ -1738,7 +1901,7 @@
         if (res && res.ok === false) return alert(res.error.message);
         closeAddPipeline();
         showPipelineSuccess('Pipeline baru berhasil ditambahkan.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -1865,6 +2028,10 @@
     var client = getClientById(project.Client_ID) || {};
 
     document.getElementById('projectIdHeaderDisplay').innerText = project.Project_ID;
+    document.getElementById('drawerProjectNameHeader').innerText = project.Project_Name || project.Project_ID;
+    var stageBadge = document.getElementById('drawerStageBadge');
+    stageBadge.className = 'pl-stage ' + pipelineStageClass(project.Stage, false);
+    stageBadge.innerText = String(project.Stage || '-').toUpperCase();
     document.getElementById('detailStageSelect').value = project.Stage;
     document.getElementById('allowManualDealToggle').checked = !!project.Allow_Manual_Deal;
     setStageBoxLocked(!project.Allow_Manual_Deal);
@@ -2429,7 +2596,7 @@
           setStageBoxLocked(!checkbox.checked);
           return alert(res.error.message);
         }
-        fetchProjects();
+        applyProjectPatch(res && res.data);
       })
       .withFailureHandler(function (err) {
         checkbox.checked = !newValue;
@@ -2692,7 +2859,7 @@
         btn.innerText = '💾 SAVE';
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Informasi project berhasil disimpan.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
         // Tutup HANYA popup Edit Project — drawer Detail dibiarkan terbuka
         // supaya user langsung melihat hasil perubahannya.
         closeStackedDrawer('editProjectDrawer');
@@ -2725,7 +2892,7 @@
           return alert(res.error.message);
         }
         showPipelineSuccess('Stage berhasil diperbarui.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -2742,7 +2909,7 @@
   // (Pre_Loss_Stage) supaya Undo bisa balik persis ke situ.
   function openMarkLossConfirm() {
     if (!currentPipelineDrawerId) return;
-    if (!techfordConfirm('Tandai project ini LOSS (deal batal)? Bisa di-Undo kalau ini keliru.')) return;
+    if (!techfordConfirm('Tandai project ini LOSS?\n\nDeal akan dianggap batal — keluar dari perhitungan Pros/Nego di score card & funnel, dan tidak lagi dihitung sebagai target aktif. Kalau ini keliru, masih bisa di-Undo lewat tombol "Undo LOSS" di drawer yang sama.')) return;
     var projectId = currentPipelineDrawerId;
     TechfordLoading.show('Menandai LOSS...');
     google.script.run
@@ -2750,7 +2917,7 @@
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Project ditandai LOSS.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -2769,7 +2936,7 @@
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('LOSS berhasil di-Undo.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
@@ -2867,9 +3034,10 @@
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess('Dokumen terkait berhasil disimpan.');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
         // Tutup popup-nya saja; drawer Detail tetap terbuka & daftar bacanya
-        // ikut ter-refresh lewat renderPipeline() setelah fetchProjects().
+        // ikut ter-refresh lewat renderPipeline() (dipanggil di dalam
+        // applyProjectPatch).
         closeStackedDrawer('otherDocDrawer');
       })
       .withFailureHandler(function (err) {
@@ -2886,17 +3054,22 @@
   // Service Revenue lagi. Ads Sponsorship BOLEH punya keduanya sekaligus:
   // GDV (link, realisasi otomatis dari Tableau) DAN Service Revenue manual
   // (mis. fee pengelolaan campaign) — dua sumber pendapatan yang independen.
-  // Harus SELALU sinkron dengan Config.REVENUE_SERVICE_EXCLUDED_KEYS di
-  // ProjectService.updateRevenueBreakdown (validKeys) — kalau tidak, nominal
-  // yang diisi di sini bisa terlihat tersimpan di layar tapi dibuang diam-
-  // diam oleh server saat disimpan (lihat riwayat bug yang sama untuk Ads
-  // Sponsorship sebelum aturan ini diperjelas).
-  var SERVICE_REVENUE_EXCLUDED_KEYS = ['CSR'];
+  // Daftarnya DULU diduplikasi sebagai konstanta terpisah di sini
+  // (var SERVICE_REVENUE_EXCLUDED_KEYS = ['CSR']) — itu penyebab bug nyata:
+  // nominal Ads Sponsorship pernah terlihat tersimpan di layar tapi dibuang
+  // diam-diam oleh server karena daftar client & server sempat tidak sinkron.
+  // Sekarang dibaca langsung dari taxonomy.revenueServiceExcludedKeys, yang
+  // dibundel dari Config.REVENUE_SERVICE_EXCLUDED_KEYS oleh
+  // ProjectService.getTaxonomy — satu sumber kebenaran, bukan dua daftar
+  // yang harus diingat untuk selalu diperbarui bersamaan.
+  function serviceRevenueExcludedKeys() {
+    return taxonomy.revenueServiceExcludedKeys || ['CSR'];
+  }
 
   function getServiceRevenueRows(project) {
     var rows = [];
     (project.Services || []).forEach(function (service) {
-      if (SERVICE_REVENUE_EXCLUDED_KEYS.indexOf(service) !== -1) return;
+      if (serviceRevenueExcludedKeys().indexOf(service) !== -1) return;
       var svcDef = (taxonomy.services || []).filter(function (s) { return s.key === service; })[0];
       var label = svcDef ? svcDef.label : service;
       var categories = (project.Service_Categories || {})[service] || [];
@@ -3517,7 +3690,7 @@
         // sudah false saat data baru datang, jadi daftar baca di drawer Detail
         // benar-benar ter-render ulang (lihat guard di fetchRevenueBreakdown).
         closeStackedDrawer(origin === 'service' ? 'serviceRevenueDrawer' : 'gdvDrawer');
-        fetchProjects();
+        applyProjectPatch(res && res.data);
         fetchRevenueBreakdown();
       })
       .withFailureHandler(function (err) {
