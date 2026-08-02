@@ -77,7 +77,10 @@
       }
     });
   }
-  bootstrapGdvMatching();
+  // WAJIB lewat techfordOnReady, jangan dipanggil langsung — saat halaman
+  // dibuka dengan load penuh (hard refresh / URL langsung), script fragment
+  // ini dieksekusi SEBELUM blok <script> besar Shell selesai diparse.
+  techfordOnReady(bootstrapGdvMatching);
 
   function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function fmtRp(n) { return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }

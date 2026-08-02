@@ -112,6 +112,75 @@
           </div>
         </div>
       </header>
+
+      <!--
+        SCRIPT INI HARUS TETAP DI ATAS <main>, JANGAN DIPINDAH KE BAWAH.
+
+        Isi halaman (<?!= content ?> di <main> tepat di bawah ini) membawa
+        <script> inline-nya sendiri. Saat halaman dibuka dengan LOAD PENUH
+        (ketik URL langsung, hard refresh, buka dari link) script fragment itu
+        dieksekusi browser SAAT PARSING, yaitu di posisi ini — jauh sebelum
+        blok <script> besar Shell di bawah halaman selesai diparse.
+
+        Akibatnya fragment yang memanggil helper Shell langsung di top-level
+        akan kena "ReferenceError: ... is not defined", script fragment mati
+        di baris itu, dan halaman berhenti di state "Memuat..." selamanya.
+        Hard refresh JUSTRU selalu memicu jalur ini, bukan memperbaikinya.
+
+        Dua helper di bawah adalah yang dibutuhkan fragment PADA saat
+        bootstrap, jadi keduanya sengaja didefinisikan di sini — bukan di blok
+        besar bawah — supaya urutan parsing tidak pernah jadi masalah lagi.
+      -->
+      <script>
+        /**
+         * Pembungkus google.script.run dengan retry — transport-nya
+         * sesekali menelan panggilan pertama setelah halaman baru dibuka.
+         *
+         * DIDEFINISIKAN DI SINI (bukan di blok bawah) karena inilah helper
+         * pertama yang dipanggil hampir semua halaman saat bootstrap.
+         */
+        function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, delayMs) {
+          if (retriesLeft == null) retriesLeft = 2;
+          if (delayMs == null) delayMs = 700;
+          var runner = google.script.run
+            .withSuccessHandler(function (res) {
+              if (!res && retriesLeft > 0) {
+                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+                return;
+              }
+              onSuccess(res);
+            })
+            .withFailureHandler(function (err) {
+              if (retriesLeft > 0) {
+                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+                return;
+              }
+              onFailure(err);
+            });
+          runner[fnName].apply(runner, args || []);
+        }
+
+        /**
+         * SEMUA halaman Content WAJIB membungkus pemanggilan bootstrap-nya
+         * dengan ini — jangan panggil fungsi bootstrap langsung di top-level.
+         *
+         * Menangani dua jalur masuk halaman sekaligus:
+         * - Load penuh: readyState masih 'loading' di titik parsing fragment,
+         *   jadi bootstrap ditunda sampai event 'load' — saat itu seluruh
+         *   helper Shell (Toast, TechfordNav, TechfordAuth) sudah ada.
+         * - Navigasi SPA: dokumen sudah lama 'complete', jadi bootstrap
+         *   jalan seketika tanpa menunggu apa pun (lihat execScripts).
+         *
+         * Dites otomatis oleh tests/shell-bootstrap-order.test.js — halaman
+         * yang bootstrap di top-level tanpa pembungkus ini akan menggagalkan
+         * test, supaya bug urutan parsing ini tidak terulang.
+         */
+        function techfordOnReady(fn) {
+          if (document.readyState === 'complete') fn();
+          else window.addEventListener('load', fn);
+        }
+      </script>
+
       <main class="content-area" id="mainContent"><?!= content ?></main>
     </div>
   </div>
@@ -306,26 +375,10 @@
     // Helper generik ini dipakai di SEMUA pemanggilan google.script.run
     // (bukan cuma bootstrap) supaya konsisten retry dulu sebelum benar2
     // dianggap gagal.
-    function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, delayMs) {
-      if (retriesLeft == null) retriesLeft = 2;
-      if (delayMs == null) delayMs = 700;
-      var runner = google.script.run
-        .withSuccessHandler(function (res) {
-          if (!res && retriesLeft > 0) {
-            setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
-            return;
-          }
-          onSuccess(res);
-        })
-        .withFailureHandler(function (err) {
-          if (retriesLeft > 0) {
-            setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
-            return;
-          }
-          onFailure(err);
-        });
-      runner[fnName].apply(runner, args || []);
-    }
+    // gsRunWithRetry SENGAJA didefinisikan di blok <script> kecil DI ATAS
+    // <main>, bukan di sini — lihat komentar panjang di sana. Kalau
+    // didefinisikan di blok ini, halaman yang dibuka dengan load penuh akan
+    // memanggilnya sebelum baris ini sempat diparse.
 
     /**
      * TechfordNav — router SPA client-side. Dulu tiap klik menu sidebar
