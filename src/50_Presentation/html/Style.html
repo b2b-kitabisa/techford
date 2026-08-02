@@ -881,10 +881,13 @@
   .data-table td.truncate { max-width: 0; }
   .data-table td.truncate .clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .table-row-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
-  /* Header tabel "nempel" saat scroll — bungkus <table> dalam
-     <div class="table-scroll-sticky" style="max-height:..."> untuk pakai ini. */
-  .table-scroll-sticky { overflow-y: auto; }
-  .table-scroll-sticky table thead th { position: sticky; top: 0; background: var(--bg-tint); z-index: 1; }
+  /* CATATAN: dulu di sini ada class .table-scroll-sticky. Class itu sudah
+     DIHAPUS karena menyesatkan: sticky header sebenarnya sudah aktif secara
+     default lewat `.data-table thead th` (position:sticky) + `.table-scroll`
+     (overflow:auto + max-height) di bagian "Data table" di atas. Yang lebih
+     berbahaya, .table-scroll-sticky ikut menimpa background <th> jadi terang
+     (--bg-tint) padahal teks header berwarna putih — begitu class-nya dipakai,
+     seluruh baris header langsung tidak terbaca. Cukup pakai .table-scroll. */
   /* Tombol aksi baris baru terlihat penuh saat baris di-hover — tabel
      terasa lebih lega secara default. Bungkus tombol aksi dengan class
      ini di kolom Action. */
