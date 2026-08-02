@@ -137,10 +137,17 @@ var ClientService = (function (module) {
     });
 
     Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy + ': ' + clientId);
-    // Dibungkus objek (bukan cuma array) supaya UI bisa tahu persis Client_ID
-    // yang baru dibuat — dipakai tombol "Buat Project di Sales Pipeline" di
-    // reminder sukses, tanpa perlu menebak-nebak dari daftar penuh.
-    return { client: ClientRepository.findById(clientId), clients: ClientRepository.findAll() };
+    // HANYA client yang baru dibuat, BUKAN seluruh daftar (`clients:
+    // ClientRepository.findAll()` sebelumnya ikut dikembalikan di sini).
+    // Payload penuh itulah yang membuat google.script.run kembali dengan
+    // res=null begitu jumlah client sudah cukup banyak — persis penyakit yang
+    // sama dengan Lead Capturing (lihat catatan di LeadService). Efeknya:
+    // tombol "Buat Project di Sales Pipeline" tidak pernah muncul, karena
+    // `newClient = res && res.data && res.data.client` jatuh ke null.
+    // UI sudah memanggil fetchClients() sendiri sesudah ini untuk me-refresh
+    // daftarnya — mengirim ulang seluruh array di sini cuma pemborosan yang
+    // berbahaya.
+    return { client: ClientRepository.findById(clientId) };
   };
 
   module.updateClient = function (clientId, patch) {
