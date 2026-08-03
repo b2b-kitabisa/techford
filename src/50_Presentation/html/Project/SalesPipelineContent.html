@@ -308,6 +308,7 @@
           <h3>GDV</h3>
           <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
+        <div class="gdv-draft-notice" id="gdvDraftNotice" style="display:none;"></div>
         <div id="gdvViewList"></div>
         <div class="placeholder-note" id="gdvDisabledNote" style="display:none; margin-top:0;">Pilih service CSR atau Ads Sponsorship dulu di Edit Project untuk menambahkan campaign GDV.</div>
         <div style="margin-top:10px;">
@@ -599,6 +600,11 @@
   var editProjectCategories = {};
   var editProjectProgramType = null;
   var editProjectProgramCategory = null;
+  // Nama program yang ditulis manual (Client Program / KB.ORG Custom Program).
+  // Disimpan sebagai STATE, bukan cuma dibaca dari input saat SAVE: area
+  // program di-render ulang setiap kali tipe/kategori diklik, jadi nilai yang
+  // hanya hidup di DOM akan hilang di tengah pengeditan.
+  var editProjectProgramName = '';
   var editProjectIssues = [];
   var editOtherDocLinks = [];
   var editGdvCsrCampaigns = [];
@@ -618,6 +624,118 @@
   var gdvRetainerEditing = {};
   var gdvAdsEditing = {};
   var serviceRevenueEditing = {};
+
+  // Baris retainer mana yang rincian termin-nya sedang dibuka. Dua map
+  // terpisah karena kuncinya beda jenis dan umurnya beda:
+  // - daftar baca drawer Detail dikunci ke NAMA LINK (bertahan lintas
+  //   re-render karena data revenue di-fetch ulang, index bisa bergeser);
+  // - baris terkunci di popup dikunci ke INDEX (sejalan dengan
+  //   gdvRetainerEditing di atas, dan ikut digeser saat ada baris dihapus).
+  var gdvViewTerminExpanded = {};
+  var gdvRetainerTerminExpanded = {};
+
+  /* ============================================================
+     DRAFT GDV YANG BELUM DISIMPAN
+     ============================================================
+     Popup Input GDV bisa terisi puluhan baris sebelum ditekan SAVE. Dulu isi
+     itu HILANG kalau popup tertutup — bukan karena state-nya dibuang saat
+     ditutup, tapi karena closeGdvDrawer() memanggil renderRevenueBreakdown()
+     yang MEMBANGUN ULANG editGdvCsrCampaigns/editGdvRetainerLinks/
+     editGdvAdsCampaigns dari data server. Apa pun yang belum tersimpan
+     otomatis tertimpa versi lama.
+
+     Dua lapis penyelamatan:
+
+     1. Penanda "kotor" (gdvDraftDirty). Selama masih kotor,
+        renderRevenueBreakdown TIDAK menyentuh state GDV — jadi popup ditutup
+        lalu dibuka lagi tetap utuh. Ini menutup kasus yang paling sering:
+        salah klik di luar popup.
+
+     2. Cadangan ke localStorage per Project_ID, supaya reload halaman /
+        pindah section / browser tertutup pun masih bisa dipulihkan. Sengaja
+        best-effort di dalam try/catch: HtmlService menjalankan halaman ini di
+        iframe sandbox, dan di sebagian konfigurasi browser (storage
+        dipartisi, cookie pihak-ketiga diblokir) localStorage bisa melempar
+        error. Kalau itu terjadi, lapis 1 tetap bekerja dan fitur intinya
+        tidak ikut mati.
+
+     Draft dibuang HANYA setelah SAVE berhasil atau saat user menekan "Buang
+     perubahan" — tidak pernah dibuang diam-diam. */
+  var gdvDraftDirty = false;
+  var GDV_DRAFT_STORAGE_PREFIX = 'techford:gdvDraft:';
+
+  function gdvDraftKey(projectId) { return GDV_DRAFT_STORAGE_PREFIX + projectId; }
+
+  /**
+   * Dipanggil setiap kali ada perubahan di popup Input GDV. Penanda kotor
+   * inilah yang mencegah renderRevenueBreakdown menimpa isian user.
+   */
+  var gdvDraftSaveTimer = null;
+  function markGdvDirty() {
+    gdvDraftDirty = true;
+    renderGdvDraftNotice();
+
+    // Penulisan cadangan DITUNDA ke akhir tick, bukan langsung. Fungsi
+    // tambah/hapus baris memanggil markGdvDirty() di baris pertamanya
+    // (sebelum state-nya benar-benar berubah), jadi menyimpan seketika akan
+    // mengabadikan kondisi SEBELUM perubahan — cadangannya selalu tertinggal
+    // satu aksi. Penundaan ini juga sekaligus menggabungkan ketikan cepat
+    // jadi satu penulisan.
+    if (gdvDraftSaveTimer) clearTimeout(gdvDraftSaveTimer);
+    gdvDraftSaveTimer = setTimeout(function () {
+      gdvDraftSaveTimer = null;
+      saveGdvDraft();
+    }, 250);
+  }
+
+  function saveGdvDraft() {
+    if (!currentPipelineDrawerId) return;
+    try {
+      window.localStorage.setItem(gdvDraftKey(currentPipelineDrawerId), JSON.stringify({
+        savedAt: new Date().toISOString(),
+        csr: editGdvCsrCampaigns,
+        retainer: editGdvRetainerLinks,
+        ads: editGdvAdsCampaigns
+      }));
+    } catch (e) { /* lapis 1 (in-memory) tetap jalan — lihat catatan di atas */ }
+  }
+
+  function readGdvDraft(projectId) {
+    try {
+      var raw = window.localStorage.getItem(gdvDraftKey(projectId));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function clearGdvDraft(projectId) {
+    gdvDraftDirty = false;
+    try { window.localStorage.removeItem(gdvDraftKey(projectId)); } catch (e) {}
+    renderGdvDraftNotice();
+  }
+
+  /** Buang draft dan kembalikan tampilan ke data yang tersimpan di server. */
+  function discardGdvDraft() {
+    if (!techfordConfirm('Buang semua perubahan GDV yang belum disimpan? Data akan dikembalikan ke versi terakhir yang tersimpan.')) return;
+    var projectId = currentPipelineDrawerId;
+    clearGdvDraft(projectId);
+    var project = currentProjectOrNull();
+    if (project) renderRevenueBreakdown(project);
+    TechfordToast.show('Perubahan GDV yang belum disimpan sudah dibuang.');
+  }
+
+  /**
+   * Spanduk penanda di drawer Detail. Draft yang dipulihkan diam-diam justru
+   * berbahaya — user bisa menyangka angka yang dilihatnya sudah tersimpan.
+   */
+  function renderGdvDraftNotice() {
+    var el = document.getElementById('gdvDraftNotice');
+    if (!el) return;
+    if (!gdvDraftDirty) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = '';
+    el.innerHTML = '<span class="gdn-ic">●</span>' +
+      '<span>Ada perubahan GDV yang <strong>belum disimpan</strong>. Buka <strong>EDIT GDV</strong> lalu tekan SAVE untuk menyimpannya.</span>' +
+      '<button type="button" class="btn-outline btn-xs" onclick="discardGdvDraft()">Buang perubahan</button>';
+  }
 
   // Tab skema aktif di popup Input GDV ('csr' | 'retainer' | 'ads').
   var gdvActiveTab = null;
@@ -1851,13 +1969,24 @@
     document.getElementById('addPipelineConfirm').classList.remove('open');
   }
 
+  /**
+   * Pecah isi kolom "specific issue" jadi beberapa issue. Dipisah koma karena
+   * itulah format yang ditampilkan balik saat popup Edit Project dibuka —
+   * tanpa pemecahan di sini, "a, b" tersimpan sebagai SATU issue lalu muncul
+   * sebagai dua saat diedit, dan bentuknya berubah tiap kali disimpan ulang.
+   */
+  function parseCustomIssues(text) {
+    return String(text || '').split(',')
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length; });
+  }
+
   function submitAddPipeline() {
     document.getElementById('addPipelineConfirm').classList.remove('open');
 
     var manualNameEl = document.getElementById('newProgramManualName');
-    var customIssue = document.getElementById('newIssueCustom').value.trim();
-    var issues = newProjectIssues.slice();
-    if (customIssue) issues.push(customIssue);
+    var issues = newProjectIssues.slice()
+      .concat(parseCustomIssues(document.getElementById('newIssueCustom').value));
 
     var input = {
       projectName: document.getElementById('newProjectName').value.trim(),
@@ -2109,8 +2238,31 @@
     editProjectCategories = JSON.parse(JSON.stringify(project.Service_Categories || {}));
     editProjectProgramType = project.Program_Type || null;
     editProjectProgramCategory = project.Program_Category || null;
-    editProjectIssues = (project.Issues || []).slice();
-    document.getElementById('editIssueCustom').value = '';
+    editProjectProgramName = project.Program_Name || '';
+
+    // Issues tersimpan sebagai SATU array berisi campuran pilihan baku dan
+    // teks bebas yang ditulis consultant di kolom "specific issue" (lihat
+    // submitAddPipeline: teks itu di-push ke array yang sama). Keduanya harus
+    // dipisah lagi di sini, kalau tidak:
+    // - teks bebasnya tidak muncul di mana pun (bukan tombol baku, dan
+    //   kolom input-nya dikosongkan) sehingga tampak hilang; dan
+    // - saat SAVE, teks lama tetap ikut terkirim sementara teks yang baru
+    //   diketik ditambahkan lagi, jadi isinya menumpuk berkali-kali.
+    //
+    // Kalau taxonomy belum sempat termuat, pemisahan DILEWATI — tanpa daftar
+    // pilihan baku, semua issue akan salah dianggap teks bebas dan tombol
+    // yang seharusnya aktif jadi mati semua.
+    var semuaIssue = (project.Issues || []).slice();
+    var issueBaku = taxonomy.issues || [];
+    if (issueBaku.length) {
+      editProjectIssues = semuaIssue.filter(function (i) { return issueBaku.indexOf(i) !== -1; });
+      document.getElementById('editIssueCustom').value = semuaIssue
+        .filter(function (i) { return issueBaku.indexOf(i) === -1; })
+        .join(', ');
+    } else {
+      editProjectIssues = semuaIssue;
+      document.getElementById('editIssueCustom').value = '';
+    }
     document.getElementById('editOtherNotes').value = project.Other_Notes || '';
 
     renderServiceButtonsInto('editServiceButtons', editProjectServices, 'toggleEditService');
@@ -2636,23 +2788,41 @@
 
   // ---- Edit Project: Program Type/Category ----
   function selectEditProgramType(programType) {
+    // Ganti TIPE program = program yang dimaksud memang beda, jadi nama
+    // manualnya ikut dikosongkan. (Ganti kategori saja TIDAK mengosongkan —
+    // lihat selectEditProgramCategory.)
     editProjectProgramType = programType;
     editProjectProgramCategory = null;
+    editProjectProgramName = '';
     renderProgramTypeButtonsInto('editProgramTypeButtons', editProjectProgramType, 'selectEditProgramType');
     renderEditProgramCategoryArea();
   }
   function renderEditProgramCategoryArea() {
     var area = document.getElementById('editProgramCategoryArea');
+
+    // value= diisi dari editProjectProgramName. Sebelumnya di sini tertulis
+    // value="' + (isCustom ? '' : '') + '" — selalu string kosong apa pun
+    // kondisinya, sehingga nama Custom Program yang sudah tersimpan tidak
+    // pernah tampil. Akibatnya SAVE ditolak server dengan "Nama Custom
+    // Program wajib diisi" sampai user menulis ulang nama yang sebetulnya
+    // sudah ada (lihat resolveProgramName di ProjectService).
+    var manualInput = function (placeholder, extraStyle) {
+      return '<input id="editProgramManualName" placeholder="' + placeholder + '"' +
+        (extraStyle ? ' style="' + extraStyle + '"' : '') +
+        ' value="' + escAttr(editProjectProgramName) + '"' +
+        ' oninput="editProjectProgramName = this.value">';
+    };
+
     if (editProjectProgramType === taxonomy.programType.KBORG) {
       var isCustom = editProjectProgramCategory === taxonomy.kborgCustomProgram;
       area.innerHTML = '<div class="toggle-btn-list" id="editProgramList"></div>' +
-        (isCustom ? '<input id="editProgramManualName" placeholder="Nama custom program..." style="margin-top:8px;" value="' + (isCustom ? '' : '') + '">' : '');
+        (isCustom ? manualInput('Nama custom program...', 'margin-top:8px;') : '');
       document.getElementById('editProgramList').innerHTML = (taxonomy.kborgPrograms || []).map(function (p) {
         var active = editProjectProgramCategory === p;
         return '<button type="button" class="toggle-btn' + (active ? ' active' : '') + '" onclick="selectEditProgramCategory(\'' + p + '\')">' + p + '</button>';
       }).join('');
     } else if (editProjectProgramType === taxonomy.programType.CLIENT) {
-      area.innerHTML = '<input id="editProgramManualName" placeholder="Nama Client Program...">';
+      area.innerHTML = manualInput('Nama Client Program...', '');
     } else {
       area.innerHTML = '';
     }
@@ -2829,9 +2999,11 @@
       patch = { otherNotes: document.getElementById('editOtherNotes').value };
     } else {
       var manualNameEl = document.getElementById('editProgramManualName');
-      var customIssue = document.getElementById('editIssueCustom').value.trim();
-      var issues = editProjectIssues.slice();
-      if (customIssue) issues.push(customIssue);
+      // editProjectIssues di sini SUDAH hanya berisi pilihan baku (teks
+      // bebasnya dipisahkan ke kolom input saat form disiapkan), jadi
+      // menggabungkannya tidak lagi menumpuk duplikat tiap kali disimpan.
+      var issues = editProjectIssues.slice()
+        .concat(parseCustomIssues(document.getElementById('editIssueCustom').value));
 
       patch = {
         projectName: document.getElementById('editProjectName').value,
@@ -3098,30 +3270,49 @@
     document.getElementById('gdvDisabledNote').style.display = gdvApplicable ? 'none' : '';
     document.getElementById('gdvEditOpenBtn').style.display = gdvApplicable ? '' : 'none';
 
-    // ---- Skema CSR biasa (flat, non-Retainer) ----
-    editGdvCsrCampaigns = (hasCsr && !isRetainer)
-      ? savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; })
-          .map(function (r) { return { link: r.Item_Name || '', amount: Number(r.Amount) || 0, notes: r.Notes || '' }; })
-      : [];
+    // Draft yang belum disimpan SELALU menang atas data server di sini.
+    // Fungsi ini dipanggil juga saat popup Input GDV ditutup, jadi tanpa
+    // penjagaan ini isian user tertimpa versi lama setiap kali popup tertutup
+    // — persis bug "yang ditulis hilang" itu. Lihat catatan panjang di
+    // sekitar gdvDraftDirty.
+    if (!gdvDraftDirty) {
+      var draft = readGdvDraft(project.Project_ID);
+      if (draft) {
+        // Draft dari sesi sebelumnya (reload / browser tertutup) dipulihkan,
+        // lalu langsung ditandai kotor supaya spanduk peringatannya muncul
+        // dan tidak ada yang menyangka angka ini sudah tersimpan.
+        editGdvCsrCampaigns = draft.csr || [];
+        editGdvRetainerLinks = draft.retainer || [];
+        editGdvAdsCampaigns = draft.ads || [];
+        gdvDraftDirty = true;
+      } else {
+        // ---- Skema CSR biasa (flat, non-Retainer) ----
+        editGdvCsrCampaigns = (hasCsr && !isRetainer)
+          ? savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; })
+              .map(function (r) { return { link: r.Item_Name || '', amount: Number(r.Amount) || 0, notes: r.Notes || '' }; })
+          : [];
 
-    // ---- Skema Retainer (link -> banyak termin nominal+notes+date) ----
-    editGdvRetainerLinks = [];
-    if (hasCsr && isRetainer) {
-      var byLink = {};
-      var linkOrder = [];
-      savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; }).forEach(function (r) {
-        var link = r.Item_Name || '';
-        if (!byLink[link]) { byLink[link] = []; linkOrder.push(link); }
-        byLink[link].push({ amount: Number(r.Amount) || 0, notes: r.Notes || '', date: r.Entry_Date || '' });
-      });
-      editGdvRetainerLinks = linkOrder.map(function (link) { return { link: link, entries: byLink[link] }; });
+        // ---- Skema Retainer (link -> banyak termin nominal+notes+date) ----
+        editGdvRetainerLinks = [];
+        if (hasCsr && isRetainer) {
+          var byLink = {};
+          var linkOrder = [];
+          savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; }).forEach(function (r) {
+            var link = r.Item_Name || '';
+            if (!byLink[link]) { byLink[link] = []; linkOrder.push(link); }
+            byLink[link].push({ amount: Number(r.Amount) || 0, notes: r.Notes || '', date: r.Entry_Date || '' });
+          });
+          editGdvRetainerLinks = linkOrder.map(function (link) { return { link: link, entries: byLink[link] }; });
+        }
+
+        // ---- Skema Ads Sponsorship (link-only, multi) ----
+        editGdvAdsCampaigns = hasAds
+          ? savedGdvRows.filter(function (r) { return r.Source_Service === 'Ads Sponsorship'; })
+              .map(function (r) { return { link: r.Item_Name || '' }; })
+          : [];
+      }
     }
-
-    // ---- Skema Ads Sponsorship (link-only, multi) ----
-    editGdvAdsCampaigns = hasAds
-      ? savedGdvRows.filter(function (r) { return r.Source_Service === 'Ads Sponsorship'; })
-          .map(function (r) { return { link: r.Item_Name || '' }; })
-      : [];
+    renderGdvDraftNotice();
 
     // Baris tersimpan mulai dalam mode baca (pola "pensil dulu").
     gdvCsrEditing = {}; gdvRetainerEditing = {}; gdvAdsEditing = {};
@@ -3171,7 +3362,12 @@
         var total = entries.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
         items.push({
           link: l.link, amount: total, showAmount: true, scheme: 'CSR (Retainer)',
-          sub: entries.length + ' termin'
+          sub: entries.length + (entries.length === 1 ? ' termin' : ' termin'),
+          // Termin dibawa utuh (bukan cuma jumlahnya) supaya baris ini bisa
+          // dibuka jadi rincian vertikal per termin — retainer bisa punya
+          // belasan termin, dan merangkumnya jadi satu baris teks panjang
+          // membuat isinya tidak terbaca.
+          entries: entries
         });
       });
     }
@@ -3190,13 +3386,43 @@
 
     container.innerHTML = '<div class="vlist">' + items.map(function (it) {
       var badge = gdvSyncBadgeHtml(it.link);
-      return '<div class="vlist-row ' + serviceAccentClass(it.scheme) + '">' +
+      var entries = it.entries || [];
+      var bisaDibuka = entries.length > 0;
+      var terbuka = bisaDibuka && !!gdvViewTerminExpanded[it.link];
+
+      // Rincian termin ditumpuk VERTIKAL, satu baris per termin, bukan
+      // dirangkai jadi satu kalimat panjang dipisah titik tengah.
+      var terminHtml = '';
+      if (terbuka) {
+        terminHtml = '<div class="termin-list">' +
+          entries.map(function (e, i) {
+            return '<div class="termin-row">' +
+              '<span class="termin-no">' + (i + 1) + '</span>' +
+              '<span class="termin-date">' + (e.date ? escHtml(formatDate(e.date)) : '<span class="termin-empty">tanpa tanggal</span>') + '</span>' +
+              '<span class="termin-amt">' + formatRupiah(e.amount) + '</span>' +
+              '<span class="termin-notes">' + (e.notes ? escHtml(e.notes) : '') + '</span>' +
+              '</div>';
+          }).join('') +
+          '<div class="termin-row termin-total">' +
+          '<span class="termin-no"></span>' +
+          '<span class="termin-date">Total ' + entries.length + ' termin</span>' +
+          '<span class="termin-amt">' + formatRupiah(it.amount) + '</span>' +
+          '<span class="termin-notes"></span>' +
+          '</div>' +
+          '</div>';
+      }
+
+      return '<div class="vlist-row ' + serviceAccentClass(it.scheme) + (bisaDibuka ? ' vlist-row-expandable' : '') + '"' +
+        (bisaDibuka ? ' onclick="toggleGdvViewTermin(\'' + escAttr(it.link) + '\')" title="Klik untuk lihat rincian termin"' : '') + '>' +
         '<div class="vl-main">' +
-        '<div class="vl-name mono">' + escHtml(it.link) +
-        '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(it.link) + '\', this)" title="Salin campaign link">⧉</button>' +
+        '<div class="vl-name mono">' +
+        (bisaDibuka ? '<span class="vl-caret">' + (terbuka ? '▾' : '▸') + '</span>' : '') +
+        escHtml(it.link) +
+        '<button type="button" class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(\'' + escAttr(it.link) + '\', this)" title="Salin campaign link">⧉</button>' +
         '</div>' +
         '<div class="vl-sub">' + escHtml(it.scheme) + (it.sub ? ' · ' + escHtml(it.sub) : '') +
         (badge ? ' ' + badge : '') + '</div>' +
+        terminHtml +
         '</div>' +
         '<div class="vl-right">' +
         (it.showAmount
@@ -3205,6 +3431,19 @@
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  /**
+   * Buka/tutup rincian termin satu campaign link di daftar baca drawer
+   * Detail. Dikunci ke NAMA LINK, bukan index — daftarnya di-render ulang
+   * tiap kali data revenue di-fetch, dan index bisa bergeser sedangkan
+   * link-nya tetap, jadi mengunci ke index akan membuat baris yang terbuka
+   * berpindah sendiri.
+   */
+  function toggleGdvViewTermin(link) {
+    gdvViewTerminExpanded[link] = !gdvViewTerminExpanded[link];
+    var project = currentProjectOrNull();
+    if (project) renderGdvViewList(hasCsrService(project), hasAdsService(project), !!project.Is_Retainer);
   }
 
   /**
@@ -3354,8 +3593,18 @@
     var pillLabel = s.status === 'SINKRON' ? 'Sinkron' : (s.status === 'KLAIM_MELEBIHI' ? 'Klaim Melebihi' : 'Belum Sinkron');
     var title = s.hasRealized
       ? 'Realisasi Tableau: Rp' + Math.round(s.realizedNominal).toLocaleString('id-ID') + ' — Total diklaim (semua project): Rp' + Math.round(s.totalClaimed).toLocaleString('id-ID')
-      : 'Link ini belum ada di GDV Controller (belum diupload dari Tableau, atau link tidak cocok persis).';
-    return '<span class="pill ' + pillClass + '" title="' + escAttr(title) + '">' + pillLabel + '</span>';
+      : 'Link ini belum ada di GDV Controller (belum diupload dari Tableau, atau link tidak cocok — baik sebagai Link_Campaign maupun Child_Short_URL).';
+
+    // Link yang cocok lewat Child_Short_URL dihitung ke campaign INDUK yang
+    // namanya beda. Tanpa penanda ini, consultant melihat angka realisasi
+    // milik link lain muncul di barisnya dan wajar menyangka datanya salah.
+    var aliasNote = '';
+    if (s.matchedVia === 'child' && s.canonicalLink) {
+      title += ' — Dicocokkan lewat Child_Short_URL ke campaign induk "' + s.canonicalLink + '".';
+      aliasNote = '<span class="pill neutral" title="' + escAttr('Link ini adalah Child_Short_URL. Nominalnya dihitung ke Link_Campaign induk: ' + s.canonicalLink) + '">↗ induk: ' + escHtml(s.canonicalLink) + '</span>';
+    }
+    return '<span class="pill ' + pillClass + '" title="' + escAttr(title) + '">' + pillLabel + '</span>' +
+      (aliasNote ? ' ' + aliasNote : '');
   }
 
   // Penanda mode-edit dikunci ke index baris, jadi setelah ada baris yang
@@ -3381,9 +3630,9 @@
       var c = editGdvCsrCampaigns[idx];
       if (gdvCsrEditing[idx]) {
         return '<div class="row-edit accent-csr">' +
-          '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value">' +
+          '<input placeholder="Campaign link..." style="flex:2;" value="' + escAttr(c.link) + '" oninput="editGdvCsrCampaigns[' + idx + '].link=this.value; markGdvDirty()">' +
           '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(c.amount) + '" oninput="onGdvCsrAmountInput(this, ' + idx + ')">' +
-          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value">' +
+          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(c.notes) + '" oninput="editGdvCsrCampaigns[' + idx + '].notes=this.value; markGdvDirty()">' +
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvCsrCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
           '</div>';
       }
@@ -3406,6 +3655,7 @@
   }
 
   function onGdvCsrAmountInput(el, idx) {
+    markGdvDirty();
     var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
     editGdvCsrCampaigns[idx].amount = amount;
     el.value = formatThousands(amount);
@@ -3416,11 +3666,13 @@
     rerenderGdvSchemes();
   }
   function addGdvCsrCampaignRow() {
+    markGdvDirty();
     editGdvCsrCampaigns.push({ link: '', amount: 0, notes: '' });
     gdvCsrEditing[editGdvCsrCampaigns.length - 1] = true;
     rerenderGdvSchemes();
   }
   function removeGdvCsrCampaignRow(index) {
+    markGdvDirty();
     editGdvCsrCampaigns.splice(index, 1);
     gdvCsrEditing = shiftEditingMap(gdvCsrEditing, index);
     rerenderGdvSchemes();
@@ -3444,17 +3696,37 @@
       var total = entries.reduce(function (s, e) { return s + (Number(e.amount) || 0); }, 0);
 
       if (!gdvRetainerEditing[linkIdx]) {
-        var terminSummary = entries.length
-          ? entries.map(function (e) {
-              return (e.date ? formatDate(e.date) : 'tanpa tanggal') + ': ' + formatRupiah(e.amount);
-            }).join(' · ')
-          : 'Belum ada termin.';
+        // Rincian termin ditumpuk VERTIKAL di balik expand/collapse. Dulu
+        // semuanya dirangkai jadi SATU baris dipisah ' · ' — untuk retainer
+        // dengan belasan termin, baris itu melebar tak terkendali dan jadi
+        // tidak terbaca sama sekali.
+        var terbukaPopup = !!gdvRetainerTerminExpanded[linkIdx];
+        var terminHtml = '';
+        if (!entries.length) {
+          terminHtml = '<div class="rv-sub">Belum ada termin.</div>';
+        } else if (terbukaPopup) {
+          terminHtml = '<div class="termin-list">' +
+            entries.map(function (e, i) {
+              return '<div class="termin-row">' +
+                '<span class="termin-no">' + (i + 1) + '</span>' +
+                '<span class="termin-date">' + (e.date ? escHtml(formatDate(e.date)) : '<span class="termin-empty">tanpa tanggal</span>') + '</span>' +
+                '<span class="termin-amt">' + formatRupiah(e.amount) + '</span>' +
+                '<span class="termin-notes">' + (e.notes ? escHtml(e.notes) : '') + '</span>' +
+                '</div>';
+            }).join('') + '</div>';
+        }
+
         return '<div class="row-view accent-csr" style="align-items:flex-start;">' +
           '<div class="rv-main">' +
           '<div class="rv-title">' + escHtml(l.link || '(link belum diisi)') +
           (l.link ? '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(l.link) + '\', this)" title="Salin campaign link">⧉</button>' : '') + '</div>' +
-          '<div class="rv-sub">' + escHtml(entries.length + ' termin') + ' · ' + (gdvSyncBadgeHtml(l.link) || 'Status sinkron belum tersedia') + '</div>' +
-          '<div class="rv-sub">' + escHtml(terminSummary) + '</div>' +
+          '<div class="rv-sub">' +
+          (entries.length
+            ? '<button type="button" class="termin-toggle" onclick="toggleGdvRetainerTermin(' + linkIdx + ')">' +
+              (terbukaPopup ? '▾' : '▸') + ' ' + entries.length + ' termin</button> · '
+            : '') +
+          (gdvSyncBadgeHtml(l.link) || 'Status sinkron belum tersedia') + '</div>' +
+          terminHtml +
           '</div>' +
           '<div class="rv-amt">' + formatRupiah(total) + '</div>' +
           '<button type="button" class="icon-btn-sm" onclick="startEditGdvRetainerRow(' + linkIdx + ')" title="Edit link &amp; termin ini">✏️</button>' +
@@ -3464,15 +3736,15 @@
 
       var entriesHtml = entries.map(function (e, entryIdx) {
         return '<div class="revenue-row">' +
-          '<input type="date" style="width:150px;" value="' + escAttr(e.date) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].date=this.value">' +
+          '<input type="date" style="width:150px;" value="' + escAttr(e.date) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].date=this.value; markGdvDirty()">' +
           '<input type="text" inputmode="numeric" placeholder="0" style="flex:1;" value="' + formatThousands(e.amount) + '" oninput="onGdvRetainerAmountInput(this, ' + linkIdx + ', ' + entryIdx + ')">' +
-          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(e.notes) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].notes=this.value">' +
+          '<input placeholder="Notes (opsional)" style="flex:2;" value="' + escAttr(e.notes) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].entries[' + entryIdx + '].notes=this.value; markGdvDirty()">' +
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerEntryRow(' + linkIdx + ', ' + entryIdx + ')" title="Hapus termin ini">×</button>' +
           '</div>';
       }).join('');
       return '<div class="gdv-retainer-link-group accent-csr" style="border-style:solid; border-color:var(--color-cerulean); background:var(--accent-tint);">' +
         '<div class="revenue-row">' +
-        '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value">' +
+        '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(l.link) + '" oninput="editGdvRetainerLinks[' + linkIdx + '].link=this.value; markGdvDirty()">' +
         '<span style="width:118px; flex-shrink:0;">' + gdvSyncBadgeHtml(l.link) + '</span>' +
         '<button type="button" class="icon-btn-sm danger" onclick="removeGdvRetainerLinkGroup(' + linkIdx + ')" title="Hapus link ini">×</button>' +
         '</div>' +
@@ -3495,27 +3767,42 @@
     rerenderGdvSchemes();
   }
 
+  /** Buka/tutup rincian termin pada baris terkunci di popup Input GDV. */
+  function toggleGdvRetainerTermin(linkIdx) {
+    gdvRetainerTerminExpanded[linkIdx] = !gdvRetainerTerminExpanded[linkIdx];
+    rerenderGdvSchemes();
+  }
+
   function onGdvRetainerAmountInput(el, linkIdx, entryIdx) {
+    markGdvDirty();
     var amount = Number(el.value.replace(/[^0-9]/g, '')) || 0;
     editGdvRetainerLinks[linkIdx].entries[entryIdx].amount = amount;
     el.value = formatThousands(amount);
     updateRevenueTotals();
   }
   function addGdvRetainerLinkGroup() {
+    markGdvDirty();
     editGdvRetainerLinks.push({ link: '', entries: [{ amount: 0, notes: '', date: '' }] });
     renderGdvSchemes(true, currentDrawerHasAds(), true);
   }
   function removeGdvRetainerLinkGroup(linkIdx) {
+    markGdvDirty();
     editGdvRetainerLinks.splice(linkIdx, 1);
     gdvRetainerEditing = shiftEditingMap(gdvRetainerEditing, linkIdx);
+    // Penanda termin-terbuka juga dikunci ke index, jadi harus digeser dengan
+    // cara yang sama — kalau tidak, baris lain ikut terbuka sendiri setelah
+    // ada link yang dihapus.
+    gdvRetainerTerminExpanded = shiftEditingMap(gdvRetainerTerminExpanded, linkIdx);
     rerenderGdvSchemes();
     updateRevenueTotals();
   }
   function addGdvRetainerEntryRow(linkIdx) {
+    markGdvDirty();
     editGdvRetainerLinks[linkIdx].entries.push({ amount: 0, notes: '', date: '' });
     rerenderGdvSchemes();
   }
   function removeGdvRetainerEntryRow(linkIdx, entryIdx) {
+    markGdvDirty();
     editGdvRetainerLinks[linkIdx].entries.splice(entryIdx, 1);
     rerenderGdvSchemes();
     updateRevenueTotals();
@@ -3532,7 +3819,7 @@
       var c = editGdvAdsCampaigns[idx];
       if (gdvAdsEditing[idx]) {
         return '<div class="row-edit accent-ads">' +
-          '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value">' +
+          '<input placeholder="Campaign link..." style="flex:1;" value="' + escAttr(c.link) + '" oninput="editGdvAdsCampaigns[' + idx + '].link=this.value; markGdvDirty()">' +
           '<button type="button" class="icon-btn-sm danger" onclick="removeGdvAdsCampaignRow(' + idx + ')" title="Hapus campaign ini">×</button>' +
           '</div>';
       }
@@ -3559,11 +3846,13 @@
     rerenderGdvSchemes();
   }
   function addGdvAdsCampaignRow() {
+    markGdvDirty();
     editGdvAdsCampaigns.push({ link: '' });
     gdvAdsEditing[editGdvAdsCampaigns.length - 1] = true;
     rerenderGdvSchemes();
   }
   function removeGdvAdsCampaignRow(index) {
+    markGdvDirty();
     editGdvAdsCampaigns.splice(index, 1);
     gdvAdsEditing = shiftEditingMap(gdvAdsEditing, index);
     rerenderGdvSchemes();
@@ -3686,6 +3975,10 @@
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
         showPipelineSuccess(label + ' berhasil disimpan.');
+        // Draft dibuang HANYA di sini — setelah server memastikan datanya
+        // tersimpan. Kalau dibuang lebih awal (mis. saat tombol diklik),
+        // kegagalan simpan akan menghapus pekerjaan user.
+        clearGdvDraft(currentPipelineDrawerId);
         // Popup ditutup DULU sebelum fetch — supaya isAnyStackedDrawerOpen()
         // sudah false saat data baru datang, jadi daftar baca di drawer Detail
         // benar-benar ter-render ulang (lihat guard di fetchRevenueBreakdown).

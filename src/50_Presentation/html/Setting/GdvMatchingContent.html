@@ -6,6 +6,7 @@
 </p>
 
 <div id="gdvMatchError" class="error"></div>
+<div id="gdvMatchAliasWarning" class="gdv-alias-warning" style="display:none;"></div>
 
 <div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
 
@@ -100,6 +101,7 @@
         return;
       }
       gdvMatchRows = res.data.rows || [];
+      renderGdvMatchAliasWarning(res.data.aliasAmbiguous || []);
       renderGdvMatchScoreCard(res.data.summary || {});
       renderGdvMatching();
       if (onDone) onDone(true);
@@ -108,6 +110,26 @@
       document.getElementById('gdvMatchError').innerText = 'Gagal memuat data: ' + message;
       if (onDone) onDone(false);
     });
+  }
+
+  /**
+   * Child_Short_URL yang menunjuk ke LEBIH DARI SATU Link_Campaign tidak
+   * dipakai server untuk mencocokkan apa pun (menebak salah satu berarti
+   * memindahkan nominal ke campaign yang salah tanpa jejak). Karena itu harus
+   * tampil di sini — kalau tidak, klaim yang memakai link tersebut akan
+   * terlihat "Belum Sinkron" tanpa sebab yang bisa ditelusuri.
+   */
+  function renderGdvMatchAliasWarning(list) {
+    var el = document.getElementById('gdvMatchAliasWarning');
+    if (!el) return;
+    if (!list.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = '';
+    el.innerHTML = '<strong>⚠ ' + list.length + ' Child Short URL ambigu</strong> — menunjuk ke lebih dari satu Link_Campaign, ' +
+      'jadi TIDAK dipakai untuk pencocokan otomatis. Klaim yang memakai link ini akan tampil Belum Sinkron sampai diperbaiki di sumber Tableau.' +
+      '<ul style="margin:6px 0 0 18px;">' + list.map(function (a) {
+        return '<li><span class="mono">' + esc(a.childShortUrl) + '</span> → ' +
+          a.candidates.map(function (c) { return '<span class="mono">' + esc(c) + '</span>'; }).join(' , ') + '</li>';
+      }).join('') + '</ul>';
   }
 
   function renderGdvMatchScoreCard(summary) {
@@ -201,7 +223,9 @@
     tbody.innerHTML = items.map(function (r) {
       var expanded = !!gdvMatchExpanded[r.linkCampaign];
       var mainRow = '<tr style="cursor:pointer;" onclick="toggleGdvMatchRow(\'' + esc(r.linkCampaign).replace(/'/g, "\\'") + '\')">' +
-        '<td>' + esc(r.linkCampaign) + '</td>' +
+        '<td>' + esc(r.linkCampaign) +
+        (r.aliasClaimCount ? ' <span class="pill neutral" title="' + esc(r.aliasClaimCount + ' klaim masuk ke baris ini lewat Child_Short_URL, bukan lewat Link_Campaign.') + '">↗ ' + r.aliasClaimCount + ' via child</span>' : '') +
+        '</td>' +
         '<td>' + esc(r.campaignerName || '-') + '</td>' +
         '<td class="num">' + (r.hasRealized ? fmtRp(r.realizedNominal) : '-') + '</td>' +
         '<td class="num">' + fmtRp(r.totalClaimed) + '</td>' +
@@ -216,19 +240,34 @@
 
       var claimsHtml = r.claims.length
         ? '<table class="data-table" style="margin:0;">' +
-          '<thead><tr><th>Project</th><th>Client</th><th>Skema</th><th class="num">Nominal</th><th>Notes</th></tr></thead>' +
+          '<thead><tr><th>Project</th><th>Client</th><th>Skema</th><th>Dicatat sebagai</th><th class="num">Nominal</th><th>Notes</th></tr></thead>' +
           '<tbody>' + r.claims.map(function (c) {
+            // Kolom "Dicatat sebagai" hanya berisi sesuatu kalau consultant
+            // menulis link yang BEDA dari Link_Campaign kanonik (yaitu cocok
+            // lewat Child_Short_URL). Tanpa kolom ini, nominalnya seolah
+            // muncul di baris yang tidak pernah dia tulis.
+            var via = c.Matched_Via === 'child'
+              ? '<span class="pill neutral" title="Cocok lewat Child_Short_URL">' + esc(c.Claimed_Link) + '</span>'
+              : '<span style="color:var(--text-faint);">sama</span>';
             return '<tr>' +
               '<td>' + esc(c.Project_Name || c.Project_ID) + '</td>' +
               '<td>' + esc(c.Client_Name || '-') + '</td>' +
               '<td>' + esc(c.Source_Service || '-') + '</td>' +
+              '<td>' + via + '</td>' +
               '<td class="num">' + fmtRp(c.Amount) + '</td>' +
               '<td>' + esc(c.Notes || '-') + '</td>' +
               '</tr>';
           }).join('') + '</tbody></table>'
         : '<div class="placeholder-note" style="margin:0;">Belum ada project yang mengklaim link ini secara manual.</div>';
 
-      var detailRow = '<tr><td colspan="10" style="background:var(--bg-hover); padding:12px 16px;">' + claimsHtml + '</td></tr>';
+      var childHtml = (r.childShortUrls && r.childShortUrls.length)
+        ? '<div style="margin-bottom:10px; font-size:11.5px;">' +
+          '<strong>Child Short URL</strong> yang juga dihitung ke link ini: ' +
+          r.childShortUrls.map(function (c) { return '<span class="pill neutral">' + esc(c) + '</span>'; }).join(' ') +
+          '</div>'
+        : '';
+
+      var detailRow = '<tr><td colspan="10" style="background:var(--bg-hover); padding:12px 16px;">' + childHtml + claimsHtml + '</td></tr>';
       return mainRow + detailRow;
     }).join('');
   }
