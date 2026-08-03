@@ -46,6 +46,19 @@ var Config = (function (module) {
     AUDIT_LOG: 'AuditLog',
     GDV_CONTROLLER: 'GDV_Controller',
     GDV_CONTROLLER_UPLOAD_LOG: 'GDV_Controller_Upload_Log',
+    // Ads Sponsorship Progress — hidup di spreadsheet yang SAMA dengan
+    // GDV_Controller (lihat Config.getGdvControllerSpreadsheet), tapi datanya
+    // TIDAK berhubungan dengan GDV Matching sama sekali: ini progres GDV/NDV
+    // dan saldo yang bisa dicairkan per campaign Ads Sponsorship.
+    //
+    // APPEND-ONLY, sengaja BUKAN replace-all seperti GDV_Controller. Export
+    // sumbernya datang PER KLIEN (satu file = satu account_name), jadi
+    // menimpa seluruh tab saat upload satu klien akan menghapus data klien
+    // lain. Sebagai bonus, riwayatnya ikut tersimpan — penurunan
+    // Active_Wallet_Amount berarti ada pencairan, dan itu hilang kalau
+    // barisnya ditimpa.
+    ADS_PROGRESS: 'Ads_Sponsorship_Progress',
+    ADS_PROGRESS_UPLOAD_LOG: 'Ads_Sponsorship_Progress_Upload_Log',
     // Sheet staging berisi data lead lama hasil impor CSV. Dibaca SEKALI
     // oleh MigrationService, tidak pernah disentuh aplikasi sehari-hari.
     LEAD_MIGRATION: 'Lead_Migration'
