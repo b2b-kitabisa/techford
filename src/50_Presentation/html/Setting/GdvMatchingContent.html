@@ -11,7 +11,7 @@
 <div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
 
 <div class="filter-bar">
-  <div class="search-field"><span class="search-ic">⌕</span><input id="gdvMatchSearch" placeholder="Cari Short URL atau Campaigner Name..." oninput="onGdvMatchFilterChange()"></div>
+  <div class="search-field"><span class="search-ic">⌕</span><input id="gdvMatchSearch" placeholder="Cari Link Campaign, Child Short URL, atau Campaigner Name..." oninput="onGdvMatchFilterChange()"></div>
   <button class="filter-reset" onclick="resetGdvMatchFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data">🔄 Refresh</button>
 </div>
@@ -149,9 +149,16 @@
   function getFilteredGdvMatchRows() {
     var search = document.getElementById('gdvMatchSearch').value.toLowerCase().trim();
     return gdvMatchRows.filter(function (r) {
-      return !search ||
-        String(r.linkCampaign || '').toLowerCase().indexOf(search) !== -1 ||
-        String(r.campaignerName || '').toLowerCase().indexOf(search) !== -1;
+      if (!search) return true;
+      if (String(r.linkCampaign || '').toLowerCase().indexOf(search) !== -1) return true;
+      if (String(r.campaignerName || '').toLowerCase().indexOf(search) !== -1) return true;
+      // Child_Short_URL ikut dicari. Consultant kerap cuma pegang link
+      // turunan ini — kalau tidak bisa dicari, dia harus tahu dulu nama
+      // Link_Campaign induknya untuk menemukan barisnya, padahal justru
+      // itulah yang sedang dia cari.
+      return (r.childShortUrls || []).some(function (c) {
+        return String(c || '').toLowerCase().indexOf(search) !== -1;
+      });
     }).sort(function (a, b) {
       var field = gdvMatchSort.field;
       var va = a[field], vb = b[field];
