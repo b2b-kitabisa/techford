@@ -1234,6 +1234,54 @@
   .ads-owner + .ads-owner { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border-softer); }
   .ads-owner-proj { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); }
 
+  /* ---- Box ringkasan Ads Sponsorship di drawer (total dulu, rincian kalau dibuka) ---- */
+  .ads-sum {
+    border: 1px solid var(--border-softer); border-left: 3px solid var(--color-cerulean);
+    border-radius: 8px; background: var(--bg-tint); padding: 10px 11px; margin-bottom: 8px;
+  }
+  .ads-sum-head {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: none; border: none; padding: 0 0 8px; cursor: pointer;
+    font: inherit; color: var(--color-mineshaft); text-align: left;
+  }
+  .ads-sum-head:focus-visible { outline: 2px solid var(--color-cerulean); outline-offset: 2px; }
+  .ads-sum-caret { color: var(--text-faint); font-size: 10px; width: 12px; flex-shrink: 0; }
+  .ads-sum-title { font-size: 12.5px; font-weight: 700; }
+  .ads-sum-count { font-size: 11px; color: var(--text-muted); }
+  .ads-sum-hint { margin-left: auto; font-size: 10.5px; color: var(--color-cerulean); }
+  /* Penanda "n/total": totalnya masih sebagian karena sebagian campaign belum
+     punya angka. Tanpa ini, total yang belum lengkap terbaca sebagai final. */
+  .ads-sum-partial {
+    font-size: 9px; font-weight: 700; padding: 0 4px; margin-left: 3px;
+    border-radius: 20px; background: var(--warn-tint); color: var(--warn);
+    letter-spacing: 0; text-transform: none;
+  }
+  /* Label sumber per angka — ketiganya TIDAK dari satu tempat (GDV dari GDV
+     Matching, NDV & dana cair dari Ads Progress). */
+  .ads-sum-src { font-size: 9.5px; color: var(--text-faint); margin-top: 2px; }
+
+  .ads-sum-detail {
+    margin-top: 10px; padding-top: 9px;
+    border-top: 1px dashed var(--border-soft);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ads-sum-row { border-left: 2px solid var(--border-soft); padding-left: 9px; }
+  .ads-sum-link { font-size: 12px; font-weight: 600; word-break: break-all; }
+  .ads-sum-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+  .ads-sum-nums {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 6px 12px; margin-top: 6px;
+  }
+  .ads-sum-nums span {
+    font-family: var(--font-mono); font-size: 11.5px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .ads-sum-nums em {
+    display: block; font-family: var(--font-sans, inherit); font-style: normal;
+    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--text-faint); font-weight: 700;
+  }
+
   /* Tab pemilih skema di drawer Input GDV — satu project bisa punya
      CSR & Ads Sponsorship sekaligus; tab menjaga drawer tetap pendek
      dibanding menumpuk semua skema vertikal. */

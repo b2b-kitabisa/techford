@@ -29,6 +29,25 @@ var AdsProgressRepository = (function (module) {
 
   var base = new BaseRepository(Config.SHEETS.ADS_PROGRESS, Config.getGdvControllerSpreadsheet);
 
+  var HEADERS = ['Snapshot_At', 'Account_Name', 'Short_Url', 'Campaign_Id',
+    'Current_Gdv', 'Current_Ndv', 'Active_Wallet_Amount', 'Project_Status', 'Upload_Log_Id'];
+
+  /**
+   * Tulis baris header kalau sheet-nya masih kosong.
+   *
+   * Kedua tab ini dibuat MANUAL oleh admin (lihat SETUP.md), dan tab yang
+   * dibuat tapi headernya belum diisi adalah kesalahan yang paling mudah
+   * terjadi — akibatnya penulisan gagal di tengah jalan: baris data sudah
+   * masuk, lalu pencatatan log-nya meledak. Ditambal di sini supaya kelas
+   * kegagalan itu hilang, bukan cuma pesannya diperbaiki.
+   *
+   * Sheet yang SUDAH punya header tidak disentuh sama sekali — urutan kolom
+   * bebas dan nama kolom tambahan milik admin tidak boleh ditimpa.
+   */
+  function ensureHeaders() {
+    base.ensureHeaderRow(HEADERS);
+  }
+
   module.findAll = function () {
     return CacheHelper.getOrSet('adsProgress:all', 60, function () {
       return base.findAll();
@@ -45,6 +64,7 @@ var AdsProgressRepository = (function (module) {
 
   /** Tambah baris hasil satu upload. TIDAK menghapus apa pun. */
   module.appendMany = function (rows) {
+    ensureHeaders();
     var written = base.insertMany(rows);
     module.invalidateCache();
     return written;
@@ -61,11 +81,16 @@ var AdsProgressUploadLogRepository = (function (module) {
 
   var base = new BaseRepository(Config.SHEETS.ADS_PROGRESS_UPLOAD_LOG, Config.getGdvControllerSpreadsheet);
 
+  var HEADERS = ['Log_ID', 'Uploaded_At', 'Uploaded_By', 'File_Name',
+    'Account_Names', 'Row_Count', 'Skipped_Count'];
+
   module.findAll = function () {
     return base.findAll();
   };
 
   module.insert = function (row) {
+    // Sama alasannya dengan tab data — lihat catatan ensureHeaders di atas.
+    base.ensureHeaderRow(HEADERS);
     base.insert(row);
   };
 

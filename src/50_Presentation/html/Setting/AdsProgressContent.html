@@ -12,9 +12,11 @@
 
 <div class="filter-bar">
   <div class="search-field"><span class="search-ic">⌕</span><input id="adsMonSearch" placeholder="Cari campaign link, campaign ID, client, atau project..." oninput="onAdsMonFilterChange()"></div>
-  <label class="checkbox-wrap" style="font-size:12px;">
-    <input type="checkbox" id="adsMonUnlinkedOnly" onchange="onAdsMonFilterChange()"> Belum tersambung ke project
-  </label>
+  <select id="adsMonLinkFilter" onchange="onAdsMonFilterChange()">
+    <option value="">Semua campaign</option>
+    <option value="linked">Tersambung ke project</option>
+    <option value="unlinked">Belum tersambung</option>
+  </select>
   <button class="filter-reset" onclick="resetAdsMonFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="adsMonRefreshBtn" onclick="fetchAdsMonitoring()" title="Muat ulang data">🔄 Refresh</button>
 </div>
@@ -113,9 +115,14 @@
 
   function getFilteredAdsMonRows() {
     var q = document.getElementById('adsMonSearch').value.toLowerCase().trim();
-    var unlinkedOnly = document.getElementById('adsMonUnlinkedOnly').checked;
+    // Dropdown, bukan checkbox: "belum tersambung" punya pasangan yang
+    // sama pentingnya ("tersambung"), dan checkbox hanya bisa menyatakan
+    // salah satunya.
+    var linkFilter = document.getElementById('adsMonLinkFilter').value;
     return adsMonRows.filter(function (r) {
-      if (unlinkedOnly && (r.owners || []).length) return false;
+      var tersambung = (r.owners || []).length > 0;
+      if (linkFilter === 'unlinked' && tersambung) return false;
+      if (linkFilter === 'linked' && !tersambung) return false;
       if (!q) return true;
       if (String(r.shortUrl || '').toLowerCase().indexOf(q) !== -1) return true;
       if (String(r.campaignId || '').toLowerCase().indexOf(q) !== -1) return true;
@@ -210,7 +217,7 @@
   function goToAdsMonPage(p) { adsMonPage = p; renderAdsMonitoring(); }
   function resetAdsMonFilter() {
     document.getElementById('adsMonSearch').value = '';
-    document.getElementById('adsMonUnlinkedOnly').checked = false;
+    document.getElementById('adsMonLinkFilter').value = '';
     adsMonPage = 1;
     renderAdsMonitoring();
   }

@@ -66,6 +66,7 @@
     <div id="adsUploadError" class="error"></div>
 
     <div class="ads-strip" id="adsStatusStrip">Memuat status...</div>
+    <div style="margin:-6px 0 12px;"><button type="button" class="filter-reset" style="font-size:11px; padding:3px 8px;" onclick="retryAdsStatus()">🔄 Refresh status</button></div>
 
     <div class="ads-drop" id="adsDropZone">
       <div class="ads-drop-ic" aria-hidden="true">📂</div>
@@ -147,10 +148,36 @@
      itu normal. Kalau baru ketahuan setelah dikirim, sebagian data sudah
      masuk dan tidak jelas bagian mana. */
   var adsStagedFiles = [];      // [{name, content}]
+  // Jumlah baris tersimpan menurut getStatus terakhir. Dipakai sebagai
+  // pembanding untuk memastikan upload benar-benar masuk saat responsnya
+  // tidak sampai (lihat verifikasiUploadAds).
+  var adsRowCountTerakhir = 0;
   var adsCheckResult = null;    // hasil dryRun dari server
 
+  /* Glitch transport google.script.run (res=null walau server-nya sendiri
+     sukses) kadang butuh lebih dari 3 percobaan bawaan gsRunWithRetry —
+     lihat catatan panjang di bootstrapGdvStatus. Inilah penyebab pesan
+     "Status belum bisa dibaca — tidak ada respons" muncul padahal datanya
+     sudah masuk database. Kartu Ads Progress diberi lapisan percobaan yang
+     SAMA supaya tidak lebih rapuh dari kartu di atasnya. */
+  var adsStatusAttempts = 0;
+  var adsStatusSucceeded = false;
+  var ADS_STATUS_MAX_ATTEMPTS = 8;
+  var ADS_STATUS_RETRY_MS = 1500;
+
+  function bootstrapAdsStatus() {
+    adsStatusAttempts++;
+    fetchAdsStatus(function (ok) {
+      if (ok) { adsStatusSucceeded = true; return; }
+      if (adsStatusSucceeded) return;
+      if (adsStatusAttempts < ADS_STATUS_MAX_ATTEMPTS) {
+        setTimeout(bootstrapAdsStatus, ADS_STATUS_RETRY_MS);
+      }
+    });
+  }
+
   function bootstrapAdsProgress() {
-    fetchAdsStatus();
+    bootstrapAdsStatus();
     var input = document.getElementById('adsFileInput');
     if (input) {
       input.addEventListener('change', function (e) {
@@ -174,27 +201,50 @@
     }
   }
 
-  function fetchAdsStatus() {
+  function fetchAdsStatus(onDone) {
     gsRunWithRetry('adsProgress_getStatus', [], function (res) {
       var el = document.getElementById('adsStatusStrip');
-      if (!el) return;
+      if (!el) { if (onDone) onDone(false); return; }
       if (!res || !res.ok) {
-        el.innerHTML = '<span style="color:var(--warn);">Status belum bisa dibaca — ' +
-          esc((res && res.error && res.error.message) || 'tidak ada respons') + '</span>';
+        // Selama masih ada percobaan tersisa, JANGAN tulis pesan error —
+        // kalau ditulis, user melihat "gagal" padahal percobaan berikutnya
+        // beberapa detik kemudian berhasil.
+        if (res && res.error) {
+          el.innerHTML = '<span style="color:var(--warn);">Status belum bisa dibaca — ' +
+            esc(res.error.message) + '</span>';
+        } else if (adsStatusAttempts >= ADS_STATUS_MAX_ATTEMPTS) {
+          el.innerHTML = '<span style="color:var(--warn);">Status belum bisa dibaca setelah ' +
+            ADS_STATUS_MAX_ATTEMPTS + ' percobaan. Klik Refresh untuk mencoba lagi.</span>';
+        } else {
+          el.innerText = 'Memuat status...';
+        }
+        if (onDone) onDone(false);
         return;
       }
       var d = res.data;
+      adsRowCountTerakhir = d.rowCount || 0;
       if (!d.lastUpload) {
         el.innerHTML = '<span>Belum pernah ada upload Ads Sponsorship Progress.</span>';
+        if (onDone) onDone(true);
         return;
       }
       el.innerHTML = '<span>Terakhir diupload</span><span class="mono">' + esc(formatAdsDate(d.lastUpload.uploadedAt)) +
         '</span><span>oleh</span><span class="mono">' + esc(d.lastUpload.uploadedBy || '-') + '</span>' +
         '<span class="pill neutral">' + d.rowCount + ' baris tersimpan</span>';
+      if (onDone) onDone(true);
     }, function () {
       var el = document.getElementById('adsStatusStrip');
-      if (el) el.innerText = 'Status belum bisa dibaca.';
+      if (el && adsStatusAttempts >= ADS_STATUS_MAX_ATTEMPTS) el.innerText = 'Status belum bisa dibaca.';
+      if (onDone) onDone(false);
     });
+  }
+
+  /** Refresh manual: nolkan hitungan percobaan supaya lapisan retry hidup lagi. */
+  function retryAdsStatus() {
+    adsStatusAttempts = 0;
+    adsStatusSucceeded = false;
+    document.getElementById('adsStatusStrip').innerText = 'Memuat status...';
+    bootstrapAdsStatus();
   }
 
   function formatAdsDate(v) {
@@ -345,32 +395,89 @@
     btn.disabled = true;
     btn.innerText = 'Mengupload...';
     TechfordLoading.show('Menyimpan Ads Sponsorship Progress...');
+    // Pembanding untuk verifikasi kalau responsnya tidak sampai.
+    var barisSebelum = adsRowCountTerakhir;
 
     var uploadedBy = (TechfordAuth.getCurrentUser() || {}).Email ||
       (TechfordAuth.getCurrentUser() || {}).Name || '';
 
-    gsRunWithRetry('adsProgress_uploadFiles', [kirim, uploadedBy], function (res) {
-      TechfordLoading.hide();
-      btn.disabled = false;
+    // SENGAJA google.script.run MENTAH, bukan gsRunWithRetry.
+    //
+    // gsRunWithRetry mengulang panggilan kalau responsnya kosong — perilaku
+    // yang benar untuk operasi BACA, tapi berbahaya untuk operasi TULIS:
+    // penulisan yang sebenarnya sudah berhasil tapi responsnya hilang di
+    // perjalanan akan ditulis ULANG oleh percobaan berikutnya, dan karena tab
+    // ini append-only hasilnya snapshot ganda tanpa ada yang sadar.
+    //
+    // Jadi di sini tidak ada pengulangan. Kalau responsnya tidak sampai, yang
+    // dilakukan adalah MEMERIKSA keadaan sebenarnya, bukan menyimpulkan gagal
+    // — persis kasus yang dilaporkan: data sudah masuk database tapi UI
+    // menuliskan "Gagal upload".
+    var selesai = function () { TechfordLoading.hide(); btn.disabled = false; };
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        selesai();
+        if (res && res.ok) {
+          renderAdsUploadResult(res.data);
+          adsStagedFiles = [];
+          adsCheckResult = null;
+          document.getElementById('adsFileList').innerHTML = '';
+          document.getElementById('adsActions').style.display = 'none';
+          fetchAdsStatus();
+          TechfordToast.show(res.data.totalRows + ' baris Ads Sponsorship Progress tersimpan.');
+          return;
+        }
+        // Server menjawab tapi menolak — ini kegagalan yang PASTI, jadi boleh
+        // dinyatakan tegas.
+        if (res && res.error) {
+          renderAdsFileList();
+          document.getElementById('adsUploadError').innerText =
+            'Gagal upload — [' + res.error.code + '] ' + res.error.message;
+          return;
+        }
+        verifikasiUploadAds(barisSebelum);
+      })
+      .withFailureHandler(function () { selesai(); verifikasiUploadAds(barisSebelum); })
+      .adsProgress_uploadFiles(kirim, uploadedBy);
+  }
+
+  /**
+   * Respons upload tidak sampai — periksa keadaan sebenarnya sebelum bicara.
+   *
+   * Membandingkan jumlah baris tersimpan sebelum & sesudah. Kalau bertambah,
+   * datanya MASUK dan yang hilang cuma responsnya; menyebutnya "gagal" akan
+   * mendorong user mengupload ulang dan benar-benar menggandakan data.
+   */
+  function verifikasiUploadAds(barisSebelum) {
+    var errEl = document.getElementById('adsUploadError');
+    errEl.innerText = 'Respons server tidak sampai — memeriksa apakah datanya sudah tersimpan...';
+
+    gsRunWithRetry('adsProgress_getStatus', [], function (res) {
       if (!res || !res.ok) {
+        errEl.innerText = 'Respons server tidak sampai, dan status juga belum bisa dibaca. ' +
+          'JANGAN upload ulang dulu — cek dulu halaman Ads Sponsorship Progress untuk memastikan.';
         renderAdsFileList();
-        document.getElementById('adsUploadError').innerText =
-          'Gagal upload — ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server.');
         return;
       }
-      renderAdsUploadResult(res.data);
-      adsStagedFiles = [];
-      adsCheckResult = null;
-      document.getElementById('adsFileList').innerHTML = '';
-      document.getElementById('adsActions').style.display = 'none';
-      fetchAdsStatus();
-      TechfordToast.show(res.data.totalRows + ' baris Ads Sponsorship Progress tersimpan.');
-    }, function (err) {
-      TechfordLoading.hide();
-      btn.disabled = false;
+      var sekarang = res.data.rowCount || 0;
+      if (sekarang > barisSebelum) {
+        errEl.innerText = '';
+        adsStagedFiles = [];
+        adsCheckResult = null;
+        document.getElementById('adsFileList').innerHTML = '';
+        document.getElementById('adsActions').style.display = 'none';
+        fetchAdsStatus();
+        TechfordToast.show('Data tersimpan (' + (sekarang - barisSebelum) +
+          ' baris masuk). Respons server tadi tidak sampai, tapi datanya aman.');
+        return;
+      }
+      errEl.innerText = 'Upload tidak tersimpan (jumlah baris tidak bertambah). Silakan coba lagi.';
       renderAdsFileList();
-      document.getElementById('adsUploadError').innerText =
-        'Gagal upload: ' + (err && err.message ? err.message : err);
+    }, function () {
+      errEl.innerText = 'Respons server tidak sampai, dan status juga belum bisa dibaca. ' +
+        'JANGAN upload ulang dulu — cek dulu halaman Ads Sponsorship Progress untuk memastikan.';
+      renderAdsFileList();
     });
   }
 

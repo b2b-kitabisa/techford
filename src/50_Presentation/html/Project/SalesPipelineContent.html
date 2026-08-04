@@ -78,9 +78,19 @@
     </div>
   </div>
 
-  <select id="pipelineConsultantFilter" onchange="onPipelineFilterChange()">
-    <option value="">Consultant</option>
-  </select>
+  <!-- Multi-select, pola sama dengan filter Stage di sebelahnya. Satu
+       consultant per filter tidak cukup: pertanyaan yang paling sering
+       muncul adalah "pipeline tim saya" yang berisi beberapa orang. -->
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="pipelineConsultantFilterBtn" onclick="toggleConsultantFilterDropdown()">Consultant ▾</button>
+    <div class="status-filter-dropdown" id="pipelineConsultantFilterDropdown">
+      <div class="status-filter-actions">
+        <button type="button" onclick="setAllConsultantFilter(true)">Pilih Semua</button>
+        <button type="button" onclick="setAllConsultantFilter(false)">Bersihkan</button>
+      </div>
+      <div id="pipelineConsultantFilterOptions"></div>
+    </div>
+  </div>
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="pipelineStageFilterBtn" onclick="toggleStageFilterDropdown()">Stage ▾</button>
@@ -104,6 +114,7 @@
 <div class="filter-chips" id="pipelineFilterChips" style="display:none;"></div>
 
 <div id="pipelineTableError" class="error"></div>
+<div id="pipelineFetchWarning" class="gdv-alias-warning" style="display:none;"></div>
 
 <div class="table-scroll">
   <table class="data-table">
@@ -633,6 +644,9 @@
   //   gdvRetainerEditing di atas, dan ikut digeser saat ada baris dihapus).
   var gdvViewTerminExpanded = {};
   var gdvRetainerTerminExpanded = {};
+  // Box ringkasan Ads Sponsorship terbuka/tertutup. Satu penanda saja
+  // (bukan per-link) karena box-nya memang satu untuk seluruh project.
+  var adsSummaryExpanded = false;
 
   /* ============================================================
      DRAFT GDV YANG BELUM DISIMPAN
@@ -908,9 +922,67 @@
     });
   }
 
+  /**
+   * Kegagalan fetch pendukung dilaporkan, bukan ditelan.
+   *
+   * Keenam fetch pendukung (Client, Consultant, taxonomy Project/Dokumen,
+   * Dokumen, Revenue Breakdown) dulu memakai google.script.run MENTAH dengan
+   * withFailureHandler(function () {}) — handler kosong, TANPA retry. Padahal
+   * transport google.script.run memang sesekali menelan panggilan pertama
+   * setelah halaman baru dibuka; itulah alasan gsRunWithRetry ada.
+   *
+   * Akibatnya: satu glitch di panggilan pertama = daftar itu tidak pernah
+   * termuat sepanjang umur halaman. Dropdown Consultant di filter, Consultant
+   * di Add/Lengkapi Pipeline, dan Client di Add New Pipeline tampak kosong
+   * begitu saja, dan satu-satunya jalan keluar adalah refresh manual — tanpa
+   * ada pesan apa pun yang menjelaskan.
+   *
+   * Sekarang semuanya lewat gsRunWithRetry, dan kalau tetap gagal setelah
+   * semua percobaan, ditampilkan strip peringatan dengan tombol coba lagi.
+   * Diam bukan pilihan: data yang tidak termuat DAN tidak dilaporkan terlihat
+   * persis seperti data yang memang kosong.
+   */
+  var pipelineFetchFailures = {};
+
+  function reportPipelineFetchFailure(label, err) {
+    pipelineFetchFailures[label] = (err && err.message ? err.message : String(err || 'tidak ada respons'));
+    renderPipelineFetchWarning();
+  }
+
+  function clearPipelineFetchFailure(label) {
+    if (!pipelineFetchFailures[label]) return;
+    delete pipelineFetchFailures[label];
+    renderPipelineFetchWarning();
+  }
+
+  function renderPipelineFetchWarning() {
+    var el = document.getElementById('pipelineFetchWarning');
+    if (!el) return;
+    var labels = Object.keys(pipelineFetchFailures);
+    if (!labels.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = '';
+    el.innerHTML = '<strong>⚠ Sebagian data pendukung gagal dimuat:</strong> ' +
+      labels.map(function (l) { return escHtml(l); }).join(', ') +
+      '. Dropdown atau kolom yang mengandalkannya bisa tampak kosong. ' +
+      '<button type="button" class="btn-outline btn-xs" onclick="retryPipelineSupportFetches()">Coba lagi</button>';
+  }
+
+  function retryPipelineSupportFetches() {
+    var labels = Object.keys(pipelineFetchFailures);
+    pipelineFetchFailures = {};
+    renderPipelineFetchWarning();
+    // Semua di-coba ulang, bukan cuma yang gagal — lebih sederhana, dan yang
+    // sudah berhasil pun tidak rugi dimuat ulang (halaman ini memang
+    // "load once, filter local").
+    if (labels.length) {
+      fetchClients(); fetchEmployees(); fetchTaxonomy();
+      fetchDocuments(); fetchDocumentTaxonomy(); fetchRevenueBreakdown();
+    }
+  }
+
   function fetchClients() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('client_getAll', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('daftar Client');
         if (!res || !res.ok) return;
         pClientsLoaded = true;
         allClients = res.data;
@@ -921,27 +993,35 @@
         // edit project, dst). Render ulang di sini supaya tidak perlu
         // menunggu trigger lain atau refresh manual.
         renderPipeline();
-      })
-      .withFailureHandler(function () {})
-      .client_getAll();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat daftar Client
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('daftar Client', err);
+    });
   }
 
   function fetchEmployees() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('employee_listAdmins', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('daftar Consultant');
         if (res && res.ok) {
           pEmployeesLoaded = true;
           allEmployees = res.data;
           populateConsultantDropdowns();
         }
-      })
-      .withFailureHandler(function () {})
-      .employee_listAdmins();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat daftar Consultant
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('daftar Consultant', err);
+    });
   }
 
   function fetchTaxonomy() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('project_getTaxonomy', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('taxonomy Project');
         if (res && res.ok) {
           pTaxonomyLoaded = true;
           taxonomy = res.data;
@@ -967,14 +1047,18 @@
           // begitu taxonomy siap, tidak menunggu trigger lain.
           renderPipeline();
         }
-      })
-      .withFailureHandler(function () {})
-      .project_getTaxonomy();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat taxonomy Project
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('taxonomy Project', err);
+    });
   }
 
   function fetchDocuments() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('document_getAll', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('daftar Dokumen');
         if (!res || !res.ok) return;
         pDocumentsLoaded = true;
         allDocuments = res.data;
@@ -991,14 +1075,18 @@
             renderDocumentRequestRows(currentPipelineDrawerId);
           }
         }
-      })
-      .withFailureHandler(function () {})
-      .document_getAll();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat daftar Dokumen
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('daftar Dokumen', err);
+    });
   }
 
   function fetchDocumentTaxonomy() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('document_getTaxonomy', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('taxonomy Dokumen');
         if (!res || !res.ok) return;
         pDocTaxonomyLoaded = true;
         docTaxonomy = res.data;
@@ -1011,14 +1099,18 @@
             renderDocumentRequestRows(currentPipelineDrawerId);
           }
         }
-      })
-      .withFailureHandler(function () {})
-      .document_getTaxonomy();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat taxonomy Dokumen
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('taxonomy Dokumen', err);
+    });
   }
 
   function fetchRevenueBreakdown() {
-    google.script.run
-      .withSuccessHandler(function (res) {
+    gsRunWithRetry('project_getRevenueBreakdown', [], function (res) {
+      if (res && res.ok) clearPipelineFetchFailure('Revenue Breakdown');
         if (!res || !res.ok) return;
         pRevenueLoaded = true;
         allRevenueBreakdown = res.data;
@@ -1032,9 +1124,13 @@
           // supaya ketikan yang belum disimpan tidak tertimpa.
           if (openProject && !isAnyStackedDrawerOpen()) renderRevenueBreakdown(openProject);
         }
-      })
-      .withFailureHandler(function () {})
-      .project_getRevenueBreakdown();
+    }, function (err) {
+      // TIDAK lagi ditelan diam-diam. Dulu handler-nya kosong DAN tanpa retry,
+      // sehingga satu glitch transport di panggilan pertama membuat Revenue Breakdown
+      // tidak pernah termuat — dropdown kosong sampai user refresh manual,
+      // tanpa satu pun petunjuk kenapa.
+      reportPipelineFetchFailure('Revenue Breakdown', err);
+    });
   }
 
   // Jaring pengaman manual — halaman ini "Load Once, Filter Local" (fetch
@@ -1086,10 +1182,7 @@
     var consultants = getConsultants();
     var options = consultants.map(function (e) { return '<option value="' + e.Name + '">' + e.Name + '</option>'; }).join('');
 
-    var filterSelect = document.getElementById('pipelineConsultantFilter');
-    var filterCurrent = filterSelect.value;
-    filterSelect.innerHTML = '<option value="">Consultant</option>' + options;
-    if (filterCurrent) filterSelect.value = filterCurrent;
+    renderConsultantFilterDropdown();
 
     document.getElementById('newConsultant').innerHTML = '<option value="">Consultant</option>' + options;
     document.getElementById('editConsultant').innerHTML = '<option value="">Pilih Consultant...</option>' + options;
@@ -1236,7 +1329,7 @@
     var search = document.getElementById('pipelineSearch').value.toLowerCase().trim();
     var dateFrom = document.getElementById('pipelineDateFrom').value;
     var dateTo = document.getElementById('pipelineDateTo').value;
-    var consultant = document.getElementById('pipelineConsultantFilter').value;
+    var consultants = pipelineConsultantFilterValues;
     var retainerOnly = document.getElementById('pipelineRetainerFilter').checked;
 
     return allProjects.filter(function (p) {
@@ -1260,7 +1353,8 @@
       var createdTime = new Date(p.Created_Date).getTime();
       var matchesFrom = !dateFrom || createdTime >= new Date(dateFrom).getTime();
       var matchesTo = !dateTo || createdTime <= new Date(dateTo + 'T23:59:59').getTime();
-      var matchesConsultant = !consultant || p.Consultant === consultant;
+      // Kosong = tanpa filter (sama seperti filter Stage), bukan 'tidak ada\n      // yang cocok' — kalau tidak, membersihkan semua pilihan akan\n      // mengosongkan tabel dan terlihat seperti data hilang.
+      var matchesConsultant = !consultants.length || consultants.indexOf(p.Consultant) !== -1;
       var matchesStage = !pipelineStageFilterValues.length || pipelineStageFilterValues.indexOf(p.Stage) !== -1;
       var matchesRetainer = !retainerOnly || !!p.Is_Retainer;
 
@@ -1348,7 +1442,8 @@
     document.getElementById('pipelineSearch').value = '';
     document.getElementById('pipelineDateFrom').value = '';
     document.getElementById('pipelineDateTo').value = '';
-    document.getElementById('pipelineConsultantFilter').value = '';
+    pipelineConsultantFilterValues = [];
+    renderConsultantFilterDropdown();
     document.getElementById('pipelineRetainerFilter').checked = false;
     pipelineStageFilterValues = [];
     renderStageFilterDropdown();
@@ -1369,7 +1464,7 @@
     var search = document.getElementById('pipelineSearch').value.trim();
     var dateFrom = document.getElementById('pipelineDateFrom').value;
     var dateTo = document.getElementById('pipelineDateTo').value;
-    var consultant = document.getElementById('pipelineConsultantFilter').value;
+    var consultants = pipelineConsultantFilterValues;
     var retainerOnly = document.getElementById('pipelineRetainerFilter').checked;
 
     if (search) list.push({ key: 'search', label: 'Cari: "' + search + '"' });
@@ -1379,7 +1474,11 @@
         label: (dateFrom ? formatDate(dateFrom) : 'awal') + ' – ' + (dateTo ? formatDate(dateTo) : 'sekarang')
       });
     }
-    if (consultant) list.push({ key: 'consultant', label: 'Consultant: ' + consultant });
+    if (consultants.length) {
+      list.push({ key: 'consultant', label: consultants.length === 1
+        ? 'Consultant: ' + consultants[0]
+        : 'Consultant: ' + consultants.length + ' dipilih' });
+    }
     if (pipelineStageFilterValues.length) {
       list.push({ key: 'stage', label: 'Stage: ' + pipelineStageFilterValues.join(', ') });
     }
@@ -1393,7 +1492,7 @@
       document.getElementById('pipelineDateFrom').value = '';
       document.getElementById('pipelineDateTo').value = '';
     }
-    if (key === 'consultant') document.getElementById('pipelineConsultantFilter').value = '';
+    if (key === 'consultant') { pipelineConsultantFilterValues = []; renderConsultantFilterDropdown(); }
     if (key === 'retainer') document.getElementById('pipelineRetainerFilter').checked = false;
     if (key === 'stage') {
       pipelineStageFilterValues = [];
@@ -1462,6 +1561,33 @@
   // <input type="date"> hanya menerima YYYY-MM-DD dalam waktu LOKAL —
   // toISOString() akan menggeser tanggal untuk zona waktu Indonesia (UTC+7)
   // dan bisa memilih tanggal 1 hari lebih awal.
+  /**
+   * Normalkan nilai tanggal apa pun jadi "yyyy-mm-dd" untuk <input type="date">.
+   *
+   * INI PERBAIKAN BUG "tanggal termin hilang saat diedit". Entry_Date disimpan
+   * ke Sheets sebagai string yyyy-mm-dd, TAPI saat dibaca kembali Sheets
+   * mengubahnya jadi objek Date — dan google.script.run mengirimkannya ke
+   * klien tetap sebagai Date. Dulu nilainya dipakai apa adanya:
+   *
+   *     <input type="date" value="Mon Aug 03 2026 00:00:00 GMT+0700 (...)">
+   *
+   * Format itu tidak dikenali input[type=date], jadi browser diam-diam
+   * menampilkannya KOSONG — tanggalnya sebenarnya tidak hilang dari database,
+   * cuma tidak bisa ditampilkan. Lebih buruk lagi: karena tampil kosong, SAVE
+   * berikutnya benar-benar menyimpan kosong dan tanggalnya hilang sungguhan.
+   *
+   * Menerima Date, string ISO, "yyyy-mm-dd", maupun kosong.
+   */
+  function toDateInputSafe(value) {
+    if (value === null || value === undefined || value === '') return '';
+    // Sudah dalam format yang benar — jangan diproses lagi (melewatkannya ke
+    // new Date() akan menggeser tanggal karena diperlakukan sebagai UTC).
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    var d = (value && typeof value.getTime === 'function') ? value : new Date(value);
+    if (!d || isNaN(d.getTime())) return '';
+    return toDateInputValue(d);
+  }
+
   function toDateInputValue(d) {
     var m = String(d.getMonth() + 1);
     var day = String(d.getDate());
@@ -1731,6 +1857,54 @@
     renderStageFilterDropdown();
     onPipelineFilterChange();
   }
+  /* ---- Filter Consultant (multi-select) ----
+     Nilai yang dipilih disimpan di array, bukan di DOM, supaya pilihan user
+     tidak hilang setiap kali daftar consultant di-render ulang (dan itu
+     terjadi dua kali saat bootstrap: begitu employee datang, lalu lagi
+     begitu taxonomy datang). */
+  var pipelineConsultantFilterValues = [];
+
+  function renderConsultantFilterDropdown() {
+    var container = document.getElementById('pipelineConsultantFilterOptions');
+    if (!container) return;
+    var names = getConsultants().map(function (e) { return e.Name; });
+    // Pilihan yang consultant-nya sudah tidak ada di daftar dibuang, supaya
+    // filter tidak diam-diam menyaring pakai nama yang tak bisa dilihat lagi.
+    pipelineConsultantFilterValues = pipelineConsultantFilterValues.filter(function (v) {
+      return names.indexOf(v) !== -1;
+    });
+    container.innerHTML = names.length
+      ? names.map(function (name) {
+          var checked = pipelineConsultantFilterValues.indexOf(name) !== -1 ? 'checked' : '';
+          return '<label><input type="checkbox" value="' + escAttr(name) + '" ' + checked +
+            ' onchange="onConsultantFilterToggle(this)"> ' + escHtml(name) + '</label>';
+        }).join('')
+      : '<div class="placeholder-note" style="margin:0;">Daftar consultant belum termuat.</div>';
+    updateConsultantFilterButtonLabel();
+  }
+  function onConsultantFilterToggle(checkbox) {
+    var idx = pipelineConsultantFilterValues.indexOf(checkbox.value);
+    if (checkbox.checked && idx === -1) pipelineConsultantFilterValues.push(checkbox.value);
+    if (!checkbox.checked && idx !== -1) pipelineConsultantFilterValues.splice(idx, 1);
+    updateConsultantFilterButtonLabel();
+    onPipelineFilterChange();
+  }
+  function setAllConsultantFilter(selectAll) {
+    pipelineConsultantFilterValues = selectAll ? getConsultants().map(function (e) { return e.Name; }) : [];
+    renderConsultantFilterDropdown();
+    onPipelineFilterChange();
+  }
+  function updateConsultantFilterButtonLabel() {
+    var btn = document.getElementById('pipelineConsultantFilterBtn');
+    if (!btn) return;
+    var n = pipelineConsultantFilterValues.length;
+    btn.innerText = n ? 'Consultant (' + n + ') ▾' : 'Consultant ▾';
+    btn.classList.toggle('has-value', n > 0);
+  }
+  function toggleConsultantFilterDropdown() {
+    document.getElementById('pipelineConsultantFilterDropdown').classList.toggle('open');
+  }
+
   function updateStageFilterButtonLabel() {
     var btn = document.getElementById('pipelineStageFilterBtn');
     var count = pipelineStageFilterValues.length;
@@ -1742,7 +1916,7 @@
   }
 
   document.addEventListener('click', function (e) {
-    ['pipelineDateFilterDropdown', 'pipelineStageFilterDropdown'].forEach(function (id) {
+    ['pipelineDateFilterDropdown', 'pipelineStageFilterDropdown', 'pipelineConsultantFilterDropdown'].forEach(function (id) {
       var dropdown = document.getElementById(id);
       var btn = document.getElementById(id.replace('Dropdown', 'Btn'));
       if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && e.target !== btn) {
@@ -3300,7 +3474,7 @@
           savedGdvRows.filter(function (r) { return r.Source_Service === 'CSR'; }).forEach(function (r) {
             var link = r.Item_Name || '';
             if (!byLink[link]) { byLink[link] = []; linkOrder.push(link); }
-            byLink[link].push({ amount: Number(r.Amount) || 0, notes: r.Notes || '', date: r.Entry_Date || '' });
+            byLink[link].push({ amount: Number(r.Amount) || 0, notes: r.Notes || '', date: toDateInputSafe(r.Entry_Date) });
           });
           editGdvRetainerLinks = linkOrder.map(function (link) { return { link: link, entries: byLink[link] }; });
         }
@@ -3371,23 +3545,26 @@
         });
       });
     }
-    if (hasAds) {
-      editGdvAdsCampaigns.filter(function (c) { return String(c.link || '').trim(); }).forEach(function (c) {
-        // Ads Sponsorship tidak punya nominal yang diinput consultant —
-        // angkanya datang dari Ads Sponsorship Progress dan ditampilkan
-        // sebagai tiga metrik di bawah baris ini, bukan satu nominal di kanan.
-        items.push({ link: c.link, amount: 0, showAmount: false, scheme: 'Ads Sponsorship', sub: '' });
-      });
-    }
+    // Ads Sponsorship SENGAJA tidak masuk `items`. Satu project bisa mencatat
+    // belasan campaign Ads, dan menampilkan tiga metrik untuk masing-masing
+    // membuat drawer sangat panjang tanpa memberi angka yang paling dicari:
+    // TOTALNYA. Jadi Ads disajikan sebagai satu box ringkasan yang bisa
+    // dibuka untuk melihat rinciannya — lihat renderAdsSummaryBox.
+    var adsLinks = hasAds
+      ? editGdvAdsCampaigns.map(function (c) { return String(c.link || '').trim(); })
+          .filter(function (l) { return l; })
+      : [];
+
+    var adsHtml = renderAdsSummaryBox(adsLinks);
 
     if (!items.length) {
-      container.innerHTML = (hasCsr || hasAds)
+      container.innerHTML = adsHtml || ((hasCsr || hasAds)
         ? '<div class="empty-hint"><span class="eh-ic">📊</span>Belum ada campaign GDV dicatat.<br>Klik <strong>EDIT GDV</strong> di bawah untuk menambahkan.</div>'
-        : '';
+        : '');
       return;
     }
 
-    container.innerHTML = '<div class="vlist">' + items.map(function (it) {
+    container.innerHTML = adsHtml + '<div class="vlist">' + items.map(function (it) {
       var badge = gdvSyncBadgeHtml(it.link);
       // Ads Progress hanya relevan untuk skema Ads Sponsorship — memunculkan
       // badge-nya di baris CSR akan menyiratkan hubungan yang tidak ada.
@@ -3446,6 +3623,103 @@
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  /**
+   * Box ringkasan Ads Sponsorship: total dulu, rincian per campaign kalau
+   * dibuka.
+   *
+   * PENTING SOAL SUMBER ANGKA — ketiganya TIDAK dari satu tempat:
+   * - Total GDV diambil dari GDV Matching (realizedNominal / "GDV Actual"),
+   *   sesuai keputusan produk: itulah angka realisasi yang dipakai
+   *   rekonsiliasi, jadi total di box ini harus cocok dengan yang terlihat di
+   *   halaman GDV Matching.
+   * - Total NDV & Dana yang Bisa Dicairkan dari Ads Sponsorship Progress,
+   *   karena GDV Matching tidak punya kedua angka itu sama sekali.
+   *
+   * Karena bercampur, setiap angka diberi label sumbernya. Menjumlahkan dua
+   * sumber tanpa keterangan adalah cara tercepat membuat orang berhenti
+   * percaya pada angkanya.
+   *
+   * Campaign yang datanya belum ada TIDAK dihitung sebagai nol — jumlah
+   * campaign yang terhitung ditampilkan apa adanya, supaya total yang masih
+   * sebagian tidak disalahbaca sebagai total final.
+   */
+  function renderAdsSummaryBox(links) {
+    if (!links || !links.length) return '';
+
+    var totalGdv = 0, totalNdv = 0, totalWallet = 0;
+    var nGdv = 0, nNdv = 0, nWallet = 0;
+    links.forEach(function (link) {
+      var g = gdvSyncStatusByLink[link];
+      if (g && g.hasRealized) { totalGdv += Number(g.realizedNominal) || 0; nGdv++; }
+      var a = adsProgressByLink[link];
+      if (a && a.found) {
+        if (a.currentNdv !== null && a.currentNdv !== undefined && a.currentNdv !== '') { totalNdv += Number(a.currentNdv) || 0; nNdv++; }
+        if (a.activeWalletAmount !== null && a.activeWalletAmount !== undefined && a.activeWalletAmount !== '') { totalWallet += Number(a.activeWalletAmount) || 0; nWallet++; }
+      }
+    });
+
+    var terbuka = !!adsSummaryExpanded;
+    var jumlahLabel = function (n) {
+      return n === links.length ? '' :
+        '<span class="ads-sum-partial" title="' + escAttr(n + ' dari ' + links.length +
+          ' campaign punya angka ini. Sisanya belum ada datanya, dan TIDAK dihitung sebagai nol.') +
+          '">' + n + '/' + links.length + '</span>';
+    };
+
+    var rincian = '';
+    if (terbuka) {
+      rincian = '<div class="ads-sum-detail">' + links.map(function (link) {
+        var g = gdvSyncStatusByLink[link];
+        var a = adsProgressByLink[link];
+        var sel = function (v) {
+          return (v === null || v === undefined || v === '')
+            ? '<span class="ap-empty">belum ada data</span>' : formatRupiah(v);
+        };
+        return '<div class="ads-sum-row">' +
+          '<div class="ads-sum-link mono">' + escHtml(link) +
+          '<button type="button" class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(\'' + escAttr(link) + '\', this)" title="Salin campaign link">⧉</button>' +
+          '</div>' +
+          '<div class="ads-sum-badges">' +
+          '<span class="vl-badge-src">GDV Matching</span>' + (gdvSyncBadgeHtml(link) || '<span class="pill neutral">—</span>') +
+          '<span class="vl-badge-src">Ads Progress</span>' + (adsProgressBadgeHtml(link) || '<span class="pill neutral">—</span>') +
+          '</div>' +
+          '<div class="ads-sum-nums">' +
+          '<span><em>GDV Actual</em>' + ((g && g.hasRealized) ? formatRupiah(g.realizedNominal) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
+          '<span><em>NDV</em>' + (a && a.found ? sel(a.currentNdv) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
+          '<span><em>Dana Cair</em>' + (a && a.found ? sel(a.activeWalletAmount) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
+          '</div>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    return '<div class="ads-sum accent-ads">' +
+      '<button type="button" class="ads-sum-head" onclick="toggleAdsSummary()" aria-expanded="' + (terbuka ? 'true' : 'false') + '">' +
+      '<span class="ads-sum-caret">' + (terbuka ? '▾' : '▸') + '</span>' +
+      '<span class="ads-sum-title">Ads Sponsorship</span>' +
+      '<span class="ads-sum-count">' + links.length + ' campaign</span>' +
+      '<span class="ads-sum-hint">' + (terbuka ? 'sembunyikan rincian' : 'lihat rincian') + '</span>' +
+      '</button>' +
+      '<div class="ap-metrics">' +
+      '<div class="ap-cell"><div class="ap-lbl">Total GDV Actual ' + jumlahLabel(nGdv) + '</div>' +
+        '<div class="ap-val">' + formatRupiah(totalGdv) + '</div>' +
+        '<div class="ads-sum-src">dari GDV Matching</div></div>' +
+      '<div class="ap-cell"><div class="ap-lbl">Total NDV Saat Ini ' + jumlahLabel(nNdv) + '</div>' +
+        '<div class="ap-val">' + formatRupiah(totalNdv) + '</div>' +
+        '<div class="ads-sum-src">dari Ads Progress</div></div>' +
+      '<div class="ap-cell ap-hl"><div class="ap-lbl">Total Dana yang Bisa Dicairkan ' + jumlahLabel(nWallet) + '</div>' +
+        '<div class="ap-val">' + formatRupiah(totalWallet) + '</div>' +
+        '<div class="ads-sum-src">dari Ads Progress</div></div>' +
+      '</div>' +
+      rincian +
+      '</div>';
+  }
+
+  function toggleAdsSummary() {
+    adsSummaryExpanded = !adsSummaryExpanded;
+    var project = currentProjectOrNull();
+    if (project) renderGdvViewList(hasCsrService(project), hasAdsService(project), !!project.Is_Retainer);
   }
 
   /**

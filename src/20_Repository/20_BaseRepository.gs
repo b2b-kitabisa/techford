@@ -65,9 +65,46 @@ BaseRepository.prototype.findOneBy = function (predicateFn) {
  * Insert baris baru. Urutan value HARUS mengikuti urutan header row 1.
  * @param {Object} rowObject - object dengan key sesuai nama header sheet.
  */
+/**
+ * Baris header sheet, dengan pesan yang bisa ditindaklanjuti kalau kosong.
+ *
+ * Sheet yang ADA tapi belum punya baris header bikin getLastColumn() = 0,
+ * dan getRange(1, 1, 1, 0) melempar "The number of columns in the range must
+ * be at least 1" — pesan yang sama sekali tidak menyebut sheet mana yang
+ * bermasalah. Karena sheet baru memang dibuat manual oleh admin (lihat
+ * SETUP.md), justru inilah kesalahan yang paling sering terjadi, jadi
+ * pesannya harus langsung menunjuk penyebabnya.
+ */
+/**
+ * Isi baris pertama dengan header yang diharapkan HANYA kalau sheet-nya masih
+ * benar-benar kosong. Sheet yang sudah punya header tidak disentuh — urutan
+ * kolom bebas, dan kolom tambahan milik admin tidak boleh ditimpa.
+ *
+ * @param {string[]} headers
+ * @returns {boolean} true kalau header baru saja ditulis.
+ */
+BaseRepository.prototype.ensureHeaderRow = function (headers) {
+  var sheet = this._getSheet();
+  if (sheet.getLastColumn() > 0) return false;
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  Log.info('BaseRepository', 'Baris header dibuat otomatis untuk sheet "' + this.sheetName + '".');
+  return true;
+};
+
+BaseRepository.prototype._headerRow = function () {
+  var sheet = this._getSheet();
+  var lastCol = sheet.getLastColumn();
+  if (!lastCol) {
+    throw new AppError('SHEET_HEADER_MISSING',
+      'Sheet "' + this.sheetName + '" belum punya baris header. Isi baris pertama ' +
+      'dengan nama-nama kolom sesuai SETUP.md, lalu coba lagi.');
+  }
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+};
+
 BaseRepository.prototype.insert = function (rowObject) {
   var sheet = this._getSheet();
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var headers = this._headerRow();
   var row = headers.map(function (header) {
     return rowObject.hasOwnProperty(header) ? rowObject[header] : '';
   });
@@ -87,7 +124,7 @@ BaseRepository.prototype.insert = function (rowObject) {
 BaseRepository.prototype.insertMany = function (rowObjects) {
   if (!rowObjects || !rowObjects.length) return 0;
   var sheet = this._getSheet();
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var headers = this._headerRow();
 
   var matrix = rowObjects.map(function (obj) {
     return headers.map(function (header) {
