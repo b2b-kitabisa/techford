@@ -95,6 +95,11 @@ var ROUTES = {
     content: '50_Presentation/html/Setting/GdvMatchingContent',
     title: 'GDV Matching',
     headerActions: ''
+  },
+  'ads-progress': {
+    content: '50_Presentation/html/Setting/AdsProgressContent',
+    title: 'Ads Sponsorship Progress',
+    headerActions: ''
   }
 };
 

@@ -43,6 +43,50 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       ADS SPONSORSHIP PROGRESS — kartu upload TERPISAH.
+
+       Sengaja tidak digabung dengan kartu di atas: sumbernya export Tableau
+       yang berbeda, jumlah filenya bebas (bukan wajib 2), dan datanya
+       DITAMBAHKAN sebagai snapshot baru alih-alih menimpa. Menyatukan
+       keduanya berarti satu tombol dengan dua perilaku yang bertolak
+       belakang — timpa vs tambah — dan itu resep salah klik.
+       ============================================================ -->
+  <div class="drawer-section" style="border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-top: 20px;">
+    <h3 style="margin-top:0;">Ads Sponsorship Progress</h3>
+    <p style="font-size:12px; color: var(--text-faint); margin-top:-4px;">
+      Progres <strong>GDV</strong>, <strong>NDV</strong>, dan <strong>Dana yang Bisa Dicairkan</strong> per campaign
+      Ads Sponsorship. Bisa upload <strong>beberapa file sekaligus</strong>, dan datanya
+      <strong>ditambahkan sebagai snapshot baru</strong> — tidak menimpa upload sebelumnya.
+      Header wajib: <code>account_name</code>, <code>short_url</code>, <code>campaign_id</code>,
+      <code>current_gdv</code>, <code>current_ndv</code>, <code>active_wallet_amount</code>,
+      <code>project_status</code> — urutan bebas, pemisah koma maupun tab, UTF-8 maupun UTF-16.
+    </p>
+
+    <div id="adsUploadError" class="error"></div>
+
+    <div class="ads-strip" id="adsStatusStrip">Memuat status...</div>
+
+    <div class="ads-drop" id="adsDropZone">
+      <div class="ads-drop-ic" aria-hidden="true">📂</div>
+      <p class="ads-drop-main">Tarik file ke sini, atau pilih beberapa sekaligus</p>
+      <p class="ads-drop-sub">Bisa satu file atau sepuluh — semuanya masuk dalam satu kali upload.</p>
+      <button type="button" class="btn-save" onclick="document.getElementById('adsFileInput').click()">Pilih File…</button>
+      <!-- multiple: inilah bedanya dari kartu di atas -->
+      <input type="file" id="adsFileInput" multiple accept=".csv,.txt,text/csv,text/plain" style="display:none;">
+    </div>
+
+    <div class="ads-files" id="adsFileList"></div>
+    <div class="ads-actions" id="adsActions" style="display:none;">
+      <button class="btn-save" id="adsUploadBtn" onclick="submitAdsUpload()">⬆ Upload</button>
+      <button class="btn-outline" type="button" onclick="clearAdsFiles()">Kosongkan daftar</button>
+      <span style="flex:1;"></span>
+      <span class="ads-tally" id="adsTally"></span>
+    </div>
+
+    <div id="adsResult" style="display:none;"></div>
+  </div>
+
   <h3 style="margin-top:28px; margin-bottom:8px; font-size:14px;">Riwayat Upload Terakhir</h3>
   <table class="data-table">
     <thead>
@@ -85,6 +129,274 @@
   }
   // WAJIB lewat techfordOnReady — lihat catatan di Shell.html di atas <main>.
   techfordOnReady(bootstrapGdvStatus);
+  techfordOnReady(bootstrapAdsProgress);
+
+  /* ============================================================
+     ADS SPONSORSHIP PROGRESS — upload banyak file
+     ============================================================
+     Alurnya: pilih file -> dibaca di browser -> DIPERIKSA di server tanpa
+     menulis apa pun (dryRun) -> hasil per file ditampilkan -> baru user
+     menekan Upload.
+
+     Pemeriksaan dilakukan di SERVER, bukan ditiru ulang di sini, supaya
+     aturannya cuma hidup di satu tempat (AdsProgressService.parseCsv). Kalau
+     parser di sini dibuat terpisah, suatu saat keduanya akan berbeda dan
+     "lolos periksa lalu gagal upload" jadi mungkin.
+
+     Diperiksa DULU sebelum ditulis karena dengan banyak file, gagal sebagian
+     itu normal. Kalau baru ketahuan setelah dikirim, sebagian data sudah
+     masuk dan tidak jelas bagian mana. */
+  var adsStagedFiles = [];      // [{name, content}]
+  var adsCheckResult = null;    // hasil dryRun dari server
+
+  function bootstrapAdsProgress() {
+    fetchAdsStatus();
+    var input = document.getElementById('adsFileInput');
+    if (input) {
+      input.addEventListener('change', function (e) {
+        addAdsFiles(e.target.files);
+        // Direset supaya memilih file yang SAMA lagi tetap memicu 'change'
+        // (browser tidak menembakkan event kalau nilainya tidak berubah).
+        e.target.value = '';
+      });
+    }
+    var zone = document.getElementById('adsDropZone');
+    if (zone) {
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('ads-drop-active'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('ads-drop-active'); });
+      });
+      zone.addEventListener('drop', function (e) {
+        if (e.dataTransfer && e.dataTransfer.files) addAdsFiles(e.dataTransfer.files);
+      });
+    }
+  }
+
+  function fetchAdsStatus() {
+    gsRunWithRetry('adsProgress_getStatus', [], function (res) {
+      var el = document.getElementById('adsStatusStrip');
+      if (!el) return;
+      if (!res || !res.ok) {
+        el.innerHTML = '<span style="color:var(--warn);">Status belum bisa dibaca — ' +
+          esc((res && res.error && res.error.message) || 'tidak ada respons') + '</span>';
+        return;
+      }
+      var d = res.data;
+      if (!d.lastUpload) {
+        el.innerHTML = '<span>Belum pernah ada upload Ads Sponsorship Progress.</span>';
+        return;
+      }
+      el.innerHTML = '<span>Terakhir diupload</span><span class="mono">' + esc(formatAdsDate(d.lastUpload.uploadedAt)) +
+        '</span><span>oleh</span><span class="mono">' + esc(d.lastUpload.uploadedBy || '-') + '</span>' +
+        '<span class="pill neutral">' + d.rowCount + ' baris tersimpan</span>';
+    }, function () {
+      var el = document.getElementById('adsStatusStrip');
+      if (el) el.innerText = 'Status belum bisa dibaca.';
+    });
+  }
+
+  function formatAdsDate(v) {
+    if (!v) return '-';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    return d.toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function addAdsFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    document.getElementById('adsUploadError').innerText = '';
+
+    var sisa = files.length;
+    files.forEach(function (file) {
+      readGdvFile(file, function (text, name) {
+        // File dengan nama sama diganti, bukan ditumpuk — memilih ulang file
+        // yang sama biasanya berarti "pakai versi terbaru", bukan "upload dua
+        // kali".
+        var idx = -1;
+        for (var i = 0; i < adsStagedFiles.length; i++) {
+          if (adsStagedFiles[i].name === name) { idx = i; break; }
+        }
+        if (idx === -1) adsStagedFiles.push({ name: name, content: text });
+        else adsStagedFiles[idx] = { name: name, content: text };
+
+        sisa--;
+        if (sisa === 0) validateAdsFiles();
+      });
+    });
+  }
+
+  function clearAdsFiles() {
+    adsStagedFiles = [];
+    adsCheckResult = null;
+    document.getElementById('adsUploadError').innerText = '';
+    document.getElementById('adsResult').style.display = 'none';
+    renderAdsFileList();
+  }
+
+  function removeAdsFile(index) {
+    adsStagedFiles.splice(index, 1);
+    if (!adsStagedFiles.length) { clearAdsFiles(); return; }
+    validateAdsFiles();
+  }
+
+  function validateAdsFiles() {
+    if (!adsStagedFiles.length) { renderAdsFileList(); return; }
+    document.getElementById('adsResult').style.display = 'none';
+    document.getElementById('adsFileList').innerHTML =
+      '<div class="placeholder-note" style="margin:12px 0 0;">Memeriksa ' + adsStagedFiles.length + ' file...</div>';
+    document.getElementById('adsActions').style.display = 'none';
+
+    gsRunWithRetry('adsProgress_validateFiles', [adsStagedFiles], function (res) {
+      if (!res || !res.ok) {
+        document.getElementById('adsUploadError').innerText =
+          'Gagal memeriksa file — ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server.');
+        document.getElementById('adsFileList').innerHTML = '';
+        return;
+      }
+      adsCheckResult = res.data;
+      renderAdsFileList();
+    }, function (err) {
+      document.getElementById('adsUploadError').innerText =
+        'Gagal memeriksa file: ' + (err && err.message ? err.message : err);
+      document.getElementById('adsFileList').innerHTML = '';
+    });
+  }
+
+  function renderAdsFileList() {
+    var list = document.getElementById('adsFileList');
+    var actions = document.getElementById('adsActions');
+    if (!adsStagedFiles.length || !adsCheckResult) {
+      list.innerHTML = '';
+      actions.style.display = 'none';
+      return;
+    }
+
+    // Hasil server dicocokkan ke daftar lokal lewat nama file, supaya tombol
+    // hapus tetap menunjuk baris yang benar.
+    var perNama = {};
+    (adsCheckResult.files || []).forEach(function (f) { perNama[f.fileName] = f; });
+
+    list.innerHTML = adsStagedFiles.map(function (sf, i) {
+      var f = perNama[sf.name] || { ok: false, reason: 'Belum diperiksa.' };
+      var kelas = f.ok ? (f.withoutFigures ? 'warn' : 'ok') : 'bad';
+      var ikon = f.ok ? (f.withoutFigures ? '!' : '✓') : '✕';
+      var warnaIkon = f.ok ? (f.withoutFigures ? 'var(--warn)' : 'var(--good)') : 'var(--bad)';
+
+      var meta = '';
+      var pesan = '';
+      if (f.ok) {
+        meta = (f.accounts || []).join(', ') + ' · ' + f.rowCount + ' campaign';
+        if (f.withoutFigures) {
+          meta += ' · <strong>' + f.withoutFigures + ' belum ada angkanya</strong>';
+          pesan = '<div class="ads-file-msg warn">Tetap bisa diupload. Campaign baru memang belum punya ' +
+            'GDV/NDV/dana cair — nanti tampil "belum ada data", bukan Rp0.</div>';
+        }
+        if (f.unusableRows) {
+          pesan += '<div class="ads-file-msg warn">' + f.unusableRows +
+            ' baris dilewati karena tidak punya short_url maupun campaign_id.</div>';
+        }
+      } else {
+        meta = 'File ini akan dilewati';
+        pesan = '<div class="ads-file-msg bad">' + esc(f.reason || '') + '</div>';
+      }
+
+      return '<div class="ads-file ' + kelas + '">' +
+        '<div class="ads-file-ic" style="color:' + warnaIkon + ';" aria-hidden="true">' + ikon + '</div>' +
+        '<div><div class="ads-file-name">' + esc(sf.name) + '</div>' +
+        '<div class="ads-file-meta">' + meta + '</div>' + pesan + '</div>' +
+        '<div class="ads-file-right">' + (f.ok ? '<div class="ads-file-rows">' + f.rowCount + '</div>baris' : '—') + '</div>' +
+        '<button type="button" class="icon-btn-sm danger" onclick="removeAdsFile(' + i + ')" ' +
+        'aria-label="Hapus ' + escAttrAds(sf.name) + ' dari daftar">×</button>' +
+        '</div>';
+    }).join('');
+
+    var ok = adsCheckResult.okCount || 0;
+    var gagal = adsCheckResult.failedCount || 0;
+    var btn = document.getElementById('adsUploadBtn');
+    btn.disabled = ok === 0;
+    btn.innerText = ok
+      ? '⬆ Upload ' + ok + ' File (' + adsCheckResult.totalRows + ' baris)'
+      : '⬆ Tidak ada file yang bisa diupload';
+    document.getElementById('adsTally').innerHTML = gagal
+      ? '<strong>' + gagal + '</strong> file dilewati karena error'
+      : '';
+    actions.style.display = 'flex';
+  }
+
+  function escAttrAds(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  function submitAdsUpload() {
+    if (!adsCheckResult || !adsCheckResult.okCount) return;
+    // Hanya file yang lolos periksa yang dikirim — server memang akan
+    // melewati yang gagal, tapi tidak perlu mengirim ulang isinya.
+    var lolos = {};
+    (adsCheckResult.files || []).forEach(function (f) { if (f.ok) lolos[f.fileName] = true; });
+    var kirim = adsStagedFiles.filter(function (sf) { return lolos[sf.name]; });
+
+    if (!techfordConfirm('Upload ' + kirim.length + ' file Ads Sponsorship Progress (' +
+      adsCheckResult.totalRows + ' baris)? Data ditambahkan sebagai snapshot baru, tidak menimpa yang lama.')) return;
+
+    var btn = document.getElementById('adsUploadBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengupload...';
+    TechfordLoading.show('Menyimpan Ads Sponsorship Progress...');
+
+    var uploadedBy = (TechfordAuth.getCurrentUser() || {}).Email ||
+      (TechfordAuth.getCurrentUser() || {}).Name || '';
+
+    gsRunWithRetry('adsProgress_uploadFiles', [kirim, uploadedBy], function (res) {
+      TechfordLoading.hide();
+      btn.disabled = false;
+      if (!res || !res.ok) {
+        renderAdsFileList();
+        document.getElementById('adsUploadError').innerText =
+          'Gagal upload — ' + ((res && res.error && res.error.message) || 'tidak ada respons dari server.');
+        return;
+      }
+      renderAdsUploadResult(res.data);
+      adsStagedFiles = [];
+      adsCheckResult = null;
+      document.getElementById('adsFileList').innerHTML = '';
+      document.getElementById('adsActions').style.display = 'none';
+      fetchAdsStatus();
+      TechfordToast.show(res.data.totalRows + ' baris Ads Sponsorship Progress tersimpan.');
+    }, function (err) {
+      TechfordLoading.hide();
+      btn.disabled = false;
+      renderAdsFileList();
+      document.getElementById('adsUploadError').innerText =
+        'Gagal upload: ' + (err && err.message ? err.message : err);
+    });
+  }
+
+  function renderAdsUploadResult(d) {
+    var el = document.getElementById('adsResult');
+    el.style.display = '';
+    var baris = (d.files || []).map(function (f) {
+      return '<tr>' +
+        '<td class="mono">' + esc(f.fileName) + '</td>' +
+        '<td>' + esc((f.accounts || []).join(', ') || '—') + '</td>' +
+        '<td class="num">' + (f.ok ? f.rowCount : '—') + '</td>' +
+        '<td class="num">' + (f.ok ? f.withFigures : '—') + '</td>' +
+        '<td class="num">' + (f.ok ? f.withoutFigures : '—') + '</td>' +
+        '<td>' + (f.ok ? '<span class="pill good">Tersimpan</span>' : '<span class="pill bad">Dilewati</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    el.innerHTML = '<div class="ads-strip" style="background:var(--good-tint); border-color:var(--good); color:var(--good); margin-top:14px;">' +
+      '<strong>✓ ' + d.totalRows + ' baris tersimpan dari ' + d.okCount + ' file</strong>' +
+      (d.failedCount ? '<span style="color:var(--text-muted);">· ' + d.failedCount + ' file dilewati</span>' : '') +
+      '<span style="color:var(--text-muted);">· snapshot ' + esc(formatAdsDate(d.uploadedAt)) + '</span></div>' +
+      '<div class="table-scroll"><table class="data-table" style="margin:0;">' +
+      '<thead><tr><th>File</th><th>Akun</th><th class="num">Baris</th>' +
+      '<th class="num">Ada angka</th><th class="num">Belum ada angka</th><th>Hasil</th></tr></thead>' +
+      '<tbody>' + baris + '</tbody></table></div>';
+  }
 
   document.getElementById('gdvCsvBrandInput').addEventListener('change', function (e) {
     readGdvFile(e.target.files[0], function (text, name) {

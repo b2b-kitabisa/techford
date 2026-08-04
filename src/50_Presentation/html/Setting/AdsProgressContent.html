@@ -1,0 +1,217 @@
+<p style="color: var(--text-muted); font-size:13px;">
+  Progres <strong>GDV</strong>, <strong>NDV</strong>, dan <strong>Dana yang Bisa Dicairkan</strong> per campaign
+  Ads Sponsorship, dari upload di <strong>Setting › GDV Controller</strong>. Angka di sini
+  <strong>tidak berhubungan dengan GDV Matching</strong> — sumbernya export Tableau yang berbeda, jadi
+  keduanya bisa tidak sepakat karena beda waktu tarik dan sengaja tidak pernah dijumlahkan.
+  Yang ditampilkan selalu snapshot terbaru per campaign.
+</p>
+
+<div id="adsMonError" class="error"></div>
+
+<div class="stat-tile-row" id="adsMonScoreRow" style="margin-bottom:20px;"></div>
+
+<div class="filter-bar">
+  <div class="search-field"><span class="search-ic">⌕</span><input id="adsMonSearch" placeholder="Cari campaign link, campaign ID, client, atau project..." oninput="onAdsMonFilterChange()"></div>
+  <label class="checkbox-wrap" style="font-size:12px;">
+    <input type="checkbox" id="adsMonUnlinkedOnly" onchange="onAdsMonFilterChange()"> Belum tersambung ke project
+  </label>
+  <button class="filter-reset" onclick="resetAdsMonFilter()">↺ Reset Filter</button>
+  <button class="filter-reset" id="adsMonRefreshBtn" onclick="fetchAdsMonitoring()" title="Muat ulang data">🔄 Refresh</button>
+</div>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th class="sortable" onclick="setAdsMonSort('shortUrl')">Campaign Link <span class="sort-icon" data-field="shortUrl">⇕</span></th>
+        <th class="sortable" onclick="setAdsMonSort('campaignId')">Campaign ID <span class="sort-icon" data-field="campaignId">⇕</span></th>
+        <th>Client &amp; Project</th>
+        <th class="sortable num" onclick="setAdsMonSort('currentGdv')">GDV Saat Ini <span class="sort-icon" data-field="currentGdv">⇕</span></th>
+        <th class="sortable num" onclick="setAdsMonSort('currentNdv')">NDV Saat Ini <span class="sort-icon" data-field="currentNdv">⇕</span></th>
+        <th class="sortable num" onclick="setAdsMonSort('activeWalletAmount')">Dana yang Bisa Dicairkan <span class="sort-icon" data-field="activeWalletAmount">⇕</span></th>
+        <th class="sortable" onclick="setAdsMonSort('projectStatus')">Status <span class="sort-icon" data-field="projectStatus">⇕</span></th>
+        <th>Data Per</th>
+      </tr>
+    </thead>
+    <tbody id="adsMonTableBody">
+      <tr class="empty-row"><td colspan="8">Memuat...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination-bar">
+  <div>
+    Show
+    <select id="adsMonPageSize" onchange="onAdsMonFilterChange()">
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+    </select>
+    Entries
+  </div>
+  <div class="page-buttons" id="adsMonPageButtons"></div>
+</div>
+
+<script>
+  var adsMonRows = [];
+  var adsMonPage = 1;
+  var adsMonSort = { field: 'currentGdv', dir: 'desc' };
+  var ADS_MON_NUMERIC = ['currentGdv', 'currentNdv', 'activeWalletAmount'];
+
+  // WAJIB lewat techfordOnReady — lihat catatan di Shell.html di atas <main>.
+  techfordOnReady(fetchAdsMonitoring);
+
+  function escAm(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  /**
+   * null (belum ada data) dibedakan dari 0 di SEMUA tampilan angka di halaman
+   * ini. Menampilkan Rp0 untuk Dana yang Bisa Dicairkan padahal datanya belum
+   * masuk adalah klaim yang salah, dan bisa memicu keputusan pencairan yang
+   * keliru — lihat catatan parseUang di AdsProgressService.
+   */
+  function fmtAm(n) {
+    if (n === null || n === undefined || n === '') {
+      return '<span class="ads-empty">belum ada data</span>';
+    }
+    return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+  }
+  function fmtAmPlain(n) { return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+
+  function fetchAdsMonitoring() {
+    document.getElementById('adsMonError').innerText = '';
+    var btn = document.getElementById('adsMonRefreshBtn');
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    gsRunWithRetry('adsProgress_getMonitoring', [], function (res) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
+      if (!res || !res.ok) {
+        var detail = res
+          ? (res.error ? ('[' + res.error.code + '] ' + res.error.message) : 'respons tidak dikenal')
+          : 'server tidak merespons setelah beberapa percobaan.';
+        document.getElementById('adsMonError').innerText = 'Gagal memuat data — ' + detail;
+        return;
+      }
+      adsMonRows = res.data.rows || [];
+      renderAdsMonScore(res.data.summary || {});
+      renderAdsMonitoring();
+    }, function (msg) {
+      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
+      document.getElementById('adsMonError').innerText = 'Gagal memuat data: ' + msg;
+    });
+  }
+
+  function renderAdsMonScore(s) {
+    document.getElementById('adsMonScoreRow').innerHTML =
+      '<div class="stat-tile"><div class="st-label">Total GDV Saat Ini</div><div class="st-value">' + fmtAmPlain(s.totalGdv) + '</div>' +
+        '<div class="st-compare">' + (s.campaignCount || 0) + ' campaign</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Total NDV Saat Ini</div><div class="st-value">' + fmtAmPlain(s.totalNdv) + '</div></div>' +
+      '<div class="stat-tile accent"><div class="st-label">Total Dana yang Bisa Dicairkan</div><div class="st-value">' + fmtAmPlain(s.totalWallet) + '</div></div>' +
+      '<div class="stat-tile"><div class="st-label">Perlu Diperiksa</div><div class="st-value" style="font-size:15px;">' +
+        (s.tanpaAngka || 0) + ' belum ada angka</div>' +
+        '<div class="st-compare">' + (s.belumTersambung || 0) + ' belum tersambung ke project</div></div>';
+  }
+
+  function getFilteredAdsMonRows() {
+    var q = document.getElementById('adsMonSearch').value.toLowerCase().trim();
+    var unlinkedOnly = document.getElementById('adsMonUnlinkedOnly').checked;
+    return adsMonRows.filter(function (r) {
+      if (unlinkedOnly && (r.owners || []).length) return false;
+      if (!q) return true;
+      if (String(r.shortUrl || '').toLowerCase().indexOf(q) !== -1) return true;
+      if (String(r.campaignId || '').toLowerCase().indexOf(q) !== -1) return true;
+      // Client & project ikut dicari — itu cara orang mengingat campaign,
+      // bukan lewat slug URL-nya.
+      return (r.owners || []).some(function (o) {
+        return String(o.clientName || '').toLowerCase().indexOf(q) !== -1 ||
+               String(o.projectName || '').toLowerCase().indexOf(q) !== -1 ||
+               String(o.projectId || '').toLowerCase().indexOf(q) !== -1;
+      });
+    }).sort(function (a, b) {
+      var f = adsMonSort.field;
+      var va = a[f], vb = b[f];
+      if (ADS_MON_NUMERIC.indexOf(f) !== -1) {
+        // null selalu di bawah, BUKAN dianggap nol — supaya campaign yang
+        // datanya belum masuk tidak menyelip di tengah daftar nominal.
+        va = va === null ? -1 : Number(va) || 0;
+        vb = vb === null ? -1 : Number(vb) || 0;
+      } else {
+        va = String(va || '').toLowerCase();
+        vb = String(vb || '').toLowerCase();
+      }
+      var cmp = va < vb ? -1 : (va > vb ? 1 : 0);
+      return adsMonSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  function renderAdsMonitoring() {
+    document.querySelectorAll('.sort-icon').forEach(function (el) {
+      el.innerText = el.getAttribute('data-field') === adsMonSort.field
+        ? (adsMonSort.dir === 'asc' ? '↑' : '↓') : '⇕';
+    });
+
+    var filtered = getFilteredAdsMonRows();
+    var size = Number(document.getElementById('adsMonPageSize').value);
+    var totalPages = Math.max(1, Math.ceil(filtered.length / size));
+    adsMonPage = Math.min(Math.max(1, adsMonPage), totalPages);
+    var items = filtered.slice((adsMonPage - 1) * size, (adsMonPage - 1) * size + size);
+
+    var tbody = document.getElementById('adsMonTableBody');
+    if (!items.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">' +
+        (adsMonRows.length ? 'Tidak ada campaign yang cocok dengan filter.'
+                           : 'Belum ada data. Upload dulu di Setting › GDV Controller.') + '</td></tr>';
+    } else {
+      tbody.innerHTML = items.map(function (r) {
+        var owners = r.owners || [];
+        // Satu link bisa dicatat lebih dari satu project — semuanya
+        // ditampilkan, karena pencatatan ganda justru yang perlu terlihat.
+        var pemilik = owners.length
+          ? owners.map(function (o) {
+              return '<div class="ads-owner"><strong>' + escAm(o.clientName || '(klien tidak dikenal)') + '</strong>' +
+                '<span class="ads-owner-proj">' + escAm(o.projectId) +
+                (o.projectName ? ' · ' + escAm(o.projectName) : '') + '</span></div>';
+            }).join('')
+          : '<span class="pill neutral" title="Belum ada project Ads Sponsorship yang mencatat link ini">Belum tersambung</span>';
+
+        return '<tr>' +
+          '<td class="mono">' + escAm(r.shortUrl) + '</td>' +
+          '<td class="mono">' + escAm(r.campaignId || '-') + '</td>' +
+          '<td>' + pemilik + '</td>' +
+          '<td class="num">' + fmtAm(r.currentGdv) + '</td>' +
+          '<td class="num">' + fmtAm(r.currentNdv) + '</td>' +
+          '<td class="num">' + fmtAm(r.activeWalletAmount) + '</td>' +
+          '<td>' + escAm(r.projectStatus || '-') + '</td>' +
+          '<td style="font-size:11px; color:var(--text-faint);">' + escAm(fmtAdsMonDate(r.snapshotAt)) + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    var buttons = '<button ' + (adsMonPage <= 1 ? 'disabled' : '') + ' onclick="goToAdsMonPage(' + (adsMonPage - 1) + ')">&lt; Previous</button>';
+    for (var p = 1; p <= totalPages; p++) {
+      buttons += '<button class="' + (p === adsMonPage ? 'active' : '') + '" onclick="goToAdsMonPage(' + p + ')">' + p + '</button>';
+    }
+    buttons += '<button ' + (adsMonPage >= totalPages ? 'disabled' : '') + ' onclick="goToAdsMonPage(' + (adsMonPage + 1) + ')">Next &gt;</button>';
+    document.getElementById('adsMonPageButtons').innerHTML = buttons;
+  }
+
+  function fmtAdsMonDate(v) {
+    if (!v) return '-';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    return d.toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function setAdsMonSort(field) {
+    if (adsMonSort.field === field) adsMonSort.dir = adsMonSort.dir === 'asc' ? 'desc' : 'asc';
+    else adsMonSort = { field: field, dir: ADS_MON_NUMERIC.indexOf(field) !== -1 ? 'desc' : 'asc' };
+    renderAdsMonitoring();
+  }
+  function onAdsMonFilterChange() { adsMonPage = 1; renderAdsMonitoring(); }
+  function goToAdsMonPage(p) { adsMonPage = p; renderAdsMonitoring(); }
+  function resetAdsMonFilter() {
+    document.getElementById('adsMonSearch').value = '';
+    document.getElementById('adsMonUnlinkedOnly').checked = false;
+    adsMonPage = 1;
+    renderAdsMonitoring();
+  }
+</script>

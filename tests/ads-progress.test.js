@@ -29,6 +29,11 @@ const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
 
+/** Upload satu file lewat jalur batch yang sesungguhnya. */
+function up(svc, name, content) {
+  return svc.processFiles([{ name: name, content: content }], 'B2B', false);
+}
+
 let pass = 0;
 const failures = [];
 function ok(label, cond, detail) {
@@ -37,7 +42,8 @@ function ok(label, cond, detail) {
 }
 
 /** Muat AdsProgressService asli dengan sheet palsu di memori. */
-function build(initialRows) {
+function build(initialRows, opts) {
+  opts = opts || {};
   const sheet = { data: (initialRows || []).slice(), log: [] };
   const ctx = { console, Logger: { log() {} }, Log: { info() {}, warn() {}, error() {} } };
   ctx.global = ctx;
@@ -67,6 +73,11 @@ function build(initialRows) {
     insert: (r) => sheet.log.push(r),
     findLatest: () => sheet.log.length ? sheet.log[sheet.log.length - 1] : null
   };
+  // Dipakai getMonitoring untuk menentukan klien LEWAT PROJECT, bukan dari
+  // file — account_name di CSV bukan nama klien.
+  ctx.ClientRepository = { findAll: () => (opts.clients || []) };
+  ctx.ProjectRepository = { findAll: () => (opts.projects || []) };
+  ctx.RevenueBreakdownRepository = { findAll: () => (opts.revenue || []) };
 
   vm.runInContext('var AdsProgressService;' +
     fs.readFileSync(path.join(SRC, '40_Modules/AdsProgress/40_AdsProgressService.gs'), 'utf8'), ctx);
@@ -153,10 +164,10 @@ console.log('\n3) Upload bersifat MENAMBAH — tidak menghapus data klien lain')
 {
   const { svc, sheet } = build();
   const HDR = 'account_name\tshort_url\tcampaign_id\tcurrent_gdv\tcurrent_ndv\tactive_wallet_amount\tproject_status';
-  svc.uploadCsv(HDR + '\nSkolla\tskolla-a\t900001\t1000\t900\t100\tLIVE\n', 'Skolla.csv', 'B2B');
+  up(svc, 'Skolla.csv', HDR + '\nSkolla\tskolla-a\t900001\t1000\t900\t100\tLIVE\n');
   ok('upload pertama menulis 1 baris', sheet.data.length === 1, sheet.data.length);
 
-  svc.uploadCsv(HDR + '\nKlienLain\tlain-a\t900002\t2000\t1800\t200\tLIVE\n', 'Lain.csv', 'B2B');
+  up(svc, 'Lain.csv', HDR + '\nKlienLain\tlain-a\t900002\t2000\t1800\t200\tLIVE\n');
   ok('upload klien kedua TIDAK menghapus klien pertama', sheet.data.length === 2, sheet.data.length);
   const akun = sheet.data.map(r => r.Account_Name).sort().join(',');
   ok('kedua klien tetap ada', akun === 'KlienLain,Skolla', akun);
@@ -167,7 +178,7 @@ console.log('\n3) Upload bersifat MENAMBAH — tidak menghapus data klien lain')
   ok('nilai null ditulis sebagai sel kosong, bukan 0',
     (function () {
       const b = build();
-      b.svc.uploadCsv(HDR + '\nA\tu\t1\t\t\t\tLIVE\n', 'f.csv', 'B2B');
+      up(b.svc, 'f.csv', HDR + '\nA\tu\t1\t\t\t\tLIVE\n');
       const r = b.sheet.data[0];
       return r.Current_Gdv === '' && r.Current_Ndv === '' && r.Active_Wallet_Amount === '';
     })());
@@ -210,13 +221,102 @@ console.log('\n5) getStatus untuk strip di halaman GDV Controller');
 {
   const { svc } = build();
   ok('belum ada upload -> lastUpload null', svc.getStatus().lastUpload === null);
-  svc.uploadCsv('account_name\tshort_url\tcampaign_id\tcurrent_gdv\tcurrent_ndv\tactive_wallet_amount\tproject_status\n' +
-    'Skolla\tu\t1\t\t\t\tLIVE\n', 'Skolla_2026_1.csv', 'b2b@kitabisa.com');
+  svc.processFiles([{ name: 'Skolla_2026_1.csv', content:
+    'account_name\tshort_url\tcampaign_id\tcurrent_gdv\tcurrent_ndv\tactive_wallet_amount\tproject_status\n' +
+    'Skolla\tu\t1\t\t\t\tLIVE\n' }], 'b2b@kitabisa.com', false);
   const st = svc.getStatus();
   ok('jumlah baris terlaporkan', st.rowCount === 1, st.rowCount);
   ok('nama file terlaporkan', st.lastUpload.fileName === 'Skolla_2026_1.csv');
   ok('pengunggah terlaporkan', st.lastUpload.uploadedBy === 'b2b@kitabisa.com');
   ok('akun terlaporkan', st.lastUpload.accountNames === 'Skolla');
+}
+
+console.log('\n6) Batch banyak file — file bermasalah DILEWATI, sisanya tetap masuk');
+{
+  const HDR = 'account_name\tshort_url\tcampaign_id\tcurrent_gdv\tcurrent_ndv\tactive_wallet_amount\tproject_status';
+  const { svc, sheet } = build();
+  const files = [
+    { name: 'Chickin_Group_5.csv', content: HDR + '\nCollabForChange\tbantupeternakmaju\t708996\t1.340.595.262\t1.258.681.251\t1.258.646.491\tLIVE\n' },
+    { name: 'Skolla_2026_1.csv',   content: HDR + '\nCollabForChange\traihmimpiptn\t745264\t\t\t\tLIVE\n' },
+    { name: 'Laporan.xlsx',        content: 'account_name\tshort_url\tgdv\tstatus\nA\tu\t1\tLIVE\n' }
+  ];
+
+  // Periksa dulu (dryRun) — tidak boleh menulis apa pun.
+  const cek = svc.processFiles(files, 'B2B', true);
+  ok('dryRun tidak menulis apa pun', sheet.data.length === 0, sheet.data.length);
+  ok('dryRun melaporkan 3 file', cek.files.length === 3, cek.files.length);
+  ok('dryRun: 2 file lolos', cek.okCount === 2, cek.okCount);
+  ok('dryRun: 1 file gagal', cek.failedCount === 1, cek.failedCount);
+  ok('dryRun: total baris dihitung', cek.totalRows === 2, cek.totalRows);
+  ok('file gagal menyebut alasannya', /campaign_id|Campaign_Id/.test(cek.files[2].reason || ''), cek.files[2].reason);
+  ok('dryRun ditandai sebagai dryRun', cek.dryRun === true);
+  ok('file tanpa angka dihitung terpisah',
+    cek.files[1].withoutFigures === 1 && cek.files[1].withFigures === 0,
+    'tanpa=' + cek.files[1].withoutFigures + ' ada=' + cek.files[1].withFigures);
+  ok('file berangka dihitung terpisah',
+    cek.files[0].withFigures === 1 && cek.files[0].withoutFigures === 0);
+  ok('payload dryRun tidak membawa isi baris (_rows dibuang)',
+    cek.files[0]._rows === undefined);
+
+  // Simpan sungguhan.
+  const hasil = svc.processFiles(files, 'B2B', false);
+  ok('yang tersimpan hanya dari 2 file yang lolos', sheet.data.length === 2, sheet.data.length);
+  ok('file rusak tetap dilewati, bukan menggagalkan semuanya', hasil.failedCount === 1, hasil.failedCount);
+  ok('uploadedAt diisi saat benar-benar menyimpan', !!hasil.uploadedAt);
+  ok('satu entri log PER FILE yang berhasil', sheet.log.length === 2, sheet.log.length);
+  ok('angka format Indonesia tersimpan utuh',
+    sheet.data[0].Current_Gdv === 1340595262, sheet.data[0].Current_Gdv);
+  ok('sel kosong tetap kosong, bukan 0', sheet.data[1].Current_Gdv === '', JSON.stringify(sheet.data[1].Current_Gdv));
+
+  let tolakKosong = false;
+  try { svc.processFiles([], 'B2B', true); } catch (e) { tolakKosong = true; }
+  ok('daftar file kosong ditolak', tolakKosong);
+
+  const semuaGagal = build().svc.processFiles([files[2]], 'B2B', false);
+  ok('kalau SEMUA file gagal, tidak ada yang tersimpan & tetap melapor',
+    semuaGagal.okCount === 0 && semuaGagal.failedCount === 1 && semuaGagal.totalRows === 0);
+}
+
+console.log('\n7) getMonitoring — klien datang dari PROJECT, bukan dari file');
+{
+  const now = new Date(2026, 7, 3);
+  const { svc } = build([
+    { Snapshot_At: now, Account_Name: 'CollabForChange', Short_Url: 'bantupeternakmaju', Campaign_Id: '708996',
+      Current_Gdv: 1340595262, Current_Ndv: 1258681251, Active_Wallet_Amount: 1258646491, Project_Status: 'LIVE' },
+    { Snapshot_At: now, Account_Name: 'CollabForChange', Short_Url: 'belumdipakai', Campaign_Id: '709999',
+      Current_Gdv: 500, Current_Ndv: 400, Active_Wallet_Amount: '', Project_Status: 'LIVE' }
+  ], {
+    clients: [{ Client_ID: 'CL26-00100', Brand_Name: 'CHICKIN' }],
+    projects: [{ Project_ID: 'PRJ26-00014', Client_ID: 'CL26-00100', Project_Name: 'Ads Peternak' }],
+    revenue: [
+      { Project_ID: 'PRJ26-00014', Value_Type: 'GDV', Source_Service: 'Ads Sponsorship', Item_Name: 'bantupeternakmaju', Amount: 0 },
+      // Baris CSR sengaja diikutkan: TIDAK boleh ikut jadi pemilik, karena
+      // Ads Progress hanya soal project Ads Sponsorship.
+      { Project_ID: 'PRJ26-00014', Value_Type: 'GDV', Source_Service: 'CSR', Item_Name: 'belumdipakai', Amount: 0 }
+    ]
+  });
+
+  const m = svc.getMonitoring();
+  const byUrl = {}; m.rows.forEach(r => { byUrl[r.shortUrl] = r; });
+
+  ok('nama klien diambil dari project', byUrl['bantupeternakmaju'].owners[0].clientName === 'CHICKIN',
+    byUrl['bantupeternakmaju'].owners[0].clientName);
+  ok('project id & nama ikut terbawa',
+    byUrl['bantupeternakmaju'].owners[0].projectId === 'PRJ26-00014' &&
+    byUrl['bantupeternakmaju'].owners[0].projectName === 'Ads Peternak');
+  ok('account_name TIDAK dipakai sebagai nama klien',
+    byUrl['bantupeternakmaju'].clientNames.indexOf('CollabForChange') === -1,
+    JSON.stringify(byUrl['bantupeternakmaju'].clientNames));
+  ok('baris CSR tidak menjadikan campaign ini tersambung',
+    byUrl['belumdipakai'].owners.length === 0, byUrl['belumdipakai'].owners.length);
+  ok('campaign tanpa project ditandai belum tersambung', m.summary.belumTersambung === 1, m.summary.belumTersambung);
+  ok('total GDV dijumlah', m.summary.totalGdv === 1340595262 + 500, m.summary.totalGdv);
+  ok('null tidak ikut menaikkan total dana cair',
+    m.summary.totalWallet === 1258646491, m.summary.totalWallet);
+  ok('urut dari GDV terbesar', m.rows[0].shortUrl === 'bantupeternakmaju', m.rows[0].shortUrl);
+  ok('sel kosong tetap null di monitoring',
+    byUrl['belumdipakai'].activeWalletAmount === null,
+    JSON.stringify(byUrl['belumdipakai'].activeWalletAmount));
 }
 
 console.log('\n' + (failures.length

@@ -3373,7 +3373,10 @@
     }
     if (hasAds) {
       editGdvAdsCampaigns.filter(function (c) { return String(c.link || '').trim(); }).forEach(function (c) {
-        items.push({ link: c.link, amount: 0, showAmount: false, scheme: 'Ads Sponsorship', sub: 'Nominal dari GDV Controller' });
+        // Ads Sponsorship tidak punya nominal yang diinput consultant —
+        // angkanya datang dari Ads Sponsorship Progress dan ditampilkan
+        // sebagai tiga metrik di bawah baris ini, bukan satu nominal di kanan.
+        items.push({ link: c.link, amount: 0, showAmount: false, scheme: 'Ads Sponsorship', sub: '' });
       });
     }
 
@@ -3386,6 +3389,10 @@
 
     container.innerHTML = '<div class="vlist">' + items.map(function (it) {
       var badge = gdvSyncBadgeHtml(it.link);
+      // Ads Progress hanya relevan untuk skema Ads Sponsorship — memunculkan
+      // badge-nya di baris CSR akan menyiratkan hubungan yang tidak ada.
+      var adsBadge = it.scheme === 'Ads Sponsorship' ? adsProgressBadgeHtml(it.link) : '';
+      var adsMetrics = it.scheme === 'Ads Sponsorship' ? adsProgressMetricsHtml(it.link) : '';
       var entries = it.entries || [];
       var bisaDibuka = entries.length > 0;
       var terbuka = bisaDibuka && !!gdvViewTerminExpanded[it.link];
@@ -3420,14 +3427,22 @@
         escHtml(it.link) +
         '<button type="button" class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(\'' + escAttr(it.link) + '\', this)" title="Salin campaign link">⧉</button>' +
         '</div>' +
-        '<div class="vl-sub">' + escHtml(it.scheme) + (it.sub ? ' · ' + escHtml(it.sub) : '') +
-        (badge ? ' ' + badge : '') + '</div>' +
+        '<div class="vl-sub">' + escHtml(it.scheme) + (it.sub ? ' · ' + escHtml(it.sub) : '') + '</div>' +
+        // Label sumber di depan setiap badge. Satu link punya dua status dari
+        // dua sumber berbeda yang bisa tidak sepakat (beda waktu tarik) —
+        // tanpa label, satu badge "Belum Sinkron" tanpa konteks akan
+        // dilaporkan sebagai bug padahal wajar.
+        '<div class="vl-badges">' +
+        (badge ? '<span class="vl-badge-src">GDV Matching</span>' + badge : '') +
+        (adsBadge ? '<span class="vl-badge-src">Ads Progress</span>' + adsBadge : '') +
+        '</div>' +
+        adsMetrics +
         terminHtml +
         '</div>' +
         '<div class="vl-right">' +
         (it.showAmount
           ? '<div class="vl-amt">' + formatRupiah(it.amount) + '</div><div class="vl-amt-lbl">diinput consultant</div>'
-          : '<div class="vl-amt-lbl">otomatis dari Tableau</div>') +
+          : '<div class="vl-amt-lbl">lihat Ads Progress</div>') +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
@@ -3570,9 +3585,22 @@
     return Object.keys(links);
   }
 
+  /**
+   * Progres Ads Sponsorship per link — sumber TERPISAH dari GDV Matching.
+   * Sengaja disimpan di map sendiri dan tidak pernah dicampur: dua sumber
+   * yang menampilkan "GDV" dengan nilai berbeda untuk link yang sama akan
+   * cepat menghancurkan kepercayaan pada datanya, jadi masing-masing selalu
+   * tampil dengan label sumbernya sendiri.
+   */
+  var adsProgressByLink = {};
+
   function fetchGdvSyncStatus() {
     var links = collectGdvLinksForSync();
     if (!links.length) return;
+
+    // Dua sumber, dua permintaan, masing-masing me-render ulang begitu
+    // datang. Tidak disatukan supaya satu sumber yang lambat/gagal tidak
+    // menahan yang lain — badge yang ada tetap tampil.
     gsRunWithRetry('gdvMatching_getStatusForLinks', [links], function (res) {
       if (!res || !res.ok) return; // gagal diam-diam — badge cukup tidak muncul, bukan bagian kritikal alur simpan
       gdvSyncStatusByLink = res.data || {};
@@ -3582,6 +3610,55 @@
       rerenderGdvSchemes();
       renderGdvViewList(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
     }, function () { /* gagal diam-diam, sama seperti di atas */ });
+
+    gsRunWithRetry('adsProgress_getProgressForLinks', [links], function (res) {
+      if (!res || !res.ok) return;
+      adsProgressByLink = res.data || {};
+      renderGdvViewList(currentDrawerHasCsr(), currentDrawerHasAds(), currentDrawerIsRetainer());
+    }, function () { /* gagal diam-diam */ });
+  }
+
+  /**
+   * Badge Ads Progress. Hanya DUA status, sama seperti GDV Matching:
+   * "Sinkron" kalau link-nya ketemu di data Ads Progress, "Belum Sinkron"
+   * kalau belum. Diksi "Sebagian" sempat dipakai untuk campaign yang ketemu
+   * tapi angkanya belum ada — dibuang karena membingungkan; ketiadaan angka
+   * sudah disampaikan oleh "belum ada data" di metriknya sendiri.
+   */
+  function adsProgressBadgeHtml(link) {
+    link = String(link || '').trim();
+    if (!link) return '';
+    var p = adsProgressByLink[link];
+    if (!p) return '';
+    return p.found
+      ? '<span class="pill good" title="' + escAttr('Link ini ada di data Ads Sponsorship Progress' +
+          (p.campaignId ? ' (campaign ' + p.campaignId + ')' : '')) + '">Sinkron</span>'
+      : '<span class="pill neutral" title="' + escAttr('Link ini belum ada di data Ads Sponsorship Progress — ' +
+          'belum diupload, atau link tidak cocok.') + '">Belum Sinkron</span>';
+  }
+
+  /**
+   * Tiga metrik Ads Sponsorship untuk satu link. null ditampilkan sebagai
+   * "belum ada data", BUKAN Rp0 — Rp0 untuk Dana yang Bisa Dicairkan adalah
+   * klaim yang salah dan bisa memicu keputusan pencairan yang keliru.
+   */
+  function adsProgressMetricsHtml(link) {
+    var p = adsProgressByLink[String(link || '').trim()];
+    if (!p || !p.found) return '';
+    var nilai = function (v) {
+      return (v === null || v === undefined || v === '')
+        ? '<div class="ap-val ap-empty">belum ada data</div>'
+        : '<div class="ap-val">' + formatRupiah(v) + '</div>';
+    };
+    return '<div class="ap-metrics">' +
+      '<div class="ap-cell"><div class="ap-lbl">GDV Saat Ini</div>' + nilai(p.currentGdv) + '</div>' +
+      '<div class="ap-cell"><div class="ap-lbl">NDV Saat Ini</div>' + nilai(p.currentNdv) + '</div>' +
+      '<div class="ap-cell ap-hl"><div class="ap-lbl">Dana yang Bisa Dicairkan</div>' + nilai(p.activeWalletAmount) + '</div>' +
+      '<div class="ap-cell"><div class="ap-lbl">Status</div><div class="ap-val ap-txt">' +
+        escHtml(p.projectStatus || '-') + '</div></div>' +
+      '</div>' +
+      (p.snapshotAt ? '<div class="ap-snap">Data per <strong>' + escHtml(formatDate(p.snapshotAt)) + '</strong>' +
+        (p.campaignId ? ' · campaign ' + escHtml(p.campaignId) : '') + '</div>' : '');
   }
 
   function gdvSyncBadgeHtml(link) {

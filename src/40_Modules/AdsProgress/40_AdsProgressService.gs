@@ -245,57 +245,131 @@ var AdsProgressService = (function (module) {
   };
 
   /**
-   * Terima satu file, tambahkan sebagai snapshot baru.
+   * Periksa / simpan BANYAK file dalam satu operasi.
    *
-   * TIDAK menghapus apa pun — lihat catatan append-only di
-   * AdsProgressRepository. Upload ulang file yang sama akan menambah snapshot
-   * baru dengan angka yang sama; itu disengaja (jejak "kapan diperiksa" tetap
-   * berguna) dan tidak merusak pembacaan, karena pembacaan selalu mengambil
-   * baris terbaru per Campaign_Id.
+   * @param {Array<{name: string, content: string}>} files
+   * @param {string} uploadedBy
+   * @param {boolean} dryRun true = hanya periksa, TIDAK menulis apa pun.
+   *
+   * File yang gagal diparse DILEWATI, bukan menggagalkan seluruh rombongan
+   * (keputusan produk: memaksa memperbaiki satu file sebelum sembilan lainnya
+   * bisa masuk terasa menghukum, dan datanya saling berdiri sendiri). Setiap
+   * kegagalan dilaporkan per file dengan alasannya, jadi tidak ada yang
+   * hilang diam-diam.
+   *
+   * dryRun dipakai UI untuk menampilkan hasil pemeriksaan SEBELUM ada yang
+   * tersimpan. Logikanya persis sama dengan jalur simpan — bukan pemeriksaan
+   * terpisah yang bisa lama-lama berbeda dari kenyataan.
+   *
+   * @returns {{files: Array<Object>, totalRows: number, okCount: number,
+   *   failedCount: number, dryRun: boolean, uploadedAt: (Date|null)}}
    */
-  module.uploadCsv = function (csvText, fileName, uploadedBy) {
-    var parsed = module.parseCsv(csvText, fileName || 'Ads Sponsorship Progress');
-    var now = new Date();
-    var logId = Utils.generateId('ADSLOG');
+  module.processFiles = function (files, uploadedBy, dryRun) {
+    var daftar = files || [];
+    if (!daftar.length) {
+      throw new AppError('VALIDATION_ERROR', 'Belum ada file yang dipilih.');
+    }
 
-    var rows = parsed.rows.map(function (r) {
-      return {
-        Snapshot_At: now,
-        Account_Name: r.Account_Name,
-        Short_Url: r.Short_Url,
-        Campaign_Id: r.Campaign_Id,
-        // null ditulis sebagai sel KOSONG, bukan 0 — lihat parseUang.
-        Current_Gdv: r.Current_Gdv === null ? '' : r.Current_Gdv,
-        Current_Ndv: r.Current_Ndv === null ? '' : r.Current_Ndv,
-        Active_Wallet_Amount: r.Active_Wallet_Amount === null ? '' : r.Active_Wallet_Amount,
-        Project_Status: r.Project_Status,
-        Upload_Log_Id: logId
-      };
+    var hasilPerFile = [];
+    daftar.forEach(function (f) {
+      var nama = (f && f.name) || '(tanpa nama)';
+      try {
+        var parsed = module.parseCsv(f && f.content, nama);
+        // Dihitung supaya UI bisa memperingatkan file yang angkanya belum ada
+        // sama sekali — bukan error, tapi perlu diketahui sebelum diunggah.
+        var adaAngka = 0;
+        parsed.rows.forEach(function (r) {
+          if (r.Current_Gdv !== null || r.Current_Ndv !== null || r.Active_Wallet_Amount !== null) adaAngka++;
+        });
+        hasilPerFile.push({
+          fileName: nama,
+          ok: true,
+          rowCount: parsed.rows.length,
+          withFigures: adaAngka,
+          withoutFigures: parsed.rows.length - adaAngka,
+          accounts: parsed.accounts,
+          unusableRows: parsed.dilewati,
+          _rows: parsed.rows
+        });
+      } catch (err) {
+        hasilPerFile.push({
+          fileName: nama,
+          ok: false,
+          rowCount: 0,
+          reason: err && err.message ? err.message : String(err)
+        });
+      }
     });
 
-    var written = AdsProgressRepository.appendMany(rows);
+    var valid = hasilPerFile.filter(function (h) { return h.ok; });
+    var totalRows = valid.reduce(function (s, h) { return s + h.rowCount; }, 0);
 
-    AdsProgressUploadLogRepository.insert({
-      Log_ID: logId,
-      Uploaded_At: now,
-      Uploaded_By: uploadedBy || '',
-      File_Name: fileName || '',
-      Account_Names: parsed.accounts.join(', '),
-      Row_Count: written,
-      Skipped_Count: parsed.dilewati
-    });
+    if (!dryRun && valid.length) {
+      var now = new Date();
+      valid.forEach(function (h) {
+        var logId = Utils.generateId('ADSLOG');
+        var rows = h._rows.map(function (r) {
+          return {
+            Snapshot_At: now,
+            Account_Name: r.Account_Name,
+            Short_Url: r.Short_Url,
+            Campaign_Id: r.Campaign_Id,
+            // null ditulis sebagai sel KOSONG, bukan 0 — lihat parseUang.
+            Current_Gdv: r.Current_Gdv === null ? '' : r.Current_Gdv,
+            Current_Ndv: r.Current_Ndv === null ? '' : r.Current_Ndv,
+            Active_Wallet_Amount: r.Active_Wallet_Amount === null ? '' : r.Active_Wallet_Amount,
+            Project_Status: r.Project_Status,
+            Upload_Log_Id: logId
+          };
+        });
+        h.written = AdsProgressRepository.appendMany(rows);
+        // Satu entri log PER FILE, bukan per rombongan — supaya jejaknya tetap
+        // bisa ditelusuri ke file asalnya kalau ada angka yang dipertanyakan.
+        AdsProgressUploadLogRepository.insert({
+          Log_ID: logId,
+          Uploaded_At: now,
+          Uploaded_By: uploadedBy || '',
+          File_Name: h.fileName,
+          Account_Names: (h.accounts || []).join(', '),
+          Row_Count: h.written,
+          Skipped_Count: h.unusableRows || 0
+        });
+      });
+      Log.info('AdsProgressService', 'Upload Ads Progress: ' + totalRows + ' baris dari ' +
+        valid.length + ' file, ' + (hasilPerFile.length - valid.length) + ' file dilewati.');
+      var out = { uploadedAt: now };
+      return ringkas(hasilPerFile, totalRows, dryRun, out.uploadedAt);
+    }
 
-    Log.info('AdsProgressService', 'Upload Ads Progress: ' + written + ' baris dari ' +
-      (fileName || '(tanpa nama)') + ', akun: ' + parsed.accounts.join(', '));
-
-    return {
-      rowCount: written,
-      skippedCount: parsed.dilewati,
-      accounts: parsed.accounts,
-      uploadedAt: now,
-      logId: logId
-    };
+    return ringkas(hasilPerFile, totalRows, dryRun, null);
   };
+
+  /** Buang field internal (_rows) supaya payload ke klien tetap ringan. */
+  function ringkas(hasilPerFile, totalRows, dryRun, uploadedAt) {
+    var files = hasilPerFile.map(function (h) {
+      var o = {
+        fileName: h.fileName, ok: h.ok, rowCount: h.rowCount
+      };
+      if (h.ok) {
+        o.withFigures = h.withFigures;
+        o.withoutFigures = h.withoutFigures;
+        o.accounts = h.accounts;
+        o.unusableRows = h.unusableRows;
+        if (h.written !== undefined) o.written = h.written;
+      } else {
+        o.reason = h.reason;
+      }
+      return o;
+    });
+    return {
+      files: files,
+      totalRows: totalRows,
+      okCount: files.filter(function (f) { return f.ok; }).length,
+      failedCount: files.filter(function (f) { return !f.ok; }).length,
+      dryRun: !!dryRun,
+      uploadedAt: uploadedAt
+    };
+  }
 
   /**
    * Baris TERBARU per Campaign_Id, dikunci ganda: sekali dengan campaign id
@@ -380,6 +454,85 @@ var AdsProgressService = (function (module) {
       } : { found: false };
     });
     return result;
+  };
+
+  /**
+   * Semua campaign untuk halaman monitoring Ads Sponsorship Progress.
+   *
+   * Nama klien SENGAJA tidak diambil dari file — kolom account_name di CSV
+   * bukan nama klien (kedua file contoh sama-sama "CollabForChange" padahal
+   * kliennya Chickin Group dan Skolla), dan nama file bukan data. Klien
+   * ditentukan dari PROJECT mana yang mencatat link tersebut: baris
+   * Revenue_Breakdown dengan Source_Service 'Ads Sponsorship' -> Project ->
+   * Client. Jadi satu-satunya sumber identitas klien tetap Techford sendiri.
+   *
+   * Satu link bisa dicatat oleh lebih dari satu project; semuanya
+   * dikembalikan, bukan diambil satu (memilih satu diam-diam akan
+   * menyembunyikan pencatatan ganda yang justru perlu dilihat).
+   */
+  module.getMonitoring = function () {
+    var index = buildLatestIndex();
+
+    var clientById = {};
+    ClientRepository.findAll().forEach(function (c) { clientById[c.Client_ID] = c; });
+    var projectById = {};
+    ProjectRepository.findAll().forEach(function (p) { projectById[p.Project_ID] = p; });
+
+    // link ternormalisasi -> [{projectId, projectName, clientName}]
+    var pemilikPerLink = {};
+    RevenueBreakdownRepository.findAll().forEach(function (r) {
+      if (r.Value_Type !== 'GDV') return;
+      if (r.Source_Service !== 'Ads Sponsorship') return;
+      var key = normLink(r.Item_Name);
+      if (!key) return;
+      var p = projectById[r.Project_ID];
+      var c = p ? clientById[p.Client_ID] : null;
+      (pemilikPerLink[key] = pemilikPerLink[key] || []).push({
+        projectId: r.Project_ID,
+        projectName: p ? (p.Project_Name || '') : '',
+        clientName: c ? (c.Brand_Name || '') : ''
+      });
+    });
+
+    var rows = Object.keys(index.byCampaign).map(function (k) {
+      var e = index.byCampaign[k];
+      var pemilik = pemilikPerLink[normLink(e.shortUrl)] || [];
+      return {
+        shortUrl: e.shortUrl,
+        campaignId: e.campaignId,
+        accountName: e.accountName,
+        currentGdv: e.currentGdv,
+        currentNdv: e.currentNdv,
+        activeWalletAmount: e.activeWalletAmount,
+        projectStatus: e.projectStatus,
+        snapshotAt: e.snapshotAt,
+        // Kosong berarti belum ada project Ads Sponsorship yang mencatat link
+        // ini — bukan berarti datanya salah, cuma belum tersambung.
+        owners: pemilik,
+        clientNames: pemilik.map(function (o) { return o.clientName; })
+          .filter(function (v, i, a) { return v && a.indexOf(v) === i; })
+      };
+    });
+
+    // Nominal terbesar di atas — yang paling besar dampaknya paling perlu
+    // dilihat. null diperlakukan sebagai paling bawah, bukan sebagai nol,
+    // supaya campaign yang datanya belum masuk tidak menyelip di tengah.
+    rows.sort(function (a, b) {
+      var av = a.currentGdv === null ? -1 : a.currentGdv;
+      var bv = b.currentGdv === null ? -1 : b.currentGdv;
+      return bv - av;
+    });
+
+    var summary = rows.reduce(function (acc, r) {
+      acc.totalGdv += r.currentGdv || 0;
+      acc.totalNdv += r.currentNdv || 0;
+      acc.totalWallet += r.activeWalletAmount || 0;
+      if (r.currentGdv === null && r.currentNdv === null && r.activeWalletAmount === null) acc.tanpaAngka++;
+      if (!r.owners.length) acc.belumTersambung++;
+      return acc;
+    }, { totalGdv: 0, totalNdv: 0, totalWallet: 0, tanpaAngka: 0, belumTersambung: 0, campaignCount: rows.length });
+
+    return { rows: rows, summary: summary };
   };
 
   /** Strip status di halaman GDV Controller. */

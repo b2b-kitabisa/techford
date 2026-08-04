@@ -1135,6 +1135,105 @@
   }
   .gdv-alias-warning .mono { font-family: var(--font-mono); }
 
+  /* ============================================================
+     ADS SPONSORSHIP PROGRESS
+     ============================================================ */
+
+  /* ---- Kartu upload banyak file (Setting > GDV Controller) ---- */
+  .ads-strip {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    font-size: 11.5px; color: var(--text-muted);
+    background: var(--bg-tint); border: 1px solid var(--border-softer);
+    border-radius: 7px; padding: 8px 11px; margin-bottom: 12px;
+  }
+  .ads-strip .mono { font-family: var(--font-mono); color: var(--color-mineshaft); }
+
+  .ads-drop {
+    border: 1.5px dashed var(--accent-border); background: var(--accent-tint);
+    border-radius: var(--radius-md); padding: 22px 16px; text-align: center;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  /* Umpan balik saat file diseret ke atasnya — tanpa ini tidak ada tanda
+     bahwa area itu memang menerima drop. */
+  .ads-drop-active { background: var(--accent-tint-strong); border-color: var(--color-cerulean); }
+  .ads-drop-ic { font-size: 24px; line-height: 1; }
+  .ads-drop-main { font-weight: 700; font-size: 13px; margin: 7px 0 2px; }
+  .ads-drop-sub { font-size: 11.5px; color: var(--text-muted); margin: 0 0 12px; }
+
+  .ads-files { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .ads-file {
+    display: grid; grid-template-columns: 20px 1fr auto 24px;
+    gap: 10px; align-items: start;
+    border: 1px solid var(--border-softer); border-left: 3px solid var(--border-soft);
+    border-radius: 8px; padding: 9px 10px; background: var(--bg-tint);
+  }
+  /* Status per file dibaca dari warna pinggir kiri, bukan cuma dari ikon —
+     dengan banyak file, mata mencari pola dulu sebelum membaca teks. */
+  .ads-file.ok   { border-left-color: var(--good); }
+  .ads-file.warn { border-left-color: var(--warn); }
+  .ads-file.bad  { border-left-color: var(--bad); }
+  .ads-file-ic { font-size: 14px; line-height: 1.35; text-align: center; }
+  .ads-file-name {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    word-break: break-all;
+  }
+  .ads-file-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .ads-file-msg { font-size: 11px; margin-top: 4px; }
+  .ads-file-msg.bad { color: var(--bad); }
+  .ads-file-msg.warn { color: var(--warn); }
+  .ads-file-right { text-align: right; font-size: 10.5px; color: var(--text-faint); white-space: nowrap; }
+  .ads-file-rows {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+    color: var(--color-mineshaft);
+  }
+  .ads-actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-softer);
+  }
+  .ads-tally { font-size: 11.5px; color: var(--text-muted); }
+
+  /* ---- Metrik Ads Progress di drawer Sales Pipeline ---- */
+  .vl-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 5px; }
+  /* Label sumber di depan tiap badge. Satu link punya dua status dari dua
+     sumber yang bisa tidak sepakat — tanpa label, satu badge "Belum Sinkron"
+     tanpa konteks akan dilaporkan sebagai bug padahal wajar. */
+  .vl-badge-src {
+    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--text-faint); font-weight: 700;
+  }
+  .vl-badge-src:not(:first-child) { margin-left: 4px; }
+
+  .ap-metrics {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 1px; margin-top: 9px;
+    background: var(--border-softer); border: 1px solid var(--border-softer);
+    border-radius: 7px; overflow: hidden;
+  }
+  .ap-cell { background: var(--color-white); padding: 8px 10px; }
+  .ap-hl { background: var(--accent-tint); }
+  .ap-lbl {
+    font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--text-faint); font-weight: 700;
+  }
+  .ap-val {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 700; margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ap-val.ap-txt { font-family: inherit; font-size: 12px; }
+  /* "belum ada data" DIBEDAKAN dengan jelas dari nominal — bukan angka, jadi
+     tidak boleh terlihat seperti angka. */
+  .ap-empty {
+    font-family: inherit; font-size: 11.5px; font-weight: 600;
+    font-style: italic; color: var(--warn);
+  }
+  .ap-snap { font-size: 10.5px; color: var(--text-faint); margin-top: 7px; }
+
+  /* ---- Halaman monitoring ---- */
+  .ads-empty { font-style: italic; font-weight: 600; color: var(--warn); font-family: inherit; font-size: 11.5px; }
+  .ads-owner { font-size: 11.5px; line-height: 1.4; }
+  .ads-owner + .ads-owner { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border-softer); }
+  .ads-owner-proj { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); }
+
   /* Tab pemilih skema di drawer Input GDV — satu project bisa punya
      CSR & Ads Sponsorship sekaligus; tab menjaga drawer tetap pendek
      dibanding menumpuk semua skema vertikal. */

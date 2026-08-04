@@ -3,15 +3,22 @@
  */
 var AdsProgressController = (function (module) {
 
-  module.uploadCsv = function (csvText, fileName, uploadedBy) {
-    return ErrorHandler.handle('AdsProgressController.uploadCsv', function () {
-      return AdsProgressService.uploadCsv(csvText, fileName, uploadedBy);
+  /** dryRun = true: hanya periksa file, tidak menulis apa pun. */
+  module.processFiles = function (files, uploadedBy, dryRun) {
+    return ErrorHandler.handle('AdsProgressController.processFiles', function () {
+      return AdsProgressService.processFiles(files, uploadedBy, dryRun);
     });
   };
 
   module.getStatus = function () {
     return ErrorHandler.handle('AdsProgressController.getStatus', function () {
       return AdsProgressService.getStatus();
+    });
+  };
+
+  module.getMonitoring = function () {
+    return ErrorHandler.handle('AdsProgressController.getMonitoring', function () {
+      return AdsProgressService.getMonitoring();
     });
   };
 

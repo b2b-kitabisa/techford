@@ -53,7 +53,8 @@ var NavigationConfig = (function (module) {
         { page: 'configure-account', label: 'Configure Account', enabled: true, icon: '⚙️' },
         { page: 'master-data', label: 'Master Data', enabled: true, icon: '🗄️' },
         { page: 'gdv-controller', label: 'GDV Controller', enabled: true, icon: '🎛️' },
-        { page: 'gdv-matching', label: 'GDV Matching', enabled: true, icon: '🔗' }
+        { page: 'gdv-matching', label: 'GDV Matching', enabled: true, icon: '🔗' },
+        { page: 'ads-progress', label: 'Ads Sponsorship Progress', enabled: true, icon: '📈' }
       ]
     }
   ];
