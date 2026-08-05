@@ -3648,16 +3648,19 @@
   function renderAdsSummaryBox(links) {
     if (!links || !links.length) return '';
 
+    // Ketiga metrik box ini (GDV/NDV/Dana Cair) SEMUANYA dari Ads Progress —
+    // ini box "progres saat ini", bukan rekonsiliasi. GDV Matching cuma
+    // dipakai untuk badge status Sinkron di baris rincian, bukan angkanya.
+    // (Total keseluruhan project di header section GDV — pill terpisah di
+    // atas box ini — tetap dari GDV Matching, lihat updateRevenueTotals.)
     var totalGdv = 0, totalNdv = 0, totalWallet = 0;
     var nGdv = 0, nNdv = 0, nWallet = 0;
     links.forEach(function (link) {
-      var g = gdvSyncStatusByLink[link];
-      if (g && g.hasRealized) { totalGdv += Number(g.realizedNominal) || 0; nGdv++; }
       var a = adsProgressByLink[link];
-      if (a && a.found) {
-        if (a.currentNdv !== null && a.currentNdv !== undefined && a.currentNdv !== '') { totalNdv += Number(a.currentNdv) || 0; nNdv++; }
-        if (a.activeWalletAmount !== null && a.activeWalletAmount !== undefined && a.activeWalletAmount !== '') { totalWallet += Number(a.activeWalletAmount) || 0; nWallet++; }
-      }
+      if (!a || !a.found) return;
+      if (a.currentGdv !== null && a.currentGdv !== undefined && a.currentGdv !== '') { totalGdv += Number(a.currentGdv) || 0; nGdv++; }
+      if (a.currentNdv !== null && a.currentNdv !== undefined && a.currentNdv !== '') { totalNdv += Number(a.currentNdv) || 0; nNdv++; }
+      if (a.activeWalletAmount !== null && a.activeWalletAmount !== undefined && a.activeWalletAmount !== '') { totalWallet += Number(a.activeWalletAmount) || 0; nWallet++; }
     });
 
     var terbuka = !!adsSummaryExpanded;
@@ -3671,7 +3674,8 @@
     var rincian = '';
     if (terbuka) {
       rincian = '<div class="ads-sum-detail">' + links.map(function (link) {
-        var g = gdvSyncStatusByLink[link];
+        // `g` tidak lagi dipakai untuk angka (lihat catatan di atas) — badge
+        // GDV Matching-nya sendiri dibaca gdvSyncBadgeHtml() langsung dari link.
         var a = adsProgressByLink[link];
         var sel = function (v) {
           return (v === null || v === undefined || v === '')
@@ -3686,7 +3690,7 @@
           '<span class="vl-badge-src">Ads Progress</span>' + (adsProgressBadgeHtml(link) || '<span class="pill neutral">—</span>') +
           '</div>' +
           '<div class="ads-sum-nums">' +
-          '<span><em>GDV Actual</em>' + ((g && g.hasRealized) ? formatRupiah(g.realizedNominal) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
+          '<span><em>GDV Actual</em>' + (a && a.found ? sel(a.currentGdv) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
           '<span><em>NDV</em>' + (a && a.found ? sel(a.currentNdv) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
           '<span><em>Dana Cair</em>' + (a && a.found ? sel(a.activeWalletAmount) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
           '</div>' +
@@ -3704,7 +3708,7 @@
       '<div class="ap-metrics">' +
       '<div class="ap-cell"><div class="ap-lbl">Total GDV Actual ' + jumlahLabel(nGdv) + '</div>' +
         '<div class="ap-val">' + formatRupiah(totalGdv) + '</div>' +
-        '<div class="ads-sum-src">dari GDV Matching</div></div>' +
+        '<div class="ads-sum-src">dari Ads Progress</div></div>' +
       '<div class="ap-cell"><div class="ap-lbl">Total NDV Saat Ini ' + jumlahLabel(nNdv) + '</div>' +
         '<div class="ap-val">' + formatRupiah(totalNdv) + '</div>' +
         '<div class="ads-sum-src">dari Ads Progress</div></div>' +
@@ -4292,8 +4296,20 @@
     editGdvRetainerLinks.forEach(function (l) {
       (l.entries || []).forEach(function (e) { totalGdv += Number(e.amount) || 0; });
     });
-    // Ads Sponsorship tidak punya nominal manual — realisasinya dari GDV
-    // Controller (Tableau), jadi tidak ikut dijumlah di sini.
+    // Ads Sponsorship tidak punya nominal manual, tapi TETAP ikut dijumlah ke
+    // total keseluruhan section GDV — lewat realisasi GDV Matching (angka
+    // rekonsiliasi yang sama dipakai CSR/Retainer di atas), BUKAN dari Ads
+    // Progress. Ads Progress punya box ringkasannya sendiri (lihat
+    // renderAdsSummaryBox) yang menampilkan angka progres saat ini; pill
+    // total di sini menjawab pertanyaan berbeda: "berapa total GDV project
+    // ini yang sudah terealisasi", jadi sumbernya harus konsisten dengan
+    // CSR/Retainer, bukan ikut sumber Ads Progress.
+    editGdvAdsCampaigns.forEach(function (c) {
+      var link = String(c.link || '').trim();
+      if (!link) return;
+      var g = gdvSyncStatusByLink[link];
+      if (g && g.hasRealized) totalGdv += Number(g.realizedNominal) || 0;
+    });
     var totalRev = Object.keys(editServiceRevenueItems).reduce(function (sum, key) { return sum + (Number(editServiceRevenueItems[key].amount) || 0); }, 0);
 
     // Total ditampilkan di DUA tempat: kartu ringkasan drawer Detail dan
