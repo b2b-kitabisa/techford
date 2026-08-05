@@ -729,6 +729,10 @@
      alasannya dengan badge status di modul lain. */
   .pipeline-score-achieved .pipeline-score-title, .pipeline-score-achieved .pipeline-score-value { color: #188038; }
   .pipeline-score-forecast .pipeline-score-title, .pipeline-score-forecast .pipeline-score-value { color: #b8860b; }
+  /* Achievement dibiarkan pakai warna aksen brand (cerulean), bukan hijau/
+     oranye — kartu ini bukan bucket ketiga, cuma potongan dari Deal
+     Value/Forecast di sebelahnya yang dipersempit ke consultant terpilih. */
+  .pipeline-score-achievement .pipeline-score-title { color: var(--color-cerulean); }
 
   /* CATATAN: .score-tooltip-icon / .score-tooltip DIHAPUS. Dulu score card
      Sales Pipeline menampilkan angka yang dipadatkan (mis. "Rp2.0B") dan

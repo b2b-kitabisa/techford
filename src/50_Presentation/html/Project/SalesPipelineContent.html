@@ -16,6 +16,17 @@
     <div class="pl-sc-kv"><span class="pl-sc-k">GDV</span><span class="pl-sc-v" id="pipelineForecastGdv">Rp0</span></div>
     <div class="pl-sc-kv"><span class="pl-sc-k">REV</span><span class="pl-sc-v" id="pipelineForecastRev">Rp0</span></div>
   </div>
+  <!-- Satu-satunya score card yang IKUT BERUBAH mengikuti filter Consultant
+       di atas (Deal Value & Forecast di sebelah kiri selalu total SELURUH
+       pipeline, tidak terpengaruh filter apa pun — itu memang disengaja).
+       Kosong = tanpa filter, konsisten dengan tabelnya: menampilkan total
+       seluruh consultant, bukan nol. -->
+  <div class="pipeline-score-card pipeline-score-achievement">
+    <div class="pipeline-score-title">🎯 Achievement</div>
+    <div class="pipeline-score-desc" id="pipelineAchievementDesc">GDV seluruh consultant (belum difilter)</div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">DEAL</span><span class="pl-sc-v" id="pipelineAchievementDealGdv">Rp0</span></div>
+    <div class="pl-sc-kv"><span class="pl-sc-k">FCST</span><span class="pl-sc-v" id="pipelineAchievementForecastGdv">Rp0</span></div>
+  </div>
   <div class="pipeline-bucket-card">
     <button type="button" class="pipeline-bucket-item pipeline-bucket-pros" id="pipelineBucketBtnPros" onclick="toggleBucketFilter('PROS')" title="Klik untuk memfilter tabel ke Prospect">
       <div class="pipeline-bucket-label">PROS</div>
@@ -1209,6 +1220,13 @@
   // ---- Render: score cards (selalu dari SELURUH data, bukan hasil filter) ----
   function renderPipelineScoreCards() {
     var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
+    // Card "Achievement" — SATU-SATUNYA yang di-scope ke filter Consultant.
+    // pipelineConsultantFilterValues kosong = tanpa filter (sama seperti
+    // matchesConsultant di getFilteredProjects), jadi defaultnya sama dengan
+    // total Deal Value/Forecast di sebelahnya, lalu ikut menyusut begitu
+    // consultant tertentu dipilih.
+    var achievementDealGdv = 0, achievementForecastGdv = 0;
+    var consultantScope = pipelineConsultantFilterValues;
     var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
     var bucketValues = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
 
@@ -1234,6 +1252,11 @@
         forecastGdv += Number(p.Total_GDV) || 0;
         forecastRev += Number(p.Total_Service_Revenue) || 0;
       }
+
+      if (!consultantScope.length || consultantScope.indexOf(p.Consultant) !== -1) {
+        if (bucket === 'WON') achievementDealGdv += Number(p.Total_GDV) || 0;
+        else if (bucket === 'PROS' || bucket === 'NEGO') achievementForecastGdv += Number(p.Total_GDV) || 0;
+      }
     });
 
     // Angka PENUH ditampilkan langsung (dulu dipadatkan jadi "Rp2.0B" dan
@@ -1244,6 +1267,9 @@
     document.getElementById('pipelineAchievedRev').innerText = formatRupiah(achievedRev);
     document.getElementById('pipelineForecastGdv').innerText = formatRupiah(forecastGdv);
     document.getElementById('pipelineForecastRev').innerText = formatRupiah(forecastRev);
+    setTextIfExists('pipelineAchievementDealGdv', formatRupiah(achievementDealGdv));
+    setTextIfExists('pipelineAchievementForecastGdv', formatRupiah(achievementForecastGdv));
+    updateAchievementCardDesc();
 
     var totalCount = buckets.PROS + buckets.NEGO + buckets.WON + buckets.LOSS;
     var bucketPct = {};
@@ -1863,6 +1889,21 @@
      terjadi dua kali saat bootstrap: begitu employee datang, lalu lagi
      begitu taxonomy datang). */
   var pipelineConsultantFilterValues = [];
+
+  /**
+   * Keterangan di card Achievement ikut menyebut consultant mana yang
+   * sedang dilihat — tanpa ini, angka yang berubah-ubah setiap filter
+   * diganti terlihat seperti bug, bukan hasil filter yang disengaja.
+   */
+  function updateAchievementCardDesc() {
+    var el = document.getElementById('pipelineAchievementDesc');
+    if (!el) return;
+    var n = pipelineConsultantFilterValues.length;
+    el.innerText = !n
+      ? 'GDV seluruh consultant (belum difilter)'
+      : (n === 1 ? 'GDV consultant: ' + pipelineConsultantFilterValues[0]
+                 : 'GDV dari ' + n + ' consultant dipilih');
+  }
 
   function renderConsultantFilterDropdown() {
     var container = document.getElementById('pipelineConsultantFilterOptions');
