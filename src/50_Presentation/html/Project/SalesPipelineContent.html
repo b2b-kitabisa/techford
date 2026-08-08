@@ -268,6 +268,14 @@
           <span class="pl-stage" id="drawerStageBadge"></span>
           <span class="drawer-id" id="projectIdHeaderDisplay"></span>
         </div>
+        <!-- Pindah antar project tanpa menutup drawer. Draft dilewati: ia
+             tidak punya drawer Detail (jalurnya form "Lengkapi"), jadi
+             melangkah ke draft akan menutup drawer di tengah jalan. -->
+        <div class="drawer-stepper">
+          <button type="button" class="drawer-step-btn" id="pipelinePrevBtn" onclick="stepPipelineDrawer(-1)" title="Project sebelumnya (←)">‹</button>
+          <span class="drawer-step-pos" id="pipelineDrawerPos"></span>
+          <button type="button" class="drawer-step-btn" id="pipelineNextBtn" onclick="stepPipelineDrawer(1)" title="Project berikutnya (→)">›</button>
+        </div>
         <div class="drawer-header-right">
           <button class="drawer-close" onclick="closePipelineDetail()">&times;</button>
         </div>
@@ -1819,7 +1827,15 @@
         ? '<button class="btn-outline" onclick="openEditDraftPipeline(\'' + p.Project_ID + '\')">Lengkapi ›</button>'
         : '<button class="btn-outline" onclick="openPipelineDetail(\'' + p.Project_ID + '\')">Detail ›</button>';
 
-      return '<tr class="' + rowClass + '">' +
+      // Seluruh baris bisa diklik — draft membuka form "Lengkapi", sisanya
+      // membuka drawer Detail, sama persis dengan tombol di kolom Action.
+      // techfordRowOpen menjaga agar klik pada tombol/chip/tautan di dalam
+      // baris, atau saat menyorot teks, tidak ikut membukanya.
+      var bukaFn = isDraft
+        ? "openEditDraftPipeline('" + p.Project_ID + "')"
+        : "openPipelineDetail('" + p.Project_ID + "')";
+      return '<tr class="' + rowClass + ' row-clickable"' +
+        ' onclick="techfordRowOpen(event, function () { ' + bukaFn + ' })">' +
         '<td>' + stageClientHtml + '</td>' +
         '<td>' + projectInfoHtml + '</td>' +
         '<td>' + pipelineServiceChips(p) + '</td>' +
@@ -2507,7 +2523,53 @@
    * pakai renderProjectDetailView() saja (lihat catatannya di sana), supaya
    * ketikan yang sedang berjalan di popup tidak ikut terhapus.
    */
+  /* ============================================================
+     Pindah antar project dari dalam drawer (‹ ›  / panah kiri-kanan)
+     ============================================================ */
+
+  /**
+   * Urutan langkah = hasil filter + sort yang sedang terlihat, TANPA draft.
+   *
+   * Draft dikeluarkan karena ia tidak punya drawer Detail sama sekali —
+   * jalurnya form "Lengkapi" yang menutup drawer. Kalau draft ikut dilangkahi,
+   * menekan "berikutnya" akan menutup drawer di tengah penelusuran, yang
+   * terbaca sebagai crash. (Draft selalu didorong ke atas oleh
+   * comparePipelineRows, jadi mereka justru yang pertama ditemui.)
+   */
+  function pipelineDrawerIds() {
+    return getFilteredProjects()
+      .filter(function (p) { return !p.Is_Draft; })
+      .map(function (p) { return p.Project_ID; });
+  }
+
+  function stepPipelineDrawer(delta) {
+    if (!currentPipelineDrawerId) return;
+    var next = techfordDrawerStep(pipelineDrawerIds(), currentPipelineDrawerId, delta);
+    if (!next) return;
+    openPipelineDetail(next.id);
+  }
+
+  function updatePipelineStepper() {
+    var pos = document.getElementById('pipelineDrawerPos');
+    var prev = document.getElementById('pipelinePrevBtn');
+    var next = document.getElementById('pipelineNextBtn');
+    if (!pos || !prev || !next) return;
+    var ids = pipelineDrawerIds();
+    var i = ids.indexOf(currentPipelineDrawerId);
+    if (i === -1) { pos.innerText = ''; prev.disabled = true; next.disabled = true; return; }
+    pos.innerText = (i + 1) + '/' + ids.length;
+    prev.disabled = i === 0;
+    next.disabled = i === ids.length - 1;
+  }
+
+  techfordBindDrawerArrows(
+    function () { return document.getElementById('pipelineDrawer').classList.contains('open'); },
+    function () { stepPipelineDrawer(-1); },
+    function () { stepPipelineDrawer(1); }
+  );
+
   function renderPipelineDrawer(project) {
+    updatePipelineStepper();
     renderProjectDetailView(project);
     renderProjectEditForms(project);
   }

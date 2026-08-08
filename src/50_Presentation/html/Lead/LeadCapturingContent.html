@@ -101,6 +101,13 @@
           <span class="badge" id="drawerStatusBadge"></span>
           <span class="drawer-id" id="drawerInboundId"></span>
         </div>
+        <!-- Pindah antar lead tanpa menutup drawer; urutannya mengikuti
+             tabel yang sedang terlihat (hasil filter + sort). -->
+        <div class="drawer-stepper">
+          <button type="button" class="drawer-step-btn" id="leadPrevBtn" onclick="stepLeadDrawer(-1)" title="Lead sebelumnya (←)">‹</button>
+          <span class="drawer-step-pos" id="leadDrawerPos"></span>
+          <button type="button" class="drawer-step-btn" id="leadNextBtn" onclick="stepLeadDrawer(1)" title="Lead berikutnya (→)">›</button>
+        </div>
         <button class="drawer-close" onclick="closeDetail()">&times;</button>
       </div>
       <h2 id="drawerEntityName"></h2>
@@ -1062,7 +1069,13 @@
         '<button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) +
         '\')" title="Lihat Detail">›</button></span>';
 
-      return '<tr' + (rowClass.length ? ' class="' + rowClass.join(' ') + '"' : '') + '>' +
+      // Seluruh baris bisa diklik. techfordRowOpen menjaga agar checkbox
+      // pilih-massal, tombol dup, tautan WA/email, dan tombol salin TIDAK
+      // ikut membuka drawer — tanpa itu, mencentang beberapa lead untuk aksi
+      // massal jadi mustahil.
+      rowClass.push('row-clickable');
+      return '<tr class="' + rowClass.join(' ') + '"' +
+        ' onclick="techfordRowOpen(event, function () { openDetail(\'' + escAttr(lead.Inbound_ID) + '\') })">' +
         '<td>' + (isLocked
           ? '<span class="chk-placeholder" title="Sudah jadi Client — tidak bisa diubah lagi">–</span>'
           : '<input type="checkbox" ' + checked + ' onchange="toggleLeadSelection(\'' + escAttr(lead.Inbound_ID) + '\', this.checked)">') +
@@ -1349,7 +1362,51 @@
     else TechfordToast.show('Browser menolak menyalin otomatis — sorot teksnya lalu tekan Ctrl+C.');
   }
 
+  /* ============================================================
+     Pindah antar lead dari dalam drawer (‹ ›  / panah kiri-kanan)
+     ============================================================ */
+
+  /** Urutan langkah = hasil filter + sort yang sedang terlihat di tabel. */
+  function leadDrawerIds() {
+    return getFilteredSorted().map(function (l) { return String(l.Inbound_ID); });
+  }
+
+  function stepLeadDrawer(delta) {
+    if (!currentDrawerLead) return;
+    var next = techfordDrawerStep(leadDrawerIds(), String(currentDrawerLead.Inbound_ID), delta);
+    if (!next) return;
+    // Halaman ikut digeser supaya baris yang dibuka tetap ada di tabel di
+    // belakang drawer saat drawer ditutup.
+    var pageSize = Number(document.getElementById('pageSize').value) || 50;
+    currentPage = Math.floor(next.index / pageSize) + 1;
+    openDetail(next.id);
+    render();
+  }
+
+  function updateLeadStepper() {
+    var pos = document.getElementById('leadDrawerPos');
+    var prev = document.getElementById('leadPrevBtn');
+    var next = document.getElementById('leadNextBtn');
+    if (!pos || !prev || !next) return;
+    var ids = leadDrawerIds();
+    var i = currentDrawerLead ? ids.indexOf(String(currentDrawerLead.Inbound_ID)) : -1;
+    // Lead yang sedang dibuka bisa keluar dari hasil filter (mis. statusnya
+    // baru diubah). Menampilkan posisi yang salah lebih buruk daripada tidak
+    // menampilkannya sama sekali.
+    if (i === -1) { pos.innerText = ''; prev.disabled = true; next.disabled = true; return; }
+    pos.innerText = (i + 1) + '/' + ids.length;
+    prev.disabled = i === 0;
+    next.disabled = i === ids.length - 1;
+  }
+
+  techfordBindDrawerArrows(
+    function () { return document.getElementById('detailDrawer').classList.contains('open'); },
+    function () { stepLeadDrawer(-1); },
+    function () { stepLeadDrawer(1); }
+  );
+
   function renderDrawer(lead) {
+    updateLeadStepper();
     setStatusBadge(lead.Status);
     document.getElementById('drawerInboundId').innerText = lead.Inbound_ID || '';
     document.getElementById('drawerEntityName').innerText = lead.Entity_Name || '-';

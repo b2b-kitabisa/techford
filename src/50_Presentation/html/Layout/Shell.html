@@ -179,6 +179,86 @@
           if (document.readyState === 'complete') fn();
           else window.addEventListener('load', fn);
         }
+
+        /**
+         * Baris tabel yang bisa diklik untuk membuka drawer.
+         *
+         * Ditaruh di sini (satu implementasi untuk semua halaman) karena
+         * bagian yang sulitnya BUKAN membuka drawer, melainkan mengetahui
+         * kapan TIDAK boleh membukanya. Kalau tiap halaman menuliskannya
+         * sendiri, tiga dari lima pasti lupa salah satu kasus di bawah:
+         *
+         * - Klik pada tombol/link/checkbox di dalam baris. Baris Lead punya
+         *   checkbox pilih-massal dan Client punya tombol salin nomor —
+         *   mencentang lalu drawer ikut terbuka membuat aksi massal praktis
+         *   tak bisa dipakai.
+         * - MENYOROT TEKS di dalam sel. Menyalin nomor telepon dengan cara
+         *   diseleksi berakhir dengan mouseup di dalam baris; tanpa
+         *   pemeriksaan ini drawer terbuka setiap kali orang menyalin
+         *   sesuatu, dan teks yang disorotnya hilang.
+         * - Klik tengah / klik kanan / klik dengan modifier (Ctrl/Cmd/Shift)
+         *   — kebiasaan "buka di tab baru"; membuka drawer di situ
+         *   mengagetkan.
+         *
+         * Elemen apa pun boleh menolak eksplisit dengan class "no-row-open".
+         */
+        function techfordRowOpen(event, fn) {
+          if (event.button && event.button !== 0) return;
+          if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+
+          var stop = { BUTTON: 1, A: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, LABEL: 1, SUMMARY: 1 };
+          var node = event.target;
+          var batas = event.currentTarget;
+          while (node && node !== batas) {
+            if (stop[node.tagName]) return;
+            if (node.classList && node.classList.contains('no-row-open')) return;
+            node = node.parentNode;
+          }
+
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.toString().length > 0) return;
+
+          fn();
+        }
+
+        /**
+         * Pindah ke record sebelum/sesudahnya SESUAI URUTAN YANG TERLIHAT.
+         *
+         * `ids` harus daftar hasil filter + sort yang sedang dipakai tabel,
+         * bukan data mentah — kalau tidak, tombol "berikutnya" melompat ke
+         * record yang tidak ada di layar dan urutannya terasa acak.
+         *
+         * @returns {?{id:string, index:number, total:number}} null kalau
+         *          sudah di ujung (pemanggil menonaktifkan tombolnya).
+         */
+        function techfordDrawerStep(ids, currentId, delta) {
+          if (!ids || !ids.length) return null;
+          var i = ids.indexOf(currentId);
+          if (i === -1) return null;
+          var j = i + delta;
+          if (j < 0 || j >= ids.length) return null;
+          return { id: ids[j], index: j, total: ids.length };
+        }
+
+        /**
+         * Panah kiri/kanan untuk berpindah record selama drawer terbuka.
+         *
+         * Sengaja TIDAK aktif saat fokus ada di input/textarea/select atau di
+         * elemen contenteditable: menggeser kursor di dalam kolom teks adalah
+         * arti panah yang jauh lebih diharapkan, dan drawer ini penuh dengan
+         * form yang bisa diedit.
+         */
+        function techfordBindDrawerArrows(isOpen, onPrev, onNext) {
+          document.addEventListener('keydown', function (e) {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (!isOpen()) return;
+            var a = document.activeElement;
+            if (a && (a.isContentEditable || { INPUT: 1, TEXTAREA: 1, SELECT: 1 }[a.tagName])) return;
+            e.preventDefault();
+            if (e.key === 'ArrowLeft') onPrev(); else onNext();
+          });
+        }
       </script>
 
       <main class="content-area" id="mainContent"><?!= content ?></main>

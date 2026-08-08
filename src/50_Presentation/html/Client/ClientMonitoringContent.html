@@ -178,6 +178,14 @@
           <span class="badge" id="clientStatusBadge"></span>
           <span class="drawer-id" id="clientIdDisplay"></span>
         </div>
+        <!-- Pindah antar client tanpa menutup drawer. Urutannya mengikuti
+             tabel yang sedang terlihat (hasil filter + sort), bukan urutan
+             data mentah — lihat clientDrawerIds(). -->
+        <div class="drawer-stepper">
+          <button type="button" class="drawer-step-btn" id="clientPrevBtn" onclick="stepClientDrawer(-1)" title="Client sebelumnya (←)">‹</button>
+          <span class="drawer-step-pos" id="clientDrawerPos"></span>
+          <button type="button" class="drawer-step-btn" id="clientNextBtn" onclick="stepClientDrawer(1)" title="Client berikutnya (→)">›</button>
+        </div>
         <div class="drawer-header-right">
           <!-- Gerbangnya HANYA "belum punya project" — kelengkapan data
                sengaja TIDAK menghalangi. Admin sering belum tahu salah satu
@@ -1324,7 +1332,14 @@
         if (pic.Title) contactHtml += '<div class="cell-sub compact-hide">' + escHtml(pic.Title) + '</div>';
       }
 
-      return '<tr' + (status.complete ? '' : ' class="client-row-incomplete"') + '>' +
+      // Seluruh baris bisa diklik. Tombol di kolom Action tetap ada — ia
+      // menandakan bahwa baris ini BISA dibuka (dan menyediakan target
+      // keyboard/aksesibilitas); techfordRowOpen yang menjaga agar klik pada
+      // tombol, tautan wa.me/email, tombol salin, atau saat menyorot teks
+      // TIDAK ikut membuka drawer.
+      return '<tr class="row-clickable' + (status.complete ? '' : ' client-row-incomplete') + '"' +
+        ' onclick="techfordRowOpen(event, function () { openClientDetail(\'' + escAttr(c.Client_ID) + '\'' +
+        (status.complete ? '' : ', true') + ') })">' +
         '<td><div class="entity-name">' + escHtml(c.Brand_Name || '-') + '</div>' +
         '<div class="entity-pic compact-hide">' + escHtml(c.Entity_Name || '-') + '</div>' +
         '<div class="cell-id">' + escHtml(c.Client_ID) + '</div></td>' +
@@ -1603,7 +1618,66 @@
     document.getElementById('viewServiceRevenue').innerText = totalAll ? formatRupiah(summary.rev) : '-';
   }
 
+  /* ============================================================
+     Pindah antar client dari dalam drawer (‹ ›  / panah kiri-kanan)
+     ============================================================ */
+
+  /**
+   * Urutan langkahnya mengikuti HASIL FILTER + SORT, bukan allClients.
+   * Kalau memakai data mentah, menekan "berikutnya" akan melompat ke client
+   * yang tidak ada di tabel — dan pengguna yang baru saja menyaring
+   * "Incomplete" justru dibawa ke client yang sudah lengkap.
+   *
+   * Sengaja TIDAK dibatasi halaman aktif: berhenti di client ke-10 lalu harus
+   * menutup drawer untuk pindah halaman adalah gangguan yang justru ingin
+   * dihilangkan fitur ini.
+   */
+  function clientDrawerIds() {
+    return getFilteredClients().map(function (c) { return c.Client_ID; });
+  }
+
+  function stepClientDrawer(delta) {
+    if (!currentClientDrawerId) return;
+    var next = techfordDrawerStep(clientDrawerIds(), currentClientDrawerId, delta);
+    if (!next) return;
+    // Halaman ikut digeser supaya baris yang sedang dibuka tetap ada di
+    // tabel di belakang drawer — kalau tidak, menutup drawer mendarat di
+    // halaman yang tidak memuat client tadi.
+    var pageSize = Number(document.getElementById('clientPageSize').value) || 100;
+    clientPage = Math.floor(next.index / pageSize) + 1;
+    openClientDetail(next.id);
+    renderClients();
+  }
+
+  function updateClientStepper() {
+    var ids = clientDrawerIds();
+    var i = ids.indexOf(currentClientDrawerId);
+    var pos = document.getElementById('clientDrawerPos');
+    var prev = document.getElementById('clientPrevBtn');
+    var next = document.getElementById('clientNextBtn');
+    if (!pos || !prev || !next) return;
+    // Client yang sedang dibuka bisa saja TIDAK ada di hasil filter (mis.
+    // baru saja diedit sehingga tidak lagi cocok). Steppernya disembunyikan
+    // daripada menampilkan posisi yang menyesatkan.
+    if (i === -1) {
+      pos.innerText = '';
+      prev.disabled = true;
+      next.disabled = true;
+      return;
+    }
+    pos.innerText = (i + 1) + '/' + ids.length;
+    prev.disabled = i === 0;
+    next.disabled = i === ids.length - 1;
+  }
+
+  techfordBindDrawerArrows(
+    function () { return document.getElementById('clientDrawer').classList.contains('open'); },
+    function () { stepClientDrawer(-1); },
+    function () { stepClientDrawer(1); }
+  );
+
   function renderClientDrawer(client) {
+    updateClientStepper();
     // Dipanggil di SINI, bukan hanya saat drawer dibuka: drawer ini di-render
     // ulang setiap kali data client berubah (simpan info, tambah/hapus PIC,
     // refresh project summary). Kalau tombolnya hanya diperbarui saat dibuka,

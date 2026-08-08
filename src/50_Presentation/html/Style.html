@@ -571,6 +571,27 @@
   .drawer-header { padding: 16px 24px 18px; background: var(--color-mineshaft); flex-shrink: 0; }
   .drawer-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .drawer-close { background: none; border: none; color: var(--color-white); font-size: 22px; cursor: pointer; line-height: 1; }
+
+  /* ---- Stepper ‹ n/N › di header drawer ---- */
+  /* Posisinya sudah "n dari N" apa adanya: tanpa penyebut, tombol berikutnya
+     yang tiba-tiba mati terbaca sebagai rusak, bukan sebagai ujung daftar. */
+  .drawer-stepper { display: flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 10px; }
+  .drawer-step-btn {
+    background: rgba(255, 255, 255, 0.10); border: none; color: var(--color-white);
+    font-family: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+    width: 24px; height: 24px; border-radius: 6px;
+  }
+  .drawer-step-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
+  .drawer-step-btn:disabled { opacity: 0.3; cursor: default; }
+  .drawer-step-pos {
+    font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, 0.75);
+    font-variant-numeric: tabular-nums; padding: 0 4px; min-width: 34px; text-align: center;
+  }
+
+  /* Baris tabel yang seluruhnya bisa diklik untuk membuka drawer. Kursornya
+     harus pointer supaya keterklikannya terlihat sebelum dicoba — tapi teks
+     di dalamnya tetap bisa disorot & disalin (lihat techfordRowOpen). */
+  .data-table tbody tr.row-clickable { cursor: pointer; }
   .drawer-header h2 { margin: 0; font-size: 20px; color: var(--color-white); }
   .drawer-header .drawer-entity-type { font-size: 12px; color: rgba(255,255,255,0.7); letter-spacing: 0.5px; margin-top: 2px; }
 

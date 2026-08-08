@@ -106,6 +106,13 @@
     <div class="drawer-header">
       <div class="drawer-header-top">
         <h2>Kelola Cost — <span id="cmDrawerDocId">-</span></h2>
+        <!-- Pindah antar COR tanpa menutup drawer; urutannya mengikuti tabel
+             yang sedang terlihat (hasil filter + sort). -->
+        <div class="drawer-stepper">
+          <button type="button" class="drawer-step-btn" id="cmPrevBtn" onclick="stepCmDrawer(-1)" title="COR sebelumnya (&#8592;)">&lsaquo;</button>
+          <span class="drawer-step-pos" id="cmDrawerPos"></span>
+          <button type="button" class="drawer-step-btn" id="cmNextBtn" onclick="stepCmDrawer(1)" title="COR berikutnya (&#8594;)">&rsaquo;</button>
+        </div>
         <button class="drawer-close" onclick="closeCmDrawer()">&times;</button>
       </div>
       <div class="drawer-entity-type" id="cmDrawerProjectClient">-</div>
@@ -366,7 +373,10 @@
       var saldoSalset = r.budgetSalset - r.realizedSalset;
       var saldoVendor = r.budgetVendor - r.realizedVendor;
       var marginDeltaPp = r.actualMarginPct - r.budgetedMarginPct;
-      return '<tr>' +
+      // Seluruh baris bisa diklik untuk membuka drawer Kelola Cost;
+      // techfordRowOpen menjaga agar tombolnya sendiri tidak menjalankannya
+      // dua kali dan agar menyorot angka tidak ikut membuka drawer.
+      return '<tr class="row-clickable" onclick="techfordRowOpen(event, function () { openCmDrawer(\'' + r.docId + '\') })">' +
         '<td>' + statusCell(r.status) + '<div class="entity-name" style="margin-top:4px;">' + esc(r.docId) + '</div></td>' +
         '<td class="truncate" title="' + esc(projectLabel) + '"><span class="clip">' + esc(projectLabel) + '</span><div class="table-row-meta">' + esc(r.clientName) + '</div></td>' +
         '<td class="cm-col-divider">' + costStack(r.budgetSalset, r.realizedSalset, saldoSalset) + '</td>' +
@@ -412,8 +422,42 @@
   }
 
   // ══════════════════════════ DRAWER ══════════════════════════
+  /* ---- Pindah antar COR dari dalam drawer (‹ › / panah kiri-kanan) ---- */
+
+  /** Urutan langkah = hasil filter + sort yang sedang terlihat di tabel. */
+  function cmDrawerIds() {
+    return getFilteredCmRows().map(function (r) { return r.docId; });
+  }
+
+  function stepCmDrawer(delta) {
+    if (!currentCmDrawerDocId) return;
+    var next = techfordDrawerStep(cmDrawerIds(), currentCmDrawerDocId, delta);
+    if (!next) return;
+    openCmDrawer(next.id);
+  }
+
+  function updateCmStepper() {
+    var pos = document.getElementById('cmDrawerPos');
+    var prev = document.getElementById('cmPrevBtn');
+    var next = document.getElementById('cmNextBtn');
+    if (!pos || !prev || !next) return;
+    var ids = cmDrawerIds();
+    var i = ids.indexOf(currentCmDrawerDocId);
+    if (i === -1) { pos.innerText = ''; prev.disabled = true; next.disabled = true; return; }
+    pos.innerText = (i + 1) + '/' + ids.length;
+    prev.disabled = i === 0;
+    next.disabled = i === ids.length - 1;
+  }
+
+  techfordBindDrawerArrows(
+    function () { return document.getElementById('cmDrawer').classList.contains('open'); },
+    function () { stepCmDrawer(-1); },
+    function () { stepCmDrawer(1); }
+  );
+
   function openCmDrawer(docId) {
     currentCmDrawerDocId = docId;
+    updateCmStepper();
     document.body.classList.add('drawer-open');
     document.getElementById('cmDrawer').classList.add('open');
     document.getElementById('cmDrawerDocId').innerText = docId;

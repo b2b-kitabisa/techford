@@ -104,7 +104,12 @@ function topLevelCalls(scriptSrc) {
 
 // Pemanggilan top-level yang memang aman: tidak menyentuh helper Shell dan
 // tidak melakukan RPC — cuma mendaftarkan sesuatu atau membungkus bootstrap.
-const DIIZINKAN = new Set(['techfordOnReady']);
+// techfordBindDrawerArrows ikut diizinkan dengan alasan yang sama seperti
+// techfordOnReady: ia didefinisikan di blok <script> Shell DI ATAS <main>
+// (dijaga oleh bagian 1 test ini), jadi sudah pasti ada saat fragment
+// diparse — dan isinya cuma memasang satu listener keydown, tanpa RPC dan
+// tanpa menyentuh elemen halaman.
+const DIIZINKAN = new Set(['techfordOnReady', 'techfordBindDrawerArrows']);
 
 console.log('\n1) Shell mendefinisikan helper bootstrap di ATAS <main>');
 const shell = fs.readFileSync(SHELL, 'utf8');
@@ -117,7 +122,8 @@ const mainIdx = mainMatch ? mainMatch.index : shell.length;
 
 const sebelumMain = shell.slice(0, mainIdx);
 const sesudahMain = shell.slice(mainIdx);
-['gsRunWithRetry', 'techfordOnReady'].forEach(function (fn) {
+['gsRunWithRetry', 'techfordOnReady', 'techfordRowOpen', 'techfordDrawerStep',
+  'techfordBindDrawerArrows'].forEach(function (fn) {
   const decl = 'function ' + fn + '(';
   ok(fn + ' dideklarasikan sebelum <main>', sebelumMain.indexOf(decl) !== -1,
     'Fragment halaman diparse di posisi <main>; helper yang dipakai saat ' +
