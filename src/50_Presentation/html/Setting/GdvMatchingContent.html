@@ -8,13 +8,47 @@
 <div id="gdvMatchError" class="error"></div>
 <div id="gdvMatchAliasWarning" class="gdv-alias-warning" style="display:none;"></div>
 
-<div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:20px;"></div>
+<div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:12px;"></div>
 
-<div class="filter-bar">
+<!-- Badge jumlah per status sinkronisasi (item 21). Sekaligus jadi filter
+     cepat — lihat renderGdvMatchSyncBadges. -->
+<div class="sync-badge-row" id="gdvMatchSyncBadges"></div>
+
+<div class="filter-bar filter-bar-even">
   <div class="search-field"><span class="search-ic">⌕</span><input id="gdvMatchSearch" placeholder="Cari Link Campaign, Child Short URL, atau Campaigner Name..." oninput="onGdvMatchFilterChange()"></div>
-  <button class="filter-reset" onclick="resetGdvMatchFilter()">↺ Reset Filter</button>
+
+  <!-- Kedua filter di bawah ini pilihannya DITURUNKAN DARI DATA, bukan dari
+       daftar tetap: Source Category & Project Status datang dari export
+       Tableau yang nilainya bisa bertambah kapan saja tanpa ada yang
+       memberi tahu platform ini. Daftar tetap akan diam-diam menyembunyikan
+       nilai baru. -->
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="gdvMatchSourceFilterBtn" onclick="toggleGdvMatchDropdown('gdvMatchSourceFilterDropdown')">Source Category ▾</button>
+    <div class="status-filter-dropdown" id="gdvMatchSourceFilterDropdown">
+      <div class="status-filter-actions">
+        <button type="button" onclick="setAllGdvMatchSourceFilter(true)">Pilih Semua</button>
+        <button type="button" onclick="setAllGdvMatchSourceFilter(false)">Bersihkan</button>
+      </div>
+      <div id="gdvMatchSourceFilterOptions"></div>
+    </div>
+  </div>
+
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="gdvMatchProjectStatusFilterBtn" onclick="toggleGdvMatchDropdown('gdvMatchProjectStatusFilterDropdown')">Project Status ▾</button>
+    <div class="status-filter-dropdown" id="gdvMatchProjectStatusFilterDropdown">
+      <div class="status-filter-actions">
+        <button type="button" onclick="setAllGdvMatchProjectStatusFilter(true)">Pilih Semua</button>
+        <button type="button" onclick="setAllGdvMatchProjectStatusFilter(false)">Bersihkan</button>
+      </div>
+      <div id="gdvMatchProjectStatusFilterOptions"></div>
+    </div>
+  </div>
+
+  <button class="filter-reset" id="gdvMatchResetBtn" onclick="resetGdvMatchFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data">🔄 Refresh</button>
 </div>
+
+<div class="filter-chips" id="gdvMatchFilterChips" style="display:none;"></div>
 
 <div class="table-scroll">
   <table class="data-table">
@@ -103,6 +137,9 @@
       gdvMatchRows = res.data.rows || [];
       renderGdvMatchAliasWarning(res.data.aliasAmbiguous || []);
       renderGdvMatchScoreCard(res.data.summary || {});
+      // Pilihan filter diturunkan dari data, jadi harus dibangun ulang setiap
+      // kali data datang — termasuk saat Refresh, bukan cuma saat bootstrap.
+      renderGdvMatchFilterDropdowns();
       renderGdvMatching();
       if (onDone) onDone(true);
     }, function (message) {
@@ -146,12 +183,165 @@
     return '<span class="pill neutral">Belum Sinkron</span>';
   }
 
+  /* ============================================================
+     Filter Source Category (item 19) & Project Status (item 23)
+     ============================================================
+     Keduanya multi-select dengan pola yang sama persis seperti filter Stage
+     di Sales Pipeline, supaya tidak ada gaya filter ketiga di platform. */
+  var gdvMatchSourceFilterValues = [];
+  var gdvMatchProjectStatusFilterValues = [];
+
+  /**
+   * Satu baris bisa punya BEBERAPA source category — server menggabungkannya
+   * jadi satu string "A, B" (sourceCategories.join). Karena itu harus dipecah
+   * lagi di sini; mencocokkan string gabungannya utuh berarti baris bergabung
+   * tidak akan pernah cocok dengan pilihan mana pun.
+   */
+  function gdvMatchSourceListOf(row) {
+    return String(row.sourceCategory || '').split(',').map(function (s) {
+      return s.trim();
+    }).filter(Boolean);
+  }
+
+  /** Nilai unik yang BENAR-BENAR ada di data, terurut. */
+  function gdvMatchDistinct(ambil) {
+    var terlihat = {};
+    var hasil = [];
+    gdvMatchRows.forEach(function (r) {
+      ambil(r).forEach(function (v) {
+        if (v && !terlihat[v]) { terlihat[v] = true; hasil.push(v); }
+      });
+    });
+    return hasil.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+  }
+
+  function gdvMatchSourceOptions() { return gdvMatchDistinct(gdvMatchSourceListOf); }
+  function gdvMatchProjectStatusOptions() {
+    return gdvMatchDistinct(function (r) { return r.projectStatus ? [String(r.projectStatus).trim()] : []; });
+  }
+
+  function toggleGdvMatchDropdown(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+
+  function renderGdvMatchFilterDropdowns() {
+    // Pilihan yang sudah dipilih tapi nilainya lenyap dari data (mis. setelah
+    // upload ulang Tableau) dibuang — kalau dibiarkan, tabelnya kosong terus
+    // karena menyaring nilai yang tidak ada lagi, tanpa petunjuk apa pun.
+    var srcOpts = gdvMatchSourceOptions();
+    gdvMatchSourceFilterValues = gdvMatchSourceFilterValues.filter(function (v) { return srcOpts.indexOf(v) !== -1; });
+    var stOpts = gdvMatchProjectStatusOptions();
+    gdvMatchProjectStatusFilterValues = gdvMatchProjectStatusFilterValues.filter(function (v) { return stOpts.indexOf(v) !== -1; });
+
+    document.getElementById('gdvMatchSourceFilterOptions').innerHTML = srcOpts.length
+      ? srcOpts.map(function (v) {
+          return '<label><input type="checkbox" value="' + esc(v) + '"' +
+            (gdvMatchSourceFilterValues.indexOf(v) !== -1 ? ' checked' : '') +
+            ' onchange="onGdvMatchSourceToggle(this)"> ' + esc(v) + '</label>';
+        }).join('')
+      : '<div class="dropdown-empty">Belum ada data</div>';
+
+    document.getElementById('gdvMatchProjectStatusFilterOptions').innerHTML = stOpts.length
+      ? stOpts.map(function (v) {
+          return '<label><input type="checkbox" value="' + esc(v) + '"' +
+            (gdvMatchProjectStatusFilterValues.indexOf(v) !== -1 ? ' checked' : '') +
+            ' onchange="onGdvMatchProjectStatusToggle(this)"> ' + esc(v) + '</label>';
+        }).join('')
+      : '<div class="dropdown-empty">Belum ada data</div>';
+
+    updateGdvMatchFilterButtons();
+  }
+
+  function onGdvMatchSourceToggle(cb) {
+    var i = gdvMatchSourceFilterValues.indexOf(cb.value);
+    if (cb.checked && i === -1) gdvMatchSourceFilterValues.push(cb.value);
+    if (!cb.checked && i !== -1) gdvMatchSourceFilterValues.splice(i, 1);
+    onGdvMatchFilterChange();
+  }
+  function onGdvMatchProjectStatusToggle(cb) {
+    var i = gdvMatchProjectStatusFilterValues.indexOf(cb.value);
+    if (cb.checked && i === -1) gdvMatchProjectStatusFilterValues.push(cb.value);
+    if (!cb.checked && i !== -1) gdvMatchProjectStatusFilterValues.splice(i, 1);
+    onGdvMatchFilterChange();
+  }
+  function setAllGdvMatchSourceFilter(all) {
+    gdvMatchSourceFilterValues = all ? gdvMatchSourceOptions() : [];
+    renderGdvMatchFilterDropdowns();
+    onGdvMatchFilterChange();
+  }
+  function setAllGdvMatchProjectStatusFilter(all) {
+    gdvMatchProjectStatusFilterValues = all ? gdvMatchProjectStatusOptions() : [];
+    renderGdvMatchFilterDropdowns();
+    onGdvMatchFilterChange();
+  }
+
+  function updateGdvMatchFilterButtons() {
+    var pasang = function (btnId, nilai, label) {
+      var btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.innerText = (!nilai.length ? label : (nilai.length === 1 ? nilai[0] : nilai.length + ' dipilih')) + ' ▾';
+      btn.classList.toggle('has-value', nilai.length > 0);
+    };
+    pasang('gdvMatchSourceFilterBtn', gdvMatchSourceFilterValues, 'Source Category');
+    pasang('gdvMatchProjectStatusFilterBtn', gdvMatchProjectStatusFilterValues, 'Project Status');
+  }
+
+  /** Chip filter aktif — pola sama dengan Sales Pipeline & Client Monitoring. */
+  function renderGdvMatchFilterChips() {
+    var host = document.getElementById('gdvMatchFilterChips');
+    var search = document.getElementById('gdvMatchSearch').value.trim();
+    var chips = [];
+    if (search) chips.push({ key: 'search', label: 'Cari: "' + search + '"' });
+    if (gdvMatchSourceFilterValues.length) {
+      chips.push({ key: 'source', label: 'Source: ' + gdvMatchSourceFilterValues.join(', ') });
+    }
+    if (gdvMatchProjectStatusFilterValues.length) {
+      chips.push({ key: 'projectStatus', label: 'Project Status: ' + gdvMatchProjectStatusFilterValues.join(', ') });
+    }
+    var reset = document.getElementById('gdvMatchResetBtn');
+    if (reset) {
+      reset.classList.toggle('has-active', chips.length > 0);
+      reset.disabled = chips.length === 0;
+      reset.innerText = chips.length ? '↺ Reset Filter (' + chips.length + ')' : '↺ Reset Filter';
+    }
+    if (!chips.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    host.innerHTML = '<span class="filter-chips-label">Filter aktif:</span>' + chips.map(function (c) {
+      return '<span class="filter-chip">' + esc(c.label) +
+        '<button type="button" onclick="removeGdvMatchFilter(\'' + c.key + '\')" title="Hapus filter ini">&times;</button></span>';
+    }).join('');
+  }
+
+  function removeGdvMatchFilter(key) {
+    if (key === 'search') document.getElementById('gdvMatchSearch').value = '';
+    if (key === 'source') gdvMatchSourceFilterValues = [];
+    if (key === 'projectStatus') gdvMatchProjectStatusFilterValues = [];
+    renderGdvMatchFilterDropdowns();
+    onGdvMatchFilterChange();
+  }
+
   function getFilteredGdvMatchRows() {
     var search = document.getElementById('gdvMatchSearch').value.toLowerCase().trim();
     return gdvMatchRows.filter(function (r) {
+      // Kosong = tanpa filter, bukan "tidak ada yang cocok" — membersihkan
+      // semua centang tidak boleh mengosongkan tabel.
+      if (gdvMatchSourceFilterValues.length) {
+        var sumber = gdvMatchSourceListOf(r);
+        if (!sumber.some(function (s) { return gdvMatchSourceFilterValues.indexOf(s) !== -1; })) return false;
+      }
+      if (gdvMatchProjectStatusFilterValues.length &&
+        gdvMatchProjectStatusFilterValues.indexOf(String(r.projectStatus || '').trim()) === -1) return false;
+
       if (!search) return true;
       if (String(r.linkCampaign || '').toLowerCase().indexOf(search) !== -1) return true;
       if (String(r.campaignerName || '').toLowerCase().indexOf(search) !== -1) return true;
+      // Consultant & nama project ikut dicari: begitu namanya muncul di
+      // rincian klaim, orang akan mencoba mencarinya di kotak pencarian.
+      if ((r.claims || []).some(function (c) {
+        return String(c.Consultant || '').toLowerCase().indexOf(search) !== -1 ||
+          String(c.Project_Name || '').toLowerCase().indexOf(search) !== -1 ||
+          String(c.Client_Name || '').toLowerCase().indexOf(search) !== -1;
+      })) return true;
       // Child_Short_URL ikut dicari. Consultant kerap cuma pegang link
       // turunan ini — kalau tidak bisa dicari, dia harus tahu dulu nama
       // Link_Campaign induknya untuk menemukan barisnya, padahal justru
@@ -191,9 +381,24 @@
 
   function resetGdvMatchFilter() {
     document.getElementById('gdvMatchSearch').value = '';
+    gdvMatchSourceFilterValues = [];
+    gdvMatchProjectStatusFilterValues = [];
+    renderGdvMatchFilterDropdowns();
     gdvMatchPage = 1;
     renderGdvMatching();
   }
+
+  // Klik di luar menutup dropdown yang terbuka — tanpa ini dropdown-nya
+  // menggantung menutupi tabel sampai tombolnya diklik lagi.
+  document.addEventListener('click', function (e) {
+    ['gdvMatchSourceFilterDropdown', 'gdvMatchProjectStatusFilterDropdown'].forEach(function (id) {
+      var dd = document.getElementById(id);
+      var btn = document.getElementById(id.replace('Dropdown', 'Btn'));
+      if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target !== btn) {
+        dd.classList.remove('open');
+      }
+    });
+  });
 
   function paginateGdvMatch(list) {
     var pageSize = Number(document.getElementById('gdvMatchPageSize').value);
@@ -205,10 +410,64 @@
 
   function renderGdvMatching() {
     updateGdvMatchSortIcons();
-    var filtered = getFilteredGdvMatchRows();
-    var paged = paginateGdvMatch(filtered);
+    // `dasar` = hasil semua filter KECUALI badge status. Badge dihitung dari
+    // sini supaya angka pada badge yang tidak sedang dipilih tidak ikut jadi
+    // 0 — kalau itu terjadi, badge-nya kehilangan gunanya persis saat mulai
+    // dipakai.
+    var dasar = getFilteredGdvMatchRows();
+    var terlihat = gdvMatchStatusFilter
+      ? dasar.filter(function (r) { return r.status === gdvMatchStatusFilter; })
+      : dasar;
+    var paged = paginateGdvMatch(terlihat);
     renderGdvMatchTable(paged.items);
     renderGdvMatchPagination(paged);
+    updateGdvMatchFilterButtons();
+    renderGdvMatchFilterChips();
+    renderGdvMatchSyncBadges(dasar);
+  }
+
+  /**
+   * Badge jumlah per status sinkronisasi (item 21).
+   *
+   * Dihitung dari baris yang SEDANG TERLIHAT (hasil filter), bukan dari
+   * summary server — begitu filter dipasang, angka yang tidak ikut menyusut
+   * akan terbaca sebagai "filternya tidak berpengaruh" dan orang berhenti
+   * mempercayainya. Jumlah total tetap disebut supaya jelas ini bagian dari
+   * berapa.
+   *
+   * Angkanya juga jadi tombol: menemukan "42 Belum Sinkron" lalu tidak bisa
+   * melihat yang mana adalah jalan buntu yang paling sering terjadi di
+   * halaman ini.
+   */
+  var gdvMatchStatusFilter = '';
+  var GDV_MATCH_STATUS_META = [
+    { key: 'SINKRON', label: 'Sinkron', cls: 'good' },
+    { key: 'BELUM_SINKRON', label: 'Belum Sinkron', cls: 'neutral' },
+    { key: 'KLAIM_MELEBIHI', label: 'Klaim Melebihi', cls: 'bad' }
+  ];
+
+  function renderGdvMatchSyncBadges(dasar) {
+    var host = document.getElementById('gdvMatchSyncBadges');
+    if (!host) return;
+    var hitung = {};
+    dasar.forEach(function (r) { hitung[r.status] = (hitung[r.status] || 0) + 1; });
+    host.innerHTML = GDV_MATCH_STATUS_META.map(function (m) {
+      var n = hitung[m.key] || 0;
+      var aktif = gdvMatchStatusFilter === m.key;
+      return '<button type="button" class="sync-badge' + (aktif ? ' active' : '') + '" ' +
+        'onclick="toggleGdvMatchStatusFilter(\'' + m.key + '\')" ' +
+        'title="' + esc(aktif ? 'Klik lagi untuk menampilkan semua status' : 'Tampilkan hanya baris ' + m.label) + '">' +
+        '<span class="pill ' + m.cls + '">' + esc(m.label) + '</span>' +
+        '<strong>' + n + '</strong></button>';
+    }).join('') +
+      '<span class="sync-badge-total">dari ' + dasar.length + ' link' +
+      (dasar.length !== gdvMatchRows.length ? ' (terfilter dari ' + gdvMatchRows.length + ')' : '') + '</span>';
+  }
+
+  function toggleGdvMatchStatusFilter(key) {
+    gdvMatchStatusFilter = gdvMatchStatusFilter === key ? '' : key;
+    gdvMatchPage = 1;
+    renderGdvMatching();
   }
 
   function updateGdvMatchSortIcons() {
@@ -229,8 +488,21 @@
     }
     tbody.innerHTML = items.map(function (r) {
       var expanded = !!gdvMatchExpanded[r.linkCampaign];
-      var mainRow = '<tr style="cursor:pointer;" onclick="toggleGdvMatchRow(\'' + esc(r.linkCampaign).replace(/'/g, "\\'") + '\')">' +
-        '<td>' + esc(r.linkCampaign) +
+      // Penanda skema Ads Sponsorship (item 20). Baris Ads dibaca dengan
+      // cara berbeda: realisasinya berjalan terus lewat Ads Progress, jadi
+      // "Belum Sinkron" di sini sering wajar dan bukan kesalahan input —
+      // beda dengan baris CSR yang seharusnya sudah pasti cocok.
+      var adaAds = (r.claims || []).some(function (c) { return c.Source_Service === 'Ads Sponsorship'; });
+      var adsMark = adaAds
+        ? ' <span class="pill accent-ads-pill" title="Ada klaim berskema Ads Sponsorship di link ini. Realisasinya berjalan lewat Ads Sponsorship Progress, jadi status Belum Sinkron di sini belum tentu berarti salah input.">ADS</span>'
+        : '';
+
+      var mainRow = '<tr class="' + (adaAds ? 'gdv-row-ads' : '') + '" style="cursor:pointer;" onclick="toggleGdvMatchRow(\'' + esc(r.linkCampaign).replace(/'/g, "\\'") + '\')">' +
+        '<td>' + esc(r.linkCampaign) + adsMark +
+        // Tombol salin (item 22). stopPropagation wajib — tanpa itu menyalin
+        // link juga ikut membuka/menutup rincian barisnya.
+        '<button type="button" class="copy-chip" title="Salin campaign link" ' +
+        'onclick="event.stopPropagation(); copyGdvMatchLink(this, \'' + esc(r.linkCampaign).replace(/'/g, "\\'") + '\')">⧉</button>' +
         (r.aliasClaimCount ? ' <span class="pill neutral" title="' + esc(r.aliasClaimCount + ' klaim masuk ke baris ini lewat Child_Short_URL, bukan lewat Link_Campaign.') + '">↗ ' + r.aliasClaimCount + ' via child</span>' : '') +
         '</td>' +
         '<td>' + esc(r.campaignerName || '-') + '</td>' +
@@ -247,19 +519,34 @@
 
       var claimsHtml = r.claims.length
         ? '<table class="data-table" style="margin:0;">' +
-          '<thead><tr><th>Project</th><th>Client</th><th>Skema</th><th>Dicatat sebagai</th><th class="num">Nominal</th><th>Notes</th></tr></thead>' +
+          // Kolom Consultant (item 18): halaman ini dipakai untuk menelusuri
+          // klaim yang tidak cocok, dan langkah berikutnya selalu "tanya
+          // siapa yang mencatat". Tanpa kolom ini jawabannya cuma bisa
+          // didapat dengan membuka project-nya satu per satu di Sales
+          // Pipeline.
+          //
+          // Kolom "Dicatat sebagai" -> "Link Campaign Induk" (item 18):
+          // judul lama tidak menjelaskan apa hubungan isinya dengan baris
+          // tempat ia muncul. Yang ingin dijawab kolom ini adalah "kenapa
+          // klaim ini ada di bawah link induk tersebut".
+          '<thead><tr><th>Project</th><th>Client</th><th>Consultant</th><th>Skema</th>' +
+          '<th>Link Campaign Induk</th><th class="num">Nominal</th><th>Notes</th></tr></thead>' +
           '<tbody>' + r.claims.map(function (c) {
-            // Kolom "Dicatat sebagai" hanya berisi sesuatu kalau consultant
-            // menulis link yang BEDA dari Link_Campaign kanonik (yaitu cocok
-            // lewat Child_Short_URL). Tanpa kolom ini, nominalnya seolah
-            // muncul di baris yang tidak pernah dia tulis.
+            // Hanya berisi sesuatu kalau consultant menulis link yang BEDA
+            // dari Link_Campaign kanonik (yaitu cocok lewat
+            // Child_Short_URL). Tanpa kolom ini, nominalnya seolah muncul di
+            // baris yang tidak pernah dia tulis.
             var via = c.Matched_Via === 'child'
-              ? '<span class="pill neutral" title="Cocok lewat Child_Short_URL">' + esc(c.Claimed_Link) + '</span>'
-              : '<span style="color:var(--text-faint);">sama</span>';
+              ? '<span class="pill neutral" title="Consultant menulis link ini; dicocokkan ke induknya lewat Child_Short_URL">↗ ' + esc(c.Claimed_Link) + '</span>'
+              : '<span style="color:var(--text-faint);">ditulis sama dengan induk</span>';
+            var isAds = c.Source_Service === 'Ads Sponsorship';
             return '<tr>' +
               '<td>' + esc(c.Project_Name || c.Project_ID) + '</td>' +
               '<td>' + esc(c.Client_Name || '-') + '</td>' +
-              '<td>' + esc(c.Source_Service || '-') + '</td>' +
+              '<td>' + (c.Consultant ? esc(c.Consultant) : '<span style="color:var(--text-faint);">-</span>') + '</td>' +
+              '<td>' + (isAds
+                ? '<span class="pill accent-ads-pill">' + esc(c.Source_Service) + '</span>'
+                : esc(c.Source_Service || '-')) + '</td>' +
               '<td>' + via + '</td>' +
               '<td class="num">' + fmtRp(c.Amount) + '</td>' +
               '<td>' + esc(c.Notes || '-') + '</td>' +
@@ -296,5 +583,38 @@
   function toggleGdvMatchRow(link) {
     gdvMatchExpanded[link] = !gdvMatchExpanded[link];
     renderGdvMatching();
+  }
+
+  /**
+   * Salin campaign link (item 22).
+   *
+   * navigator.clipboard butuh konteks aman dan tidak ada di semua browser
+   * yang dipakai admin, jadi ada jalur cadangan lewat textarea +
+   * execCommand. Kalau dua-duanya gagal, teksnya dibiarkan terseleksi supaya
+   * masih bisa ditekan Ctrl+C — link campaign itu panjang dan salah salin
+   * satu karakter berarti klaim nyasar ke campaign lain.
+   */
+  function copyGdvMatchLink(btn, text) {
+    function sukses() {
+      var asli = btn.innerHTML;
+      btn.innerHTML = '✓';
+      btn.classList.add('copied');
+      setTimeout(function () { btn.innerHTML = asli; btn.classList.remove('copied'); }, 1200);
+    }
+    function cadangan() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); sukses(); } catch (e) { /* biarkan terseleksi */ }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(sukses, cadangan);
+    } else {
+      cadangan();
+    }
   }
 </script>
