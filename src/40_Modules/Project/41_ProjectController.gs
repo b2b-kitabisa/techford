@@ -48,6 +48,12 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.deleteProject = function (projectId) {
+    return ErrorHandler.handle('ProjectController.deleteProject', function () {
+      return ProjectService.deleteProject(projectId);
+    });
+  };
+
   module.markLoss = function (projectId) {
     return ErrorHandler.handle('ProjectController.markLoss', function () {
       return ProjectService.markLoss(projectId);

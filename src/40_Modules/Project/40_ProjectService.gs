@@ -385,6 +385,59 @@ var ProjectService = (function (module) {
    * toggle itu membuka SEMUA pilihan Stage (termasuk Loss) untuk diedit
    * manual — lihat setAllowManualDeal().
    */
+  /**
+   * Hapus project beserta seluruh baris Revenue_Breakdown-nya.
+   *
+   * DITOLAK kalau project masih punya dokumen (COR/Quotation) di Document
+   * Pipeline. Alasannya bukan kerapian: dokumen membawa NOMOR RESMI yang
+   * sudah dikirim ke klien, punya turunan sendiri (COR Fund/Cost/Margin/
+   * Result/Budget Item/Disbursement, Quotation Item), dan Cost Monitoring
+   * membacanya per Doc_ID. Menghapus project-nya lebih dulu meninggalkan
+   * dokumen yang nama project & client-nya berubah jadi "-" di seluruh
+   * platform, tanpa cara memulihkannya.
+   *
+   * Revenue_Breakdown SEBALIKNYA ikut terhapus: ia murni anak project (klaim
+   * GDV & service revenue yang diinput di drawer project ini) dan tidak
+   * berarti apa-apa tanpa induknya. Yang dibaca GDV Matching pun jadi bersih
+   * dengan sendirinya — klaim ke campaign link ikut hilang, sehingga
+   * Department Portion kembali benar tanpa perlu tindakan susulan.
+   *
+   * Urutannya penting: SEMUA pemeriksaan dilakukan sebelum ada satu baris
+   * pun yang dihapus. Kalau tidak, penolakan di tengah jalan meninggalkan
+   * project tanpa breakdown — kondisi yang jauh lebih buruk daripada
+   * penghapusan yang gagal seluruhnya.
+   */
+  module.deleteProject = function (projectId) {
+    if (Utils.isBlank(projectId)) {
+      throw new AppError('VALIDATION_ERROR', 'Project ID wajib diisi.');
+    }
+    var project = ProjectRepository.findById(projectId);
+    if (!project) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+    }
+
+    var docs = DocumentPipelineRepository.findByProjectId(projectId);
+    if (docs.length) {
+      var daftar = docs.map(function (d) { return d.Doc_ID; }).slice(0, 5).join(', ');
+      throw new AppError('VALIDATION_ERROR',
+        'Project ini masih punya ' + docs.length + ' dokumen (' + daftar +
+        (docs.length > 5 ? ', ...' : '') + '). Hapus atau pindahkan dokumennya dulu di Document ' +
+        'Pipeline — dokumen bernomor resmi tidak boleh kehilangan project induknya.');
+    }
+
+    var breakdownCount = RevenueBreakdownRepository.findByProjectId(projectId).length;
+    // Baris breakdown dibuang lebih dulu; kalau langkah ini gagal, project-nya
+    // masih utuh dan penghapusan bisa diulang.
+    RevenueBreakdownRepository.replaceForProject(projectId, []);
+    ProjectRepository.deleteById(projectId);
+
+    Log.warn('ProjectService', 'Project DIHAPUS: ' + projectId + ' (' +
+      (project.Project_Name || 'tanpa nama') + ', client ' + project.Client_ID +
+      ') beserta ' + breakdownCount + ' baris Revenue_Breakdown');
+
+    return { projectId: projectId, breakdownDeleted: breakdownCount };
+  };
+
   module.updateStage = function (projectId, stage) {
     if (Config.PIPELINE_STAGE_LIST.indexOf(stage) === -1) {
       throw new AppError('VALIDATION_ERROR', 'Stage tidak valid.');
@@ -553,6 +606,30 @@ var ProjectService = (function (module) {
 
     RevenueBreakdownRepository.replaceForProject(projectId, rows);
 
+    // Target KPI Ads Sponsorship — nominal yang jadi PENYEBUT progress di box
+    // Ads (lihat renderAdsSummaryBox). Disimpan di kolom Project, bukan di
+    // Revenue_Breakdown: ia target, bukan realisasi, dan tidak boleh ikut
+    // terjumlah ke Total_GDV mana pun.
+    //
+    // Hanya ditulis kalau project memang punya service Ads Sponsorship —
+    // dengan begitu mencabut service Ads tidak meninggalkan target siluman
+    // yang diam-diam masih memengaruhi tampilan kalau service-nya dipasang
+    // lagi nanti.
+    var adsPatch = {};
+    if (services.indexOf('Ads Sponsorship') !== -1) {
+      ProjectRepository.ensureColumns(['Ads_Kpi_Target']);
+      // Kosong disimpan sebagai '' (bukan 0): "belum ditetapkan" dan "target
+      // nol" harus bisa dibedakan — kalau tidak, progress-nya jadi 0/0 dan
+      // box-nya menampilkan persentase yang tidak berarti apa pun.
+      var kpiRaw = input.adsKpiTarget;
+      var kpi = (kpiRaw === null || kpiRaw === undefined || String(kpiRaw).trim() === '')
+        ? '' : Number(kpiRaw);
+      if (kpi !== '' && (!isFinite(kpi) || kpi < 0)) {
+        throw new AppError('VALIDATION_ERROR', 'Target KPI Ads Sponsorship harus berupa angka tidak negatif.');
+      }
+      adsPatch.Ads_Kpi_Target = kpi;
+    }
+
     var totalGdv = rows
       .filter(function (r) { return r.Value_Type === Config.REVENUE_VALUE_TYPE.GDV; })
       .reduce(function (sum, r) { return sum + r.Amount; }, 0);
@@ -560,11 +637,13 @@ var ProjectService = (function (module) {
       .filter(function (r) { return r.Value_Type === Config.REVENUE_VALUE_TYPE.SERVICE; })
       .reduce(function (sum, r) { return sum + r.Amount; }, 0);
 
-    ProjectRepository.update(projectId, {
+    var patch = {
       Total_GDV: totalGdv,
       Total_Service_Revenue: totalServiceRevenue,
       Last_Updated: now
-    });
+    };
+    for (var k in adsPatch) patch[k] = adsPatch[k];
+    ProjectRepository.update(projectId, patch);
 
     return findDecorated(projectId);
   };

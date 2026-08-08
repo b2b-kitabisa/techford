@@ -37,6 +37,15 @@ function project_setAllowManualDeal(projectId, allow) {
   return ProjectController.setAllowManualDeal(projectId, allow);
 }
 
+/**
+ * Hapus project beserta Revenue_Breakdown-nya. TIDAK BISA DIBATALKAN, dan
+ * ditolak server kalau project masih punya dokumen COR/Quotation — lihat
+ * ProjectService.deleteProject.
+ */
+function project_delete(projectId) {
+  return ProjectController.deleteProject(projectId);
+}
+
 function project_markLoss(projectId) {
   return ProjectController.markLoss(projectId);
 }

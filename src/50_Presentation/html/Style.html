@@ -875,6 +875,46 @@
   .revenue-subsection-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .revenue-subsection-header h3 { margin: 0; font-size: 14px; }
   .revenue-total-pill { font-size: 13px; font-weight: 700; color: var(--color-cerulean); background: var(--accent-tint); border-radius: 8px; padding: 4px 12px; }
+
+  /* ---- Target KPI GDV (Ads Sponsorship) ---- */
+  /* Pill "Total" berganti jadi progress begitu targetnya ditetapkan.
+     Warnanya bukan hijau/merah begitu saja: BELUM tercapai adalah keadaan
+     normal di tengah campaign, bukan kegagalan — jadi dipakai warna netral
+     aksen, dan hijau disimpan khusus untuk yang benar-benar sudah tembus. */
+  .kpi-pill { display: inline-flex; align-items: baseline; gap: 8px; }
+  .kpi-pill.kpi-hit { color: var(--good); background: var(--good-tint); }
+  .kpi-pill-pct { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .kpi-pill-delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.85; }
+  .kpi-pill-target { font-size: 10.5px; font-weight: 600; opacity: 0.65; }
+
+  /* Kolom input target di drawer Input GDV. */
+  .ads-kpi-field {
+    background: var(--accent-tint); border: 1px solid var(--color-cerulean); border-radius: 8px;
+    padding: 11px 13px; margin-bottom: 12px;
+  }
+  .ads-kpi-field > label { display: block; font-size: 12px; font-weight: 700; color: var(--color-cerulean); margin-bottom: 7px; }
+  .ads-kpi-input-row { display: flex; align-items: center; gap: 8px; }
+  .ads-kpi-prefix { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+  .ads-kpi-input-row input {
+    flex: 1; min-width: 0; font-family: var(--font-mono, ui-monospace, monospace);
+    font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 700;
+    padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 6px;
+    background: var(--color-white); color: var(--color-mineshaft);
+  }
+  .ads-kpi-hint { font-size: 11px; color: var(--text-muted); margin-top: 7px; line-height: 1.5; }
+  .ads-kpi-warn { color: var(--warn); font-weight: 600; }
+
+  /* Bar progress di dalam box Ads Sponsorship, tepat di bawah tiga angkanya. */
+  .ads-kpi-bar-wrap { margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
+  .ads-kpi-bar-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .ads-kpi-bar-pct { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--color-cerulean); }
+  .ads-kpi-bar-delta { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .ads-kpi-bar-target { font-size: 11px; color: var(--text-faint); margin-left: auto; }
+  .ads-kpi-bar { height: 7px; border-radius: 999px; background: var(--border-softer); overflow: hidden; }
+  .ads-kpi-bar-fill { height: 100%; background: var(--color-cerulean); border-radius: 999px; transition: width 0.25s ease; }
+  .ads-kpi-bar-wrap.kpi-hit .ads-kpi-bar-pct { color: var(--good); }
+  .ads-kpi-bar-wrap.kpi-hit .ads-kpi-bar-fill { background: var(--good); }
+  .ads-kpi-bar-note { font-size: 10.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
   .revenue-row-labels { display: flex; gap: 8px; padding: 0 2px 6px; font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.02em; }
   .revenue-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
   .revenue-row input { background: var(--color-white); }

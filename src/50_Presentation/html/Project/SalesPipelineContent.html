@@ -292,6 +292,7 @@
         </label>
         <button class="btn-onhead danger" id="markLossBtn" onclick="openMarkLossConfirm()" style="display:none;" title="Tandai deal ini batal — bisa di-Undo">🚫 Tandai LOSS</button>
         <button class="btn-onhead" id="undoLossBtn" onclick="openUndoLossConfirm()" style="display:none;" title="Kembalikan Stage ke sebelum ditandai Loss">↩️ Undo LOSS</button>
+        <button class="btn-onhead danger" id="projectDeleteBtn" onclick="openProjectDeleteConfirm()" title="Hapus project ini permanen">🗑 Hapus</button>
       </div>
     </div>
 
@@ -345,7 +346,10 @@
       <div class="revenue-subsection">
         <div class="revenue-subsection-header">
           <h3>GDV</h3>
-          <span class="revenue-total-pill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
+          <!-- Isi pill ini BERGANTI bentuk: "Total: RpX" kalau tidak ada
+               target KPI Ads, atau progress terhadap target kalau ada.
+               Dibangun di updateRevenueTotals(). -->
+          <span class="revenue-total-pill" id="projectGdvTotalPill">Total: <span id="projectTotalGdvDisplay">Rp0</span></span>
         </div>
         <div class="gdv-draft-notice" id="gdvDraftNotice" style="display:none;"></div>
         <div id="gdvViewList"></div>
@@ -461,6 +465,21 @@
         <h3 style="margin:0; font-size:14px;">Total GDV</h3>
         <span class="revenue-total-pill">Total: <span id="gdvDrawerTotal">Rp0</span></span>
       </div>
+      <!-- Target KPI Ads Sponsorship. Ditaruh di ATAS daftar campaign karena
+           ia menetapkan tolok ukur seluruh isi drawer ini, bukan salah satu
+           barisnya. Hanya muncul kalau project punya service Ads Sponsorship
+           — lihat renderAdsKpiField(). -->
+      <div class="ads-kpi-field" id="gdvAdsKpiField" style="display:none;">
+        <label for="gdvAdsKpiInput">🎯 Target KPI GDV — Ads Sponsorship</label>
+        <div class="ads-kpi-input-row">
+          <span class="ads-kpi-prefix">Rp</span>
+          <input type="text" inputmode="numeric" id="gdvAdsKpiInput" placeholder="0"
+            oninput="onAdsKpiInput(this)" autocomplete="off">
+          <button type="button" class="btn-outline btn-xs" onclick="clearAdsKpi()" title="Kosongkan target">Kosongkan</button>
+        </div>
+        <div class="ads-kpi-hint" id="gdvAdsKpiHint"></div>
+      </div>
+
       <div class="scheme-tabs" id="gdvSchemeTabs"></div>
       <div class="popup-search-wrap" id="gdvSearchWrap" style="display:none;">
         <span class="popup-search-ic">⌕</span>
@@ -584,6 +603,28 @@
   </div>
 </div>
 
+<!-- ================= Konfirmasi Hapus Project ================= -->
+<!-- Di luar .drawer-panel — lihat alasannya di komentar #projectEditConfirm. -->
+<div class="confirm-overlay" id="projectDeleteConfirm">
+  <div class="confirm-box">
+    <h3>Hapus Project Ini?</h3>
+    <div class="danger-callout">
+      <strong>Tindakan ini TIDAK BISA DIBATALKAN.</strong>
+      Project beserta <span id="projectDeleteBreakdownInfo">seluruh Revenue Breakdown</span>-nya
+      akan dihapus permanen. Klaim GDV project ini juga lenyap dari GDV Matching,
+      sehingga Department Portion campaign terkait ikut berubah.
+    </div>
+    <div id="projectDeleteError" class="error"></div>
+    <p style="font-size:12.5px; margin-bottom:6px;">Ketik <strong id="projectDeleteConfirmName"></strong> untuk memastikan:</p>
+    <input id="projectDeleteConfirmInput" placeholder="Ketik nama project persis" style="width:100%; margin-bottom:14px;"
+      oninput="onProjectDeleteConfirmInput()" autocomplete="off">
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="closeProjectDeleteConfirm()">Batal</button>
+      <button class="btn-danger" id="projectDeleteSubmitBtn" onclick="submitDeleteProject()" disabled>Hapus Permanen</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= Preview COR & Quotation dari Document Request ================= -->
 <!-- Sama persis library & pola dengan "Lihat COR"/"Lihat Quotation" di
      Document Pipeline (CorCalc/QoCalc — lihat Shell.html) supaya satu
@@ -666,6 +707,16 @@
   var editGdvCsrCampaigns = [];
   var editGdvRetainerLinks = [];
   var editGdvAdsCampaigns = [];
+  /**
+   * Target KPI GDV Ads Sponsorship yang sedang diedit.
+   *
+   * SENGAJA bisa bernilai '' (belum ditetapkan) selain angka. "Belum
+   * ditetapkan" dan "target Rp0" harus bisa dibedakan: yang pertama berarti
+   * box Ads menampilkan total apa adanya seperti sebelum fitur ini ada, yang
+   * kedua berarti progress dihitung terhadap nol — dan 0/0 bukan persentase
+   * yang berarti apa pun.
+   */
+  var editAdsKpiTarget = '';
   var editServiceRevenueItems = {};
 
   // ---- Pola "pensil dulu" ----
@@ -754,7 +805,8 @@
         savedAt: new Date().toISOString(),
         csr: editGdvCsrCampaigns,
         retainer: editGdvRetainerLinks,
-        ads: editGdvAdsCampaigns
+        ads: editGdvAdsCampaigns,
+        adsKpi: editAdsKpiTarget
       }));
     } catch (e) { /* lapis 1 (in-memory) tetap jalan — lihat catatan di atas */ }
   }
@@ -1258,13 +1310,21 @@
   // ---- Render: score cards (selalu dari SELURUH data, bukan hasil filter) ----
   function renderPipelineScoreCards() {
     var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
-    // Card "Achievement" — SATU-SATUNYA yang di-scope ke filter Consultant.
-    // pipelineConsultantFilterValues kosong = tanpa filter (sama seperti
-    // matchesConsultant di getFilteredProjects), jadi defaultnya sama dengan
-    // total Deal Value/Forecast di sebelahnya, lalu ikut menyusut begitu
-    // consultant tertentu dipilih.
+    // Card "Achievement" — SATU-SATUNYA yang di-scope ke filter. Kartu lain
+    // di sebelahnya sengaja tetap dari SELURUH data (itu angka perusahaan,
+    // bukan angka tampilan).
+    //
+    // Yang ikut: filter Consultant DAN checkbox Retainer. Keduanya kosong/
+    // mati = tanpa filter (sama seperti getFilteredProjects), jadi defaultnya
+    // sama dengan total Deal Value/Forecast di sebelahnya.
+    //
+    // Retainer ikut karena pertanyaannya memang "berapa pencapaian saya dari
+    // klien retainer" — tanpa itu, mencentang Retainer menyusutkan tabel tapi
+    // kartunya tidak bergerak, dan angka yang tidak ikut menyusut selalu
+    // terbaca sebagai kartu yang rusak.
     var achievementDealGdv = 0, achievementForecastGdv = 0;
     var consultantScope = pipelineConsultantFilterValues;
+    var retainerScope = document.getElementById('pipelineRetainerFilter').checked;
     var buckets = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
     var bucketValues = { PROS: 0, NEGO: 0, WON: 0, LOSS: 0 };
 
@@ -1291,7 +1351,9 @@
         forecastRev += Number(p.Total_Service_Revenue) || 0;
       }
 
-      if (!consultantScope.length || consultantScope.indexOf(p.Consultant) !== -1) {
+      var masukScope = (!consultantScope.length || consultantScope.indexOf(p.Consultant) !== -1) &&
+        (!retainerScope || !!p.Is_Retainer);
+      if (masukScope) {
         if (bucket === 'WON') achievementDealGdv += Number(p.Total_GDV) || 0;
         else if (bucket === 'PROS' || bucket === 'NEGO') achievementForecastGdv += Number(p.Total_GDV) || 0;
       }
@@ -1443,8 +1505,11 @@
    * setiap kali membuka halaman ini, bukan tenggelam di tengah/bawah daftar.
    */
   function comparePipelineRows(a, b) {
-    if (!!a.Is_Draft !== !!b.Is_Draft) return a.Is_Draft ? -1 : 1;
-
+    // Draft TIDAK lagi dipaksa ke atas — ia ikut urutan sort seperti baris
+    // lain (default: Created_Date terbaru). Pemaksaan itu dulu dipakai supaya
+    // draft tidak terlupakan, tapi sekarang draft sudah punya dua penanda
+    // yang lebih baik dan tidak merusak urutan tabel: badge jumlah "New
+    // Pipeline" di sidebar, dan pilihan "Draft" di filter Stage.
     var dir = pipelineSort.dir === 'asc' ? 1 : -1;
     var va, vb;
 
@@ -2062,10 +2127,16 @@
     var el = document.getElementById('pipelineAchievementDesc');
     if (!el) return;
     var n = pipelineConsultantFilterValues.length;
-    el.innerText = !n
-      ? 'GDV seluruh consultant (belum difilter)'
+    var retainerOnly = document.getElementById('pipelineRetainerFilter').checked;
+    var dasar = !n
+      ? 'GDV seluruh consultant'
       : (n === 1 ? 'GDV consultant: ' + pipelineConsultantFilterValues[0]
                  : 'GDV dari ' + n + ' consultant dipilih');
+    // Cakupannya SELALU disebutkan. Kartu yang angkanya berubah-ubah tanpa
+    // menyatakan sedang menampilkan apa adalah cara tercepat membuat orang
+    // salah mengutipnya ke laporan.
+    el.innerText = dasar + (retainerOnly ? ' — retainer saja'
+      : (!n ? ' (belum difilter)' : ''));
   }
 
   function renderConsultantFilterDropdown() {
@@ -2533,8 +2604,7 @@
    * Draft dikeluarkan karena ia tidak punya drawer Detail sama sekali —
    * jalurnya form "Lengkapi" yang menutup drawer. Kalau draft ikut dilangkahi,
    * menekan "berikutnya" akan menutup drawer di tengah penelusuran, yang
-   * terbaca sebagai crash. (Draft selalu didorong ke atas oleh
-   * comparePipelineRows, jadi mereka justru yang pertama ditemui.)
+   * terbaca sebagai crash.
    */
   function pipelineDrawerIds() {
     return getFilteredProjects()
@@ -3338,6 +3408,157 @@
   }
 
   // ---- Popup 2: Input GDV ----
+  /* ============================================================
+     TARGET KPI GDV — Ads Sponsorship
+     ============================================================
+     Target ditetapkan per project, dipakai sebagai PENYEBUT progress di box
+     Ads Sponsorship (drawer Detail). Pembilangnya adalah Total GDV Actual
+     dari Ads Progress — angka yang sama persis yang sudah tampil di box itu,
+     supaya persentasenya bisa dihitung ulang sendiri oleh siapa pun yang
+     meragukannya.
+
+     Disimpan di kolom Project (Ads_Kpi_Target), bukan di Revenue_Breakdown:
+     ia target, bukan realisasi, dan tidak boleh ikut terjumlah ke Total_GDV
+     mana pun. */
+
+  /** Target tersimpan milik satu project; '' kalau belum ditetapkan. */
+  function adsKpiOf(project) {
+    var v = project && project.Ads_Kpi_Target;
+    if (v === null || v === undefined || String(v).trim() === '') return '';
+    var n = Number(v);
+    return isFinite(n) ? n : '';
+  }
+
+  /** Angka murni dari ketikan user; '' kalau kosong. */
+  function parseKpiInput(teks) {
+    var bersih = String(teks == null ? '' : teks).replace(/[^\d]/g, '');
+    return bersih === '' ? '' : Number(bersih);
+  }
+
+  function formatKpiInput(nilai) {
+    return nilai === '' || nilai === null || nilai === undefined
+      ? '' : Number(nilai).toLocaleString('id-ID');
+  }
+
+  /**
+   * Diketik dengan pemisah ribuan langsung di kolomnya — target KPI itu
+   * angka besar (ratusan juta sampai miliaran), dan "100000000" tanpa titik
+   * praktis mustahil diperiksa ulang dengan mata.
+   *
+   * Posisi kursor dijaga dengan menghitung ulang jumlah DIGIT di sebelah
+   * kiri kursor, bukan jumlah karakter — titik yang disisipkan/dihapus
+   * menggeser indeks karakter dan akan melempar kursor ke tempat acak setiap
+   * kali angka melewati kelipatan seribu.
+   */
+  function onAdsKpiInput(input) {
+    var digitKiri = input.value.slice(0, input.selectionStart).replace(/[^\d]/g, '').length;
+    editAdsKpiTarget = parseKpiInput(input.value);
+    input.value = formatKpiInput(editAdsKpiTarget);
+
+    var pos = 0, terhitung = 0;
+    while (pos < input.value.length && terhitung < digitKiri) {
+      if (/\d/.test(input.value[pos])) terhitung++;
+      pos++;
+    }
+    try { input.setSelectionRange(pos, pos); } catch (e) {}
+
+    markGdvDirty();
+    renderAdsKpiHint();
+    updateRevenueTotals();
+  }
+
+  function clearAdsKpi() {
+    editAdsKpiTarget = '';
+    document.getElementById('gdvAdsKpiInput').value = '';
+    markGdvDirty();
+    renderAdsKpiHint();
+    updateRevenueTotals();
+  }
+
+  /**
+   * Total GDV Actual Ads Sponsorship dari Ads Progress — pembilang progress.
+   *
+   * Campaign yang datanya belum ada TIDAK dihitung nol (sama seperti box
+   * ringkasannya): jumlah campaign yang benar-benar terhitung dikembalikan
+   * juga, supaya progress yang masih sebagian tidak disalahbaca sebagai
+   * final.
+   */
+  function adsActualTotal(links) {
+    var total = 0, terhitung = 0;
+    (links || []).forEach(function (link) {
+      var a = adsProgressByLink[link];
+      if (!a || !a.found) return;
+      if (a.currentGdv === null || a.currentGdv === undefined || a.currentGdv === '') return;
+      total += Number(a.currentGdv) || 0;
+      terhitung++;
+    });
+    return { total: total, terhitung: terhitung, dari: (links || []).length };
+  }
+
+  /** Link Ads yang sedang ada di state edit (bukan hanya yang tersimpan). */
+  function adsLinksSaatIni() {
+    return editGdvAdsCampaigns
+      .map(function (c) { return String((c && c.link) || '').trim(); })
+      .filter(Boolean);
+  }
+
+  function renderAdsKpiField(hasAds) {
+    var wrap = document.getElementById('gdvAdsKpiField');
+    if (!wrap) return;
+    wrap.style.display = hasAds ? '' : 'none';
+    if (!hasAds) return;
+    var input = document.getElementById('gdvAdsKpiInput');
+    // Tidak menimpa nilai saat kolomnya sedang difokus — kalau ditimpa,
+    // ketikan user tergeser di tengah jalan setiap kali fungsi ini terpanggil
+    // ulang (dan ia terpanggil ulang tiap kali daftar campaign berubah).
+    if (document.activeElement !== input) input.value = formatKpiInput(editAdsKpiTarget);
+    renderAdsKpiHint();
+  }
+
+  function renderAdsKpiHint() {
+    var el = document.getElementById('gdvAdsKpiHint');
+    if (!el) return;
+    if (editAdsKpiTarget === '' ) {
+      el.innerHTML = 'Belum ditetapkan — box Ads Sponsorship menampilkan total apa adanya, tanpa persentase.';
+      return;
+    }
+    var akt = adsActualTotal(adsLinksSaatIni());
+    var p = progressKpi(akt.total, editAdsKpiTarget);
+    el.innerHTML = 'Saat ini <strong>' + formatRupiah(akt.total) + '</strong> dari target <strong>' +
+      formatRupiah(editAdsKpiTarget) + '</strong>' + (p ? ' — ' + p.persenTeks + ' ' + p.selisihTeks : '') +
+      (akt.terhitung !== akt.dari
+        ? '<br><span class="ads-kpi-warn">' + akt.terhitung + ' dari ' + akt.dari +
+          ' campaign yang sudah ada datanya di Ads Progress. Sisanya belum dihitung.</span>'
+        : '');
+  }
+
+  /**
+   * Progress terhadap target. null kalau target belum ditetapkan.
+   *
+   * Target 0 SENGAJA tidak menghasilkan persentase: 0/0 tidak berarti apa
+   * pun, dan menampilkan "0%" atau "∞%" di situ hanya membuat orang mengira
+   * datanya rusak.
+   */
+  function progressKpi(aktual, target) {
+    if (target === '' || target === null || target === undefined) return null;
+    var t = Number(target) || 0;
+    if (t <= 0) return null;
+    var a = Number(aktual) || 0;
+    var persen = (a / t) * 100;
+    var selisih = a - t;
+    return {
+      persen: persen,
+      // Dibulatkan satu desimal: target ratusan juta membuat selisih puluhan
+      // juta hilang kalau dibulatkan ke bilangan bulat.
+      persenTeks: (Math.round(persen * 10) / 10).toLocaleString('id-ID') + '%',
+      selisih: selisih,
+      // Tanda ditulis eksplisit — "+" untuk kelebihan, "−" untuk kekurangan.
+      // Tanpa tanda, angka selisih terbaca seperti nominal biasa.
+      selisihTeks: (selisih >= 0 ? '+' : '−') + formatRupiah(Math.abs(selisih)),
+      tercapai: a >= t
+    };
+  }
+
   function openGdvDrawer() {
     var project = currentProjectOrNull();
     if (!project) return;
@@ -3521,6 +3742,104 @@
         alert('Gagal menandai LOSS: ' + (err && err.message ? err.message : err));
       })
       .project_markLoss(projectId);
+  }
+
+  /* ============================================================
+     HAPUS PROJECT
+     ============================================================
+     Konfirmasinya menuntut user MENGETIK nama project, bukan sekadar menekan
+     "Ya". Tombolnya duduk di deretan yang sama dengan Tandai LOSS dan Undo
+     LOSS — dua aksi yang bisa dibatalkan — sementara yang ini tidak. Satu
+     dialog ya/tidak tidak cukup membedakannya.
+
+     Pagar sesungguhnya tetap di server (ProjectService.deleteProject):
+     project yang masih punya dokumen COR/Quotation DITOLAK. Di sini gerbang
+     itu cuma dipantulkan lebih awal supaya user tidak sampai mengetik nama
+     project untuk sesuatu yang memang akan ditolak. */
+  function projectDocsCount(projectId) {
+    return allDocuments.filter(function (d) { return d.Project_ID === projectId; }).length;
+  }
+
+  function openProjectDeleteConfirm() {
+    var project = currentProjectOrNull();
+    if (!project) return;
+
+    var jumlahDok = projectDocsCount(project.Project_ID);
+    if (jumlahDok) {
+      alert('Project ini masih punya ' + jumlahDok + ' dokumen (COR/Quotation).\n\n' +
+        'Hapus atau pindahkan dokumennya dulu di Document Pipeline — dokumen bernomor ' +
+        'resmi tidak boleh kehilangan project induknya.');
+      return;
+    }
+
+    var breakdown = allRevenueBreakdown.filter(function (r) {
+      return r.Project_ID === project.Project_ID;
+    }).length;
+    document.getElementById('projectDeleteBreakdownInfo').innerText =
+      breakdown ? breakdown + ' baris Revenue Breakdown' : 'seluruh Revenue Breakdown';
+    document.getElementById('projectDeleteConfirmName').innerText =
+      project.Project_Name || project.Project_ID;
+    document.getElementById('projectDeleteConfirmInput').value = '';
+    document.getElementById('projectDeleteError').innerText = '';
+    document.getElementById('projectDeleteSubmitBtn').disabled = true;
+    document.getElementById('projectDeleteConfirm').classList.add('open');
+  }
+
+  function closeProjectDeleteConfirm() {
+    document.getElementById('projectDeleteConfirm').classList.remove('open');
+  }
+
+  function onProjectDeleteConfirmInput() {
+    var project = currentProjectOrNull();
+    var target = String((project && (project.Project_Name || project.Project_ID)) || '').trim().toLowerCase();
+    var ketik = document.getElementById('projectDeleteConfirmInput').value.trim().toLowerCase();
+    document.getElementById('projectDeleteSubmitBtn').disabled = !target || ketik !== target;
+  }
+
+  function submitDeleteProject() {
+    var projectId = currentPipelineDrawerId;
+    if (!projectId) return;
+    var btn = document.getElementById('projectDeleteSubmitBtn');
+    var errEl = document.getElementById('projectDeleteError');
+    btn.disabled = true;
+    btn.innerText = 'Menghapus...';
+    errEl.innerText = '';
+    TechfordLoading.show('Menghapus project...');
+
+    // TIDAK memakai gsRunWithRetry: ini operasi TULIS yang merusak. Mengulang
+    // saat respons hilang tidak berbahaya secara data (penghapusan kedua
+    // hanya akan ditolak "tidak ditemukan"), tapi pesan errornya akan
+    // membingungkan — lebih baik user memeriksa sendiri lalu mengulang.
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.innerText = 'Hapus Permanen';
+        if (res && res.ok === false) {
+          errEl.innerText = res.error.message;
+          btn.disabled = false;
+          return;
+        }
+        closeProjectDeleteConfirm();
+        closePipelineDetail();
+        // Data lokal dibereskan langsung supaya tabel tidak sempat
+        // menampilkan project yang sudah tidak ada.
+        allProjects = allProjects.filter(function (p) { return p.Project_ID !== projectId; });
+        allRevenueBreakdown = allRevenueBreakdown.filter(function (r) { return r.Project_ID !== projectId; });
+        // Draft GDV project ini ikut dibuang — kalau tidak, ia akan
+        // dipulihkan diam-diam ke project lain bernomor sama di masa depan.
+        clearGdvDraft(projectId);
+        renderPipeline();
+        showPipelineSuccess('Project dihapus permanen.');
+        refreshAllPipelineData();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Hapus Permanen';
+        errEl.innerText = 'Gagal menghapus: ' + (err && err.message ? err.message : err) +
+          '. Muat ulang data untuk memastikan statusnya sebelum mencoba lagi.';
+      })
+      .project_delete(projectId);
   }
 
   function openUndoLossConfirm() {
@@ -3709,6 +4028,9 @@
         editGdvCsrCampaigns = draft.csr || [];
         editGdvRetainerLinks = draft.retainer || [];
         editGdvAdsCampaigns = draft.ads || [];
+        // Target KPI ikut draft: ia diisi di drawer yang sama dan hilang
+        // dengan cara yang sama kalau tidak ikut disimpan.
+        editAdsKpiTarget = draft.hasOwnProperty('adsKpi') ? draft.adsKpi : adsKpiOf(project);
         gdvDraftDirty = true;
       } else {
         // ---- Skema CSR biasa (flat, non-Retainer) ----
@@ -3735,6 +4057,7 @@
           ? savedGdvRows.filter(function (r) { return r.Source_Service === 'Ads Sponsorship'; })
               .map(function (r) { return { link: r.Item_Name || '' }; })
           : [];
+        editAdsKpiTarget = adsKpiOf(project);
       }
     }
     renderGdvDraftNotice();
@@ -3885,7 +4208,7 @@
    *   sesuai keputusan produk: itulah angka realisasi yang dipakai
    *   rekonsiliasi, jadi total di box ini harus cocok dengan yang terlihat di
    *   halaman GDV Matching.
-   * - Total NDV & Dana yang Bisa Dicairkan dari Ads Sponsorship Progress,
+   * - Total NDV & Active Wallet dari Ads Sponsorship Progress,
    *   karena GDV Matching tidak punya kedua angka itu sama sekali.
    *
    * Karena bercampur, setiap angka diberi label sumbernya. Menjumlahkan dua
@@ -3899,7 +4222,7 @@
   function renderAdsSummaryBox(links) {
     if (!links || !links.length) return '';
 
-    // Ketiga metrik box ini (GDV/NDV/Dana Cair) SEMUANYA dari Ads Progress —
+    // Ketiga metrik box ini (GDV/NDV/Active Wallet) SEMUANYA dari Ads Progress —
     // ini box "progres saat ini", bukan rekonsiliasi. GDV Matching cuma
     // dipakai untuk badge status Sinkron di baris rincian, bukan angkanya.
     // (Total keseluruhan project di header section GDV — pill terpisah di
@@ -3943,7 +4266,7 @@
           '<div class="ads-sum-nums">' +
           '<span><em>GDV Actual</em>' + (a && a.found ? sel(a.currentGdv) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
           '<span><em>NDV</em>' + (a && a.found ? sel(a.currentNdv) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
-          '<span><em>Dana Cair</em>' + (a && a.found ? sel(a.activeWalletAmount) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
+          '<span><em>Active Wallet</em>' + (a && a.found ? sel(a.activeWalletAmount) : '<span class="ap-empty">belum ada data</span>') + '</span>' +
           '</div>' +
           '</div>';
       }).join('') + '</div>';
@@ -3963,11 +4286,40 @@
       '<div class="ap-cell"><div class="ap-lbl">Total NDV Saat Ini ' + jumlahLabel(nNdv) + '</div>' +
         '<div class="ap-val">' + formatRupiah(totalNdv) + '</div>' +
         '<div class="ads-sum-src">dari Ads Progress</div></div>' +
-      '<div class="ap-cell ap-hl"><div class="ap-lbl">Total Dana yang Bisa Dicairkan ' + jumlahLabel(nWallet) + '</div>' +
+      '<div class="ap-cell ap-hl"><div class="ap-lbl">Total Active Wallet ' + jumlahLabel(nWallet) + '</div>' +
         '<div class="ap-val">' + formatRupiah(totalWallet) + '</div>' +
         '<div class="ads-sum-src">dari Ads Progress</div></div>' +
       '</div>' +
+      renderAdsKpiBar(totalGdv, nGdv, links.length) +
       rincian +
+      '</div>';
+  }
+
+  /**
+   * Baris progress terhadap target KPI, tepat di bawah tiga angka box Ads.
+   *
+   * Ditaruh DI SINI dan bukan cuma di pill judul karena inilah tempat angka
+   * pembilangnya berada — persentase yang jauh dari angka pembentuknya selalu
+   * memancing pertanyaan "70% dari apa".
+   *
+   * Bar-nya dibatasi 100% secara visual tapi persentasenya tidak: pencapaian
+   * 130% harus terbaca 130%, bukan dipotong diam-diam jadi 100%.
+   */
+  function renderAdsKpiBar(totalGdv, nTerhitung, nTotal) {
+    var p = progressKpi(totalGdv, editAdsKpiTarget);
+    if (!p) return '';
+    var lebar = Math.max(0, Math.min(100, p.persen));
+    return '<div class="ads-kpi-bar-wrap ' + (p.tercapai ? 'kpi-hit' : 'kpi-miss') + '">' +
+      '<div class="ads-kpi-bar-top">' +
+        '<span class="ads-kpi-bar-pct">' + p.persenTeks + '</span>' +
+        '<span class="ads-kpi-bar-delta">' + p.selisihTeks + '</span>' +
+        '<span class="ads-kpi-bar-target">target ' + formatRupiah(editAdsKpiTarget) + '</span>' +
+      '</div>' +
+      '<div class="ads-kpi-bar"><div class="ads-kpi-bar-fill" style="width:' + lebar + '%;"></div></div>' +
+      (nTerhitung !== nTotal
+        ? '<div class="ads-kpi-bar-note">Dihitung dari ' + nTerhitung + ' dari ' + nTotal +
+          ' campaign yang sudah ada datanya di Ads Progress — sisanya belum masuk, jadi progress ini masih akan naik.</div>'
+        : '') +
       '</div>';
   }
 
@@ -4042,6 +4394,8 @@
     var tabsEl = document.getElementById('gdvSchemeTabs');
     var noteEl = document.getElementById('gdvDrawerDisabledNote');
     if (!container) return;
+
+    renderAdsKpiField(hasAds);
 
     var available = [];
     if (hasCsr && !isRetainer) available.push({ id: 'csr', label: 'CSR' });
@@ -4168,7 +4522,7 @@
 
   /**
    * Tiga metrik Ads Sponsorship untuk satu link. null ditampilkan sebagai
-   * "belum ada data", BUKAN Rp0 — Rp0 untuk Dana yang Bisa Dicairkan adalah
+   * "belum ada data", BUKAN Rp0 — Rp0 untuk Active Wallet adalah
    * klaim yang salah dan bisa memicu keputusan pencairan yang keliru.
    */
   function adsProgressMetricsHtml(link) {
@@ -4182,7 +4536,7 @@
     return '<div class="ap-metrics">' +
       '<div class="ap-cell"><div class="ap-lbl">GDV Saat Ini</div>' + nilai(p.currentGdv) + '</div>' +
       '<div class="ap-cell"><div class="ap-lbl">NDV Saat Ini</div>' + nilai(p.currentNdv) + '</div>' +
-      '<div class="ap-cell ap-hl"><div class="ap-lbl">Dana yang Bisa Dicairkan</div>' + nilai(p.activeWalletAmount) + '</div>' +
+      '<div class="ap-cell ap-hl"><div class="ap-lbl">Active Wallet</div>' + nilai(p.activeWalletAmount) + '</div>' +
       '<div class="ap-cell"><div class="ap-lbl">Status</div><div class="ap-val ap-txt">' +
         escHtml(p.projectStatus || '-') + '</div></div>' +
       '</div>' +
@@ -4569,6 +4923,41 @@
     setTextIfExists('projectTotalRevenueDisplay', formatRupiah(totalRev));
     setTextIfExists('gdvDrawerTotal', formatRupiah(totalGdv));
     setTextIfExists('serviceRevenueDrawerTotal', formatRupiah(totalRev));
+    renderGdvTotalPill(totalGdv);
+    renderAdsKpiHint();
+  }
+
+  /**
+   * Pill di kanan judul "GDV".
+   *
+   * Tanpa target KPI ia tetap seperti sebelumnya: "Total: RpX". Dengan
+   * target, ia berganti jadi progress — karena begitu ada target, pertanyaan
+   * yang dijawab pill ini bukan lagi "berapa totalnya" (angka itu sudah ada
+   * di dalam box Ads, lengkap dengan sumbernya) melainkan "sudah sejauh mana
+   * terhadap target".
+   *
+   * PENTING: pembilangnya adalah Total GDV Actual Ads Sponsorship dari Ads
+   * Progress — persis angka yang tampil di box Ads — BUKAN totalGdv project
+   * (yang juga memuat CSR/Retainer dan bersumber dari GDV Matching).
+   * Mencampur keduanya menghasilkan persentase yang tidak bisa dicocokkan
+   * dengan angka mana pun yang terlihat di layar.
+   */
+  function renderGdvTotalPill(totalGdv) {
+    var pill = document.getElementById('projectGdvTotalPill');
+    if (!pill) return;
+    var p = progressKpi(adsActualTotal(adsLinksSaatIni()).total, editAdsKpiTarget);
+    if (!p) {
+      pill.className = 'revenue-total-pill';
+      pill.innerHTML = 'Total: <span id="projectTotalGdvDisplay">' + formatRupiah(totalGdv) + '</span>';
+      return;
+    }
+    pill.className = 'revenue-total-pill kpi-pill ' + (p.tercapai ? 'kpi-hit' : 'kpi-miss');
+    pill.title = 'Target KPI Ads Sponsorship ' + formatRupiah(editAdsKpiTarget) +
+      '. Progress dihitung dari Total GDV Actual di box Ads Sponsorship (sumber: Ads Progress).';
+    pill.innerHTML =
+      '<span class="kpi-pill-pct">' + p.persenTeks + '</span>' +
+      '<span class="kpi-pill-delta">' + p.selisihTeks + '</span>' +
+      '<span class="kpi-pill-target">dari target ' + formatRupiah(editAdsKpiTarget) + '</span>';
   }
 
   function setTextIfExists(id, text) {
@@ -4612,6 +5001,7 @@
         gdvCsrCampaigns: editGdvCsrCampaigns,
         gdvRetainerLinks: editGdvRetainerLinks,
         gdvAdsCampaigns: editGdvAdsCampaigns,
+        adsKpiTarget: editAdsKpiTarget,
         serviceRevenueItems: editServiceRevenueItems
       });
   }

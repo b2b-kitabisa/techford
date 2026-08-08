@@ -65,6 +65,22 @@ var ProjectRepository = (function (module) {
     });
   };
 
+  /**
+   * Hapus satu project. Dipakai HANYA lewat ProjectService.deleteProject,
+   * yang lebih dulu memastikan tidak ada dokumen (COR/Quotation) yang
+   * menggantung dan yang membereskan Revenue_Breakdown-nya — jangan panggil
+   * langsung dari mana pun.
+   *
+   * @returns {number} jumlah baris terhapus (0 kalau tidak ketemu).
+   */
+  module.deleteById = function (projectId) {
+    var terhapus = base.deleteAllWhere(function (row) {
+      return String(row.Project_ID || '') === String(projectId);
+    });
+    module.invalidateCache();
+    return terhapus;
+  };
+
   module.invalidateCache = function () {
     CacheHelper.invalidate('project:all');
   };
