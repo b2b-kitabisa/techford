@@ -28,6 +28,14 @@ function client_updatePic(picId, picInput) {
   return ClientController.updatePic(picId, picInput);
 }
 
+/**
+ * Hapus client beserta seluruh PIC-nya. TIDAK BISA DIBATALKAN, dan ditolak
+ * server kalau client masih punya project — lihat ClientService.deleteClient.
+ */
+function client_delete(clientId) {
+  return ClientController.deleteClient(clientId);
+}
+
 function client_removePic(picId) {
   return ClientController.removePic(picId);
 }

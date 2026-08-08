@@ -45,8 +45,8 @@ function project_undoLoss(projectId) {
   return ProjectController.undoLoss(projectId);
 }
 
-function project_createDraft(clientId, createdBy) {
-  return ProjectController.createDraft(clientId, createdBy);
+function project_createDraft(clientId, createdBy, consultant) {
+  return ProjectController.createDraft(clientId, createdBy, consultant);
 }
 
 function project_completeDraft(draftProjectId, input, createdBy) {

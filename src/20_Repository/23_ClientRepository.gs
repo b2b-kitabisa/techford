@@ -65,6 +65,21 @@ var ClientRepository = (function (module) {
     if (added) module.invalidateCache();
   };
 
+  /**
+   * Hapus satu client. Dipakai HANYA lewat ClientService.deleteClient, yang
+   * lebih dulu memastikan tidak ada project yang menggantung — jangan panggil
+   * langsung dari mana pun.
+   *
+   * @returns {number} jumlah baris terhapus (0 kalau tidak ketemu).
+   */
+  module.deleteById = function (clientId) {
+    var terhapus = base.deleteAllWhere(function (row) {
+      return String(row.Client_ID || '') === String(clientId);
+    });
+    module.invalidateCache();
+    return terhapus;
+  };
+
   module.invalidateCache = function () {
     CacheHelper.invalidate('client:all');
   };

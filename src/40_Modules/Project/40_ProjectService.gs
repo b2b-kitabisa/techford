@@ -211,7 +211,15 @@ var ProjectService = (function (module) {
    * tabel Sales Pipeline tahu harus menampilkan tag "New Pipeline" + tombol
    * "Edit" (bukan Detail).
    */
-  module.createDraftProject = function (clientId, createdBy) {
+  /**
+   * @param {string} clientId
+   * @param {string} createdBy
+   * @param {string} [consultant] Nama consultant pemilik draft. Opsional
+   *   supaya pemanggil lama (tanpa argumen ini) tetap jalan, tapi UI Client
+   *   Monitoring selalu mengirimkannya: draft tanpa pemilik akan menumpuk di
+   *   Sales Pipeline tanpa ada yang merasa bertanggung jawab menyelesaikannya.
+   */
+  module.createDraftProject = function (clientId, createdBy, consultant) {
     if (Utils.isBlank(clientId) || !ClientRepository.findById(clientId)) {
       throw new AppError('VALIDATION_ERROR', 'Client wajib dipilih dari daftar Client Monitoring.');
     }
@@ -221,7 +229,7 @@ var ProjectService = (function (module) {
       Project_ID: Utils.generateId('DRAFT'),
       Project_Name: '',
       Client_ID: clientId,
-      Consultant: '',
+      Consultant: String(consultant || '').trim(),
       Services: encodeJson([]),
       Service_Categories: encodeJson({}),
       Program_Type: '',

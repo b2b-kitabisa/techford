@@ -60,9 +60,9 @@ var ProjectController = (function (module) {
     });
   };
 
-  module.createDraft = function (clientId, createdBy) {
+  module.createDraft = function (clientId, createdBy, consultant) {
     return ErrorHandler.handle('ProjectController.createDraft', function () {
-      return ProjectService.createDraftProject(clientId, createdBy);
+      return ProjectService.createDraftProject(clientId, createdBy, consultant);
     });
   };
 

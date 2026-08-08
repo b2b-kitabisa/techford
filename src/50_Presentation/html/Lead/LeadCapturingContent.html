@@ -23,18 +23,14 @@
        baru yang perlu dipelajari admin. -->
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="leadDateFilterBtn" onclick="toggleLeadDateDropdown()">Tanggal ▾</button>
-    <div class="status-filter-dropdown" id="leadDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
-      <div class="date-presets">
+    <div class="status-filter-dropdown date-filter-dropdown" id="leadDateFilterDropdown">
+      <div class="date-preset-row">
         <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('month')">Bulan ini</button>
         <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('quarter')">Kuartal ini</button>
         <button type="button" class="date-preset-btn" onclick="applyLeadDatePreset('year')">Tahun ini</button>
       </div>
-      <label style="display:block; margin-bottom:8px;">Dari
-        <input type="date" id="leadDateFrom" style="width:100%; margin-top:4px;" oninput="onFilterChange()">
-      </label>
-      <label style="display:block;">Sampai
-        <input type="date" id="leadDateTo" style="width:100%; margin-top:4px;" oninput="onFilterChange()">
-      </label>
+      <label class="date-field">Dari<input type="date" id="leadDateFrom" oninput="onFilterChange()"></label>
+      <label class="date-field">Sampai<input type="date" id="leadDateTo" oninput="onFilterChange()"></label>
     </div>
   </div>
 

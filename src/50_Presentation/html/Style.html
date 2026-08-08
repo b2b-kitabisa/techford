@@ -370,6 +370,19 @@
     min-width: 200px; z-index: 20; padding: 6px 0;
   }
   .status-filter-dropdown.open { display: block; }
+  /* Varian isi-form (rentang tanggal) — bukan daftar pilihan, jadi butuh
+     padding di keempat sisi. Tanpa ini isinya menempel ke tepi kotak. */
+  .status-filter-dropdown.date-filter-dropdown { padding: 12px 14px; min-width: 220px; }
+
+  /* Filter bar dengan lebar kotak SERAGAM: semua select/tombol filter berbagi
+     lebar yang sama, sisa ruangnya diberikan ke kotak pencarian. Tanpa ini
+     tiap select melebar mengikuti teks option terpanjang, sehingga barisnya
+     tampak acak — dan lebarnya berubah-ubah begitu daftar option dimuat dari
+     server. */
+  .filter-bar-even > select,
+  .filter-bar-even > .status-filter-wrap { flex: 1 1 150px; min-width: 0; }
+  .filter-bar-even > .status-filter-wrap > .filter-select-btn { width: 100%; text-align: left; }
+  .filter-bar-even > .search-field { flex: 2 1 240px; }
   .status-filter-dropdown label {
     display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
   }
@@ -1503,7 +1516,6 @@
   .filter-chip button:hover { opacity: 1; }
 
   /* ---- Preset rentang tanggal cepat di dropdown Date ---- */
-  .date-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .date-preset-btn {
     font-family: inherit; font-size: 11.5px; padding: 5px 10px; border-radius: 999px;
     border: 1px solid var(--border-soft); background: var(--color-white); color: var(--text-muted); cursor: pointer;
@@ -1528,6 +1540,35 @@
   .stat-sub-row strong { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 800; color: var(--color-mineshaft); }
   .stat-sub-row.bad { color: var(--bad); }
   .stat-sub-row.bad strong { color: var(--bad); }
+
+  /* Pembagi "x dari y" di dalam angka besar kartu statistik. Sengaja dibuat
+     jauh lebih kecil & redup: yang dibaca sekilas adalah pembilangnya, dan
+     penyebut seukuran pembilang membuat kartunya jadi dua angka yang
+     bersaing, bukan satu angka berkonteks. */
+  .stat-value-of { font-size: 15px; font-weight: 600; color: var(--text-faint); }
+
+  /* Peringatan di dalam popup yang tindakannya tak bisa dibatalkan. */
+  .danger-callout {
+    background: var(--bad-tint); border: 1px solid var(--bad); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5;
+    color: var(--bad); text-align: left;
+  }
+  .danger-callout strong { display: block; margin-bottom: 3px; }
+
+  .btn-danger {
+    font-family: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px;
+    border: none; border-radius: 8px; background: var(--bad); color: var(--color-white); cursor: pointer;
+  }
+  .btn-danger:hover:not(:disabled) { filter: brightness(0.92); }
+  .btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Isi dropdown filter tanggal. Sebelumnya ditulis ulang sebagai style inline
+     di tiap halaman; disatukan di sini supaya ketiga halaman benar-benar
+     seragam dan perubahan cukup di satu tempat. */
+  .date-preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .date-field { display: block; font-size: 12px; color: var(--text-muted); }
+  .date-field + .date-field { margin-top: 8px; }
+  .date-field input { width: 100%; margin-top: 4px; }
 
   /* Baris kedua di dalam sel tabel (mis. umur lead di bawah tanggal masuk). */
   .cell-sub { font-size: 10.5px; color: var(--text-faint); margin-top: 2px; }

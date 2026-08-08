@@ -74,18 +74,14 @@
 
   <div class="status-filter-wrap">
     <button class="filter-select-btn" id="pipelineDateFilterBtn" onclick="toggleDateFilterDropdown()">Date ▾</button>
-    <div class="status-filter-dropdown" id="pipelineDateFilterDropdown" style="padding:12px 14px; min-width:220px;">
-      <div class="date-presets">
+    <div class="status-filter-dropdown date-filter-dropdown" id="pipelineDateFilterDropdown">
+      <div class="date-preset-row">
         <button type="button" class="date-preset-btn" onclick="applyDatePreset('month')">Bulan ini</button>
         <button type="button" class="date-preset-btn" onclick="applyDatePreset('quarter')">Kuartal ini</button>
         <button type="button" class="date-preset-btn" onclick="applyDatePreset('year')">Tahun ini</button>
       </div>
-      <label style="display:block; margin-bottom:8px;">Dari
-        <input type="date" id="pipelineDateFrom" style="width:100%; margin-top:4px;" oninput="onPipelineFilterChange()">
-      </label>
-      <label style="display:block;">Sampai
-        <input type="date" id="pipelineDateTo" style="width:100%; margin-top:4px;" oninput="onPipelineFilterChange()">
-      </label>
+      <label class="date-field">Dari<input type="date" id="pipelineDateFrom" oninput="onPipelineFilterChange()"></label>
+      <label class="date-field">Sampai<input type="date" id="pipelineDateTo" oninput="onPipelineFilterChange()"></label>
     </div>
   </div>
 

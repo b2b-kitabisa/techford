@@ -290,6 +290,51 @@ var ClientService = (function (module) {
     });
   };
 
+  /**
+   * Hapus client BESERTA seluruh PIC-nya. TIDAK BISA DIBATALKAN.
+   *
+   * DITOLAK kalau client masih punya project (termasuk draft). Client adalah
+   * induk dari Project, COR, Quotation, dan klaim GDV; menghapusnya sementara
+   * project-nya masih hidup akan meninggalkan project yatim yang nama
+   * kliennya berubah jadi "-" di seluruh platform, tanpa cara memulihkannya.
+   * Batas ini ditegakkan di SERVER, bukan cuma disembunyikan di UI, supaya
+   * tidak ada celah lewat state klien yang basi atau pemanggilan langsung.
+   *
+   * @returns {{clientId: string, picsDeleted: number}}
+   */
+  module.deleteClient = function (clientId) {
+    if (Utils.isBlank(clientId)) {
+      throw new AppError('VALIDATION_ERROR', 'Client ID wajib diisi.');
+    }
+    var client = ClientRepository.findById(clientId);
+    if (!client) {
+      throw new AppError('CLIENT_NOT_FOUND', 'Client tidak ditemukan.');
+    }
+
+    var projects = ProjectRepository.findAll().filter(function (p) {
+      return String(p.Client_ID || '') === String(clientId);
+    });
+    if (projects.length) {
+      var draft = projects.filter(function (p) { return p.Is_Draft; }).length;
+      throw new AppError('CLIENT_HAS_PROJECTS',
+        'Client ini masih punya ' + projects.length + ' project' +
+        (draft ? ' (' + draft + ' di antaranya draft)' : '') +
+        '. Hapus atau pindahkan project-nya dulu di Sales Pipeline sebelum menghapus client.');
+    }
+
+    var pics = PicClientRepository.findAll().filter(function (p) {
+      return String(p.Client_ID || '') === String(clientId);
+    });
+    pics.forEach(function (p) { PicClientRepository.deleteById(p.PIC_ID); });
+
+    ClientRepository.deleteById(clientId);
+
+    Log.warn('ClientService', 'Client DIHAPUS: ' + clientId + ' (' +
+      (client.Brand_Name || '-') + '), ' + pics.length + ' PIC ikut terhapus.');
+
+    return { clientId: clientId, picsDeleted: pics.length };
+  };
+
   module.removePic = function (picId) {
     if (Utils.isBlank(picId)) {
       throw new AppError('VALIDATION_ERROR', 'PIC ID wajib diisi.');

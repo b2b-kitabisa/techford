@@ -42,6 +42,12 @@ var ClientController = (function (module) {
     });
   };
 
+  module.deleteClient = function (clientId) {
+    return ErrorHandler.handle('ClientController.deleteClient', function () {
+      return ClientService.deleteClient(clientId);
+    });
+  };
+
   module.removePic = function (picId) {
     return ErrorHandler.handle('ClientController.removePic', function () {
       return ClientService.removePic(picId);
