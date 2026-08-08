@@ -387,6 +387,13 @@
     display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
   }
   .status-filter-dropdown label:hover { background: var(--bg-hover); }
+  /* Singkatan di samping nama panjang pilihan (mis. "Placement & Production
+     P&P") — yang muncul di tabel hanyalah singkatannya, jadi keduanya perlu
+     terlihat berdampingan sekali saja di sini. */
+  .status-filter-dropdown .opt-abbr {
+    margin-left: auto; font-size: 10.5px; font-weight: 700; color: var(--text-faint);
+    background: var(--bg-tint); border-radius: 4px; padding: 1px 5px;
+  }
   .status-filter-actions {
     display: flex; justify-content: space-between; gap: 8px; padding: 4px 14px 8px;
     border-bottom: 1px solid var(--border-softer); margin-bottom: 4px;
@@ -1293,9 +1300,15 @@
   .ads-sum-detail {
     margin-top: 10px; padding-top: 9px;
     border-top: 1px dashed var(--border-soft);
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex; flex-direction: column;
   }
-  .ads-sum-row { border-left: 2px solid var(--border-soft); padding-left: 9px; }
+  /* Warna baris selang-seling. Tiap baris campaign tingginya tiga tingkat
+     (link, badge, tiga angka), jadi tanpa latar bergantian mata gampang
+     melompat ke angka milik campaign sebelahnya — persis kesalahan yang
+     paling mahal di panel ini. Jarak antar baris dihapus dan diganti padding
+     supaya blok warnanya menyambung dan benar-benar terbaca sebagai baris. */
+  .ads-sum-row { border-left: 2px solid var(--border-soft); padding: 7px 9px; }
+  .ads-sum-row:nth-child(even) { background: var(--bg-tint); }
   .ads-sum-link { font-size: 12px; font-weight: 600; word-break: break-all; }
   .ads-sum-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
   .ads-sum-nums {

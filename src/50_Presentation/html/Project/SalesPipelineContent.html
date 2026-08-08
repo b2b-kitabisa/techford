@@ -110,6 +110,19 @@
     </div>
   </div>
 
+  <!-- Filter Service. Kolom Service di tabel cuma menampilkan 2 chip lalu
+       "+N", jadi menyaring lewat pencarian teks tidak bisa diandalkan. -->
+  <div class="status-filter-wrap">
+    <button class="filter-select-btn" id="pipelineServiceFilterBtn" onclick="toggleServiceFilterDropdown()">Service ▾</button>
+    <div class="status-filter-dropdown" id="pipelineServiceFilterDropdown">
+      <div class="status-filter-actions">
+        <button type="button" onclick="setAllServiceFilter(true)">Pilih Semua</button>
+        <button type="button" onclick="setAllServiceFilter(false)">Bersihkan</button>
+      </div>
+      <div id="pipelineServiceFilterOptions"></div>
+    </div>
+  </div>
+
   <label class="filter-checkbox-label">
     <input type="checkbox" id="pipelineRetainerFilter" onchange="onPipelineFilterChange()"> Retainer
   </label>
@@ -410,16 +423,10 @@
       </div>
     </div>
 
-    <div class="confirm-overlay" id="projectEditConfirm">
-      <div class="confirm-box">
-        <h3>Konfirmasi Perubahan</h3>
-        <p>Pastikan perubahan yang Anda buat sudah sesuai sebelum disimpan.</p>
-        <div class="confirm-actions">
-          <button class="btn-outline" onclick="cancelProjectEditConfirm()">Cancel</button>
-          <button class="btn-save" onclick="saveProjectInfo()">Save</button>
-        </div>
-      </div>
-    </div>
+    <!-- Popup Konfirmasi Perubahan DIPINDAH ke luar drawer (cari
+         id="projectEditConfirm" di bawah). Selama berada di dalam
+         .drawer-panel, popup-nya muncul di tempat yang salah — lihat
+         penjelasan di sana. -->
 
     <div class="drawer-footer">
       <span class="save-hint" id="projectSaveHint"></span>
@@ -542,6 +549,29 @@
     <div class="drawer-footer">
       <span class="save-hint">Permintaan baru dikirim setelah klik REQUEST.</span>
       <button class="btn-save" onclick="submitDocumentRequests()">💾 REQUEST</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Konfirmasi Simpan Edit Project ================= -->
+<!-- HARUS berada di luar .drawer-panel, dan itu bukan soal kerapian markup.
+     .drawer-panel punya `transform: translateX(...)` untuk animasi slide-in.
+     Elemen ber-transform menjadi containing block bagi seluruh keturunannya
+     yang position:fixed — jadi `inset: 0` pada overlay ini tidak lagi
+     mengacu ke viewport, melainkan ke KOTAK GULIR panel. Akibatnya popup
+     terpasang di puncak isi drawer: kalau user sudah menggulir ke bawah
+     (dan tombol Save memang ada di bawah), popup-nya muncul jauh di atas
+     layar — terlihat seperti tombol Save tidak berfungsi.
+
+     Menaruhnya di sini membuat overlay kembali menjadi anak <body>, dan
+     z-index 300 > 200 milik drawer sudah cukup untuk menutupinya. -->
+<div class="confirm-overlay" id="projectEditConfirm">
+  <div class="confirm-box">
+    <h3>Konfirmasi Perubahan</h3>
+    <p>Pastikan perubahan yang Anda buat sudah sesuai sebelum disimpan.</p>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="cancelProjectEditConfirm()">Cancel</button>
+      <button class="btn-save" onclick="saveProjectInfo()">Save</button>
     </div>
   </div>
 </div>
@@ -922,6 +952,9 @@
       }
       pProjectsLoaded = true;
       allProjects = res.data;
+      // Daftar service ikut disegarkan: serviceFilterOptions() menyapu
+      // allProjects untuk menangkap service yang belum terdaftar di taxonomy.
+      renderServiceFilterDropdown();
       renderPipeline();
     }, function (err) {
       if (pProjectsLoaded) { showPipelineTableError('Gagal memuat ulang data terbaru: ' + (err && err.message ? err.message : err), true); return; }
@@ -1037,6 +1070,7 @@
           renderProgramTypeButtonsInto('newProgramTypeButtons', newProjectProgramType, 'selectNewProgramType');
           renderIssueButtonsInto('newIssueButtons', newProjectIssues, 'toggleNewIssue');
           renderStageFilterDropdown();
+          renderServiceFilterDropdown();
           renderStageSelectOptions('detailStageSelect');
           // fetchEmployees() & fetchTaxonomy() jalan paralel saat bootstrap —
           // populateConsultantDropdowns() memfilter allEmployees berdasarkan
@@ -1377,10 +1411,17 @@
       var matchesTo = !dateTo || createdTime <= new Date(dateTo + 'T23:59:59').getTime();
       // Kosong = tanpa filter (sama seperti filter Stage), bukan 'tidak ada\n      // yang cocok' — kalau tidak, membersihkan semua pilihan akan\n      // mengosongkan tabel dan terlihat seperti data hilang.
       var matchesConsultant = !consultants.length || consultants.indexOf(p.Consultant) !== -1;
-      var matchesStage = !pipelineStageFilterValues.length || pipelineStageFilterValues.indexOf(p.Stage) !== -1;
+      // Draft dicocokkan lewat nilai semu, bukan lewat p.Stage (yang memang
+      // masih kosong selama project belum dilengkapi).
+      var stageKey = p.Is_Draft ? STAGE_FILTER_DRAFT : p.Stage;
+      var matchesStage = !pipelineStageFilterValues.length || pipelineStageFilterValues.indexOf(stageKey) !== -1;
+      // Satu project bisa punya beberapa service, jadi cukup SATU yang cocok.
+      var matchesService = !pipelineServiceFilterValues.length ||
+        (p.Services || []).some(function (s) { return pipelineServiceFilterValues.indexOf(s) !== -1; });
       var matchesRetainer = !retainerOnly || !!p.Is_Retainer;
 
-      return matchesSearch && matchesFrom && matchesTo && matchesConsultant && matchesStage && matchesRetainer;
+      return matchesSearch && matchesFrom && matchesTo && matchesConsultant &&
+        matchesStage && matchesService && matchesRetainer;
     }).sort(comparePipelineRows);
   }
 
@@ -1469,6 +1510,8 @@
     document.getElementById('pipelineRetainerFilter').checked = false;
     pipelineStageFilterValues = [];
     renderStageFilterDropdown();
+    pipelineServiceFilterValues = [];
+    renderServiceFilterDropdown();
     pipelinePage = 1;
     renderPipeline();
   }
@@ -1502,7 +1545,12 @@
         : 'Consultant: ' + consultants.length + ' dipilih' });
     }
     if (pipelineStageFilterValues.length) {
-      list.push({ key: 'stage', label: 'Stage: ' + pipelineStageFilterValues.join(', ') });
+      list.push({ key: 'stage', label: 'Stage: ' + pipelineStageFilterValues.map(stageFilterLabel).join(', ') });
+    }
+    if (pipelineServiceFilterValues.length) {
+      // Dipakai singkatannya (CSR/SS/EVNT/ADS/P&P) supaya chip-nya tidak
+      // memanjang seperti "Placement & Production, Sustainability Services".
+      list.push({ key: 'service', label: 'Service: ' + pipelineServiceFilterValues.map(serviceAbbr).join(', ') });
     }
     if (retainerOnly) list.push({ key: 'retainer', label: 'Retainer saja' });
     return list;
@@ -1519,6 +1567,10 @@
     if (key === 'stage') {
       pipelineStageFilterValues = [];
       renderStageFilterDropdown();
+    }
+    if (key === 'service') {
+      pipelineServiceFilterValues = [];
+      renderServiceFilterDropdown();
     }
     onPipelineFilterChange();
   }
@@ -1859,11 +1911,32 @@
   }
 
   // ---- Stage filter dropdown (multi-select, sama pola dengan status filter Lead) ----
+  /**
+   * Daftar pilihan filter Stage = stage dari taxonomy + "Draft" DI PALING
+   * BAWAH.
+   *
+   * Draft bukan salah satu Stage di taxonomy — ia ditandai kolom Is_Draft dan
+   * stage-nya masih kosong. Karena itu sebelum ini draft tidak bisa disaring
+   * sama sekali: begitu satu stage mana pun dicentang, seluruh draft hilang
+   * dari tabel tanpa ada cara memunculkannya kembali selain membersihkan
+   * filter. Ditaruh terakhir karena urutan stage lain mengikuti alur pipeline
+   * dan menyelipkan Draft di tengahnya akan merusak urutan itu.
+   */
+  var STAGE_FILTER_DRAFT = '__draft';
+
+  function stageFilterOptions() {
+    return (taxonomy.stages || []).concat([STAGE_FILTER_DRAFT]);
+  }
+  function stageFilterLabel(value) {
+    return value === STAGE_FILTER_DRAFT ? 'Draft' : value;
+  }
+
   function renderStageFilterDropdown() {
     var container = document.getElementById('pipelineStageFilterOptions');
-    container.innerHTML = (taxonomy.stages || []).map(function (stage) {
+    container.innerHTML = stageFilterOptions().map(function (stage) {
       var checked = pipelineStageFilterValues.indexOf(stage) !== -1 ? 'checked' : '';
-      return '<label><input type="checkbox" value="' + stage + '" ' + checked + ' onchange="onStageFilterToggle(this)"> ' + stage + '</label>';
+      return '<label><input type="checkbox" value="' + escAttr(stage) + '" ' + checked +
+        ' onchange="onStageFilterToggle(this)"> ' + escHtml(stageFilterLabel(stage)) + '</label>';
     }).join('');
     updateStageFilterButtonLabel();
   }
@@ -1875,9 +1948,87 @@
     onPipelineFilterChange();
   }
   function setAllStageFilter(selectAll) {
-    pipelineStageFilterValues = selectAll ? (taxonomy.stages || []).slice() : [];
+    pipelineStageFilterValues = selectAll ? stageFilterOptions() : [];
     renderStageFilterDropdown();
     onPipelineFilterChange();
+  }
+
+  /* ---- Filter Service (multi-select) ----
+     Daftar pilihannya diambil dari taxonomy.services kalau ada, dengan
+     SERVICE_ABBR sebagai cadangan. Alasannya: SERVICE_ABBR adalah tabel
+     tampilan (singkatan + warna chip) yang ditulis di front-end, jadi kalau
+     suatu saat ada service baru di Master Data tapi belum didaftarkan di
+     sini, filternya tetap memunculkan service itu — cuma tanpa singkatan.
+     Kebalikannya (mengandalkan SERVICE_ABBR saja) membuat service baru tidak
+     bisa disaring sama sekali dan tidak ada yang sadar kenapa. */
+  var pipelineServiceFilterValues = [];
+
+  function serviceFilterOptions() {
+    // taxonomy.services berisi OBJEK {key, label, categories} — yang disimpan
+    // di Project.Services adalah `key`-nya, jadi itu yang harus dipakai.
+    // Memakai objeknya mentah-mentah menghasilkan checkbox bernilai
+    // "[object Object]" yang tidak pernah cocok dengan data mana pun.
+    var dariTaxonomy = (taxonomy.services || []).map(function (s) {
+      return typeof s === 'string' ? s : (s && s.key) || '';
+    }).filter(Boolean);
+    var dariTabel = Object.keys(SERVICE_ABBR);
+    var gabungan = dariTaxonomy.length ? dariTaxonomy : dariTabel;
+    // Service yang dipakai project tapi tidak ada di dua sumber di atas tetap
+    // dimunculkan — kalau tidak, barisnya tidak bisa disaring sama sekali.
+    allProjects.forEach(function (p) {
+      (p.Services || []).forEach(function (s) {
+        if (s && gabungan.indexOf(s) === -1) gabungan.push(s);
+      });
+    });
+    return gabungan;
+  }
+
+  function serviceAbbr(service) {
+    var def = SERVICE_ABBR[service];
+    return def ? def.ab : service;
+  }
+
+  function renderServiceFilterDropdown() {
+    var container = document.getElementById('pipelineServiceFilterOptions');
+    if (!container) return;
+    container.innerHTML = serviceFilterOptions().map(function (svc) {
+      var checked = pipelineServiceFilterValues.indexOf(svc) !== -1 ? 'checked' : '';
+      var ab = serviceAbbr(svc);
+      // Nama lengkap + singkatannya sekaligus: yang terlihat di kolom Service
+      // hanyalah singkatannya, jadi tanpa ini user harus menebak "P&P" itu
+      // pilihan yang mana.
+      return '<label><input type="checkbox" value="' + escAttr(svc) + '" ' + checked +
+        ' onchange="onServiceFilterToggle(this)"> ' + escHtml(svc) +
+        (ab !== svc ? ' <span class="opt-abbr">' + escHtml(ab) + '</span>' : '') + '</label>';
+    }).join('');
+    updateServiceFilterButtonLabel();
+  }
+
+  function onServiceFilterToggle(checkbox) {
+    var idx = pipelineServiceFilterValues.indexOf(checkbox.value);
+    if (checkbox.checked && idx === -1) pipelineServiceFilterValues.push(checkbox.value);
+    if (!checkbox.checked && idx !== -1) pipelineServiceFilterValues.splice(idx, 1);
+    updateServiceFilterButtonLabel();
+    onPipelineFilterChange();
+  }
+
+  function setAllServiceFilter(selectAll) {
+    pipelineServiceFilterValues = selectAll ? serviceFilterOptions() : [];
+    renderServiceFilterDropdown();
+    onPipelineFilterChange();
+  }
+
+  function toggleServiceFilterDropdown() {
+    document.getElementById('pipelineServiceFilterDropdown').classList.toggle('open');
+  }
+
+  function updateServiceFilterButtonLabel() {
+    var btn = document.getElementById('pipelineServiceFilterBtn');
+    if (!btn) return;
+    var n = pipelineServiceFilterValues.length;
+    btn.innerText = !n ? 'Service ▾'
+      : (n === 1 ? serviceAbbr(pipelineServiceFilterValues[0]) : n + ' service') + ' ▾';
+    btn.classList.toggle('has-value', n > 0);
   }
   /* ---- Filter Consultant (multi-select) ----
      Nilai yang dipilih disimpan di array, bukan di DOM, supaya pilihan user
@@ -1953,7 +2104,8 @@
   }
 
   document.addEventListener('click', function (e) {
-    ['pipelineDateFilterDropdown', 'pipelineStageFilterDropdown', 'pipelineConsultantFilterDropdown'].forEach(function (id) {
+    ['pipelineDateFilterDropdown', 'pipelineStageFilterDropdown',
+      'pipelineConsultantFilterDropdown', 'pipelineServiceFilterDropdown'].forEach(function (id) {
       var dropdown = document.getElementById(id);
       var btn = document.getElementById(id.replace('Dropdown', 'Btn'));
       if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && e.target !== btn) {
