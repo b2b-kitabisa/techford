@@ -406,6 +406,19 @@
   .contact-cell { font-size: 11.5px; white-space: nowrap; }
   .contact-cell a { display: block; color: var(--color-cerulean); text-decoration: none; }
   .contact-cell .contact-email { color: var(--text-muted); }
+  /* Satu baris = ikon + nomor/email + tombol salin, sejajar secara vertikal.
+     Tombol salin dipasang DI SEL, bukan cuma di drawer, supaya menyalin nomor
+     tidak lagi mengharuskan membuka drawer dulu. */
+  .contact-cell .contact-line { display: flex; align-items: center; gap: 2px; }
+  .contact-cell .contact-line + .contact-line { margin-top: 2px; }
+  .contact-cell .contact-line > a { display: inline-flex; align-items: center; gap: 4px; }
+  /* Tombol salin di sel tabel disembunyikan sampai barisnya disorot — kalau
+     selalu terlihat, dua ikon per baris membuat kolom Kontak jadi ramai. */
+  .contact-cell .copy-chip { opacity: 0; transition: opacity 0.12s ease; }
+  .data-table tbody tr:hover .contact-cell .copy-chip,
+  .contact-cell .copy-chip:focus-visible,
+  .contact-cell .copy-chip.copied { opacity: 1; }
+  .wa-ic { flex: none; vertical-align: middle; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
   /* Badge status sengaja tetap multi-warna — lihat catatan di .stat-new dkk. */
   .badge-new { background: #f3e8fd; color: #6a1b9a; }
@@ -1579,6 +1592,14 @@
     border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle;
     white-space: nowrap; cursor: help;
   }
+  /* Versi tombol: badge yang sama, tapi sekarang bisa diklik untuk menyaring
+     tabel ke grup duplikatnya. Kursor pointer (bukan help) supaya jelas ini
+     tindakan, bukan sekadar keterangan. */
+  .dup-tag-btn {
+    font-family: inherit; cursor: pointer;
+  }
+  .dup-tag-btn:hover { background: var(--warn); color: var(--color-white); }
+  .dup-tag-btn:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
   .drawer-dup-warn {
     margin-top: 10px; background: var(--warn-tint); border-left: 3px solid var(--warn);
     border-radius: 0 6px 6px 0; padding: 9px 12px; font-size: 12px; line-height: 1.5;

@@ -69,7 +69,7 @@
         <th class="sortable" onclick="setSort('Timestamp')">Masuk <span class="sort-icon" data-field="Timestamp">⇕</span></th>
         <th class="sortable" onclick="setSort('Entity_Name')">Entity Name <span class="sort-icon" data-field="Entity_Name">⇕</span></th>
         <th>Kontak</th>
-        <th class="sortable" onclick="setSort('Detail_Interest')">Needs <span class="sort-icon" data-field="Detail_Interest">⇕</span></th>
+        <th class="sortable" onclick="setSort('Priority_Notes')">Prioritas <span class="sort-icon" data-field="Priority_Notes">⇕</span></th>
         <th>Action</th>
       </tr>
     </thead>
@@ -535,6 +535,62 @@
   }
 
   /** @returns {{isDup: boolean, count: number, alasan: string}} */
+  /**
+   * Ikon WhatsApp, sama persis dengan yang dipakai opsi status Contacted.
+   * Dulu kolom Kontak memakai emoji 📱 yang berarti "telepon" secara umum —
+   * padahal link-nya membuka WhatsApp, bukan panggilan telepon.
+   */
+  function waIcon() {
+    return '<svg class="wa-ic" width="12" height="12" viewBox="0 0 24 24" fill="#25D366" aria-hidden="true">' +
+      '<path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.06L2 22l5.11-1.34A9.94 9.94 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.3 1.2-1.8 1.27-.46.07-1.04.1-1.68-.1-.39-.12-.89-.29-1.53-.57-2.7-1.17-4.45-3.9-4.58-4.08-.13-.18-1.1-1.46-1.1-2.79 0-1.32.7-1.97.94-2.24.24-.27.53-.34.71-.34h.5c.16 0 .38-.03.59.45.22.5.74 1.8.8 1.93.07.13.11.28.02.45-.09.17-.14.28-.27.43-.13.15-.28.34-.4.46-.13.13-.27.27-.12.53.16.27.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.13.44.11.6-.07.16-.18.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.27.13.44.2.5.31.07.11.07.62-.15 1.24z"/></svg>';
+  }
+
+  /**
+   * Tombol salin untuk dipakai DI DALAM sel tabel.
+   *
+   * stopPropagation wajib: baris tabel akan dibuat bisa diklik untuk membuka
+   * drawer, dan tanpa ini menyalin nomor juga ikut membuka drawer.
+   */
+  function cellCopyBtn(teks) {
+    return '<button type="button" class="copy-chip" title="Salin" ' +
+      'onclick="event.stopPropagation(); copyToClipboard(this, \'' + escAttr(teks) + '\')">⧉</button>';
+  }
+
+  /* ---- Filter grup duplikat (item: tombol ⧉) ----
+     Menyimpan ID lead yang diklik, BUKAN daftar ID hasil perhitungan saat itu.
+     Alasannya: grup duplikat dihitung ulang setiap kali data di-fetch, jadi
+     menyimpan daftar beku akan basi begitu ada lead baru yang masuk ke grup
+     yang sama. */
+  var leadDupFocusId = null;
+
+  function focusDupGroup(leadId) {
+    leadDupFocusId = leadId;
+    // Pencarian dikosongkan supaya tidak menyaring ganda tanpa disadari —
+    // user menekan ⧉ untuk MELIHAT grupnya, bukan mempersempitnya lagi.
+    document.getElementById('leadSearch').value = '';
+    currentPage = 1;
+    render();
+  }
+
+  function clearDupFocus() {
+    leadDupFocusId = null;
+    currentPage = 1;
+    render();
+  }
+
+  /** ID anggota grup duplikat lead yang sedang difokuskan (termasuk dirinya). */
+  function dupGroupIds(leadId) {
+    var lead = allLeads.filter(function (l) { return l.Inbound_ID === leadId; })[0];
+    if (!lead) return null;
+    var e = String(lead.Email || '').trim().toLowerCase();
+    var p = normalizePhoneKey(lead.Phone);
+    var ids = {};
+    ids[leadId] = true;
+    (e ? (dupGroups.email[e] || []) : []).forEach(function (id) { ids[id] = true; });
+    (p ? (dupGroups.phone[p] || []) : []).forEach(function (id) { ids[id] = true; });
+    return ids;
+  }
+
   function duplicateInfo(lead) {
     var e = String(lead.Email || '').trim().toLowerCase();
     var p = normalizePhoneKey(lead.Phone);
@@ -791,7 +847,14 @@
     var from = fromValue ? new Date(fromValue + 'T00:00:00') : null;
     var to = toValue ? new Date(toValue + 'T23:59:59') : null;
 
+    // Grup duplikat dihitung sekali per render, bukan per baris.
+    var dupFocus = leadDupFocusId ? dupGroupIds(leadDupFocusId) : null;
+    // Lead yang difokuskan sudah tidak ada (mis. data di-refresh dan lead-nya
+    // terhapus) — fokusnya dilepas, bukan menghasilkan tabel kosong tanpa sebab.
+    if (leadDupFocusId && !dupFocus) leadDupFocusId = null;
+
     return allLeads.filter(function (lead) {
+      if (dupFocus && !dupFocus[lead.Inbound_ID]) return false;
       if (!leadMatchesSearch(lead, search)) return false;
       if (selectedStatuses.length && selectedStatuses.indexOf(normalizeStatusKey(lead.Status)) === -1) return false;
       if (from || to) {
@@ -838,6 +901,7 @@
   }
 
   function resetFilter() {
+    leadDupFocusId = null;
     document.getElementById('leadSearch').value = '';
     document.querySelectorAll('#statusFilterDropdown input').forEach(function (el) { el.checked = false; });
     document.getElementById('leadDateFrom').value = '';
@@ -878,6 +942,13 @@
     var chips = [];
     var search = document.getElementById('leadSearch').value.trim();
     if (search) chips.push({ key: 'search', label: 'Cari: "' + search + '"' });
+    if (leadDupFocusId) {
+      var fokus = allLeads.filter(function (l) { return l.Inbound_ID === leadDupFocusId; })[0];
+      chips.push({
+        key: 'dup',
+        label: 'Potensi duplikat: ' + ((fokus && fokus.Entity_Name) || leadDupFocusId)
+      });
+    }
     var statuses = getSelectedStatuses();
     if (statuses.length) chips.push({ key: 'status', label: 'Status: ' + statuses.join(', ') });
     var from = document.getElementById('leadDateFrom').value;
@@ -892,6 +963,7 @@
   }
 
   function removeLeadFilter(key) {
+    if (key === 'dup') { clearDupFocus(); return; }
     if (key === 'search') document.getElementById('leadSearch').value = '';
     if (key === 'status') {
       document.querySelectorAll('#statusFilterDropdown input').forEach(function (el) { el.checked = false; });
@@ -957,7 +1029,11 @@
     tbody.innerHTML = paged.items.map(function (lead) {
       var meta = getStatusMeta(lead.Status);
       var statusKey = normalizeStatusKey(lead.Status);
-      var needs = lead.Detail_Interest || '-';
+      // Kolom ini menampilkan PRIORITAS (Priority_Notes), bukan lagi
+      // kebutuhan (Detail_Interest). Detail_Interest tetap ada di drawer —
+      // yang berubah hanya kolom tabel, karena yang perlu dipindai sekilas
+      // adalah prioritasnya.
+      var prioritas = lead.Priority_Notes || '-';
       var picName = toProperCase(lead.PIC_Name) || '-';
       var email = (lead.Email || '').toLowerCase();
       var phone = lead.Phone || '';
@@ -982,17 +1058,12 @@
       if (stale) rowClass.push('lead-row-stale');
       if (dup.isDup) rowClass.push('lead-row-dup');
 
-      // Aksi cepat: WhatsApp & Email muncul saat baris disorot — dua tindakan
-      // yang paling sering dilakukan, sekarang tanpa perlu membuka drawer.
-      var quick = '<span class="row-quick">';
-      if (phone) {
-        quick += '<a class="quick-btn quick-hidden" href="https://wa.me/' + escAttr(normalizePhone(phone)) +
-          '" target="_blank" rel="noopener" title="Hubungi via WhatsApp">WA</a>';
-      }
-      if (email) {
-        quick += '<a class="quick-btn quick-hidden" href="mailto:' + escAttr(email) + '" title="Kirim email">✉</a>';
-      }
-      quick += '<button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) +
+      // Tombol aksi WA & Email DIHAPUS dari kolom Action: nomor dan email di
+      // kolom Kontak sudah bisa diklik langsung (dan kini punya tombol salin
+      // sendiri), jadi dua tombol itu cuma menduplikasi tindakan yang sama
+      // sambil memakan lebar kolom.
+      var quick = '<span class="row-quick">' +
+        '<button class="btn-icon-round" onclick="openDetail(\'' + escAttr(lead.Inbound_ID) +
         '\')" title="Lihat Detail">›</button></span>';
 
       return '<tr' + (rowClass.length ? ' class="' + rowClass.join(' ') + '"' : '') + '>' +
@@ -1003,16 +1074,22 @@
         '<td class="nowrap-cell"><span class="badge ' + meta.badgeClass + '">' + escHtml(lead.Status) + '</span></td>' +
         '<td class="nowrap-cell"><div>' + escHtml(formatDate(lead.Timestamp)) + '</div>' + ageHtml + '</td>' +
         '<td><div class="entity-name">' + escHtml(lead.Entity_Name || '-') +
-          (dup.isDup ? ' <span class="dup-tag" title="' +
-            escAttr('Ada ' + dup.count + ' lead dengan ' + dup.alasan + ' — periksa sebelum menindaklanjuti') +
-            '">⧉ ' + dup.count + '</span>' : '') + '</div>' +
+          (dup.isDup ? ' <button type="button" class="dup-tag dup-tag-btn" title="' +
+            escAttr('Ada ' + dup.count + ' lead dengan ' + dup.alasan +
+              ' — klik untuk menampilkan hanya lead-lead itu') +
+            '" onclick="event.stopPropagation(); focusDupGroup(\'' + escAttr(lead.Inbound_ID) + '\')">⧉ ' +
+            dup.count + '</button>' : '') + '</div>' +
           '<div class="entity-pic">👤 ' + escHtml(picName) + '</div></td>' +
         '<td class="contact-cell">' +
-          (phone ? '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">📱 ' + escHtml(phone) + '</a>' : '') +
-          (email ? '<a class="contact-email" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' : '') +
+          (phone ? '<span class="contact-line">' +
+            '<a href="https://wa.me/' + escAttr(normalizePhone(phone)) + '" target="_blank" rel="noopener">' +
+            waIcon() + ' ' + escHtml(phone) + '</a>' + cellCopyBtn(phone) + '</span>' : '') +
+          (email ? '<span class="contact-line">' +
+            '<a class="contact-email" href="mailto:' + escAttr(email) + '">✉ ' + escHtml(email) + '</a>' +
+            cellCopyBtn(email) + '</span>' : '') +
           (!phone && !email ? '-' : '') +
         '</td>' +
-        '<td title="' + escAttr(needs) + '">' + escHtml(truncateText(needs, 30)) + '</td>' +
+        '<td title="' + escAttr(prioritas) + '">' + escHtml(truncateText(prioritas, 30)) + '</td>' +
         '<td>' + quick + '</td>' +
         '</tr>';
     }).join('');
