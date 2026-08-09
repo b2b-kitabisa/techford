@@ -178,6 +178,11 @@
           <select id="newConsultant" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;">
             <option value="">Consultant</option>
           </select>
+          <!-- Cuma tampak mode lengkapi draft (currentDraftProjectId != null).
+               Hapus project HANYA boleh utk Draft — begitu project punya
+               nama/service/dsb (sudah bukan draft), tombol ini hilang. Kalau
+               deal harus batal, pakai Tandai LOSS, bukan hapus. -->
+          <button class="btn-onhead danger" id="draftDeleteBtn" onclick="openProjectDeleteConfirm()" style="display:none;" title="Hapus draft ini permanen">🗑 Hapus Draft</button>
           <button class="drawer-close" onclick="closeAddPipeline()">&times;</button>
         </div>
       </div>
@@ -292,7 +297,6 @@
         </label>
         <button class="btn-onhead danger" id="markLossBtn" onclick="openMarkLossConfirm()" style="display:none;" title="Tandai deal ini batal — bisa di-Undo">🚫 Tandai LOSS</button>
         <button class="btn-onhead" id="undoLossBtn" onclick="openUndoLossConfirm()" style="display:none;" title="Kembalikan Stage ke sebelum ditandai Loss">↩️ Undo LOSS</button>
-        <button class="btn-onhead danger" id="projectDeleteBtn" onclick="openProjectDeleteConfirm()" title="Hapus project ini permanen">🗑 Hapus</button>
       </div>
     </div>
 
@@ -2369,6 +2373,7 @@
     currentDraftProjectId = null;
     resetAddPipelineForm();
     setNewClientPickerLocked(false);
+    document.getElementById('draftDeleteBtn').style.display = 'none';
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
   }
@@ -2388,6 +2393,7 @@
     newProjectClientId = draft.Client_ID;
     document.getElementById('newClientInput').value = client ? ((client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-')) : draft.Client_ID;
     setNewClientPickerLocked(true);
+    document.getElementById('draftDeleteBtn').style.display = '';
 
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
@@ -3760,8 +3766,14 @@
     return allDocuments.filter(function (d) { return d.Project_ID === projectId; }).length;
   }
 
+  /** Hapus HANYA berlaku utk draft (currentDraftProjectId) — lihat ProjectService.deleteProject. */
+  function currentDraftOrNull() {
+    if (!currentDraftProjectId) return null;
+    return allProjects.filter(function (p) { return p.Project_ID === currentDraftProjectId; })[0] || null;
+  }
+
   function openProjectDeleteConfirm() {
-    var project = currentProjectOrNull();
+    var project = currentDraftOrNull();
     if (!project) return;
 
     var jumlahDok = projectDocsCount(project.Project_ID);
@@ -3790,14 +3802,14 @@
   }
 
   function onProjectDeleteConfirmInput() {
-    var project = currentProjectOrNull();
+    var project = currentDraftOrNull();
     var target = String((project && (project.Project_Name || project.Project_ID)) || '').trim().toLowerCase();
     var ketik = document.getElementById('projectDeleteConfirmInput').value.trim().toLowerCase();
     document.getElementById('projectDeleteSubmitBtn').disabled = !target || ketik !== target;
   }
 
   function submitDeleteProject() {
-    var projectId = currentPipelineDrawerId;
+    var projectId = currentDraftProjectId;
     if (!projectId) return;
     var btn = document.getElementById('projectDeleteSubmitBtn');
     var errEl = document.getElementById('projectDeleteError');
@@ -3820,7 +3832,7 @@
           return;
         }
         closeProjectDeleteConfirm();
-        closePipelineDetail();
+        closeAddPipeline();
         // Data lokal dibereskan langsung supaya tabel tidak sempat
         // menampilkan project yang sudah tidak ada.
         allProjects = allProjects.filter(function (p) { return p.Project_ID !== projectId; });

@@ -415,6 +415,12 @@ var ProjectService = (function (module) {
     if (!project) {
       throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
     }
+    if (!project.Is_Draft) {
+      throw new AppError('VALIDATION_ERROR',
+        'Hanya project berstatus Draft yang bisa dihapus. Project ini sudah masuk pipeline ' +
+        '(punya nama, service, dsb) — kalau memang harus batal, tandai LOSS lewat drawer, ' +
+        'jangan dihapus.');
+    }
 
     var docs = DocumentPipelineRepository.findByProjectId(projectId);
     if (docs.length) {

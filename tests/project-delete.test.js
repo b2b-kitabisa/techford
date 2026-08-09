@@ -98,8 +98,8 @@ function build(projects, breakdown, documents) {
 }
 
 const PROJECT = [
-  { Project_ID: 'PRJ26-00001', Project_Name: 'BERSIH', Client_ID: 'CL-1' },
-  { Project_ID: 'PRJ26-00002', Project_Name: 'PUNYA DOKUMEN', Client_ID: 'CL-2' }
+  { Project_ID: 'PRJ26-00001', Project_Name: 'BERSIH', Client_ID: 'CL-1', Is_Draft: true },
+  { Project_ID: 'PRJ26-00002', Project_Name: 'PUNYA DOKUMEN', Client_ID: 'CL-2', Is_Draft: true }
 ];
 const BREAKDOWN = [
   { Breakdown_ID: 'RB-1', Project_ID: 'PRJ26-00001', Value_Type: 'GDV', Amount: 1000 },
@@ -107,7 +107,7 @@ const BREAKDOWN = [
   { Breakdown_ID: 'RB-3', Project_ID: 'PRJ26-00002', Value_Type: 'GDV', Amount: 999 }
 ];
 
-console.log('\n1) Project tanpa dokumen — terhapus bersama Revenue Breakdown-nya');
+console.log('\n1) Draft tanpa dokumen — terhapus bersama Revenue Breakdown-nya');
 {
   const { svc, store } = build(PROJECT, BREAKDOWN, []);
   const hasil = svc.deleteProject('PRJ26-00001');
@@ -123,7 +123,7 @@ console.log('\n1) Project tanpa dokumen — terhapus bersama Revenue Breakdown-n
   ok('mengembalikan id yang dihapus', hasil.projectId === 'PRJ26-00001');
 }
 
-console.log('\n2) Project PUNYA dokumen — ditolak, tidak ada yang terhapus sebagian');
+console.log('\n2) Draft PUNYA dokumen — ditolak, tidak ada yang terhapus sebagian');
 {
   const { svc, store } = build(PROJECT, BREAKDOWN, [
     { Doc_ID: 'COR26-00007', Project_ID: 'PRJ26-00002' }
@@ -170,10 +170,34 @@ console.log('\n4) Penolakan input');
 console.log('\n5) Project tanpa breakdown sama sekali tetap bisa dihapus');
 {
   const { svc, store } = build(
-    [{ Project_ID: 'PRJ26-00009', Project_Name: 'KOSONG', Client_ID: 'CL-9' }], [], []);
+    [{ Project_ID: 'PRJ26-00009', Project_Name: 'KOSONG', Client_ID: 'CL-9', Is_Draft: true }], [], []);
   const hasil = svc.deleteProject('PRJ26-00009');
   ok('terhapus tanpa error', store.projects.length === 0);
   ok('breakdownDeleted = 0', hasil.breakdownDeleted === 0, hasil.breakdownDeleted);
+}
+
+console.log('\n7) Project BUKAN draft — ditolak walau tidak punya dokumen');
+{
+  // Hapus HANYA boleh utk Draft. Project yang sudah masuk pipeline (Is_Draft
+  // falsy) ditolak, apa pun status dokumennya — jalur batal yang benar adalah
+  // Tandai LOSS, bukan hapus.
+  const { svc, store } = build(
+    [{ Project_ID: 'PRJ26-00050', Project_Name: 'SUDAH PIPELINE', Client_ID: 'CL-5', Is_Draft: false }], [], []);
+  let pesan = '';
+  try { svc.deleteProject('PRJ26-00050'); } catch (e) { pesan = e.message; }
+  ok('ditolak', /Hanya project berstatus Draft/.test(pesan), pesan);
+  ok('menyarankan Tandai LOSS sbg jalur batal', /LOSS/.test(pesan), pesan);
+  ok('project TIDAK terhapus', store.projects.length === 1);
+}
+
+console.log('\n8) Is_Draft tidak diisi sama sekali (baris lama) — diperlakukan BUKAN draft');
+{
+  const { svc, store } = build(
+    [{ Project_ID: 'PRJ26-00051', Project_Name: 'TANPA KOLOM', Client_ID: 'CL-6' }], [], []);
+  let pesan = '';
+  try { svc.deleteProject('PRJ26-00051'); } catch (e) { pesan = e.message; }
+  ok('ditolak (falsy = bukan draft)', /Hanya project berstatus Draft/.test(pesan), pesan);
+  ok('project TIDAK terhapus', store.projects.length === 1);
 }
 
 console.log('\n6) Dokumen milik project LAIN tidak menghalangi');
