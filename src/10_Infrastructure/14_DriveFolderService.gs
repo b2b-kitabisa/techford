@@ -134,6 +134,13 @@ var DriveFolderService = (function (module) {
     var folderId = createFolder(name, Config.TECHFORD_ROOT_FOLDER_ID);
     ClientRepository.ensureColumns(['Drive_Folder_Id']);
     ClientRepository.update(client.Client_ID, { Drive_Folder_Id: folderId });
+    // Objek yang dikirim pemanggil ikut diperbarui. Ini SENGAJA, bukan efek
+    // samping yang kelewat: ClientRepository.update meng-invalidate cache,
+    // jadi satu-satunya cara pemanggil tahu ID barunya tanpa membaca ULANG
+    // seluruh sheet adalah lewat objek ini. Tanpa itu, backfill yang memegang
+    // hasil findAll() akan melihat Drive_Folder_Id kosong terus dan membuat
+    // folder kedua untuk client yang sama.
+    client.Drive_Folder_Id = folderId;
     Log.info('DriveFolderService', 'Folder client dibuat: ' + name + ' (' + folderId + ')');
     return folderId;
   };
@@ -173,6 +180,7 @@ var DriveFolderService = (function (module) {
     var folderId = createFolder(name, parentId);
     ProjectRepository.ensureColumns(['Drive_Folder_Id']);
     ProjectRepository.update(project.Project_ID, { Drive_Folder_Id: folderId });
+    project.Drive_Folder_Id = folderId; // alasan sama dengan di ensureClientFolder
     Log.info('DriveFolderService', 'Folder project dibuat: ' + name + ' (' + folderId + ')');
     return folderId;
   };
@@ -187,6 +195,40 @@ var DriveFolderService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'Project ' + projectId + ' tidak ditemukan.');
     }
     return module.ensureProjectFolder(project, null);
+  };
+
+  /**
+   * Pastikan folder akar Tech-Ford terjangkau akun yang menjalankan script.
+   *
+   * Dipanggil SEKALI di awal backfill. Tanpa ini, ID akar yang salah atau
+   * Shared Drive yang belum di-share ke akun deploy menghasilkan ratusan
+   * kegagalan identik satu per satu — dan penyebab sesungguhnya (satu folder
+   * yang tidak terjangkau) tenggelam di antara semuanya.
+   */
+  module.assertRootReachable = function () {
+    var id = Config.TECHFORD_ROOT_FOLDER_ID;
+    try {
+      var f = Drive.Files.get(id, allDrives({ fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)' }));
+      if (f.mimeType !== FOLDER_MIME) {
+        throw new AppError('VALIDATION_ERROR', 'TECHFORD_ROOT_FOLDER_ID bukan folder.');
+      }
+      if (f.trashed) {
+        throw new AppError('VALIDATION_ERROR', 'Folder akar Tech-Ford ada di Tempat Sampah.');
+      }
+      if (f.capabilities && f.capabilities.canAddChildren === false) {
+        throw new AppError('VALIDATION_ERROR',
+          'Akun ' + (module.serviceAccountEmail() || 'yang menjalankan script') +
+          ' tidak boleh membuat folder di dalam "' + f.name + '". Jadikan akun itu ' +
+          'Content Manager di Shared Drive B2B.');
+      }
+      return { id: f.id, name: f.name };
+    } catch (e) {
+      if (e && e.name === 'AppError') throw e;
+      throw new AppError('VALIDATION_ERROR',
+        'Folder akar Tech-Ford (' + id + ') tidak terjangkau oleh akun ' +
+        (module.serviceAccountEmail() || 'yang menjalankan script') +
+        '. Periksa ID-nya, dan pastikan akun itu member Shared Drive B2B. Detail: ' + e.message);
+    }
   };
 
   /* ============================================================

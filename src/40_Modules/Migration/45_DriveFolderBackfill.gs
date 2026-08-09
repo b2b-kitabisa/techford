@@ -2,43 +2,49 @@
  * Module.Migration.DriveFolderBackfill
  *
  * Membuatkan folder Drive untuk client & project yang SUDAH ADA di sistem
- * sebelum fitur folder terstruktur ini dipasang.
+ * sebelum struktur folder Tech-Ford dipasang.
  *
  * CARA MENJALANKAN — dari Apps Script Editor, BUKAN dari web app:
  *
- *   1. Buka editor script, pilih fungsi `backfillDriveFolders` di dropdown.
- *   2. Klik Run. Lihat hasilnya di Execution log.
- *   3. Kalau berhenti karena batas waktu 6 menit, JALANKAN LAGI — fungsi ini
- *      idempoten, yang sudah punya folder akan dilewati.
+ *   1. Pilih fungsi `backfillDriveFoldersDryRun` -> Run. Lihat Execution log.
+ *      Ini TIDAK menyentuh Drive sama sekali, cuma melaporkan rencananya.
+ *   2. Kalau angkanya masuk akal, pilih `backfillDriveFolders` -> Run.
+ *   3. Kalau berhenti karena batas waktu, JALANKAN LAGI. Idempoten — yang
+ *      sudah punya folder dilewati.
  *
- * Sengaja BUKAN endpoint web app: ~160 client plus project-nya berarti
- * ratusan panggilan Drive API, dan google.script.run akan timeout jauh
- * sebelum selesai. Menjalankannya dari editor memberi kuota waktu penuh dan
- * log yang bisa dibaca baris per baris.
+ * Sengaja BUKAN endpoint web app: ratusan panggilan Drive API akan jauh
+ * melewati timeout google.script.run. Dijalankan dari editor supaya dapat
+ * kuota waktu penuh dan log yang bisa dibaca baris per baris.
  *
- * IDEMPOTEN. Aman dijalankan berkali-kali:
- *   - Client/project yang Drive_Folder_Id-nya sudah terisi DAN folder-nya
- *     masih hidup di Drive akan dilewati (bukan dibuat ganda).
- *   - Folder yang ID-nya tersimpan tapi sudah dihapus orang akan dibuat ulang.
+ * KENAPA SHEET DIBACA SEKALI SAJA
+ * -------------------------------
+ * ClientRepository.update() dan ProjectRepository.update() meng-invalidate
+ * cache. Jadi setiap findById() SESUDAH satu folder dibuat akan membaca ULANG
+ * SELURUH sheet. Versi pertama fungsi ini memanggil findById per baris untuk
+ * memastikan hasilnya — dengan ~160 client plus project-nya, itu ratusan
+ * pembacaan sheet penuh dan hampir pasti kehabisan waktu sebelum separuh
+ * jalan.
  *
- * DRAFT PROJECT DILEWATI. Draft belum punya nomor resmi dan boleh dihapus
- * kapan saja; membuatkan folder untuknya cuma menumpuk folder kosong. Folder
- * project lahir saat draft dilengkapi (completeDraftProject).
+ * Sekarang: findAll() dipanggil SEKALI di awal, dan ensure*Folder() yang
+ * memperbarui objek in-memory-nya sendiri (lihat catatan di DriveFolderService).
+ * Selisih "dibuat vs dilewati" ditentukan dengan membandingkan ID sebelum &
+ * sesudah pada objek yang sama — tanpa satu pun pembacaan ulang.
+ *
+ * DRAFT PROJECT DILEWATI. Draft boleh dihapus kapan saja; membuatkan folder
+ * untuknya cuma menumpuk folder kosong. Folder project lahir saat draft
+ * dilengkapi (completeDraftProject).
  */
 
 /**
- * Backfill utama.
- *
- * @param {boolean} [dryRun] true = cuma laporkan apa yang AKAN dibuat, tidak
- *   menyentuh Drive sama sekali. Jalankan ini dulu kalau ingin melihat
- *   dampaknya sebelum benar-benar membuat ratusan folder.
- * @returns {Object} ringkasan {clients:{...}, projects:{...}, errors:[...]}
+ * @param {boolean} [dryRun] true = hanya melaporkan rencana, tidak menyentuh
+ *   Drive maupun sheet.
+ * @returns {Object} ringkasan.
  */
 function backfillDriveFolders(dryRun) {
   var mulai = new Date().getTime();
-  // Ambang berhenti sendiri sebelum Apps Script memotong eksekusi di menit
-  // ke-6. Berhenti terkendali + melaporkan progres jauh lebih berguna daripada
-  // dipotong paksa tanpa tahu sudah sampai mana.
+  // Berhenti sendiri sebelum Apps Script memotong di menit ke-6. Berhenti
+  // terkendali + lapor progres jauh lebih berguna daripada dipotong paksa
+  // tanpa tahu sudah sampai mana.
   var BATAS_MS = 5 * 60 * 1000;
 
   var hasil = {
@@ -53,61 +59,69 @@ function backfillDriveFolders(dryRun) {
     hasil.errors.push(jenis + ' ' + id + ': ' + pesan);
     Logger.log('  GAGAL ' + jenis + ' ' + id + ' -> ' + pesan);
   }
-
   function waktuHabis() {
     if (new Date().getTime() - mulai < BATAS_MS) return false;
     hasil.berhentiKarenaWaktu = true;
     return true;
   }
 
+  Logger.log('=== BACKFILL FOLDER DRIVE' + (dryRun ? ' (DRY RUN — tidak menyentuh apa pun)' : '') + ' ===');
+
+  // Preflight. Kalau folder akar tidak terjangkau, SEMUA baris akan gagal
+  // dengan pesan yang sama — jauh lebih baik berhenti di sini dengan satu
+  // pesan yang menyebut penyebabnya.
+  var akar = DriveFolderService.assertRootReachable();
+  Logger.log('Folder akar OK: "' + akar.name + '" (' + akar.id + ')');
+  Logger.log('Dijalankan sebagai: ' + (DriveFolderService.serviceAccountEmail() || '(tidak diketahui)'));
+
   if (!dryRun) {
     ClientRepository.ensureColumns(['Drive_Folder_Id']);
     ProjectRepository.ensureColumns(['Drive_Folder_Id']);
   }
 
+  // Dibaca SEKALI. Objek-objek ini yang dipakai & diperbarui sepanjang proses.
   var clients = ClientRepository.findAll();
+  var projects = ProjectRepository.findAll();
   var clientById = {};
   clients.forEach(function (c) { clientById[c.Client_ID] = c; });
 
-  Logger.log('=== BACKFILL FOLDER DRIVE' + (dryRun ? ' (DRY RUN)' : '') + ' ===');
-  Logger.log('Client: ' + clients.length + ' baris');
+  Logger.log('Client: ' + clients.length + ' baris · Project: ' + projects.length + ' baris');
+  Logger.log('--- CLIENT ---');
 
   clients.forEach(function (client) {
     if (waktuHabis()) return;
     var nama = DriveFolderService.clientFolderName(client);
     try {
       if (dryRun) {
-        // Dry run TIDAK memanggil Drive sama sekali — termasuk untuk memeriksa
-        // apakah folder yang ID-nya tersimpan masih hidup. Jadi angkanya
-        // adalah perkiraan berdasarkan isi sheet saja, dan itu memang cukup
-        // untuk menjawab "kira-kira berapa folder yang akan dibuat".
         if (client.Drive_Folder_Id) { hasil.clients.dilewati++; return; }
         hasil.clients.dibuat++;
-        Logger.log('  [dry] akan buat folder client: ' + nama);
+        Logger.log('  [dry] akan buat: ' + nama);
         return;
       }
-      var sebelum = client.Drive_Folder_Id;
+      var sebelum = client.Drive_Folder_Id || '';
       DriveFolderService.ensureClientFolder(client);
-      var sesudah = (ClientRepository.findById(client.Client_ID) || {}).Drive_Folder_Id;
-      if (sebelum && sebelum === sesudah) hasil.clients.dilewati++;
-      else { hasil.clients.dibuat++; Logger.log('  + folder client: ' + nama); }
+      // ensureClientFolder memperbarui client.Drive_Folder_Id di tempat.
+      if (client.Drive_Folder_Id === sebelum) hasil.clients.dilewati++;
+      else { hasil.clients.dibuat++; Logger.log('  + ' + nama); }
     } catch (e) {
       hasil.clients.gagal++;
       catatError('client', client.Client_ID, e.message);
     }
   });
 
-  var projects = ProjectRepository.findAll();
-  Logger.log('Project: ' + projects.length + ' baris');
+  Logger.log('--- PROJECT ---');
 
   projects.forEach(function (project) {
     if (waktuHabis()) return;
     if (project.Is_Draft) { hasil.projects.draftDilewati++; return; }
 
+    // Objek client yang SAMA dengan yang dipakai di perulangan atas — jadi
+    // Drive_Folder_Id-nya sudah terisi kalau baru saja dibuat. Membaca ulang
+    // dari sheet di sini akan memicu pembacaan penuh per project.
     var client = clientById[project.Client_ID];
     if (!client) {
       hasil.projects.gagal++;
-      catatError('project', project.Project_ID, 'client induk ' + project.Client_ID + ' tidak ditemukan');
+      catatError('project', project.Project_ID, 'client induk ' + project.Client_ID + ' tidak ada di sheet Client');
       return;
     }
     var nama = DriveFolderService.projectFolderName(project, client);
@@ -115,25 +129,21 @@ function backfillDriveFolders(dryRun) {
       if (dryRun) {
         if (project.Drive_Folder_Id) { hasil.projects.dilewati++; return; }
         hasil.projects.dibuat++;
-        Logger.log('  [dry] akan buat folder project: ' + nama);
+        Logger.log('  [dry] akan buat: ' + nama);
         return;
       }
-      var sebelum = project.Drive_Folder_Id;
-      // Folder client dibaca ULANG dari sheet: kalau baru saja dibuat di
-      // perulangan di atas, objek `client` di memori masih memegang
-      // Drive_Folder_Id kosong dan folder project akan mendarat di tempat
-      // yang salah (atau folder client dibuat dua kali).
-      DriveFolderService.ensureProjectFolder(project, ClientRepository.findById(project.Client_ID));
-      var sesudah = (ProjectRepository.findById(project.Project_ID) || {}).Drive_Folder_Id;
-      if (sebelum && sebelum === sesudah) hasil.projects.dilewati++;
-      else { hasil.projects.dibuat++; Logger.log('  + folder project: ' + nama); }
+      var sebelum = project.Drive_Folder_Id || '';
+      DriveFolderService.ensureProjectFolder(project, client);
+      if (project.Drive_Folder_Id === sebelum) hasil.projects.dilewati++;
+      else { hasil.projects.dibuat++; Logger.log('  + ' + nama); }
     } catch (e) {
       hasil.projects.gagal++;
       catatError('project', project.Project_ID, e.message);
     }
   });
 
-  Logger.log('--- RINGKASAN ---');
+  var detik = Math.round((new Date().getTime() - mulai) / 1000);
+  Logger.log('--- RINGKASAN (' + detik + ' detik) ---');
   Logger.log('Client  : ' + hasil.clients.dibuat + ' dibuat, ' + hasil.clients.dilewati +
     ' dilewati, ' + hasil.clients.gagal + ' gagal');
   Logger.log('Project : ' + hasil.projects.dibuat + ' dibuat, ' + hasil.projects.dilewati +
@@ -143,12 +153,14 @@ function backfillDriveFolders(dryRun) {
     hasil.errors.forEach(function (e) { Logger.log('  - ' + e); });
   }
   if (hasil.berhentiKarenaWaktu) {
-    Logger.log('BERHENTI karena mendekati batas waktu eksekusi. JALANKAN LAGI untuk melanjutkan — sisanya akan diproses.');
+    Logger.log('BERHENTI di ambang batas waktu. JALANKAN LAGI untuk melanjutkan sisanya.');
+  } else if (!dryRun) {
+    Logger.log('SELESAI — seluruh baris sudah diproses.');
   }
   return hasil;
 }
 
-/** Lihat dampaknya tanpa menyentuh Drive. Jalankan ini dulu. */
+/** Lihat rencananya tanpa menyentuh Drive maupun sheet. Jalankan ini dulu. */
 function backfillDriveFoldersDryRun() {
   return backfillDriveFolders(true);
 }
