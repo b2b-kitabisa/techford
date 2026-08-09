@@ -507,6 +507,7 @@ var CorService = (function (module) {
    * "Approved by..." ditempel di file itu juga).
    */
   function generateAndStorePdf(docId, footerNote) {
+    var doc = assertCorDocument(docId);
     var built = buildReportModel(docId);
     var model = built.model;
     model.footerNote = footerNote || '';
@@ -526,7 +527,18 @@ var CorService = (function (module) {
       }
     }
     if (!file) {
-      var folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
+      // Folder project (Tech-Ford > CL.. > PRJ..), bukan lagi folder datar
+      // ROOT_FOLDER_ID. Kalau strukturnya gagal dibentuk (izin/kuota Drive),
+      // PDF TETAP dibuat di folder lama — approval yang tertahan cuma gara-gara
+      // folder belum ada jauh lebih mahal daripada file yang letaknya kurang
+      // rapi dan bisa dirapikan belakangan.
+      var folder;
+      try {
+        folder = DriveApp.getFolderById(DriveFolderService.folderForProject(doc.Project_ID));
+      } catch (e) {
+        Log.warn('CorService', 'Folder project untuk ' + docId + ' tidak tersedia, PDF disimpan di folder akar: ' + e.message);
+        folder = DriveApp.getFolderById(Config.ROOT_FOLDER_ID);
+      }
       file = folder.createFile(pdfBlob);
     }
 

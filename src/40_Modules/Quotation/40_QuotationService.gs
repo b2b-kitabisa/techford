@@ -302,6 +302,7 @@ var QuotationService = (function (module) {
    * dengan CorService.generateAndStorePdf.
    */
   function generateAndStorePdf(docId, footerNote, signatureDataUri) {
+    var doc = assertQuotationDocument(docId);
     var built = buildReportModel(docId);
     var model = built.model;
     model.footerNote = footerNote || '';

@@ -148,6 +148,27 @@ var ProjectService = (function (module) {
   };
 
   /**
+   * Folder project dibuat SETELAH baris project tersimpan, kegagalannya
+   * ditelan jadi log — alasan sama dengan tryEnsureClientFolder di
+   * ClientService.
+   *
+   * TIDAK dipanggil untuk draft: draft belum punya nomor resmi dan boleh
+   * dihapus kapan saja, jadi tiap draft yang dibuang akan meninggalkan folder
+   * kosong yang menumpuk selamanya. Folder baru lahir saat project benar-benar
+   * jadi (createProject / completeDraftProject).
+   */
+  function tryEnsureProjectFolder(projectId) {
+    try {
+      var row = ProjectRepository.findById(projectId);
+      if (!row || row.Is_Draft) return;
+      DriveFolderService.ensureProjectFolder(row, null);
+    } catch (e) {
+      Log.warn('ProjectService', 'Folder Drive project ' + projectId +
+        ' gagal dibuat (project tetap tersimpan): ' + e.message);
+    }
+  }
+
+  /**
    * @param {Object} input - projectName, clientId, consultant, services[],
    *   serviceCategories{service:[category]}, programType, programCategory,
    *   programName, issues[], otherNotes, isRetainer
@@ -192,6 +213,7 @@ var ProjectService = (function (module) {
     };
 
     ProjectRepository.create(project);
+    tryEnsureProjectFolder(project.Project_ID);
     Log.info('ProjectService', 'Project dibuat oleh ' + createdBy + ': ' + project.Project_ID);
     // Hanya project yang baru dibuat, BUKAN seluruh tabel — lihat catatan di
     // findDecorated(). `project` di sini sudah persis bentuk row (Services/
@@ -294,6 +316,7 @@ var ProjectService = (function (module) {
       Last_Updated: new Date()
     });
 
+    tryEnsureProjectFolder(realProjectId);
     Log.info('ProjectService', 'Draft ' + draftProjectId + ' dilengkapi oleh ' + createdBy + ' -> ' + realProjectId);
     // Project_ID-nya BERUBAH (draft -> nomor resmi), jadi dibaca ulang dari
     // sheet dengan ID barunya — bukan disusun manual dari `input`, supaya

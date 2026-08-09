@@ -136,6 +136,98 @@ var DocumentService = (function (module) {
     return module.getAllDocuments();
   };
 
+  /* ============================================================
+     PENYIMPANAN FILE KE FOLDER PROJECT
+     ============================================================
+     Tiga jalur masuk dokumen, semuanya bermuara ke folder project yang sama
+     (Tech-Ford > CL..-BRAND > PRJ..-CL..-BRAND):
+
+       generate  -> CorService/QuotationService (PDF hasil render)
+       upload    -> uploadFileToProject di bawah
+       link      -> checkDocumentLink lalu moveDocumentLink di bawah
+
+     Alur LINK sengaja dua langkah (cek dulu, baru pindah) karena script ini
+     berjalan sebagai akun deploy, bukan akun consultant yang menekan tombol.
+     Akun itu belum tentu punya izin apa pun atas file yang link-nya ditempel —
+     dan izin yang kurang baru ketahuan saat pemindahan dicoba. Memisahkan
+     "cek" jadi langkah sendiri membuat kekurangan izin muncul SEBELUM user
+     mengira pekerjaannya sudah selesai. */
+
+  /**
+   * Langkah 1 alur Input Link: apakah B2B bisa memindahkan file ini?
+   * Tidak mengubah apa pun — aman diklik berkali-kali.
+   */
+  module.checkDocumentLink = function (docId, url) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (!doc) {
+      throw new AppError('DOCUMENT_NOT_FOUND', 'Dokumen tidak ditemukan.');
+    }
+    var hasil = DriveFolderService.checkLink(url, doc.Project_ID);
+    // Email B2B selalu ikut dikirim, termasuk saat sukses — popup panduan di
+    // UI menampilkannya, dan mengambilnya dari sini (Session.getEffectiveUser)
+    // membuat panduan otomatis tetap benar kalau akun deploy suatu saat
+    // berganti. Hardcode email di HTML akan diam-diam menyesatkan user.
+    hasil.b2bEmail = DriveFolderService.serviceAccountEmail();
+    return hasil;
+  };
+
+  /**
+   * Langkah 2 alur Input Link: pindahkan file ke folder project.
+   *
+   * Dicek ULANG di sini, tidak percaya pada hasil checkDocumentLink yang
+   * dikirim balik client — izin bisa berubah di antara dua klik, dan
+   * endpoint ini bisa dipanggil langsung tanpa lewat tombol Cek.
+   */
+  module.moveDocumentLink = function (docId, url) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (!doc) {
+      throw new AppError('DOCUMENT_NOT_FOUND', 'Dokumen tidak ditemukan.');
+    }
+    var fileId = DriveFolderService.extractFileId(url);
+    if (!fileId) {
+      throw new AppError('VALIDATION_ERROR', 'Link tidak dikenali sebagai link Google Drive.');
+    }
+    var hasil = DriveFolderService.moveIntoProjectFolder(fileId, doc.Project_ID);
+
+    DocumentPipelineRepository.ensureColumns(['Document_Link']);
+    DocumentPipelineRepository.update(docId, {
+      Document_Link: hasil.url || url,
+      Last_Updated: new Date()
+    });
+    return hasil;
+  };
+
+  /**
+   * Upload file dari browser ke folder project.
+   *
+   * @param {string} docId
+   * @param {Object} file {name, mimeType, dataBase64} — isi file dikirim
+   *   sebagai base64 karena google.script.run tidak bisa membawa objek File
+   *   milik browser apa adanya.
+   */
+  module.uploadFileToProject = function (docId, file) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (!doc) {
+      throw new AppError('DOCUMENT_NOT_FOUND', 'Dokumen tidak ditemukan.');
+    }
+    if (!file || Utils.isBlank(file.name) || Utils.isBlank(file.dataBase64)) {
+      throw new AppError('VALIDATION_ERROR', 'File tidak lengkap — nama & isi file wajib ada.');
+    }
+    var blob = Utilities.newBlob(
+      Utilities.base64Decode(file.dataBase64),
+      file.mimeType || 'application/octet-stream',
+      file.name
+    );
+    var hasil = DriveFolderService.saveBlobToProject(blob, doc.Project_ID);
+
+    DocumentPipelineRepository.ensureColumns(['Document_Link']);
+    DocumentPipelineRepository.update(docId, {
+      Document_Link: hasil.url,
+      Last_Updated: new Date()
+    });
+    return hasil;
+  };
+
   function checkAndAdvanceProjectStage(projectId) {
     var docs = DocumentPipelineRepository.findByProjectId(projectId);
     if (!docs.length) return;

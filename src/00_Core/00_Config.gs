@@ -20,6 +20,15 @@ var Config = (function (module) {
   // tanpa perlu share manual.
   module.ROOT_FOLDER_ID = '116wYHofIduCAFZZzLvkGnQ6VB9eTILI5';
 
+  // Akar struktur folder terorganisir: Tech-Ford > CL..-BRAND > PRJ..-CL..-BRAND.
+  // SENGAJA terpisah dari ROOT_FOLDER_ID di atas — ROOT_FOLDER_ID adalah
+  // folder datar lama tempat PDF COR/Quotation menumpuk tanpa struktur, dan
+  // file yang SUDAH terlanjur ada di sana tidak dipindahkan (link-nya sudah
+  // terkirim lewat email approval; memindahkannya tidak mengubah URL, tapi
+  // tetap tidak ada gunanya menyentuh arsip lama). Dokumen BARU masuk ke
+  // struktur ini.
+  module.TECHFORD_ROOT_FOLDER_ID = '1HxdkN6whmt21L7R-8vEqbSvYazNaomBq';
+
   // Nama sheet terpusat — kalau nama tab diganti di Spreadsheet,
   // cukup ubah di sini, tidak perlu grep semua modul.
   module.SHEETS = {

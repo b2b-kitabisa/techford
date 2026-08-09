@@ -30,6 +30,24 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.checkDocumentLink = function (docId, url) {
+    return ErrorHandler.handle('DocumentController.checkDocumentLink', function () {
+      return DocumentService.checkDocumentLink(docId, url);
+    });
+  };
+
+  module.moveDocumentLink = function (docId, url) {
+    return ErrorHandler.handle('DocumentController.moveDocumentLink', function () {
+      return DocumentService.moveDocumentLink(docId, url);
+    });
+  };
+
+  module.uploadFileToProject = function (docId, file) {
+    return ErrorHandler.handle('DocumentController.uploadFileToProject', function () {
+      return DocumentService.uploadFileToProject(docId, file);
+    });
+  };
+
   module.updateLink = function (docId, link) {
     return ErrorHandler.handle('DocumentController.updateLink', function () {
       return DocumentService.updateLink(docId, link);

@@ -59,6 +59,25 @@ var ClientService = (function (module) {
   /**
    * Dipanggil oleh LeadService.moveToClient — BUKAN endpoint RPC.
    */
+  /**
+   * Folder Drive dibuat SETELAH baris client tersimpan, dan kegagalannya
+   * SENGAJA ditelan jadi log.
+   *
+   * Alasannya: client yang gagal dibuat gara-gara Drive sedang bermasalah
+   * (kuota, izin, API down) jauh lebih mahal daripada client yang folder-nya
+   * menyusul. Folder bisa dibuat ulang kapan saja lewat
+   * DriveMaintenance.backfillDriveFolders() yang idempoten, sedangkan input
+   * client yang hilang harus diketik ulang orang.
+   */
+  function tryEnsureClientFolder(client) {
+    try {
+      DriveFolderService.ensureClientFolder(client);
+    } catch (e) {
+      Log.warn('ClientService', 'Folder Drive client ' + client.Client_ID +
+        ' gagal dibuat (client tetap tersimpan): ' + e.message);
+    }
+  }
+
   module.createFromLead = function (lead, createdBy) {
     var now = new Date();
     // Teks asli Entity Type ikut dibawa ke Client supaya keterangan "Other"
@@ -92,6 +111,7 @@ var ClientService = (function (module) {
       }, now, true);
     }
 
+    tryEnsureClientFolder(client);
     Log.info('ClientService', 'Client dibuat dari Lead: ' + client.Client_ID);
     return client;
   };
@@ -136,6 +156,7 @@ var ClientService = (function (module) {
       primaryAssigned = true;
     });
 
+    tryEnsureClientFolder(ClientRepository.findById(clientId));
     Log.info('ClientService', 'Client dibuat manual oleh ' + createdBy + ': ' + clientId);
     // HANYA client yang baru dibuat, BUKAN seluruh daftar (`clients:
     // ClientRepository.findAll()` sebelumnya ikut dikembalikan di sini).
