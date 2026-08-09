@@ -30,21 +30,33 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.getAllAttachments = function () {
+    return ErrorHandler.handle('DocumentController.getAllAttachments', function () {
+      return DocumentService.getAllAttachments();
+    });
+  };
+
   module.checkDocumentLink = function (docId, url) {
     return ErrorHandler.handle('DocumentController.checkDocumentLink', function () {
       return DocumentService.checkDocumentLink(docId, url);
     });
   };
 
-  module.moveDocumentLink = function (docId, url) {
+  module.moveDocumentLink = function (docId, url, addedBy) {
     return ErrorHandler.handle('DocumentController.moveDocumentLink', function () {
-      return DocumentService.moveDocumentLink(docId, url);
+      return DocumentService.moveDocumentLink(docId, url, addedBy);
     });
   };
 
-  module.uploadFileToProject = function (docId, file) {
+  module.uploadFileToProject = function (docId, file, addedBy) {
     return ErrorHandler.handle('DocumentController.uploadFileToProject', function () {
-      return DocumentService.uploadFileToProject(docId, file);
+      return DocumentService.uploadFileToProject(docId, file, addedBy);
+    });
+  };
+
+  module.removeAttachment = function (attachmentId) {
+    return ErrorHandler.handle('DocumentController.removeAttachment', function () {
+      return DocumentService.removeAttachment(attachmentId);
     });
   };
 

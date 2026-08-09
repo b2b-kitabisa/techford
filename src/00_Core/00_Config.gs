@@ -40,6 +40,10 @@ var Config = (function (module) {
     MASTER_DATA: 'Master_Data',
     PROJECT: 'Project',
     DOCUMENT_PIPELINE: 'Document_Pipeline',
+    // Lampiran dokumen (upload/link/generate). Satu Doc_ID bisa punya banyak
+    // baris — itulah sebabnya ia sheet tersendiri, bukan kolom di
+    // Document_Pipeline: satu kolom hanya muat satu nilai.
+    DOCUMENT_ATTACHMENT: 'Document_Attachment',
     REVENUE_BREAKDOWN: 'Revenue_Breakdown',
     COR_ENTITY: 'COR_Entity',
     COR_HEADER: 'COR_Header',
@@ -362,6 +366,24 @@ var Config = (function (module) {
   //   Won manual khusus project itu.
   module.DOCUMENT_NEGOTIATION_TYPES = ['DECK', 'COR', 'RAB', 'PRODCOST'];
   module.DOCUMENT_DEAL_TYPE = 'QUOTATION';
+
+  /**
+   * Tipe dokumen yang isinya DIBUAT SISTEM (PDF hasil render), bukan
+   * dilampirkan admin.
+   *
+   * Dua konsekuensi yang mengikuti daftar ini, keduanya di UI Document
+   * Pipeline:
+   * 1. Status TIDAK boleh diubah lewat dropdown — ia digerakkan aktivitas
+   *    sistem (Simpan Draft -> Request Approval -> Approve/Reject). Dropdown
+   *    akan membuka jalan ke "Approved tanpa pernah ada approval", dan Stage
+   *    project ikut maju karenanya.
+   * 2. Tidak ada tombol "Tambah Dokumen" — lampirannya satu, hasil generate.
+   */
+  module.DOCUMENT_GENERATED_TYPES = ['COR', 'QUOTATION'];
+
+  module.isGeneratedDocumentType = function (documentType) {
+    return module.DOCUMENT_GENERATED_TYPES.indexOf(String(documentType || '')) !== -1;
+  };
   module.DOCUMENT_NON_PIPELINE_TYPES = ['PKS', 'TRANSFER_REQUEST', 'BAST'];
 
   // ---- Revenue Breakdown (sheet Revenue_Breakdown, terpisah dari Project) ----

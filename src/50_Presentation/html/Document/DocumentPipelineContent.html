@@ -97,6 +97,18 @@
           <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="docIdHeaderDisplay"></div>
           <h2 style="color: var(--color-white); font-size:18px; margin:0;" id="docTypeHeaderDisplay">DOCUMENT DETAIL</h2>
         </div>
+        <!-- Kontrol status DI HEADER, bukan di badan drawer: badan drawer
+             sekarang murni ringkasan baca (pola sama dengan drawer lain).
+             HANYA muncul untuk dokumen non-generate — COR & Quotation
+             status-nya digerakkan aktivitas sistem, dan dropdown bebas di
+             sana membuka jalan ke "Approved tanpa pernah ada approval"
+             yang ikut mendorong Stage project. Keduanya dapat badge saja. -->
+        <div class="doc-head-status" id="docHeadStatusWrap" style="display:none;">
+          <select id="docStatusSelect"></select>
+          <button type="button" class="hbtn-accent" onclick="submitDocStatusUpdate()">Update</button>
+        </div>
+        <span class="doc-head-badge" id="docHeadStatusBadge" style="display:none;"></span>
+
         <!-- Pindah antar dokumen tanpa menutup drawer; urutannya mengikuti
              tabel yang sedang terlihat (hasil filter + sort). -->
         <div class="drawer-stepper">
@@ -169,22 +181,11 @@
       <div class="placeholder-note">Status Quotation mengikuti aktivitas sistem secara otomatis sampai "Approved" (Drafting → Waiting Approval → Revision/Approved). Setelah itu, admin mengirim dokumen ke client secara manual di luar sistem — 3 tombol di atas dipakai untuk mencatat hasilnya: <strong>Signed</strong> (client sudah tanda tangan), <strong>Revision</strong> (client minta revisi di luar sistem), atau <strong>LOSS</strong> (deal batal).</div>
     </div>
 
-    <div class="drawer-section" id="docStatusUpdateSection">
-      <span class="taxonomy-label">Update Status</span>
-      <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
-        <select id="docStatusSelect" style="flex:1;"></select>
-        <button class="btn-outline" onclick="submitDocStatusUpdate()">Update</button>
-      </div>
-      <div class="placeholder-note">Stage &amp; Sales Pipeline Stage project terkait akan otomatis menyesuaikan berdasarkan Status yang dipilih di sini.</div>
-    </div>
-
     <div class="drawer-section">
-      <span class="taxonomy-label">Link Dokumen</span>
-      <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
-        <input id="docLinkInput" placeholder="Link Drive/Sheet dokumen ini...">
-        <button class="btn-outline" onclick="submitDocLinkUpdate()">Simpan</button>
-      </div>
-      <div class="placeholder-note">Ditampilkan ke Sales Pipeline pada bagian Document Request, supaya consultant bisa langsung buka dokumennya dari sana.</div>
+      <span class="taxonomy-label" id="docAttachmentLabel">Dokumen</span>
+      <div id="docAttachmentList" style="margin-top:8px;"></div>
+      <button type="button" class="att-add" id="docAddAttachmentBtn" onclick="openAttachmentMethod()">+ Tambah Dokumen</button>
+      <div class="placeholder-note" id="docAttachmentNote"></div>
     </div>
   </div>
 </div>
@@ -206,6 +207,61 @@
     font-size: 11px; font-weight: 700; background: #9aa0a622; color: #6b7075;
   }
 </style>
+<!-- ================= Tambah Dokumen: pilih metode, lalu upload / input link =================
+     Tiga popup terpisah, bukan satu popup bercabang. Alasannya: langkah
+     "pilih metode" harus bisa dibatalkan tanpa kehilangan apa pun, sedangkan
+     langkah upload/link menyimpan state (file terpilih, hasil cek izin) yang
+     tidak boleh hilang cuma karena user menekan Kembali. -->
+<div class="confirm-overlay" id="attMethodModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Tambah Dokumen</h3>
+    <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="attMethodSubtitle"></p>
+    <button type="button" class="cor-wizard-choice" onclick="openAttachmentUpload()">
+      ⬆️ Upload File
+      <div style="font-weight:500; font-size:11.5px; color:var(--text-muted); margin-top:3px;">PDF, Excel, Word, gambar. Langsung tersimpan di folder project.</div>
+    </button>
+    <button type="button" class="cor-wizard-choice" onclick="openAttachmentLink()">
+      🔗 Input Link Google Workspace
+      <div style="font-weight:500; font-size:11.5px; color:var(--text-muted); margin-top:3px;">Docs, Sheets, Slides. File dipindahkan ke folder project.</div>
+    </button>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAttachmentMethod()">Batal</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="attUploadModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Upload File</h3>
+    <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="attUploadSubtitle"></p>
+    <input type="file" id="attUploadInput" onchange="onAttachmentFilePicked()">
+    <div id="attUploadInfo" class="att-result" style="display:none;"></div>
+    <div id="attUploadError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAttachmentUpload()">Batal</button>
+      <button class="btn-save" id="attUploadSubmitBtn" onclick="submitAttachmentUpload()" disabled>Upload</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="attLinkModal">
+  <div class="confirm-box" style="width:460px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Input Link Dokumen</h3>
+    <p style="margin:0 0 12px; font-size:12.5px; color:var(--text-muted);" id="attLinkSubtitle"></p>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <input id="attLinkInput" placeholder="https://docs.google.com/..." oninput="onAttachmentLinkTyped()" autocomplete="off" style="flex:1; min-width:0;">
+      <button class="btn-outline" id="attLinkCheckBtn" onclick="submitAttachmentLinkCheck()">Cek</button>
+    </div>
+    <div id="attLinkResult" class="att-result" style="display:none;"></div>
+    <div id="attLinkError" class="error"></div>
+    <div class="placeholder-note" id="attLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah.</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeAttachmentLink()">Batal</button>
+      <button class="btn-save" id="attLinkMoveBtn" onclick="submitAttachmentMove()" disabled>Pindahkan ke Folder Project</button>
+    </div>
+  </div>
+</div>
+
 <div class="confirm-overlay" id="corWizardModal">
   <div class="confirm-box" style="width:420px;">
     <div class="modal-hd tone-info">
@@ -269,6 +325,10 @@
 
 <script>
   var allDocuments = [];
+  // Seluruh lampiran semua dokumen, diambil sekali (pola Load Once, sama
+  // dengan allDocuments). Daftar per dokumen disaring di memori — memanggil
+  // server tiap kali drawer dibuka akan membuat stepper ‹ › terasa berat.
+  var allAttachments = [];
   var allProjects = [];
   var allClients = [];
   var allCorHeaders = [];
@@ -318,6 +378,7 @@
 
   function bootstrapDocuments() {
     fetchDocuments();
+    fetchAttachments();
     fetchProjects();
     fetchClients();
     fetchTaxonomy();
@@ -354,6 +415,14 @@
     if (!currentDocDrawerId) return;
     var doc = allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0];
     if (doc) renderDocDetailDrawer(doc);
+  }
+
+  function fetchAttachments() {
+    gsRunWithRetry('document_getAllAttachments', [], function (res) {
+      if (!res || !res.ok) return;   // daftar lampiran kosong bukan alasan menggagalkan halaman
+      allAttachments = res.data || [];
+      refreshOpenDrawerIfNeeded();
+    }, function () {});
   }
 
   function fetchDocuments() {
@@ -578,6 +647,7 @@
     var btn = document.getElementById('docRefreshBtn');
     if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
     fetchDocuments();
+    fetchAttachments();
     fetchProjects();
     fetchClients();
     fetchTaxonomy();
@@ -817,40 +887,391 @@
     renderQuotationActionButton(doc);
 
     // Dokumen COR & Quotation: status otomatis mengikuti aktivitas sistem
-    // (badge/aksi khusus di atas), jadi kontrol Update Status manual bebas
-    // disembunyikan sama sekali. Quotation TETAP dapat 1 kontrol manual
-    // terbatas ("Tandai LOSS" di docQuotationActionWrap, lihat
-    // submitQuotationMarkLoss) — bukan dropdown bebas seperti dokumen lain.
-    var isCor = doc.Document_Type === 'COR';
-    document.getElementById('docStatusUpdateSection').style.display = (isCor || isQuotation) ? 'none' : '';
-    if (!isCor && !isQuotation) {
+    // (badge/aksi khusus di atas), jadi TIDAK dapat dropdown sama sekali —
+    // cuma badge baca. Quotation TETAP dapat kontrol manual terbatas
+    // ("Tandai Signed/Revision/LOSS" di docQuotationActionWrap) — itu
+    // pencatatan hasil proses manual di luar sistem, bukan pengubahan status
+    // sembarangan.
+    var generated = isGeneratedType(doc.Document_Type);
+    document.getElementById('docHeadStatusWrap').style.display = generated ? 'none' : '';
+    var badge = document.getElementById('docHeadStatusBadge');
+    badge.style.display = generated ? '' : 'none';
+    if (generated) {
+      badge.innerText = (doc.Status || '-') + ' · otomatis';
+      badge.title = 'Status dokumen ini digerakkan aktivitas sistem, bukan dipilih manual.';
+    } else {
       var statusOptions = taxonomy.statusMap[doc.Document_Type] || [];
       document.getElementById('docStatusSelect').innerHTML = statusOptions.map(function (entry) {
-        return '<option value="' + entry.status + '">' + entry.status + '</option>';
+        return '<option value="' + escHtmlDoc(entry.status) + '">' + escHtmlDoc(entry.status) + '</option>';
       }).join('');
       document.getElementById('docStatusSelect').value = doc.Status;
     }
 
-    document.getElementById('docLinkInput').value = doc.Document_Link || '';
+    renderDocAttachments(doc);
   }
 
-  function submitDocLinkUpdate() {
-    if (!currentDocDrawerId) return;
-    var link = document.getElementById('docLinkInput').value.trim();
-    var docId = currentDocDrawerId;
-    TechfordLoading.show('Menyimpan link dokumen...');
+  /* ============================================================
+     LAMPIRAN DOKUMEN
+     ============================================================ */
+
+  function escHtmlDoc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function isGeneratedType(documentType) {
+    return (taxonomy.generatedTypes || ['COR', 'QUOTATION']).indexOf(String(documentType || '')) !== -1;
+  }
+
+  function attachmentsFor(docId) {
+    return allAttachments.filter(function (a) { return a.Doc_ID === docId; });
+  }
+
+  /** Ikon per jenis file — dibaca dari nama & sumbernya, bukan MIME (tidak disimpan). */
+  function attachmentIcon(att) {
+    var url = String(att.File_Url || '');
+    if (url.indexOf('/presentation/') !== -1) return '📊';
+    if (url.indexOf('/spreadsheets/') !== -1) return '📈';
+    if (url.indexOf('/document/') !== -1) return '📝';
+    if (/\.pdf$/i.test(att.File_Name || '')) return '📕';
+    return '📄';
+  }
+
+  var ATT_SOURCE_LABEL = { UPLOAD: 'upload', LINK: 'link', GENERATE: 'hasil generate' };
+
+  function renderDocAttachments(doc) {
+    var list = attachmentsFor(doc.Doc_ID);
+    var generated = isGeneratedType(doc.Document_Type);
+    var host = document.getElementById('docAttachmentList');
+
+    document.getElementById('docAttachmentLabel').innerText =
+      'Dokumen' + (list.length ? ' · ' + list.length + ' file' : '');
+
+    // Tombol Tambah hanya untuk dokumen non-generate: isi COR/Quotation
+    // adalah PDF hasil render yang sudah lewat approval — melampirkan file
+    // lain ke sana membuat "dokumen COR" berisi sesuatu yang tidak pernah
+    // diperiksa siapa pun.
+    document.getElementById('docAddAttachmentBtn').style.display = generated ? 'none' : '';
+    document.getElementById('docAttachmentNote').innerHTML = generated
+      ? 'Dokumen ini dibuat sistem — file-nya dihasilkan dari proses generate, tidak ditambahkan manual.'
+      : 'Semua file tersimpan di folder project di Shared Drive B2B.';
+
+    if (!list.length) {
+      host.innerHTML = '<div class="placeholder-note" style="margin:0;">' +
+        (generated ? 'Belum ada file — PDF muncul di sini setelah dokumen di-generate.'
+                   : 'Belum ada dokumen. Klik "Tambah Dokumen" untuk upload file atau memasukkan link.') +
+        '</div>';
+      return;
+    }
+
+    host.innerHTML = '<div class="att-list">' + list.map(function (a) {
+      // Nama bisa kosong untuk baris hasil migrasi (nama file sengaja tidak
+      // diambil dari Drive saat migrasi — lihat 46_DocumentAttachmentBackfill).
+      var nama = a.File_Name || a.File_Url || '(tanpa nama)';
+      var bisaLepas = a.Source !== 'GENERATE';
+      return '<div class="att">' +
+        '<span class="att-ic">' + attachmentIcon(a) + '</span>' +
+        '<div class="att-main">' +
+          '<div class="att-name" title="' + escHtmlDoc(nama) + '">' + escHtmlDoc(nama) + '</div>' +
+          '<div class="att-meta">' + (ATT_SOURCE_LABEL[a.Source] || a.Source) +
+            (a.Added_By ? ' · ' + escHtmlDoc(a.Added_By) : '') +
+            (a.Added_Date ? ' · ' + escHtmlDoc(formatDate(a.Added_Date)) : '') + '</div>' +
+        '</div>' +
+        '<div class="att-act">' +
+          (a.File_Url ? '<a class="mini pri" href="' + escHtmlDoc(a.File_Url) + '" target="_blank" rel="noopener">Buka ↗</a>' : '') +
+          (a.File_Url ? '<button type="button" class="mini" title="Salin link" onclick="copyAttachmentLink(this, \'' + escHtmlDoc(a.File_Url) + '\')">⧉</button>' : '') +
+          // Baris GENERATE tidak bisa dilepas: ia cerminan PDF yang dikelola
+          // proses approval, bukan lampiran yang ditambahkan admin.
+          (bisaLepas ? '<button type="button" class="mini dgr" onclick="confirmRemoveAttachment(\'' + escHtmlDoc(a.Attachment_ID) + '\')">Lepas</button>' : '') +
+        '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  /**
+   * Lepas lampiran. File di Drive TIDAK dihapus — dikatakan eksplisit di
+   * konfirmasinya supaya tidak ada yang mengira ini menghapus dokumennya.
+   */
+  function confirmRemoveAttachment(attachmentId) {
+    if (!techfordConfirm('Lepas dokumen ini dari daftar?\n\nFile-nya TIDAK dihapus — tetap ada di folder project di Shared Drive B2B, hanya tidak lagi tercatat di dokumen ini.')) return;
+    TechfordLoading.show('Melepas dokumen...');
     google.script.run
       .withSuccessHandler(function (res) {
         TechfordLoading.hide();
         if (res && res.ok === false) return alert(res.error.message);
-        allDocuments = res.data;
-        TechfordToast.show('Link dokumen berhasil disimpan.');
+        allAttachments = allAttachments.filter(function (a) { return a.Attachment_ID !== attachmentId; });
+        var doc = currentDocOrNull();
+        if (doc) renderDocAttachments(doc);
+        TechfordToast.show('Dokumen dilepas dari daftar.');
+        fetchAttachments();
       })
       .withFailureHandler(function (err) {
         TechfordLoading.hide();
-        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+        alert('Gagal melepas: ' + (err && err.message ? err.message : err));
       })
-      .document_updateLink(docId, link);
+      .document_removeAttachment(attachmentId);
+  }
+
+  function copyAttachmentLink(btn, text) {
+    function sukses() {
+      var asli = btn.innerHTML;
+      btn.innerHTML = '✓';
+      setTimeout(function () { btn.innerHTML = asli; }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(sukses, function () {});
+    }
+  }
+
+  function currentDocOrNull() {
+    if (!currentDocDrawerId) return null;
+    return allDocuments.filter(function (d) { return d.Doc_ID === currentDocDrawerId; })[0] || null;
+  }
+
+  /* ---- Popup: pilih metode ---- */
+  function openAttachmentMethod() {
+    var doc = currentDocOrNull();
+    if (!doc) return;
+    var project = getProjectById(doc.Project_ID) || {};
+    document.getElementById('attMethodSubtitle').innerText =
+      getDocTypeLabel(doc.Document_Type) + ' · ' + (project.Project_ID || '-') +
+      (project.Project_Name ? ' — ' + project.Project_Name : '');
+    document.getElementById('attMethodModal').classList.add('open');
+  }
+  function closeAttachmentMethod() {
+    document.getElementById('attMethodModal').classList.remove('open');
+  }
+
+  /* ---- Popup: upload ---- */
+  var attPickedFile = null;
+
+  function openAttachmentUpload() {
+    closeAttachmentMethod();
+    attPickedFile = null;
+    document.getElementById('attUploadInput').value = '';
+    document.getElementById('attUploadInfo').style.display = 'none';
+    document.getElementById('attUploadError').innerText = '';
+    document.getElementById('attUploadSubmitBtn').disabled = true;
+    document.getElementById('attUploadSubtitle').innerText =
+      document.getElementById('attMethodSubtitle').innerText;
+    document.getElementById('attUploadModal').classList.add('open');
+  }
+  function closeAttachmentUpload() {
+    document.getElementById('attUploadModal').classList.remove('open');
+  }
+
+  // Batas ukuran. google.script.run membawa isi file sebagai base64 di dalam
+  // payload panggilan — file besar membuat panggilannya gagal tanpa pesan yang
+  // berarti, jadi ditolak lebih dulu dengan alasan yang jelas.
+  var ATT_MAX_MB = 25;
+
+  function onAttachmentFilePicked() {
+    var input = document.getElementById('attUploadInput');
+    var errEl = document.getElementById('attUploadError');
+    var infoEl = document.getElementById('attUploadInfo');
+    attPickedFile = null;
+    errEl.innerText = '';
+    infoEl.style.display = 'none';
+    document.getElementById('attUploadSubmitBtn').disabled = true;
+
+    var f = input.files && input.files[0];
+    if (!f) return;
+    if (f.size > ATT_MAX_MB * 1024 * 1024) {
+      errEl.innerText = 'Ukuran file ' + (f.size / 1048576).toFixed(1) + ' MB melebihi batas ' +
+        ATT_MAX_MB + ' MB. Untuk file sebesar itu, unggah manual ke folder project lalu masukkan link-nya.';
+      input.value = '';
+      return;
+    }
+    attPickedFile = f;
+    infoEl.style.display = '';
+    infoEl.className = 'att-result ok';
+    infoEl.innerHTML = '<strong>' + escHtmlDoc(f.name) + '</strong><br>' +
+      (f.size / 1024).toFixed(0) + ' KB · siap diunggah ke folder project';
+    document.getElementById('attUploadSubmitBtn').disabled = false;
+  }
+
+  function submitAttachmentUpload() {
+    if (!attPickedFile || !currentDocDrawerId) return;
+    var docId = currentDocDrawerId;
+    var btn = document.getElementById('attUploadSubmitBtn');
+    var errEl = document.getElementById('attUploadError');
+    btn.disabled = true;
+    btn.innerText = 'Mengunggah...';
+    errEl.innerText = '';
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      // Buang prefix "data:<mime>;base64," — server menerima base64 murni.
+      var base64 = String(reader.result).split(',')[1] || '';
+      TechfordLoading.show('Mengunggah ke folder project...');
+      // TIDAK memakai gsRunWithRetry: ini operasi TULIS. Mengulanginya saat
+      // respons hilang akan mengunggah file yang sama dua kali.
+      google.script.run
+        .withSuccessHandler(function (res) {
+          TechfordLoading.hide();
+          btn.disabled = false;
+          btn.innerText = 'Upload';
+          if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+          closeAttachmentUpload();
+          TechfordToast.show('File berhasil diunggah.');
+          fetchAttachments();
+        })
+        .withFailureHandler(function (err) {
+          TechfordLoading.hide();
+          btn.disabled = false;
+          btn.innerText = 'Upload';
+          errEl.innerText = 'Gagal mengunggah: ' + (err && err.message ? err.message : err) +
+            '. Periksa dulu folder project sebelum mencoba lagi — file-nya mungkin sudah masuk.';
+        })
+        .document_uploadFile(docId, {
+          name: attPickedFile.name,
+          mimeType: attPickedFile.type,
+          dataBase64: base64
+        }, currentUserName());
+    };
+    reader.onerror = function () {
+      btn.disabled = false;
+      btn.innerText = 'Upload';
+      errEl.innerText = 'File gagal dibaca browser. Coba pilih ulang filenya.';
+    };
+    reader.readAsDataURL(attPickedFile);
+  }
+
+  function currentUserName() {
+    return (TechfordAuth.getCurrentUser() || {}).Name || '';
+  }
+
+  /* ---- Popup: input link ---- */
+  var attCheckedLink = null;   // hasil cek terakhir yang LOLOS
+
+  function openAttachmentLink() {
+    closeAttachmentMethod();
+    attCheckedLink = null;
+    document.getElementById('attLinkInput').value = '';
+    document.getElementById('attLinkResult').style.display = 'none';
+    document.getElementById('attLinkError').innerText = '';
+    document.getElementById('attLinkMoveBtn').disabled = true;
+    document.getElementById('attLinkSubtitle').innerText =
+      document.getElementById('attMethodSubtitle').innerText;
+    document.getElementById('attLinkModal').classList.add('open');
+  }
+  function closeAttachmentLink() {
+    document.getElementById('attLinkModal').classList.remove('open');
+  }
+
+  /**
+   * Mengubah link membatalkan hasil cek sebelumnya. Tanpa ini, user bisa
+   * mengecek link A (lolos), menempel link B, lalu menekan Pindahkan — dan
+   * yang dipindah adalah B tanpa pernah diperiksa.
+   */
+  function onAttachmentLinkTyped() {
+    attCheckedLink = null;
+    document.getElementById('attLinkMoveBtn').disabled = true;
+    document.getElementById('attLinkResult').style.display = 'none';
+  }
+
+  function submitAttachmentLinkCheck() {
+    var url = document.getElementById('attLinkInput').value.trim();
+    var errEl = document.getElementById('attLinkError');
+    var hasilEl = document.getElementById('attLinkResult');
+    errEl.innerText = '';
+    if (!url) { errEl.innerText = 'Tempel link dokumennya dulu.'; return; }
+
+    var btn = document.getElementById('attLinkCheckBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengecek...';
+
+    // Cek bersifat BACA — aman di-retry kalau transport-nya menelan respons.
+    gsRunWithRetry('document_checkLink', [currentDocDrawerId, url], function (res) {
+      btn.disabled = false;
+      btn.innerText = 'Cek lagi';
+      if (!res || res.ok === false) {
+        hasilEl.style.display = 'none';
+        errEl.innerText = (res && res.error) ? res.error.message : 'Tidak ada respons dari server.';
+        return;
+      }
+      renderAttachmentCheckResult(res.data);
+    }, function (message) {
+      btn.disabled = false;
+      btn.innerText = 'Cek lagi';
+      errEl.innerText = 'Gagal mengecek: ' + message;
+    });
+  }
+
+  function renderAttachmentCheckResult(data) {
+    var el = document.getElementById('attLinkResult');
+    var moveBtn = document.getElementById('attLinkMoveBtn');
+    el.style.display = '';
+
+    if (data.ok && data.canMove) {
+      attCheckedLink = document.getElementById('attLinkInput').value.trim();
+      moveBtn.disabled = false;
+      el.className = 'att-result ok';
+      el.innerHTML = '<strong>✓ Siap dipindahkan</strong><br>' +
+        escHtmlDoc(data.name || '(tanpa nama)') +
+        (data.ownerEmail ? '<br><span class="att-result-sub">Pemilik saat ini: ' + escHtmlDoc(data.ownerEmail) + '</span>' : '');
+      return;
+    }
+
+    attCheckedLink = null;
+    moveBtn.disabled = true;
+
+    if (data.alreadyInPlace) {
+      el.className = 'att-result ok';
+      el.innerHTML = '<strong>Sudah di folder project</strong><br>' + escHtmlDoc(data.reason || '');
+      return;
+    }
+
+    el.className = 'att-result warn';
+    var html = '<strong>⚠ Belum bisa dipindahkan</strong><br>' + escHtmlDoc(data.reason || '');
+    // Email B2B ditampilkan lengkap dengan tombol salin HANYA kalau memang
+    // masalahnya izin — untuk link salah ketik, menampilkan email cuma
+    // mengalihkan perhatian dari sebab sesungguhnya.
+    if (data.needEmail && data.b2bEmail) {
+      html += '<div class="att-email-row">' +
+        '<code>' + escHtmlDoc(data.b2bEmail) + '</code>' +
+        '<button type="button" class="mini" onclick="copyAttachmentLink(this, \'' + escHtmlDoc(data.b2bEmail) + '\')">⧉ Salin</button>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function submitAttachmentMove() {
+    var url = document.getElementById('attLinkInput').value.trim();
+    // Link berubah setelah dicek = hasil ceknya sudah tidak berlaku.
+    if (!attCheckedLink || attCheckedLink !== url) {
+      document.getElementById('attLinkError').innerText = 'Link berubah sejak terakhir dicek. Klik Cek lagi.';
+      onAttachmentLinkTyped();
+      return;
+    }
+    var docId = currentDocDrawerId;
+    var btn = document.getElementById('attLinkMoveBtn');
+    var errEl = document.getElementById('attLinkError');
+    btn.disabled = true;
+    btn.innerText = 'Memindahkan...';
+    errEl.innerText = '';
+    TechfordLoading.show('Memindahkan file ke folder project...');
+
+    // Operasi TULIS — tidak di-retry (lihat catatan di submitAttachmentUpload).
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Pindahkan ke Folder Project';
+        if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+        closeAttachmentLink();
+        TechfordToast.show('File dipindahkan ke folder project.');
+        fetchAttachments();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Pindahkan ke Folder Project';
+        errEl.innerText = 'Gagal memindahkan: ' + (err && err.message ? err.message : err) +
+          '. Periksa folder project sebelum mencoba lagi — file-nya mungkin sudah pindah.';
+      })
+      .document_moveLink(docId, url, currentUserName());
   }
 
   // Tombol & wizard "Kerjakan COR" — kalau dokumen ini SUDAH punya draft

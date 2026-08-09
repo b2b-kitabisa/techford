@@ -1871,6 +1871,81 @@
   .copy-chip:hover { color: var(--color-cerulean); background: var(--accent-tint); }
   .copy-chip.copied { color: var(--good); }
 
+  /* ============================================================
+     Lampiran dokumen (Document Pipeline)
+     ============================================================ */
+
+  /* Kontrol status di header drawer — latar gelap, jadi select-nya dibuat
+     putih supaya tetap terbaca. */
+  .doc-head-status { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .doc-head-status select {
+    padding: 5px 9px; border-radius: 6px; border: none; font-family: inherit;
+    font-size: 12px; font-weight: 600; background: var(--color-white); color: var(--color-mineshaft);
+    max-width: 160px;
+  }
+  .hbtn-accent {
+    background: var(--color-cerulean); color: var(--color-white); border: none; border-radius: 6px;
+    padding: 6px 12px; font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+  }
+  .hbtn-accent:hover { background: #0d97cf; }
+  /* Badge status untuk dokumen generate — bukan kontrol, jadi tidak boleh
+     tampak bisa diklik. */
+  .doc-head-badge {
+    margin-left: auto; font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.15); color: var(--color-white); white-space: nowrap;
+  }
+
+  .att-list { display: flex; flex-direction: column; }
+  .att {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    border: 1px solid var(--border-soft); border-radius: 8px; background: var(--color-white);
+  }
+  .att + .att { margin-top: 6px; }
+  /* Warna selang-seling: tiap baris punya dua tingkat teks (nama + meta),
+     jadi tanpa latar bergantian mata mudah menyeberang antar baris. */
+  .att:nth-child(even) { background: var(--bg-tint); }
+  .att-ic { font-size: 15px; flex: none; }
+  .att-main { min-width: 0; flex: 1; }
+  .att-name { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att-meta { font-size: 10.5px; color: var(--text-faint); font-family: var(--font-mono, ui-monospace, monospace); }
+  .att-act { display: flex; gap: 5px; flex: none; align-items: center; }
+  .att-act .mini {
+    font-size: 11px; font-weight: 650; padding: 4px 9px; border-radius: 6px;
+    border: 1px solid var(--border-soft); background: var(--color-white); color: var(--text-muted);
+    font-family: inherit; cursor: pointer; text-decoration: none; white-space: nowrap;
+  }
+  .att-act .mini:hover { border-color: var(--color-cerulean); color: var(--color-cerulean); }
+  .att-act .mini.pri { background: var(--color-cerulean); border-color: var(--color-cerulean); color: var(--color-white); }
+  .att-act .mini.pri:hover { background: #0d97cf; color: var(--color-white); }
+  .att-act .mini.dgr { color: var(--bad); border-color: var(--bad-tint); }
+  .att-act .mini.dgr:hover { background: var(--bad-tint); border-color: var(--bad); color: var(--bad); }
+
+  .att-add {
+    width: 100%; margin-top: 8px; padding: 10px; border: 1px dashed var(--border-soft);
+    border-radius: 8px; background: none; color: var(--text-muted);
+    font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .att-add:hover { border-color: var(--color-cerulean); color: var(--color-cerulean); background: var(--accent-tint); }
+
+  /* Hasil pemeriksaan link / berkas terpilih. Dua nada saja: siap, atau
+     belum bisa — kondisi "belum bisa" BUKAN error merah, karena memberi
+     akses adalah langkah yang wajar, bukan kesalahan. */
+  .att-result { margin-top: 12px; padding: 11px 13px; border-radius: 8px; font-size: 12.5px; line-height: 1.6; }
+  .att-result.ok { background: var(--good-tint); border: 1px solid var(--good); color: var(--good); }
+  .att-result.warn { background: var(--warn-tint); border: 1px solid var(--warn); color: var(--warn); }
+  .att-result-sub { opacity: 0.8; font-size: 11.5px; }
+  .att-email-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .att-email-row code {
+    flex: 1; min-width: 0; background: var(--color-white); border-radius: 6px; padding: 6px 9px;
+    font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+    color: var(--color-mineshaft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .att-email-row .mini {
+    font-size: 11px; font-weight: 650; padding: 6px 10px; border-radius: 6px; white-space: nowrap;
+    border: 1px solid var(--border-soft); background: var(--color-white); color: var(--text-muted);
+    font-family: inherit; cursor: pointer;
+  }
+
   /* ---- GDV Matching ---- */
   /* Pilihan filter yang diturunkan dari data bisa kosong sebelum data datang.
      Dropdown kosong melompong terbaca sebagai rusak, jadi dikatakan. */

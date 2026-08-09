@@ -28,14 +28,27 @@ function document_checkLink(docId, url) {
   return DocumentController.checkDocumentLink(docId, url);
 }
 
-/** Langkah 2 Input Link — pindahkan file ke folder project. */
-function document_moveLink(docId, url) {
-  return DocumentController.moveDocumentLink(docId, url);
+/** Langkah 2 Input Link — pindahkan file ke folder project & catat lampiran. */
+function document_moveLink(docId, url, addedBy) {
+  return DocumentController.moveDocumentLink(docId, url, addedBy);
 }
 
-/** Upload file (base64 dari browser) ke folder project. */
-function document_uploadFile(docId, file) {
-  return DocumentController.uploadFileToProject(docId, file);
+/** Upload file (base64 dari browser) ke folder project & catat lampiran. */
+function document_uploadFile(docId, file, addedBy) {
+  return DocumentController.uploadFileToProject(docId, file, addedBy);
+}
+
+/** Seluruh lampiran semua dokumen — pola Load Once seperti document_getAll. */
+function document_getAllAttachments() {
+  return DocumentController.getAllAttachments();
+}
+
+/**
+ * Lepas lampiran dari dokumen. File di Drive TIDAK dihapus — lihat catatan
+ * di DocumentService.removeAttachment.
+ */
+function document_removeAttachment(attachmentId) {
+  return DocumentController.removeAttachment(attachmentId);
 }
 
 function document_updateLink(docId, link) {

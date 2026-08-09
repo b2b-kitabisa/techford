@@ -542,7 +542,19 @@ var CorService = (function (module) {
       file = folder.createFile(pdfBlob);
     }
 
-    return { fileId: file.getId(), url: file.getUrl() };
+    var hasil = { fileId: file.getId(), url: file.getUrl(), name: file.getName() };
+    // Dokumen generate ikut tercatat di daftar lampiran yang sama dengan
+    // upload & link, supaya drawer Document Pipeline punya SATU daftar dokumen
+    // — bukan satu tempat untuk PDF generate dan tempat lain untuk sisanya.
+    // Kegagalan pencatatan tidak boleh membatalkan PDF yang sudah jadi:
+    // approval yang tertahan gara-gara satu baris catatan jauh lebih mahal
+    // daripada lampiran yang menyusul.
+    try {
+      DocumentService.recordGeneratedFile(docId, hasil, '');
+    } catch (e) {
+      Log.warn('CORService', 'Lampiran hasil generate ' + docId + ' gagal dicatat: ' + e.message);
+    }
+    return hasil;
   }
 
   /**
