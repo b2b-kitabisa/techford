@@ -178,6 +178,10 @@
           <select id="newConsultant" style="padding:8px 10px; border-radius:6px; border:none; font-family:inherit;">
             <option value="">Consultant</option>
           </select>
+          <!-- Cuma tampak mode lengkapi draft (currentDraftProjectId != null) —
+               simpan Consultant SAJA tanpa lewat validasi Project Name/Client/
+               Program di openAddPipelineConfirm. Status project tetap DRAFT. -->
+          <button class="btn-onhead" id="draftSaveConsultantBtn" onclick="submitDraftConsultantFromDrawer()" style="display:none;" title="Simpan Consultant saja — project tetap Draft">💾 Simpan Consultant</button>
           <!-- Cuma tampak mode lengkapi draft (currentDraftProjectId != null).
                Hapus project HANYA boleh utk Draft — begitu project punya
                nama/service/dsb (sudah bukan draft), tombol ini hilang. Kalau
@@ -2459,6 +2463,7 @@
     resetAddPipelineForm();
     setNewClientPickerLocked(false);
     document.getElementById('draftDeleteBtn').style.display = 'none';
+    document.getElementById('draftSaveConsultantBtn').style.display = 'none';
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
   }
@@ -2479,6 +2484,8 @@
     document.getElementById('newClientInput').value = client ? ((client.Brand_Name || '-') + ' — ' + (client.Entity_Name || '-')) : draft.Client_ID;
     setNewClientPickerLocked(true);
     document.getElementById('draftDeleteBtn').style.display = '';
+    document.getElementById('draftSaveConsultantBtn').style.display = '';
+    document.getElementById('newConsultant').value = draft.Consultant || '';
 
     document.getElementById('addPipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
@@ -2508,6 +2515,34 @@
   }
   function cancelAddPipelineConfirm() {
     document.getElementById('addPipelineConfirm').classList.remove('open');
+  }
+
+  /**
+   * Simpan Consultant SAJA dari dalam drawer "Lengkapi" — TIDAK lewat
+   * openAddPipelineConfirm (yang mewajibkan Project Name/Client/Program).
+   * Project TETAP Draft — lihat ProjectService.updateDraftConsultant.
+   */
+  function submitDraftConsultantFromDrawer() {
+    var draftId = currentDraftProjectId;
+    if (!draftId) return;
+    var consultant = document.getElementById('newConsultant').value;
+    var btn = document.getElementById('draftSaveConsultantBtn');
+    btn.disabled = true;
+    TechfordLoading.show('Menyimpan Consultant...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        if (res && res.ok === false) return alert(res.error.message);
+        applyProjectPatch(res && res.data);
+        showPipelineSuccess('Consultant disimpan. Project tetap DRAFT.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .project_updateDraftConsultant(draftId, consultant);
   }
 
   /**
