@@ -91,6 +91,41 @@ BaseRepository.prototype.ensureHeaderRow = function (headers) {
   return true;
 };
 
+/**
+ * Sama seperti ensureHeaderRow, TAPI juga membuat TAB-nya kalau belum ada
+ * sama sekali — ensureHeaderRow lewat _getSheet() dan melempar SHEET_NOT_FOUND
+ * begitu tab-nya tidak ada; ia cuma mengurus header pada tab yang SUDAH ADA
+ * tapi masih kosong.
+ *
+ * Dipakai HANYA oleh sheet yang memang dijanjikan "tidak perlu setup manual"
+ * (mis. Document_Attachment) — sheet lain yang di SETUP.md eksplisit minta
+ * admin membuat tab-nya sendiri TETAP pakai ensureHeaderRow, supaya tab yang
+ * salah nama karena typo tidak diam-diam membuat tab kedua yang benar alih-
+ * alih memberi tahu admin ada yang salah.
+ *
+ * Dikunci (LockHelper) karena dua permintaan pertama yang datang bersamaan
+ * (dua consultant upload lampiran pertama di detik yang sama) bisa
+ * dua-duanya melihat "tab belum ada" dan dua-duanya mencoba membuatnya —
+ * Spreadsheet akan diam-diam membuat DUA tab dengan nama yang sama-sama
+ * disuffix (mis. "Document_Attachment" & "Document_Attachment 2").
+ */
+BaseRepository.prototype.ensureSheetAndHeaderRow = function (headers) {
+  var self = this;
+  return LockHelper.withLock(function () {
+    var ss = self._getSpreadsheet();
+    var sheet = ss.getSheetByName(self.sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(self.sheetName);
+      Log.info('BaseRepository', 'Sheet "' + self.sheetName + '" dibuat otomatis.');
+    }
+    if (sheet.getLastColumn() === 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      Log.info('BaseRepository', 'Baris header dibuat otomatis untuk sheet "' + self.sheetName + '".');
+    }
+    return sheet;
+  });
+};
+
 BaseRepository.prototype._headerRow = function () {
   var sheet = this._getSheet();
   var lastCol = sheet.getLastColumn();

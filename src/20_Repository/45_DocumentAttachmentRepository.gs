@@ -36,13 +36,15 @@ var DocumentAttachmentRepository = (function (module) {
     'File_Url', 'Added_By', 'Added_Date'];
 
   /**
-   * Sheet ini dibuat OTOMATIS saat lampiran pertama ditulis — tidak menuntut
-   * admin membuat tab manual lebih dulu. Tab yang ada tapi headernya belum
-   * diisi adalah kegagalan yang paling mudah terjadi, dan akibatnya
-   * penulisan meledak di tengah jalan.
+   * Sheet ini dibuat OTOMATIS saat lampiran pertama ditulis — TAB-nya
+   * sendiri, bukan cuma header di tab yang sudah ada. Sengaja pakai
+   * ensureSheetAndHeaderRow (bukan ensureHeaderRow): repository lain di
+   * platform ini menuntut admin membuat tab manual lebih dulu (lihat
+   * SETUP.md), tapi sheet ini SPESIFIK dijanjikan tanpa setup manual sejak
+   * awal, jadi harus bisa membuat tab-nya sendiri dari nol.
    */
   function ensureSheet() {
-    base.ensureHeaderRow(HEADERS);
+    base.ensureSheetAndHeaderRow(HEADERS);
   }
 
   module.findAll = function () {
