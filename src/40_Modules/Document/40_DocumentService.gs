@@ -321,6 +321,80 @@ var DocumentService = (function (module) {
     return { attachmentId: attachmentId, docId: att.Doc_ID };
   };
 
+  /* ============================================================
+     LAMPIRAN LANGSUNG DI PROJECT ("Other Related Document" Sales Pipeline)
+     ============================================================
+     Sama persis mekanismenya dengan lampiran dokumen di atas — Upload/Link
+     lewat DriveFolderService, tercatat di Document_Attachment — TAPI
+     Doc_ID di baris lampirannya diisi PROJECT_ID, bukan Doc_ID dokumen
+     Document_Pipeline. Ini bukan hack: Document_Attachment cuma butuh SATU
+     ID induk yang konsisten untuk dikelompokkan (lihat findByDocId), dan
+     format Project_ID (PRJ..) tidak akan pernah bertabrakan dengan Doc_ID
+     (DOC.., COR.., dst).
+     catatLampiran/removeAttachment dipakai APA ADANYA (tidak diubah):
+     syncDocumentLink yang dipanggilnya mencoba update baris Document_Pipeline
+     ber-ID sama — untuk Project_ID itu tidak pernah ketemu baris, jadi cuma
+     no-op yang tidak berbahaya, bukan error. */
+
+  function assertProjectExists(projectId) {
+    var project = ProjectRepository.findById(projectId);
+    if (!project) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Project tidak ditemukan.');
+    }
+    return project;
+  }
+
+  /** Langkah 1 Input Link untuk lampiran project. Tidak mengubah apa pun. */
+  module.checkProjectDocumentLink = function (projectId, url) {
+    assertProjectExists(projectId);
+    var hasil = DriveFolderService.checkLink(url, projectId);
+    hasil.b2bEmail = DriveFolderService.serviceAccountEmail();
+    if (hasil.fileId) {
+      var sudah = DocumentAttachmentRepository.findByDocId(projectId).filter(function (a) {
+        return a.File_Id === hasil.fileId;
+      });
+      if (sudah.length) {
+        hasil.ok = false;
+        hasil.canMove = false;
+        hasil.duplikat = true;
+        hasil.reason = 'File ini sudah ada di daftar dokumen — tidak perlu ditambahkan lagi.';
+      }
+    }
+    return hasil;
+  };
+
+  /** Langkah 2 Input Link — pindahkan & catat sebagai lampiran project. */
+  module.moveProjectDocumentLink = function (projectId, url, addedBy) {
+    assertProjectExists(projectId);
+    var fileId = DriveFolderService.extractFileId(url);
+    if (!fileId) {
+      throw new AppError('VALIDATION_ERROR', 'Link tidak dikenali sebagai link Google Drive.');
+    }
+    var sudah = DocumentAttachmentRepository.findByDocId(projectId).filter(function (a) {
+      return a.File_Id === fileId;
+    });
+    if (sudah.length) {
+      throw new AppError('VALIDATION_ERROR', 'File ini sudah ada di daftar dokumen.');
+    }
+    var hasil = DriveFolderService.moveIntoProjectFolder(fileId, projectId);
+    return catatLampiran(projectId, 'LINK', hasil, addedBy);
+  };
+
+  /** Upload file dari browser sebagai lampiran project. */
+  module.uploadProjectFile = function (projectId, file, addedBy) {
+    assertProjectExists(projectId);
+    if (!file || Utils.isBlank(file.name) || Utils.isBlank(file.dataBase64)) {
+      throw new AppError('VALIDATION_ERROR', 'File tidak lengkap — nama & isi file wajib ada.');
+    }
+    var blob = Utilities.newBlob(
+      Utilities.base64Decode(file.dataBase64),
+      file.mimeType || 'application/octet-stream',
+      file.name
+    );
+    var hasil = DriveFolderService.saveBlobToProject(blob, projectId);
+    return catatLampiran(projectId, 'UPLOAD', hasil, addedBy);
+  };
+
   /**
    * Dipanggil CorService/QuotationService setelah PDF di-render, supaya
    * dokumen generate ikut muncul di daftar lampiran yang sama.

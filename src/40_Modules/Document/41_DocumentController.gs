@@ -60,6 +60,24 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.checkProjectDocumentLink = function (projectId, url) {
+    return ErrorHandler.handle('DocumentController.checkProjectDocumentLink', function () {
+      return DocumentService.checkProjectDocumentLink(projectId, url);
+    });
+  };
+
+  module.moveProjectDocumentLink = function (projectId, url, addedBy) {
+    return ErrorHandler.handle('DocumentController.moveProjectDocumentLink', function () {
+      return DocumentService.moveProjectDocumentLink(projectId, url, addedBy);
+    });
+  };
+
+  module.uploadProjectFile = function (projectId, file, addedBy) {
+    return ErrorHandler.handle('DocumentController.uploadProjectFile', function () {
+      return DocumentService.uploadProjectFile(projectId, file, addedBy);
+    });
+  };
+
   module.updateLink = function (docId, link) {
     return ErrorHandler.handle('DocumentController.updateLink', function () {
       return DocumentService.updateLink(docId, link);

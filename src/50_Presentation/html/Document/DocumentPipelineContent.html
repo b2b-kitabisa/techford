@@ -191,16 +191,10 @@
 </div>
 
 <!-- ================= Wizard: Pilih Metode/Cara Pengerjaan COR ================= -->
+<!-- .cor-wizard-choice dipindah ke Style.html (dipakai bersama Sales Pipeline
+     untuk wizard Tambah Dokumen "Other Related Document" — mekanisme yang
+     sama). Dua kelas di bawah tetap di sini karena spesifik COR/Quotation. -->
 <style>
-  /* Semua opsi wizard disamakan: putih polos, border tipis, hover cuma
-     tint abu-abu lembut (bukan warna kontras beda-beda antar tombol). */
-  .cor-wizard-choice {
-    display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px;
-    border: 1px solid var(--border-soft); border-radius: 8px; background: var(--color-white);
-    color: var(--color-mineshaft); font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;
-  }
-  .cor-wizard-choice:last-of-type { margin-bottom: 0; }
-  .cor-wizard-choice:hover { background: var(--bg-hover); border-color: var(--accent-border); }
   .cor-wizard-loading { text-align: center; padding: 20px 0; font-size: 13px; color: var(--text-muted); }
   .cor-status-badge {
     display: inline-block; padding: 3px 10px; border-radius: 999px;

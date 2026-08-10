@@ -386,9 +386,9 @@
     <div class="drawer-section" id="otherDocSection">
       <div class="section-title-row">
         <div class="drawer-eyebrow" style="flex:1; margin-bottom:0;">Other Document Related</div>
-        <button class="btn-outline" onclick="openOtherDocDrawer()">✏️ KELOLA DOKUMEN</button>
       </div>
       <div id="otherDocView"></div>
+      <button type="button" class="att-add" id="otherDocAddBtn" onclick="openOtherDocMethod()">+ Tambah Dokumen</button>
     </div>
   </div>
 </div>
@@ -533,28 +533,56 @@
   </div>
 </div>
 
-<!-- ================= Popup 4: Other Related Document ================= -->
-<div class="drawer-overlay drawer-stacked" id="otherDocDrawer" onclick="if (event.target === this) closeOtherDocDrawer();">
-  <div class="drawer-panel drawer-panel-mid">
-    <div class="drawer-header">
-      <div class="drawer-header-top">
-        <div>
-          <div style="font-size:11px; color:rgba(255,255,255,0.7);" id="otherDocDrawerPid"></div>
-          <h2 style="color: var(--color-white); font-size:18px; margin:0;">OTHER DOCUMENT RELATED</h2>
-        </div>
-        <button class="drawer-close" onclick="closeOtherDocDrawer()">&times;</button>
-      </div>
+<!-- ================= Tambah Dokumen (Other Related Document) =================
+     Mekanisme SAMA dengan Document Pipeline: pilih metode dulu, lalu Upload
+     atau Input Link (cek kepemilikan sebelum Move) — tiga popup terpisah
+     dengan alasan yang sama seperti di sana (lihat DocumentPipelineContent). -->
+<div class="confirm-overlay" id="otherDocMethodModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Tambah Dokumen</h3>
+    <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="otherDocMethodSubtitle"></p>
+    <button type="button" class="cor-wizard-choice" onclick="openOtherDocUpload()">
+      ⬆️ Upload File
+      <div style="font-weight:500; font-size:11.5px; color:var(--text-muted); margin-top:3px;">PDF, Excel, Word, gambar. Langsung tersimpan di folder project.</div>
+    </button>
+    <button type="button" class="cor-wizard-choice" onclick="openOtherDocLink()">
+      🔗 Input Link Google Workspace
+      <div style="font-weight:500; font-size:11.5px; color:var(--text-muted); margin-top:3px;">Docs, Sheets, Slides. File dipindahkan ke folder project.</div>
+    </button>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeOtherDocMethod()">Batal</button>
     </div>
+  </div>
+</div>
 
-    <div class="drawer-section">
-      <div class="placeholder-note" style="margin-top:0; margin-bottom:12px;">Dokumen yang sudah tersimpan tampil sebagai teks — klik ✏️ di barisnya dulu untuk mengubah.</div>
-      <div id="otherDocLinksContainer"></div>
-      <button type="button" class="btn-outline" style="margin-top:4px;" onclick="addOtherDocLinkRow()">+ Tambah Dokumen</button>
+<div class="confirm-overlay" id="otherDocUploadModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Upload File</h3>
+    <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="otherDocUploadSubtitle"></p>
+    <input type="file" id="otherDocUploadInput" onchange="onOtherDocFilePicked()">
+    <div id="otherDocUploadInfo" class="att-result" style="display:none;"></div>
+    <div id="otherDocUploadError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeOtherDocUpload()">Batal</button>
+      <button class="btn-save" id="otherDocUploadSubmitBtn" onclick="submitOtherDocUpload()" disabled>Upload</button>
     </div>
+  </div>
+</div>
 
-    <div class="drawer-footer">
-      <span class="save-hint">Perubahan baru tersimpan setelah klik SAVE.</span>
-      <button class="btn-save" onclick="submitOtherDocLinks()">💾 SAVE</button>
+<div class="confirm-overlay" id="otherDocLinkModal">
+  <div class="confirm-box" style="width:460px; text-align:left;">
+    <h3 style="margin:0 0 3px;">Input Link Dokumen</h3>
+    <p style="margin:0 0 12px; font-size:12.5px; color:var(--text-muted);" id="otherDocLinkSubtitle"></p>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <input id="otherDocLinkInput" placeholder="https://docs.google.com/..." oninput="onOtherDocLinkTyped()" autocomplete="off" style="flex:1; min-width:0;">
+      <button class="btn-outline" id="otherDocLinkCheckBtn" onclick="submitOtherDocLinkCheck()">Cek</button>
+    </div>
+    <div id="otherDocLinkResult" class="att-result" style="display:none;"></div>
+    <div id="otherDocLinkError" class="error"></div>
+    <div class="placeholder-note" id="otherDocLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah. Kalau file ini bukan milik B2B, pemiliknya perlu <strong>transfer ownership</strong> ke email B2B dulu (bukan sekadar beri akses) sebelum bisa dipindahkan.</div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeOtherDocLink()">Batal</button>
+      <button class="btn-save" id="otherDocLinkMoveBtn" onclick="submitOtherDocMove()" disabled>Pindahkan ke Folder Project</button>
     </div>
   </div>
 </div>
@@ -658,6 +686,11 @@
   var allClients = [];
   var allEmployees = [];
   var allDocuments = [];
+  // Lampiran "Other Related Document" — mekanisme SAMA dengan lampiran
+  // Document Pipeline (Upload/Link lewat DriveFolderService, cek kepemilikan
+  // sebelum Move), diambil sekali (pola Load Once) lalu disaring per project
+  // di memori lewat projectAttachments().
+  var allAttachments = [];
   var allRevenueBreakdown = [];
   var taxonomy = { services: [], programType: {}, kborgPrograms: [], issues: [], stages: [], stageBucket: {} };
   var docTaxonomy = { documentTypes: [], quotationEntities: [] };
@@ -707,7 +740,6 @@
   // hanya hidup di DOM akan hilang di tengah pengeditan.
   var editProjectProgramName = '';
   var editProjectIssues = [];
-  var editOtherDocLinks = [];
   var editGdvCsrCampaigns = [];
   var editGdvRetainerLinks = [];
   var editGdvAdsCampaigns = [];
@@ -730,7 +762,6 @@
   // yang sedang dibuka untuk diedit (index/key -> true). Baris BARU (hasil
   // "+ Tambah") langsung ditandai editing, karena belum ada apa pun yang
   // perlu dilindungi di sana.
-  var otherDocEditing = {};
   var gdvCsrEditing = {};
   var gdvRetainerEditing = {};
   var gdvAdsEditing = {};
@@ -939,6 +970,7 @@
     fetchEmployees();
     fetchTaxonomy();
     fetchDocuments();
+    fetchAttachments();
     fetchDocumentTaxonomy();
     fetchRevenueBreakdown();
   }
@@ -1189,6 +1221,14 @@
     });
   }
 
+  function fetchAttachments() {
+    gsRunWithRetry('document_getAllAttachments', [], function (res) {
+      if (!res || !res.ok) return;   // daftar lampiran kosong bukan alasan menggagalkan halaman
+      allAttachments = res.data || [];
+      if (currentPipelineDrawerId) renderOtherDocView(currentProjectOrNull());
+    }, function () {});
+  }
+
   function fetchDocumentTaxonomy() {
     gsRunWithRetry('document_getTaxonomy', [], function (res) {
       if (res && res.ok) clearPipelineFetchFailure('taxonomy Dokumen');
@@ -1251,6 +1291,7 @@
     fetchEmployees();
     fetchTaxonomy();
     fetchDocuments();
+    fetchAttachments();
     fetchDocumentTaxonomy();
     fetchRevenueBreakdown();
     setTimeout(function () {
@@ -2510,7 +2551,7 @@
     document.getElementById('pipelineDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
   }
-  var STACKED_DRAWER_IDS = ['editProjectDrawer', 'gdvDrawer', 'serviceRevenueDrawer', 'otherDocDrawer', 'requestDocDrawer'];
+  var STACKED_DRAWER_IDS = ['editProjectDrawer', 'gdvDrawer', 'serviceRevenueDrawer', 'requestDocDrawer'];
 
   function closePipelineDetail() {
     // Kelima popup hidup di luar #pipelineDrawer (supaya bisa bertumpuk di
@@ -2775,15 +2816,6 @@
     applyEditProjectLockState(project);
 
     document.getElementById('projectSaveHint').innerText = '';
-
-    // ---- Form popup Other Document Related ----
-    editOtherDocLinks = (project.Other_Document_Links || []).map(function (d) {
-      return { name: (d && d.name) || '', link: (d && d.link) || '' };
-    });
-    // Semua baris hasil load = sudah tersimpan, jadi mulai dalam mode BACA
-    // (butuh klik pensil untuk mengubah) — lihat catatan pola "pensil dulu".
-    otherDocEditing = {};
-    renderOtherDocLinks();
 
     // Reset staging Document Request setiap kali form disiapkan ulang, supaya
     // toggle yang belum di-REQUEST tidak nyangkut ke project lain atau sesi
@@ -3148,39 +3180,313 @@
     return /^https?:\/\//i.test(link) ? link : ('https://' + link);
   }
 
+  /* ============================================================
+     OTHER RELATED DOCUMENT — lampiran project (mekanisme SAMA dengan
+     Document Pipeline: Upload/Link lewat DriveFolderService, cek
+     kepemilikan sebelum Move). Doc_ID lampirannya diisi Project_ID —
+     lihat catatan di DocumentService.checkProjectDocumentLink.
+     ============================================================ */
+
+  function projectAttachments(projectId) {
+    return allAttachments.filter(function (a) { return a.Doc_ID === projectId; });
+  }
+
+  function attachmentIconPipeline(att) {
+    var url = String(att.File_Url || '');
+    if (url.indexOf('/presentation/') !== -1) return '📊';
+    if (url.indexOf('/spreadsheets/') !== -1) return '📈';
+    if (url.indexOf('/document/') !== -1) return '📝';
+    if (/\.pdf$/i.test(att.File_Name || '')) return '📕';
+    return '📄';
+  }
+
+  var ATT_SOURCE_LABEL_PL = { UPLOAD: 'upload', LINK: 'link' };
+
   /**
-   * Tampilan BACA Other Related Document — SEKARANG jadi hyperlink murni:
-   * "kalimat" (nama) yang jadi teks klik-nya, BUKAN menampilkan URL mentah
-   * di bawahnya. Sebelumnya nama + URL penuh ditampilkan berdampingan, yang
-   * membuat baris terasa sangat penuh untuk link panjang (Google
-   * Drive/Sheet URL bisa 80+ karakter).
+   * Tampilan BACA Other Related Document — daftar lampiran dengan tombol
+   * Buka/Salin/Lepas, pola sama persis dengan daftar dokumen di Document
+   * Pipeline. Menggantikan tampilan hyperlink nama+link bebas-ketik yang
+   * lama.
    */
   function renderOtherDocView(project) {
     var container = document.getElementById('otherDocView');
-    if (!container) return;
-    var docs = (project.Other_Document_Links || []).filter(function (d) {
-      return d && (String(d.name || '').trim() || String(d.link || '').trim());
-    });
-    if (!docs.length) {
+    if (!container || !project) return;
+    var list = projectAttachments(project.Project_ID);
+
+    if (!list.length) {
       container.innerHTML = '<div class="empty-hint"><span class="eh-ic">🔗</span>' +
-        'Belum ada dokumen terkait.<br>Klik <strong>KELOLA DOKUMEN</strong> di atas untuk menambahkan.</div>';
+        'Belum ada dokumen terkait.<br>Klik <strong>+ Tambah Dokumen</strong> di bawah untuk menambahkan.</div>';
       return;
     }
-    container.innerHTML = '<div class="vlist">' + docs.map(function (d) {
-      var name = String(d.name || '').trim();
-      var link = String(d.link || '').trim();
-      var href = link ? toHrefWithScheme(link) : '';
-      var titleHtml = link
-        ? '<a class="link-ext" href="' + escAttr(href) + '" target="_blank" rel="noopener">' + escHtml(name || link) + ' ↗</a>' +
-          '<button type="button" class="copy-btn" onclick="copyToClipboard(\'' + escAttr(href) + '\', this)" title="Salin link">⧉</button>'
-        : escHtml(name || '(tanpa nama)');
-      return '<div class="vlist-row">' +
-        '<div class="vl-main">' +
-        '<div class="vl-name">' + titleHtml + '</div>' +
-        (link ? '' : '<div class="vl-sub">Belum ada link.</div>') +
+
+    container.innerHTML = '<div class="att-list">' + list.map(function (a) {
+      var nama = a.File_Name || a.File_Url || '(tanpa nama)';
+      return '<div class="att">' +
+        '<span class="att-ic">' + attachmentIconPipeline(a) + '</span>' +
+        '<div class="att-main">' +
+          '<div class="att-name" title="' + escAttr(nama) + '">' + escHtml(nama) + '</div>' +
+          '<div class="att-meta">' + (ATT_SOURCE_LABEL_PL[a.Source] || a.Source) +
+            (a.Added_By ? ' · ' + escHtml(a.Added_By) : '') +
+            (a.Added_Date ? ' · ' + escHtml(formatDate(a.Added_Date)) : '') + '</div>' +
+        '</div>' +
+        '<div class="att-act">' +
+          (a.File_Url ? '<a class="mini pri" href="' + escAttr(a.File_Url) + '" target="_blank" rel="noopener">Buka ↗</a>' : '') +
+          (a.File_Url ? '<button type="button" class="mini" title="Salin link" onclick="copyToClipboard(\'' + escAttr(a.File_Url) + '\', this)">⧉</button>' : '') +
+          '<button type="button" class="mini dgr" onclick="confirmRemoveOtherDoc(\'' + escAttr(a.Attachment_ID) + '\')">Lepas</button>' +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  /**
+   * Lepas lampiran. File di Drive TIDAK dihapus — pola & alasan sama persis
+   * dengan Document Pipeline.
+   */
+  function confirmRemoveOtherDoc(attachmentId) {
+    if (!techfordConfirm('Lepas dokumen ini dari daftar?\n\nFile-nya TIDAK dihapus — tetap ada di folder project di Shared Drive B2B, hanya tidak lagi tercatat di sini.')) return;
+    TechfordLoading.show('Melepas dokumen...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        allAttachments = allAttachments.filter(function (a) { return a.Attachment_ID !== attachmentId; });
+        var project = currentProjectOrNull();
+        if (project) renderOtherDocView(project);
+        TechfordToast.show('Dokumen dilepas dari daftar.');
+        fetchAttachments();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal melepas: ' + (err && err.message ? err.message : err));
+      })
+      .document_removeAttachment(attachmentId);
+  }
+
+  /* ---- Popup: pilih metode ---- */
+  function openOtherDocMethod() {
+    var project = currentProjectOrNull();
+    if (!project) return;
+    document.getElementById('otherDocMethodSubtitle').innerText =
+      project.Project_ID + (project.Project_Name ? ' — ' + project.Project_Name : '');
+    document.getElementById('otherDocMethodModal').classList.add('open');
+  }
+  function closeOtherDocMethod() {
+    document.getElementById('otherDocMethodModal').classList.remove('open');
+  }
+
+  /* ---- Popup: upload ---- */
+  var otherDocPickedFile = null;
+  var OTHER_DOC_MAX_MB = 25;   // sama alasannya dengan Document Pipeline: base64 di payload google.script.run
+
+  function openOtherDocUpload() {
+    closeOtherDocMethod();
+    otherDocPickedFile = null;
+    document.getElementById('otherDocUploadInput').value = '';
+    document.getElementById('otherDocUploadInfo').style.display = 'none';
+    document.getElementById('otherDocUploadError').innerText = '';
+    document.getElementById('otherDocUploadSubmitBtn').disabled = true;
+    document.getElementById('otherDocUploadSubtitle').innerText =
+      document.getElementById('otherDocMethodSubtitle').innerText;
+    document.getElementById('otherDocUploadModal').classList.add('open');
+  }
+  function closeOtherDocUpload() {
+    document.getElementById('otherDocUploadModal').classList.remove('open');
+  }
+
+  function onOtherDocFilePicked() {
+    var input = document.getElementById('otherDocUploadInput');
+    var errEl = document.getElementById('otherDocUploadError');
+    var infoEl = document.getElementById('otherDocUploadInfo');
+    otherDocPickedFile = null;
+    errEl.innerText = '';
+    infoEl.style.display = 'none';
+    document.getElementById('otherDocUploadSubmitBtn').disabled = true;
+
+    var f = input.files && input.files[0];
+    if (!f) return;
+    if (f.size > OTHER_DOC_MAX_MB * 1024 * 1024) {
+      errEl.innerText = 'Ukuran file ' + (f.size / 1048576).toFixed(1) + ' MB melebihi batas ' +
+        OTHER_DOC_MAX_MB + ' MB. Untuk file sebesar itu, unggah manual ke folder project lalu masukkan link-nya.';
+      input.value = '';
+      return;
+    }
+    otherDocPickedFile = f;
+    infoEl.style.display = '';
+    infoEl.className = 'att-result ok';
+    infoEl.innerHTML = '<strong>' + escHtml(f.name) + '</strong><br>' +
+      (f.size / 1024).toFixed(0) + ' KB · siap diunggah ke folder project';
+    document.getElementById('otherDocUploadSubmitBtn').disabled = false;
+  }
+
+  function submitOtherDocUpload() {
+    if (!otherDocPickedFile || !currentPipelineDrawerId) return;
+    var projectId = currentPipelineDrawerId;
+    var btn = document.getElementById('otherDocUploadSubmitBtn');
+    var errEl = document.getElementById('otherDocUploadError');
+    btn.disabled = true;
+    btn.innerText = 'Mengunggah...';
+    errEl.innerText = '';
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      TechfordLoading.show('Mengunggah ke folder project...');
+      // TIDAK memakai gsRunWithRetry: operasi TULIS — mengulang saat respons
+      // hilang akan mengunggah file yang sama dua kali.
+      google.script.run
+        .withSuccessHandler(function (res) {
+          TechfordLoading.hide();
+          btn.disabled = false;
+          btn.innerText = 'Upload';
+          if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+          closeOtherDocUpload();
+          TechfordToast.show('File berhasil diunggah.');
+          fetchAttachments();
+        })
+        .withFailureHandler(function (err) {
+          TechfordLoading.hide();
+          btn.disabled = false;
+          btn.innerText = 'Upload';
+          errEl.innerText = 'Gagal mengunggah: ' + (err && err.message ? err.message : err) +
+            '. Periksa dulu folder project sebelum mencoba lagi — file-nya mungkin sudah masuk.';
+        })
+        .document_uploadProjectFile(projectId, {
+          name: otherDocPickedFile.name,
+          mimeType: otherDocPickedFile.type,
+          dataBase64: base64
+        }, currentUserNamePipeline());
+    };
+    reader.onerror = function () {
+      btn.disabled = false;
+      btn.innerText = 'Upload';
+      errEl.innerText = 'File gagal dibaca browser. Coba pilih ulang filenya.';
+    };
+    reader.readAsDataURL(otherDocPickedFile);
+  }
+
+  function currentUserNamePipeline() {
+    return (TechfordAuth.getCurrentUser() || {}).Name || '';
+  }
+
+  /* ---- Popup: input link ---- */
+  var otherDocCheckedLink = null;
+
+  function openOtherDocLink() {
+    closeOtherDocMethod();
+    otherDocCheckedLink = null;
+    document.getElementById('otherDocLinkInput').value = '';
+    document.getElementById('otherDocLinkResult').style.display = 'none';
+    document.getElementById('otherDocLinkError').innerText = '';
+    document.getElementById('otherDocLinkMoveBtn').disabled = true;
+    document.getElementById('otherDocLinkSubtitle').innerText =
+      document.getElementById('otherDocMethodSubtitle').innerText;
+    document.getElementById('otherDocLinkModal').classList.add('open');
+  }
+  function closeOtherDocLink() {
+    document.getElementById('otherDocLinkModal').classList.remove('open');
+  }
+
+  function onOtherDocLinkTyped() {
+    otherDocCheckedLink = null;
+    document.getElementById('otherDocLinkMoveBtn').disabled = true;
+    document.getElementById('otherDocLinkResult').style.display = 'none';
+  }
+
+  function submitOtherDocLinkCheck() {
+    var url = document.getElementById('otherDocLinkInput').value.trim();
+    var errEl = document.getElementById('otherDocLinkError');
+    errEl.innerText = '';
+    if (!url) { errEl.innerText = 'Tempel link dokumennya dulu.'; return; }
+
+    var btn = document.getElementById('otherDocLinkCheckBtn');
+    btn.disabled = true;
+    btn.innerText = 'Mengecek...';
+
+    gsRunWithRetry('document_checkProjectLink', [currentPipelineDrawerId, url], function (res) {
+      btn.disabled = false;
+      btn.innerText = 'Cek lagi';
+      if (!res || res.ok === false) {
+        document.getElementById('otherDocLinkResult').style.display = 'none';
+        errEl.innerText = (res && res.error) ? res.error.message : 'Tidak ada respons dari server.';
+        return;
+      }
+      renderOtherDocCheckResult(res.data);
+    }, function (message) {
+      btn.disabled = false;
+      btn.innerText = 'Cek lagi';
+      errEl.innerText = 'Gagal mengecek: ' + message;
+    });
+  }
+
+  function renderOtherDocCheckResult(data) {
+    var el = document.getElementById('otherDocLinkResult');
+    var moveBtn = document.getElementById('otherDocLinkMoveBtn');
+    el.style.display = '';
+
+    if (data.ok && data.canMove) {
+      otherDocCheckedLink = document.getElementById('otherDocLinkInput').value.trim();
+      moveBtn.disabled = false;
+      el.className = 'att-result ok';
+      el.innerHTML = '<strong>✓ Siap dipindahkan</strong><br>' +
+        escHtml(data.name || '(tanpa nama)') +
+        (data.ownerEmail ? '<br><span class="att-result-sub">Pemilik saat ini: ' + escHtml(data.ownerEmail) + '</span>' : '');
+      return;
+    }
+
+    otherDocCheckedLink = null;
+    moveBtn.disabled = true;
+
+    if (data.alreadyInPlace) {
+      el.className = 'att-result ok';
+      el.innerHTML = '<strong>Sudah di folder project</strong><br>' + escHtml(data.reason || '');
+      return;
+    }
+
+    el.className = 'att-result warn';
+    var html = '<strong>⚠ Belum bisa dipindahkan</strong><br>' + escHtml(data.reason || '');
+    if ((data.needAccess || data.needTransfer) && data.b2bEmail) {
+      html += '<div class="att-email-row">' +
+        '<code>' + escHtml(data.b2bEmail) + '</code>' +
+        '<button type="button" class="mini" onclick="copyToClipboard(\'' + escAttr(data.b2bEmail) + '\', this)">⧉ Salin</button>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function submitOtherDocMove() {
+    var url = document.getElementById('otherDocLinkInput').value.trim();
+    if (!otherDocCheckedLink || otherDocCheckedLink !== url) {
+      document.getElementById('otherDocLinkError').innerText = 'Link berubah sejak terakhir dicek. Klik Cek lagi.';
+      onOtherDocLinkTyped();
+      return;
+    }
+    var projectId = currentPipelineDrawerId;
+    var btn = document.getElementById('otherDocLinkMoveBtn');
+    var errEl = document.getElementById('otherDocLinkError');
+    btn.disabled = true;
+    btn.innerText = 'Memindahkan...';
+    errEl.innerText = '';
+    TechfordLoading.show('Memindahkan file ke folder project...');
+
+    // Operasi TULIS — tidak di-retry (sama alasannya dengan submitOtherDocUpload).
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Pindahkan ke Folder Project';
+        if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+        closeOtherDocLink();
+        TechfordToast.show('File dipindahkan ke folder project.');
+        fetchAttachments();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        btn.disabled = false;
+        btn.innerText = 'Pindahkan ke Folder Project';
+        errEl.innerText = 'Gagal memindahkan: ' + (err && err.message ? err.message : err) +
+          '. Periksa folder project sebelum mencoba lagi — file-nya mungkin sudah pindah.';
+      })
+      .document_moveProjectLink(projectId, url, currentUserNamePipeline());
   }
 
   function toggleDocRequestPending(key, checked) {
@@ -3600,19 +3906,6 @@
     if (project) renderRevenueBreakdown(project);
   }
 
-  // ---- Popup 4: Other Related Document ----
-  function openOtherDocDrawer() {
-    if (!currentPipelineDrawerId) return;
-    otherDocEditing = {};
-    renderOtherDocLinks();
-    openStackedDrawer('otherDocDrawer', 'otherDocDrawerPid');
-  }
-  function closeOtherDocDrawer() {
-    closeStackedDrawer('otherDocDrawer');
-    var project = currentProjectOrNull();
-    if (project) renderPipelineDrawer(project);
-  }
-
   // ---- Popup 5: Request Document ----
   function openRequestDocDrawer() {
     if (!currentPipelineDrawerId) return;
@@ -3873,106 +4166,8 @@
       .project_undoLoss(projectId);
   }
 
-  // ---- Other Document Related ----
-  // Sekarang bagian dari EDIT PROJECT — hanya bisa ditambah/hapus saat mode
-  // edit aktif — sekarang section berdiri sendiri (bukan bagian dari EDIT
-  // PROJECT lagi) dengan tombol SAVE-nya sendiri, sama seperti Document
-  // Request.
   function escAttr(str) {
     return String(str || '').replace(/"/g, '&quot;');
-  }
-
-  /**
-   * Baris di popup Other Document Related. Baris yang SUDAH tersimpan tampil
-   * sebagai teks (mode baca) sampai tombol ✏️ di barisnya diklik — supaya
-   * popup yang dibuka cuma untuk melihat tidak bisa berubah karena salah
-   * ketik. Baris BARU langsung dalam mode edit karena belum ada isi yang
-   * perlu dilindungi.
-   */
-  function renderOtherDocLinks() {
-    var container = document.getElementById('otherDocLinksContainer');
-    if (!container) return;
-    if (!editOtherDocLinks.length) {
-      // Baris kosong pertama otomatis dalam mode edit — kalau tidak, user
-      // melihat baris "(tanpa nama)" yang harus diklik pensil dulu padahal
-      // memang belum pernah ada isinya.
-      editOtherDocLinks = [{ name: '', link: '' }];
-      otherDocEditing[0] = true;
-    }
-    container.innerHTML = editOtherDocLinks.map(function (doc, idx) {
-      if (otherDocEditing[idx]) {
-        return '<div class="row-edit">' +
-          '<input placeholder="Nama dokumen..." style="flex:1;" value="' + escAttr(doc.name) + '" oninput="editOtherDocLinks[' + idx + '].name=this.value">' +
-          '<input placeholder="Put related link in here....." style="flex:2;" value="' + escAttr(doc.link) + '" oninput="editOtherDocLinks[' + idx + '].link=this.value">' +
-          '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
-          '</div>';
-      }
-      // Nama jadi hyperlink langsung — TIDAK menampilkan URL mentah di
-      // bawahnya (dulu ditampilkan berdampingan, sangat penuh untuk link
-      // Google Drive/Sheet yang bisa 80+ karakter).
-      var docHref = doc.link ? toHrefWithScheme(doc.link) : '';
-      var docTitleHtml = docHref
-        ? '<a class="link-ext" href="' + escAttr(docHref) + '" target="_blank" rel="noopener">' + escHtml(doc.name || doc.link) + ' ↗</a>'
-        : escHtml(doc.name || '(tanpa nama)');
-      return '<div class="row-view">' +
-        '<div class="rv-main">' +
-        '<div class="rv-title">' + docTitleHtml + '</div>' +
-        (docHref ? '' : '<div class="rv-sub">Belum ada link.</div>') +
-        '</div>' +
-        '<button type="button" class="icon-btn-sm" onclick="startEditOtherDocRow(' + idx + ')" title="Edit dokumen ini">✏️</button>' +
-        '<button type="button" class="icon-btn-sm danger" onclick="removeOtherDocLinkRow(' + idx + ')" title="Hapus dokumen ini">×</button>' +
-        '</div>';
-    }).join('');
-  }
-  function startEditOtherDocRow(index) {
-    otherDocEditing[index] = true;
-    renderOtherDocLinks();
-  }
-  function addOtherDocLinkRow() {
-    editOtherDocLinks.push({ name: '', link: '' });
-    otherDocEditing[editOtherDocLinks.length - 1] = true;
-    renderOtherDocLinks();
-  }
-  function removeOtherDocLinkRow(index) {
-    editOtherDocLinks.splice(index, 1);
-    // Penanda mode-edit dikunci ke INDEX baris, jadi setelah ada baris yang
-    // dihapus, semua penanda di atas index itu harus digeser satu — kalau
-    // tidak, baris tersimpan yang tidak diapa-apakan bisa ikut terbuka
-    // (atau sebaliknya, baris yang sedang diedit malah menutup sendiri).
-    var shifted = {};
-    Object.keys(otherDocEditing).forEach(function (k) {
-      var i = Number(k);
-      if (i < index) shifted[i] = otherDocEditing[k];
-      else if (i > index) shifted[i - 1] = otherDocEditing[k];
-    });
-    otherDocEditing = shifted;
-    renderOtherDocLinks();
-  }
-
-  function submitOtherDocLinks() {
-    if (!currentPipelineDrawerId) return;
-    if (!techfordConfirm('Simpan perubahan Other Document Related ini?')) return;
-    var links = editOtherDocLinks
-      .filter(function (d) { return d.name.trim() || d.link.trim(); })
-      .map(function (d) { return { name: d.name.trim(), link: d.link.trim() }; });
-
-    TechfordLoading.show('Menyimpan dokumen terkait...');
-    google.script.run
-      .withSuccessHandler(function (res) {
-        TechfordLoading.hide();
-        if (res && res.ok === false) return alert(res.error.message);
-        showPipelineSuccess('Dokumen terkait berhasil disimpan.');
-        applyProjectPatch(res && res.data);
-        // Tutup popup-nya saja; drawer Detail tetap terbuka & daftar bacanya
-        // ikut ter-refresh lewat renderPipeline() (dipanggil di dalam
-        // applyProjectPatch).
-        closeStackedDrawer('otherDocDrawer');
-      })
-      .withFailureHandler(function (err) {
-        TechfordLoading.hide();
-        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
-      })
-      .project_update(currentPipelineDrawerId, { otherDocumentLinks: links });
   }
 
   // ---- Revenue Breakdown ----

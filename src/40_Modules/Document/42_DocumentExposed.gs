@@ -51,6 +51,24 @@ function document_removeAttachment(attachmentId) {
   return DocumentController.removeAttachment(attachmentId);
 }
 
+/**
+ * Lampiran "Other Related Document" di drawer Sales Pipeline — mekanisme
+ * SAMA dengan lampiran Document Pipeline (Upload/Link + cek kepemilikan
+ * lewat DriveFolderService), cuma diikat ke Project_ID langsung, bukan ke
+ * satu baris Document_Pipeline. Lihat catatan di DocumentService.
+ */
+function document_checkProjectLink(projectId, url) {
+  return DocumentController.checkProjectDocumentLink(projectId, url);
+}
+
+function document_moveProjectLink(projectId, url, addedBy) {
+  return DocumentController.moveProjectDocumentLink(projectId, url, addedBy);
+}
+
+function document_uploadProjectFile(projectId, file, addedBy) {
+  return DocumentController.uploadProjectFile(projectId, file, addedBy);
+}
+
 function document_updateLink(docId, link) {
   return DocumentController.updateLink(docId, link);
 }
