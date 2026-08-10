@@ -60,10 +60,15 @@ var GdvControllerUploadLogRepository = (function (module) {
    * "Terakhir diupload: ..." di UI. null kalau belum pernah ada upload
    * sama sekali. Tab ini APPEND-ONLY, jadi baris FISIK terakhir sudah
    * pasti yang terbaru — tidak perlu bandingkan tanggal satu-satu.
+   *
+   * findLastRow() — BUKAN findAll() lalu ambil elemen terakhir. Tab log ini
+   * nambah 1 baris tiap upload GDV_Controller; findAll() membaca SELURUH
+   * tab tiap kali strip status dicek, makin berat seiring waktu sampai
+   * payload balasannya bisa gagal terkirim lewat google.script.run — kelas
+   * bug yang sama yang ditemukan di AdsProgressUploadLogRepository.findLatest.
    */
   module.findLatest = function () {
-    var rows = module.findAll();
-    return rows.length ? rows[rows.length - 1] : null;
+    return base.findLastRow();
   };
 
   return module;

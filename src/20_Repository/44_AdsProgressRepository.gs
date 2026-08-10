@@ -97,10 +97,17 @@ var AdsProgressUploadLogRepository = (function (module) {
   /**
    * Entri log paling baru. Tab ini append-only, jadi baris FISIK terakhir
    * sudah pasti yang terbaru — tidak perlu bandingkan tanggal satu-satu.
+   *
+   * findLastRow() — BUKAN module.findAll() lalu ambil elemen terakhir.
+   * Dulu begitu, dan tab log ini nambah 1 baris tiap file diupload — makin
+   * lama makin banyak baris, findAll() membaca SELURUH tab itu tiap kali
+   * strip status di halaman GDV Controller dicek. Awalnya cepat waktu log
+   * masih pendek, lalu makin berat sampai payload balasannya konsisten
+   * gagal terkirim lewat google.script.run — persis bug "Status belum bisa
+   * dibaca setelah 8 percobaan" walau datanya sendiri sudah aman tersimpan.
    */
   module.findLatest = function () {
-    var rows = module.findAll();
-    return rows.length ? rows[rows.length - 1] : null;
+    return base.findLastRow();
   };
 
   return module;

@@ -53,6 +53,28 @@ BaseRepository.prototype.count = function () {
   return Math.max(0, sheet.getLastRow() - 1);
 };
 
+/**
+ * Baris data TERAKHIR saja — pakai getRange() atas SATU baris, BUKAN
+ * findAll() lalu ambil elemen terakhir. Sheet log/riwayat yang append-only
+ * tumbuh terus (satu baris per aksi), dan findAll() di baliknya membaca +
+ * mengubah SELURUH sheet jadi array of objects — awalnya cepat waktu sheet
+ * masih kecil, lalu makin berat seiring baris bertambah sampai akhirnya
+ * transport google.script.run konsisten gagal mengirim balik payload
+ * sebesar itu. Ini persis kelas bug yang sudah ditambal di count() (lihat
+ * catatan di atas) tapi kelewat di findLatest()-style query.
+ *
+ * @returns {?Object} null kalau sheet kosong (cuma header, atau belum ada
+ *   header sama sekali).
+ */
+BaseRepository.prototype.findLastRow = function () {
+  var sheet = this._getSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  var headers = this._headerRow();
+  var values = sheet.getRange(lastRow, 1, 1, headers.length).getValues()[0];
+  return Utils.rowsToObjects([headers, values])[0];
+};
+
 BaseRepository.prototype.findBy = function (predicateFn) {
   return this.findAll().filter(predicateFn);
 };
