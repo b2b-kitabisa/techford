@@ -263,6 +263,77 @@ console.log('\n7) checkLink — gerbangnya canMoveItemIntoTeamDrive, bukan "bisa
     svc.checkLink('bukan link', 'PRJ26-00084').ok === false);
 }
 
+console.log('\n7b) checkLink — SUDAH Editor tapi Move tetap ditolak (bug nyata dari lapangan)');
+{
+  // Reproduksi laporan: B2B sudah diberi akses Editor ke Sheet, tapi
+  // checkLink tetap bilang "kemungkinan masih Viewer/Commenter" — padahal
+  // caps.canEdit sudah true. Pesan itu adalah tebakan buta yang tidak pernah
+  // memeriksa caps.canEdit sama sekali. Perbaikannya harus membedakan tiga
+  // kemungkinan begitu canEdit TERBUKTI true:
+  //   a) folder induk tidak ikut dibagikan (paling umum di lapangan)
+  //   b) folder induk dibagikan tapi tanpa izin "keluarkan anak"
+  //   c) tidak ada folder induk sama sekali -> kebijakan domain pemilik
+  const dasarEditor = {
+    mimeType: 'application/vnd.google-apps.spreadsheet', trashed: false,
+    owners: [{ emailAddress: 'partner@luar.com' }],
+    capabilities: { canEdit: true, canMoveItemIntoTeamDrive: false }
+  };
+
+  // (a) Folder induk sama sekali tidak terjangkau B2B (Files.get atas folder
+  // itu melempar 404/403) — kasus paling sering: pemilik cuma share file-nya.
+  {
+    const { svc } = build({
+      '1editSheetAAAAAAAAAAAAAAAAAAAAAAA': Object.assign(
+        { id: '1editSheetAAAAAAAAAAAAAAAAAAAAAAA', name: 'Budget Partner', parents: ['FOLDER_TAK_TERJANGKAU'] },
+        dasarEditor)
+      // 'FOLDER_TAK_TERJANGKAU' SENGAJA tidak didaftarkan di store.files —
+      // Drive.Files.get atasnya akan melempar, sama seperti B2B yang benar-
+      // benar tidak punya akses ke folder itu.
+    }, [KLIEN], [PROJEK]);
+    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetAAAAAAAAAAAAAAAAAAAAAAA/edit', 'PRJ26-00084');
+    ok('tetap ditolak', r.ok === false && r.canMove === false);
+    ok('TIDAK mengulang tuduhan "masih Viewer" — B2B sudah Editor',
+      !/Viewer\/Commenter/.test(r.reason), r.reason);
+    ok('pesan menunjuk ke FOLDER INDUK, bukan file', /FOLDER/.test(r.reason) && /folder induk/.test(r.reason), r.reason);
+    ok('ditandai sudah Editor (supaya UI tidak menawarkan "beri akses" lagi)',
+      r.alreadyEditor === true);
+    ok('needEmail false — bukan lagi soal email yang harus diberi akses',
+      r.needEmail === false);
+  }
+
+  // (b) Folder induk terjangkau, tapi B2B tidak punya izin mengeluarkan isi
+  // folder itu (canRemoveChildren: false) — mis. cuma di-share Viewer di
+  // folder padahal Editor di file-nya.
+  {
+    const { svc } = build({
+      '1editSheetBBBBBBBBBBBBBBBBBBBBBBB': Object.assign(
+        { id: '1editSheetBBBBBBBBBBBBBBBBBBBBBBB', name: 'Budget Partner', parents: ['FOLDER_VIEWER_SAJA'] },
+        dasarEditor),
+      'FOLDER_VIEWER_SAJA': {
+        id: 'FOLDER_VIEWER_SAJA', name: 'Shared Folder', mimeType: 'application/vnd.google-apps.folder',
+        trashed: false, capabilities: { canRemoveChildren: false }
+      }
+    }, [KLIEN], [PROJEK]);
+    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetBBBBBBBBBBBBBBBBBBBBBBB/edit', 'PRJ26-00084');
+    ok('ditolak dengan alasan folder induk juga', /folder induk/.test(r.reason), r.reason);
+    ok('ditandai sudah Editor', r.alreadyEditor === true);
+  }
+
+  // (c) Tidak ada parent sama sekali (file di My Drive root) — satu-satunya
+  // sisa kemungkinan adalah kebijakan domain pemilik file, bukan soal berbagi.
+  {
+    const { svc } = build({
+      '1editSheetCCCCCCCCCCCCCCCCCCCCCCC': Object.assign(
+        { id: '1editSheetCCCCCCCCCCCCCCCCCCCCCCC', name: 'Budget Partner', parents: [] },
+        dasarEditor)
+    }, [KLIEN], [PROJEK]);
+    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetCCCCCCCCCCCCCCCCCCCCCCC/edit', 'PRJ26-00084');
+    ok('mengarah ke kebijakan Workspace pemilik, bukan minta akses lagi',
+      /kebijakan admin Google Workspace/.test(r.reason), r.reason);
+    ok('menawarkan jalan pintas Upload manual', /Upload File/.test(r.reason), r.reason);
+  }
+}
+
 console.log('\n8) checkLink — shortcut diikuti ke file aslinya');
 {
   // Memindahkan shortcut hanya memindahkan penunjuknya; file aslinya tetap di

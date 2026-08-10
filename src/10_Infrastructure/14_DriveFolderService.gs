@@ -351,16 +351,59 @@ var DriveFolderService = (function (module) {
 
     var caps = file.capabilities || {};
     if (!caps.canMoveItemIntoTeamDrive) {
+      var owner = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
+
+      // caps.canEdit MEMBEDAKAN dua penyebab yang butuh tindakan berbeda.
+      // Sebelumnya pesan di sini SELALU bilang "kemungkinan masih Viewer"
+      // tanpa memeriksa caps.canEdit sama sekali — jadi tetap muncul apa
+      // adanya walau B2B SUDAH Editor, dan menyuruh user mengulang langkah
+      // yang sudah dia lakukan.
+      if (!caps.canEdit) {
+        return {
+          ok: false, canMove: false, needEmail: true, fileId: fileId, name: file.name,
+          ownerEmail: owner,
+          reason: 'B2B bisa MEMBUKA file ini, tapi belum bisa mengeditnya — aksesnya ' +
+            'kemungkinan masih Viewer/Commenter. Ubah akses email B2B menjadi Editor, ' +
+            'lalu klik Cek lagi.'
+        };
+      }
+
+      // Editor SUDAH benar di file ini, tapi Drive masih menolak Move. Sebab
+      // paling umum: izin "keluarkan dari folder" ada di level FOLDER INDUK,
+      // bukan di file — kalau pemilik hanya men-share filenya (bukan folder
+      // tempat file itu berada), B2B tidak bisa melepaskannya dari folder
+      // itu. Diperiksa langsung supaya pesannya memberi tindakan yang BENAR,
+      // bukan menyuruh mengulang "beri akses Editor" yang sudah dilakukan.
+      var parents = file.parents || [];
+      var pesan;
+      if (!parents.length) {
+        pesan = 'B2B sudah Editor di file ini, tapi Google tetap menolak pemindahannya — ' +
+          'kemungkinan besar dibatasi kebijakan admin Google Workspace organisasi pemilik ' +
+          'file (larangan menambah file pihak luar ke Shared Drive lain). Ini di luar ' +
+          'kendali Techford; sebagai jalan pintas, minta pemiliknya download filenya lalu ' +
+          'unggah lewat "Upload File" di sini.';
+      } else {
+        var parentOk = false;
+        try {
+          var parent = Drive.Files.get(parents[0], allDrives({ fields: 'id,name,capabilities(canRemoveChildren)' }));
+          parentOk = !!(parent.capabilities && parent.capabilities.canRemoveChildren);
+        } catch (e) {
+          parentOk = false; // B2B bahkan tidak punya akses sama sekali ke folder induknya
+        }
+        pesan = parentOk
+          ? 'B2B sudah Editor di file ini, tapi Google tetap menolak pemindahannya — ' +
+            'kemungkinan besar dibatasi kebijakan admin Google Workspace organisasi pemilik ' +
+            'file. Ini di luar kendali Techford; sebagai jalan pintas, minta pemiliknya ' +
+            'download filenya lalu unggah lewat "Upload File" di sini.'
+          : 'B2B sudah Editor di FILE ini, tapi TIDAK punya akses ke FOLDER tempat file ' +
+            'ini berada — Drive butuh izin di folder induk untuk bisa memindahkan isinya. ' +
+            'Minta pemiliknya membagikan FOLDER induknya juga (bukan cuma file), atau ' +
+            'pindahkan file itu ke My Drive root miliknya dulu, lalu klik Cek lagi.';
+      }
+
       return {
-        ok: false,
-        canMove: false,
-        needEmail: true,
-        fileId: fileId,
-        name: file.name,
-        ownerEmail: (file.owners && file.owners[0] && file.owners[0].emailAddress) || '',
-        reason: 'B2B bisa MEMBUKA file ini, tapi belum bisa memindahkannya — aksesnya ' +
-          'kemungkinan masih Viewer/Commenter. Ubah akses email B2B menjadi Editor, ' +
-          'lalu klik Cek lagi.'
+        ok: false, canMove: false, needEmail: false, fileId: fileId, name: file.name,
+        ownerEmail: owner, alreadyEditor: true, reason: pesan
       };
     }
 
