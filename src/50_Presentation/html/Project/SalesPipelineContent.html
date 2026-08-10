@@ -2497,6 +2497,14 @@
   }
 
   function openAddPipelineConfirm() {
+    // Mode Lengkapi draft & Project Name masih kosong = user cuma mau
+    // menentukan/mengubah Consultant, belum siap melengkapi project
+    // sepenuhnya — simpan Consultant SAJA (project tetap Draft), jangan
+    // paksa validasi Project Name/Client/Program lewat tombol SAVE utama.
+    if (currentDraftProjectId && !document.getElementById('newProjectName').value.trim()) {
+      submitDraftConsultantFromDrawer();
+      return;
+    }
     if (!document.getElementById('newProjectName').value.trim()) { alert('Project Name wajib diisi.'); return; }
     if (!newProjectClientId) { alert('Client wajib dipilih dari daftar.'); return; }
     if (!newProjectProgramType) { alert('Program Type wajib dipilih.'); return; }
