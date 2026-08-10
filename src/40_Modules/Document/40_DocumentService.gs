@@ -202,7 +202,12 @@ var DocumentService = (function (module) {
     }
   }
 
-  function catatLampiran(docId, source, file, addedBy) {
+  /**
+   * @param {string} [displayName] Nama tampilan UI — kosong = jatuh balik ke
+   *   File_Name (nama asli file) di sisi render, TIDAK di sini, supaya baris
+   *   lampiran lama (sebelum kolom ini ada) tetap konsisten tanpa migrasi data.
+   */
+  function catatLampiran(docId, source, file, addedBy, displayName) {
     var row = {
       Attachment_ID: Utils.generateId('ATT'),
       Doc_ID: docId,
@@ -211,12 +216,31 @@ var DocumentService = (function (module) {
       File_Name: file.name || '',
       File_Url: file.url || '',
       Added_By: addedBy || '',
-      Added_Date: new Date()
+      Added_Date: new Date(),
+      Display_Name: String(displayName || '').trim()
     };
     DocumentAttachmentRepository.create(row);
     syncDocumentLink(docId);
     return row;
   }
+
+  /**
+   * Rename UI-ONLY: hanya Display_Name yang berubah, File_Id/File_Name/
+   * File_Url (rujukan Drive sesungguhnya) tidak disentuh — nama file di
+   * Drive TIDAK ikut berubah. Berlaku untuk lampiran dokumen maupun project
+   * ("Other Related Document"), sama-sama baris Document_Attachment.
+   */
+  module.renameAttachment = function (attachmentId, displayName) {
+    var att = DocumentAttachmentRepository.findById(attachmentId);
+    if (!att) {
+      throw new AppError('VALIDATION_ERROR', 'Lampiran tidak ditemukan (mungkin sudah dilepas).');
+    }
+    if (Utils.isBlank(displayName)) {
+      throw new AppError('VALIDATION_ERROR', 'Nama dokumen wajib diisi.');
+    }
+    DocumentAttachmentRepository.renameDisplayName(attachmentId, String(displayName).trim());
+    return module.getAllAttachments();
+  };
 
   /**
    * Langkah 1 alur Input Link: apakah B2B bisa memindahkan file ini?
@@ -257,7 +281,7 @@ var DocumentService = (function (module) {
    * tombol Cek yang dikirim balik client TIDAK dipercaya, karena izin bisa
    * berubah di antara dua klik dan endpoint ini bisa dipanggil langsung.
    */
-  module.moveDocumentLink = function (docId, url, addedBy) {
+  module.moveDocumentLink = function (docId, url, addedBy, displayName) {
     var doc = assertDocumentExists(docId);
     assertBisaDilampiri(doc);
 
@@ -273,7 +297,7 @@ var DocumentService = (function (module) {
     }
 
     var hasil = DriveFolderService.moveIntoProjectFolder(fileId, doc.Project_ID);
-    return catatLampiran(docId, 'LINK', hasil, addedBy);
+    return catatLampiran(docId, 'LINK', hasil, addedBy, displayName || hasil.name);
   };
 
   /**
@@ -282,7 +306,7 @@ var DocumentService = (function (module) {
    * @param {Object} file {name, mimeType, dataBase64} — isi file dikirim
    *   base64 karena google.script.run tidak bisa membawa objek File browser.
    */
-  module.uploadFileToProject = function (docId, file, addedBy) {
+  module.uploadFileToProject = function (docId, file, addedBy, displayName) {
     var doc = assertDocumentExists(docId);
     assertBisaDilampiri(doc);
     if (!file || Utils.isBlank(file.name) || Utils.isBlank(file.dataBase64)) {
@@ -294,7 +318,7 @@ var DocumentService = (function (module) {
       file.name
     );
     var hasil = DriveFolderService.saveBlobToProject(blob, doc.Project_ID);
-    return catatLampiran(docId, 'UPLOAD', hasil, addedBy);
+    return catatLampiran(docId, 'UPLOAD', hasil, addedBy, displayName || file.name);
   };
 
   /**
@@ -364,7 +388,7 @@ var DocumentService = (function (module) {
   };
 
   /** Langkah 2 Input Link — pindahkan & catat sebagai lampiran project. */
-  module.moveProjectDocumentLink = function (projectId, url, addedBy) {
+  module.moveProjectDocumentLink = function (projectId, url, addedBy, displayName) {
     assertProjectExists(projectId);
     var fileId = DriveFolderService.extractFileId(url);
     if (!fileId) {
@@ -377,11 +401,11 @@ var DocumentService = (function (module) {
       throw new AppError('VALIDATION_ERROR', 'File ini sudah ada di daftar dokumen.');
     }
     var hasil = DriveFolderService.moveIntoProjectFolder(fileId, projectId);
-    return catatLampiran(projectId, 'LINK', hasil, addedBy);
+    return catatLampiran(projectId, 'LINK', hasil, addedBy, displayName || hasil.name);
   };
 
   /** Upload file dari browser sebagai lampiran project. */
-  module.uploadProjectFile = function (projectId, file, addedBy) {
+  module.uploadProjectFile = function (projectId, file, addedBy, displayName) {
     assertProjectExists(projectId);
     if (!file || Utils.isBlank(file.name) || Utils.isBlank(file.dataBase64)) {
       throw new AppError('VALIDATION_ERROR', 'File tidak lengkap — nama & isi file wajib ada.');
@@ -392,7 +416,7 @@ var DocumentService = (function (module) {
       file.name
     );
     var hasil = DriveFolderService.saveBlobToProject(blob, projectId);
-    return catatLampiran(projectId, 'UPLOAD', hasil, addedBy);
+    return catatLampiran(projectId, 'UPLOAD', hasil, addedBy, displayName || file.name);
   };
 
   /**

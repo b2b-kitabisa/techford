@@ -29,13 +29,13 @@ function document_checkLink(docId, url) {
 }
 
 /** Langkah 2 Input Link — pindahkan file ke folder project & catat lampiran. */
-function document_moveLink(docId, url, addedBy) {
-  return DocumentController.moveDocumentLink(docId, url, addedBy);
+function document_moveLink(docId, url, addedBy, displayName) {
+  return DocumentController.moveDocumentLink(docId, url, addedBy, displayName);
 }
 
 /** Upload file (base64 dari browser) ke folder project & catat lampiran. */
-function document_uploadFile(docId, file, addedBy) {
-  return DocumentController.uploadFileToProject(docId, file, addedBy);
+function document_uploadFile(docId, file, addedBy, displayName) {
+  return DocumentController.uploadFileToProject(docId, file, addedBy, displayName);
 }
 
 /** Seluruh lampiran semua dokumen — pola Load Once seperti document_getAll. */
@@ -52,6 +52,15 @@ function document_removeAttachment(attachmentId) {
 }
 
 /**
+ * Ubah nama tampilan UI lampiran SAJA — nama file di Drive tidak berubah.
+ * Berlaku untuk lampiran dokumen maupun "Other Related Document" project,
+ * sama-sama baris Document_Attachment. Lihat DocumentService.renameAttachment.
+ */
+function document_renameAttachment(attachmentId, displayName) {
+  return DocumentController.renameAttachment(attachmentId, displayName);
+}
+
+/**
  * Lampiran "Other Related Document" di drawer Sales Pipeline — mekanisme
  * SAMA dengan lampiran Document Pipeline (Upload/Link + cek kepemilikan
  * lewat DriveFolderService), cuma diikat ke Project_ID langsung, bukan ke
@@ -61,12 +70,12 @@ function document_checkProjectLink(projectId, url) {
   return DocumentController.checkProjectDocumentLink(projectId, url);
 }
 
-function document_moveProjectLink(projectId, url, addedBy) {
-  return DocumentController.moveProjectDocumentLink(projectId, url, addedBy);
+function document_moveProjectLink(projectId, url, addedBy, displayName) {
+  return DocumentController.moveProjectDocumentLink(projectId, url, addedBy, displayName);
 }
 
-function document_uploadProjectFile(projectId, file, addedBy) {
-  return DocumentController.uploadProjectFile(projectId, file, addedBy);
+function document_uploadProjectFile(projectId, file, addedBy, displayName) {
+  return DocumentController.uploadProjectFile(projectId, file, addedBy, displayName);
 }
 
 function document_updateLink(docId, link) {

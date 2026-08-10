@@ -278,6 +278,30 @@ var ProjectService = (function (module) {
   };
 
   /**
+   * Menentukan/mengubah owner (Consultant) sebuah draft TANPA melengkapi
+   * field lain dan TANPA mengubah Is_Draft — draft tetap "New Pipeline" di
+   * tabel Sales Pipeline. Dipisah dari completeDraftProject karena admin
+   * sering sudah tahu siapa yang akan pegang sebuah draft jauh sebelum
+   * detail project (nama, service, program) siap dilengkapi; menunggu
+   * "Lengkapi" penuh cuma bikin draft menumpuk tanpa yang merasa bertanggung
+   * jawab menyelesaikannya.
+   */
+  module.updateDraftConsultant = function (draftProjectId, consultant) {
+    var draft = ProjectRepository.findById(draftProjectId);
+    if (!draft) {
+      throw new AppError('PROJECT_NOT_FOUND', 'Draft project tidak ditemukan.');
+    }
+    if (!draft.Is_Draft) {
+      throw new AppError('VALIDATION_ERROR', 'Project ini bukan draft — gunakan Edit Project biasa.');
+    }
+    ProjectRepository.update(draftProjectId, {
+      Consultant: String(consultant || '').trim(),
+      Last_Updated: new Date()
+    });
+    return findDecorated(draftProjectId);
+  };
+
+  /**
    * Melengkapi draft (dari tombol "Edit" di baris "New Pipeline") — di sini
    * baru Project_ID resmi dialokasikan. Client TIDAK bisa diubah (sudah
    * dikunci sejak createDraftProject), jadi input.clientId diabaikan.

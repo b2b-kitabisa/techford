@@ -884,7 +884,12 @@
   .kpi-pill { display: inline-flex; align-items: baseline; gap: 8px; }
   .kpi-pill.kpi-hit { color: var(--good); background: var(--good-tint); }
   .kpi-pill-pct { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .kpi-pill-delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.85; }
+  .kpi-pill-delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* Selisih nominal dibedakan warnanya dari persentase: kekurangan (merah)
+     vs kelebihan (hijau) — supaya makna "kurang berapa" langsung kebaca
+     tanpa harus membandingkan angka dengan target di sebelahnya. */
+  .kpi-pill-delta.is-shortfall { color: var(--bad); }
+  .kpi-pill-delta.is-surplus { color: var(--good); }
   .kpi-pill-target { font-size: 10.5px; font-weight: 600; opacity: 0.65; }
 
   /* Kolom input target di drawer Input GDV. */
@@ -909,6 +914,10 @@
   .ads-kpi-bar-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
   .ads-kpi-bar-pct { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--color-cerulean); }
   .ads-kpi-bar-delta { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  /* Selisih nominal dibedakan warnanya dari persentase (cerulean/hijau):
+     kekurangan (merah) vs kelebihan (hijau) — lihat catatan .kpi-pill-delta. */
+  .ads-kpi-bar-delta.is-shortfall { color: var(--bad); }
+  .ads-kpi-bar-delta.is-surplus { color: var(--good); }
   .ads-kpi-bar-target { font-size: 11px; color: var(--text-faint); margin-left: auto; }
   .ads-kpi-bar { height: 7px; border-radius: 999px; background: var(--border-softer); overflow: hidden; }
   .ads-kpi-bar-fill { height: 100%; background: var(--color-cerulean); border-radius: 999px; transition: width 0.25s ease; }
@@ -1527,6 +1536,12 @@
     width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center;
     justify-content: center; font-size: 8.5px; font-weight: 800; color: #fff; flex-shrink: 0;
   }
+  /* Tombol ubah owner draft — cuma muncul di baris "New Pipeline". */
+  .pl-owner-edit-btn {
+    border: none; background: transparent; color: var(--text-faint); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 4px; line-height: 1;
+  }
+  .pl-owner-edit-btn:hover { color: var(--color-cerulean); background: var(--border-softer); }
 
   /* ---- Kolom Value: rata kanan, digit sejajar antar baris ---- */
   .pl-val { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }

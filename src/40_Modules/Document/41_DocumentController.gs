@@ -42,15 +42,15 @@ var DocumentController = (function (module) {
     });
   };
 
-  module.moveDocumentLink = function (docId, url, addedBy) {
+  module.moveDocumentLink = function (docId, url, addedBy, displayName) {
     return ErrorHandler.handle('DocumentController.moveDocumentLink', function () {
-      return DocumentService.moveDocumentLink(docId, url, addedBy);
+      return DocumentService.moveDocumentLink(docId, url, addedBy, displayName);
     });
   };
 
-  module.uploadFileToProject = function (docId, file, addedBy) {
+  module.uploadFileToProject = function (docId, file, addedBy, displayName) {
     return ErrorHandler.handle('DocumentController.uploadFileToProject', function () {
-      return DocumentService.uploadFileToProject(docId, file, addedBy);
+      return DocumentService.uploadFileToProject(docId, file, addedBy, displayName);
     });
   };
 
@@ -60,21 +60,27 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.renameAttachment = function (attachmentId, displayName) {
+    return ErrorHandler.handle('DocumentController.renameAttachment', function () {
+      return DocumentService.renameAttachment(attachmentId, displayName);
+    });
+  };
+
   module.checkProjectDocumentLink = function (projectId, url) {
     return ErrorHandler.handle('DocumentController.checkProjectDocumentLink', function () {
       return DocumentService.checkProjectDocumentLink(projectId, url);
     });
   };
 
-  module.moveProjectDocumentLink = function (projectId, url, addedBy) {
+  module.moveProjectDocumentLink = function (projectId, url, addedBy, displayName) {
     return ErrorHandler.handle('DocumentController.moveProjectDocumentLink', function () {
-      return DocumentService.moveProjectDocumentLink(projectId, url, addedBy);
+      return DocumentService.moveProjectDocumentLink(projectId, url, addedBy, displayName);
     });
   };
 
-  module.uploadProjectFile = function (projectId, file, addedBy) {
+  module.uploadProjectFile = function (projectId, file, addedBy, displayName) {
     return ErrorHandler.handle('DocumentController.uploadProjectFile', function () {
-      return DocumentService.uploadProjectFile(projectId, file, addedBy);
+      return DocumentService.uploadProjectFile(projectId, file, addedBy, displayName);
     });
   };
 

@@ -230,6 +230,9 @@
     <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="attUploadSubtitle"></p>
     <input type="file" id="attUploadInput" onchange="onAttachmentFilePicked()">
     <div id="attUploadInfo" class="att-result" style="display:none;"></div>
+    <label style="display:block; margin-top:10px; font-size:11.5px; font-weight:600; color:var(--text-muted);">Nama Dokumen (tampilan di Techford)
+      <input id="attUploadDisplayName" placeholder="Nama file asli" style="width:100%; margin-top:4px;" autocomplete="off">
+    </label>
     <div id="attUploadError" class="error"></div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeAttachmentUpload()">Batal</button>
@@ -247,11 +250,28 @@
       <button class="btn-outline" id="attLinkCheckBtn" onclick="submitAttachmentLinkCheck()">Cek</button>
     </div>
     <div id="attLinkResult" class="att-result" style="display:none;"></div>
+    <label style="display:block; margin-top:10px; font-size:11.5px; font-weight:600; color:var(--text-muted);">Nama Dokumen (tampilan di Techford)
+      <input id="attLinkDisplayName" placeholder="Nama file asli" style="width:100%; margin-top:4px;" autocomplete="off">
+    </label>
     <div id="attLinkError" class="error"></div>
     <div class="placeholder-note" id="attLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah. Kalau file ini bukan milik B2B, pemiliknya perlu <strong>transfer ownership</strong> ke email B2B dulu (bukan sekadar beri akses) sebelum bisa dipindahkan.</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeAttachmentLink()">Batal</button>
       <button class="btn-save" id="attLinkMoveBtn" onclick="submitAttachmentMove()" disabled>Pindahkan ke Folder Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename UI-ONLY — nama file sungguhan di Drive tidak disentuh. -->
+<div class="confirm-overlay" id="renameAttachmentModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 10px;">Ubah Nama Dokumen</h3>
+    <p style="margin:0 0 10px; font-size:12px; color:var(--text-muted);">Nama tampilan di Techford saja — nama file di Drive tetap sama.</p>
+    <input id="renameAttachmentInput" style="width:100%;" autocomplete="off">
+    <div id="renameAttachmentError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeRenameAttachment()">Batal</button>
+      <button class="btn-save" onclick="submitRenameAttachment()">Simpan</button>
     </div>
   </div>
 </div>
@@ -962,7 +982,9 @@
     host.innerHTML = '<div class="att-list">' + list.map(function (a) {
       // Nama bisa kosong untuk baris hasil migrasi (nama file sengaja tidak
       // diambil dari Drive saat migrasi — lihat 46_DocumentAttachmentBackfill).
-      var nama = a.File_Name || a.File_Url || '(tanpa nama)';
+      // Display_Name (kalau pernah di-rename admin) didahulukan dari File_Name
+      // — rename itu UI-ONLY, tidak pernah menyentuh nama file di Drive.
+      var nama = a.Display_Name || a.File_Name || a.File_Url || '(tanpa nama)';
       var bisaLepas = a.Source !== 'GENERATE';
       return '<div class="att">' +
         '<span class="att-ic">' + attachmentIcon(a) + '</span>' +
@@ -975,12 +997,54 @@
         '<div class="att-act">' +
           (a.File_Url ? '<a class="mini pri" href="' + escHtmlDoc(a.File_Url) + '" target="_blank" rel="noopener">Buka ↗</a>' : '') +
           (a.File_Url ? '<button type="button" class="mini" title="Salin link" onclick="copyAttachmentLink(this, \'' + escHtmlDoc(a.File_Url) + '\')">⧉</button>' : '') +
+          '<button type="button" class="mini" title="Ubah nama tampilan" onclick="openRenameAttachment(\'' + escHtmlDoc(a.Attachment_ID) + '\')">✎</button>' +
           // Baris GENERATE tidak bisa dilepas: ia cerminan PDF yang dikelola
           // proses approval, bukan lampiran yang ditambahkan admin.
           (bisaLepas ? '<button type="button" class="mini dgr" onclick="confirmRemoveAttachment(\'' + escHtmlDoc(a.Attachment_ID) + '\')">Lepas</button>' : '') +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  /* ---- Popup: rename nama tampilan lampiran (UI-only, Drive tidak berubah) ---- */
+  var renameAttachmentId = null;
+
+  function openRenameAttachment(attachmentId) {
+    var att = allAttachments.filter(function (a) { return a.Attachment_ID === attachmentId; })[0];
+    if (!att) return;
+    renameAttachmentId = attachmentId;
+    document.getElementById('renameAttachmentInput').value = att.Display_Name || att.File_Name || '';
+    document.getElementById('renameAttachmentError').innerText = '';
+    document.getElementById('renameAttachmentModal').classList.add('open');
+  }
+  function closeRenameAttachment() {
+    document.getElementById('renameAttachmentModal').classList.remove('open');
+    renameAttachmentId = null;
+  }
+
+  function submitRenameAttachment() {
+    var attachmentId = renameAttachmentId;
+    if (!attachmentId) return;
+    var displayName = document.getElementById('renameAttachmentInput').value.trim();
+    var errEl = document.getElementById('renameAttachmentError');
+    if (!displayName) { errEl.innerText = 'Nama dokumen wajib diisi.'; return; }
+    errEl.innerText = '';
+    TechfordLoading.show('Menyimpan nama...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+        allAttachments = res.data;
+        closeRenameAttachment();
+        var doc = currentDocOrNull();
+        if (doc) renderDocAttachments(doc);
+        TechfordToast.show('Nama dokumen diperbarui.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        errEl.innerText = 'Gagal menyimpan: ' + (err && err.message ? err.message : err);
+      })
+      .document_renameAttachment(attachmentId, displayName);
   }
 
   /**
@@ -1045,6 +1109,7 @@
     attPickedFile = null;
     document.getElementById('attUploadInput').value = '';
     document.getElementById('attUploadInfo').style.display = 'none';
+    document.getElementById('attUploadDisplayName').value = '';
     document.getElementById('attUploadError').innerText = '';
     document.getElementById('attUploadSubmitBtn').disabled = true;
     document.getElementById('attUploadSubtitle').innerText =
@@ -1082,6 +1147,9 @@
     infoEl.className = 'att-result ok';
     infoEl.innerHTML = '<strong>' + escHtmlDoc(f.name) + '</strong><br>' +
       (f.size / 1024).toFixed(0) + ' KB · siap diunggah ke folder project';
+    // Default ke nama file asli, tapi tetap bisa diubah admin — nama pada
+    // Drive tidak ikut berubah, cuma nama tampilan di Techford.
+    document.getElementById('attUploadDisplayName').value = f.name;
     document.getElementById('attUploadSubmitBtn').disabled = false;
   }
 
@@ -1122,7 +1190,7 @@
           name: attPickedFile.name,
           mimeType: attPickedFile.type,
           dataBase64: base64
-        }, currentUserName());
+        }, currentUserName(), document.getElementById('attUploadDisplayName').value.trim());
     };
     reader.onerror = function () {
       btn.disabled = false;
@@ -1144,6 +1212,7 @@
     attCheckedLink = null;
     document.getElementById('attLinkInput').value = '';
     document.getElementById('attLinkResult').style.display = 'none';
+    document.getElementById('attLinkDisplayName').value = '';
     document.getElementById('attLinkError').innerText = '';
     document.getElementById('attLinkMoveBtn').disabled = true;
     document.getElementById('attLinkSubtitle').innerText =
@@ -1205,6 +1274,9 @@
       el.innerHTML = '<strong>✓ Siap dipindahkan</strong><br>' +
         escHtmlDoc(data.name || '(tanpa nama)') +
         (data.ownerEmail ? '<br><span class="att-result-sub">Pemilik saat ini: ' + escHtmlDoc(data.ownerEmail) + '</span>' : '');
+      // Default ke nama asli file, tetap bisa diubah admin sebelum Pindahkan.
+      var displayNameEl = document.getElementById('attLinkDisplayName');
+      if (!displayNameEl.value) displayNameEl.value = data.name || '';
       return;
     }
 
@@ -1265,7 +1337,7 @@
         errEl.innerText = 'Gagal memindahkan: ' + (err && err.message ? err.message : err) +
           '. Periksa folder project sebelum mencoba lagi — file-nya mungkin sudah pindah.';
       })
-      .document_moveLink(docId, url, currentUserName());
+      .document_moveLink(docId, url, currentUserName(), document.getElementById('attLinkDisplayName').value.trim());
   }
 
   // Tombol & wizard "Kerjakan COR" — kalau dokumen ini SUDAH punya draft

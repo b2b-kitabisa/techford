@@ -78,6 +78,12 @@ var ProjectController = (function (module) {
     });
   };
 
+  module.updateDraftConsultant = function (draftProjectId, consultant) {
+    return ErrorHandler.handle('ProjectController.updateDraftConsultant', function () {
+      return ProjectService.updateDraftConsultant(draftProjectId, consultant);
+    });
+  };
+
   module.updateRevenueBreakdown = function (projectId, input) {
     return ErrorHandler.handle('ProjectController.updateRevenueBreakdown', function () {
       return ProjectService.updateRevenueBreakdown(projectId, input);

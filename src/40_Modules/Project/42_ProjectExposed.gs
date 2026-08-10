@@ -62,6 +62,14 @@ function project_completeDraft(draftProjectId, input, createdBy) {
   return ProjectController.completeDraft(draftProjectId, input, createdBy);
 }
 
+/**
+ * Set/ubah owner draft SAJA — status tetap draft (Is_Draft tidak berubah).
+ * Lihat ProjectService.updateDraftConsultant.
+ */
+function project_updateDraftConsultant(draftProjectId, consultant) {
+  return ProjectController.updateDraftConsultant(draftProjectId, consultant);
+}
+
 function project_updateRevenueBreakdown(projectId, input) {
   return ProjectController.updateRevenueBreakdown(projectId, input);
 }

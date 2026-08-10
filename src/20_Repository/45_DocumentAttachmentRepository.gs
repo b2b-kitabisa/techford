@@ -2,7 +2,12 @@
  * Repository.DocumentAttachmentRepository
  *
  * Header sheet Document_Attachment: Attachment_ID | Doc_ID | Source |
- * File_Id | File_Name | File_Url | Added_By | Added_Date
+ * File_Id | File_Name | File_Url | Added_By | Added_Date | Display_Name
+ *
+ * Display_Name ditambahkan belakangan (self-migrating, lihat ensureColumns)
+ * — nama tampilan UI yang admin boleh ubah bebas, TANPA menyentuh File_Name
+ * (salinan nama asli di Drive) maupun file sungguhan di Drive. Kosong =
+ * belum pernah di-rename, UI jatuh balik ke File_Name.
  *
  * KENAPA SHEET TERSENDIRI, BUKAN KOLOM DI Document_Pipeline
  * ---------------------------------------------------------
@@ -33,7 +38,7 @@ var DocumentAttachmentRepository = (function (module) {
   var base = new BaseRepository(Config.SHEETS.DOCUMENT_ATTACHMENT);
 
   var HEADERS = ['Attachment_ID', 'Doc_ID', 'Source', 'File_Id', 'File_Name',
-    'File_Url', 'Added_By', 'Added_Date'];
+    'File_Url', 'Added_By', 'Added_Date', 'Display_Name'];
 
   /**
    * Sheet ini dibuat OTOMATIS saat lampiran pertama ditulis — TAB-nya
@@ -70,10 +75,45 @@ var DocumentAttachmentRepository = (function (module) {
     })[0] || null;
   };
 
+  /**
+   * Display_Name ditambahkan belakangan (self-migrating, sama pola dengan
+   * ProjectRepository.ensureColumns) — nama tampilan UI yang boleh berbeda
+   * dari File_Name asli, tanpa menyentuh nama file sungguhan di Drive.
+   * Kosong = belum pernah di-rename, UI jatuh balik ke File_Name.
+   */
+  module.ensureColumns = function (columnNames) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      columnNames.forEach(function (name) {
+        if (headers.indexOf(name) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(name);
+          headers.push(name);
+        }
+      });
+    });
+  };
+
   module.create = function (row) {
     ensureSheet();
+    module.ensureColumns(['Display_Name']);
     base.insert(row);
     module.invalidateCache();
+  };
+
+  /**
+   * Ubah HANYA nama tampilan UI — File_Id/File_Name/File_Url (rujukan Drive
+   * sesungguhnya) tidak disentuh. Lihat DocumentService.renameAttachment.
+   */
+  module.renameDisplayName = function (attachmentId, displayName) {
+    module.ensureColumns(['Display_Name']);
+    var updated = base.updateWhere(function (row) {
+      return String(row.Attachment_ID || '') === String(attachmentId);
+    }, { Display_Name: displayName });
+    module.invalidateCache();
+    return updated;
   };
 
   /**

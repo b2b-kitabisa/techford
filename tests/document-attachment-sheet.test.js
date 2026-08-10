@@ -142,7 +142,7 @@ console.log('\n2) Header tertulis benar, lalu baris data ikut ke kolom yang tepa
   const sheet = ss.getSheetByName('Document_Attachment');
   const header = sheet._rows[0];
   ok('header sesuai urutan yang dijanjikan',
-    header.join(',') === 'Attachment_ID,Doc_ID,Source,File_Id,File_Name,File_Url,Added_By,Added_Date',
+    header.join(',') === 'Attachment_ID,Doc_ID,Source,File_Id,File_Name,File_Url,Added_By,Added_Date,Display_Name',
     header.join(','));
 
   const semua = repo.findAll();

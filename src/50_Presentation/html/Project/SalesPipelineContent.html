@@ -561,6 +561,9 @@
     <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);" id="otherDocUploadSubtitle"></p>
     <input type="file" id="otherDocUploadInput" onchange="onOtherDocFilePicked()">
     <div id="otherDocUploadInfo" class="att-result" style="display:none;"></div>
+    <label style="display:block; margin-top:10px; font-size:11.5px; font-weight:600; color:var(--text-muted);">Nama Dokumen (tampilan di Techford)
+      <input id="otherDocUploadDisplayName" placeholder="Nama file asli" style="width:100%; margin-top:4px;" autocomplete="off">
+    </label>
     <div id="otherDocUploadError" class="error"></div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeOtherDocUpload()">Batal</button>
@@ -578,11 +581,28 @@
       <button class="btn-outline" id="otherDocLinkCheckBtn" onclick="submitOtherDocLinkCheck()">Cek</button>
     </div>
     <div id="otherDocLinkResult" class="att-result" style="display:none;"></div>
+    <label style="display:block; margin-top:10px; font-size:11.5px; font-weight:600; color:var(--text-muted);">Nama Dokumen (tampilan di Techford)
+      <input id="otherDocLinkDisplayName" placeholder="Nama file asli" style="width:100%; margin-top:4px;" autocomplete="off">
+    </label>
     <div id="otherDocLinkError" class="error"></div>
     <div class="placeholder-note" id="otherDocLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah. Kalau file ini bukan milik B2B, pemiliknya perlu <strong>transfer ownership</strong> ke email B2B dulu (bukan sekadar beri akses) sebelum bisa dipindahkan.</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeOtherDocLink()">Batal</button>
       <button class="btn-save" id="otherDocLinkMoveBtn" onclick="submitOtherDocMove()" disabled>Pindahkan ke Folder Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename UI-ONLY — nama file sungguhan di Drive tidak disentuh. -->
+<div class="confirm-overlay" id="renameOtherDocModal">
+  <div class="confirm-box" style="width:420px; text-align:left;">
+    <h3 style="margin:0 0 10px;">Ubah Nama Dokumen</h3>
+    <p style="margin:0 0 10px; font-size:12px; color:var(--text-muted);">Nama tampilan di Techford saja — nama file di Drive tetap sama.</p>
+    <input id="renameOtherDocInput" style="width:100%;" autocomplete="off">
+    <div id="renameOtherDocError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" onclick="closeRenameOtherDoc()">Batal</button>
+      <button class="btn-save" onclick="submitRenameOtherDoc()">Simpan</button>
     </div>
   </div>
 </div>
@@ -653,6 +673,22 @@
     <div class="confirm-actions">
       <button class="btn-outline" onclick="closeProjectDeleteConfirm()">Batal</button>
       <button class="btn-danger" id="projectDeleteSubmitBtn" onclick="submitDeleteProject()" disabled>Hapus Permanen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Set Owner Draft (tanpa Lengkapi penuh) ================= -->
+<div class="confirm-overlay" id="setDraftOwnerModal">
+  <div class="confirm-box">
+    <h3>Tentukan Owner Draft</h3>
+    <p style="font-size:12.5px; margin-bottom:10px;">
+      Status project tetap <strong>DRAFT</strong> — field lain baru diisi lewat "Lengkapi".
+    </p>
+    <select id="setDraftOwnerSelect" style="width:100%; margin-bottom:14px;"><option value="">Pilih Consultant...</option></select>
+    <div id="setDraftOwnerError" class="error"></div>
+    <div class="confirm-actions">
+      <button class="btn-outline" onclick="closeSetDraftOwner()">Batal</button>
+      <button class="btn-save" onclick="submitSetDraftOwner()">Simpan</button>
     </div>
   </div>
 </div>
@@ -1332,6 +1368,7 @@
 
     document.getElementById('newConsultant').innerHTML = '<option value="">Consultant</option>' + options;
     document.getElementById('editConsultant').innerHTML = '<option value="">Pilih Consultant...</option>' + options;
+    document.getElementById('setDraftOwnerSelect').innerHTML = '<option value="">Pilih Consultant...</option>' + options;
   }
 
   // ---- Format helper ----
@@ -1898,10 +1935,17 @@
         : '<div class="entity-name">' + escHtml(p.Project_ID) + retainerTag + '</div>' +
           '<div class="entity-pic">' + escHtml(p.Project_Name || '-') + '</div>';
 
+      // Draft belum tentu punya owner sejak dibuat (createDraftProject's
+      // consultant argumen opsional) — tombol ini biarkan admin menentukan
+      // owner draft KAPAN SAJA tanpa harus menunggu "Lengkapi" penuh siap,
+      // lihat ProjectService.updateDraftConsultant.
       var ownerHtml = p.Consultant
         ? '<div class="pl-owner"><span class="pl-av" style="background:' + avatarColorFor(p.Consultant) + ';">' +
-          escHtml(initialsOf(p.Consultant)) + '</span><span>' + escHtml(p.Consultant) + '</span></div>'
-        : '<span class="entity-pic">—</span>';
+          escHtml(initialsOf(p.Consultant)) + '</span><span>' + escHtml(p.Consultant) + '</span></div>' +
+          (isDraft ? '<button class="pl-owner-edit-btn" onclick="openSetDraftOwner(\'' + p.Project_ID + '\')" title="Ubah owner draft">✎</button>' : '')
+        : (isDraft
+          ? '<button class="btn-outline" style="padding:4px 10px; font-size:12px;" onclick="openSetDraftOwner(\'' + p.Project_ID + '\')">+ Owner</button>'
+          : '<span class="entity-pic">—</span>');
 
       var valueHtml = isDraft
         ? '<span class="entity-pic">—</span>'
@@ -3220,7 +3264,9 @@
     }
 
     container.innerHTML = '<div class="att-list">' + list.map(function (a) {
-      var nama = a.File_Name || a.File_Url || '(tanpa nama)';
+      // Display_Name (rename UI-only admin) didahulukan — lihat catatan
+      // renderDocAttachments di DocumentPipelineContent, mekanismenya sama.
+      var nama = a.Display_Name || a.File_Name || a.File_Url || '(tanpa nama)';
       return '<div class="att">' +
         '<span class="att-ic">' + attachmentIconPipeline(a) + '</span>' +
         '<div class="att-main">' +
@@ -3232,10 +3278,52 @@
         '<div class="att-act">' +
           (a.File_Url ? '<a class="mini pri" href="' + escAttr(a.File_Url) + '" target="_blank" rel="noopener">Buka ↗</a>' : '') +
           (a.File_Url ? '<button type="button" class="mini" title="Salin link" onclick="copyToClipboard(\'' + escAttr(a.File_Url) + '\', this)">⧉</button>' : '') +
+          '<button type="button" class="mini" title="Ubah nama tampilan" onclick="openRenameOtherDoc(\'' + escAttr(a.Attachment_ID) + '\')">✎</button>' +
           '<button type="button" class="mini dgr" onclick="confirmRemoveOtherDoc(\'' + escAttr(a.Attachment_ID) + '\')">Lepas</button>' +
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  /* ---- Popup: rename nama tampilan lampiran (UI-only, Drive tidak berubah) ---- */
+  var renameOtherDocId = null;
+
+  function openRenameOtherDoc(attachmentId) {
+    var att = allAttachments.filter(function (a) { return a.Attachment_ID === attachmentId; })[0];
+    if (!att) return;
+    renameOtherDocId = attachmentId;
+    document.getElementById('renameOtherDocInput').value = att.Display_Name || att.File_Name || '';
+    document.getElementById('renameOtherDocError').innerText = '';
+    document.getElementById('renameOtherDocModal').classList.add('open');
+  }
+  function closeRenameOtherDoc() {
+    document.getElementById('renameOtherDocModal').classList.remove('open');
+    renameOtherDocId = null;
+  }
+
+  function submitRenameOtherDoc() {
+    var attachmentId = renameOtherDocId;
+    if (!attachmentId) return;
+    var displayName = document.getElementById('renameOtherDocInput').value.trim();
+    var errEl = document.getElementById('renameOtherDocError');
+    if (!displayName) { errEl.innerText = 'Nama dokumen wajib diisi.'; return; }
+    errEl.innerText = '';
+    TechfordLoading.show('Menyimpan nama...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) { errEl.innerText = res.error.message; return; }
+        allAttachments = res.data;
+        closeRenameOtherDoc();
+        var project = currentProjectOrNull();
+        if (project) renderOtherDocView(project);
+        TechfordToast.show('Nama dokumen diperbarui.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        errEl.innerText = 'Gagal menyimpan: ' + (err && err.message ? err.message : err);
+      })
+      .document_renameAttachment(attachmentId, displayName);
   }
 
   /**
@@ -3283,6 +3371,7 @@
     otherDocPickedFile = null;
     document.getElementById('otherDocUploadInput').value = '';
     document.getElementById('otherDocUploadInfo').style.display = 'none';
+    document.getElementById('otherDocUploadDisplayName').value = '';
     document.getElementById('otherDocUploadError').innerText = '';
     document.getElementById('otherDocUploadSubmitBtn').disabled = true;
     document.getElementById('otherDocUploadSubtitle').innerText =
@@ -3315,6 +3404,7 @@
     infoEl.className = 'att-result ok';
     infoEl.innerHTML = '<strong>' + escHtml(f.name) + '</strong><br>' +
       (f.size / 1024).toFixed(0) + ' KB · siap diunggah ke folder project';
+    document.getElementById('otherDocUploadDisplayName').value = f.name;
     document.getElementById('otherDocUploadSubmitBtn').disabled = false;
   }
 
@@ -3354,7 +3444,7 @@
           name: otherDocPickedFile.name,
           mimeType: otherDocPickedFile.type,
           dataBase64: base64
-        }, currentUserNamePipeline());
+        }, currentUserNamePipeline(), document.getElementById('otherDocUploadDisplayName').value.trim());
     };
     reader.onerror = function () {
       btn.disabled = false;
@@ -3376,6 +3466,7 @@
     otherDocCheckedLink = null;
     document.getElementById('otherDocLinkInput').value = '';
     document.getElementById('otherDocLinkResult').style.display = 'none';
+    document.getElementById('otherDocLinkDisplayName').value = '';
     document.getElementById('otherDocLinkError').innerText = '';
     document.getElementById('otherDocLinkMoveBtn').disabled = true;
     document.getElementById('otherDocLinkSubtitle').innerText =
@@ -3430,6 +3521,8 @@
       el.innerHTML = '<strong>✓ Siap dipindahkan</strong><br>' +
         escHtml(data.name || '(tanpa nama)') +
         (data.ownerEmail ? '<br><span class="att-result-sub">Pemilik saat ini: ' + escHtml(data.ownerEmail) + '</span>' : '');
+      var otherDocDisplayNameEl = document.getElementById('otherDocLinkDisplayName');
+      if (!otherDocDisplayNameEl.value) otherDocDisplayNameEl.value = data.name || '';
       return;
     }
 
@@ -3486,7 +3579,7 @@
         errEl.innerText = 'Gagal memindahkan: ' + (err && err.message ? err.message : err) +
           '. Periksa folder project sebelum mencoba lagi — file-nya mungkin sudah pindah.';
       })
-      .document_moveProjectLink(projectId, url, currentUserNamePipeline());
+      .document_moveProjectLink(projectId, url, currentUserNamePipeline(), document.getElementById('otherDocLinkDisplayName').value.trim());
   }
 
   function toggleDocRequestPending(key, checked) {
@@ -4094,6 +4187,49 @@
     document.getElementById('projectDeleteConfirm').classList.remove('open');
   }
 
+  var setDraftOwnerProjectId = null;
+
+  /** Tombol "+ Owner"/✎ di kolom Owner baris draft — lihat renderPipelineTable. */
+  function openSetDraftOwner(draftProjectId) {
+    var project = getProjectById(draftProjectId);
+    if (!project || !project.Is_Draft) return;
+    setDraftOwnerProjectId = draftProjectId;
+    document.getElementById('setDraftOwnerSelect').value = project.Consultant || '';
+    document.getElementById('setDraftOwnerError').innerText = '';
+    document.getElementById('setDraftOwnerModal').classList.add('open');
+  }
+
+  function closeSetDraftOwner() {
+    document.getElementById('setDraftOwnerModal').classList.remove('open');
+    setDraftOwnerProjectId = null;
+  }
+
+  function submitSetDraftOwner() {
+    var projectId = setDraftOwnerProjectId;
+    if (!projectId) return;
+    var consultant = document.getElementById('setDraftOwnerSelect').value;
+    var errEl = document.getElementById('setDraftOwnerError');
+    errEl.innerText = '';
+    TechfordLoading.show('Menyimpan owner...');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) {
+          errEl.innerText = res.error.message;
+          return;
+        }
+        applyProjectPatch(res && res.data);
+        closeSetDraftOwner();
+        showPipelineSuccess('Owner draft disimpan. Status tetap DRAFT.');
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        errEl.innerText = 'Gagal menyimpan: ' + (err && err.message ? err.message : err);
+      })
+      .project_updateDraftConsultant(projectId, consultant);
+  }
+
   function onProjectDeleteConfirmInput() {
     var project = currentDraftOrNull();
     var target = String((project && (project.Project_Name || project.Project_ID)) || '').trim().toLowerCase();
@@ -4519,7 +4655,7 @@
     return '<div class="ads-kpi-bar-wrap ' + (p.tercapai ? 'kpi-hit' : 'kpi-miss') + '">' +
       '<div class="ads-kpi-bar-top">' +
         '<span class="ads-kpi-bar-pct">' + p.persenTeks + '</span>' +
-        '<span class="ads-kpi-bar-delta">' + p.selisihTeks + '</span>' +
+        '<span class="ads-kpi-bar-delta ' + (p.tercapai ? 'is-surplus' : 'is-shortfall') + '">' + p.selisihTeks + '</span>' +
         '<span class="ads-kpi-bar-target">target ' + formatRupiah(editAdsKpiTarget) + '</span>' +
       '</div>' +
       '<div class="ads-kpi-bar"><div class="ads-kpi-bar-fill" style="width:' + lebar + '%;"></div></div>' +
@@ -5163,7 +5299,7 @@
       '. Progress dihitung dari Total GDV Actual di box Ads Sponsorship (sumber: Ads Progress).';
     pill.innerHTML =
       '<span class="kpi-pill-pct">' + p.persenTeks + '</span>' +
-      '<span class="kpi-pill-delta">' + p.selisihTeks + '</span>' +
+      '<span class="kpi-pill-delta ' + (p.tercapai ? 'is-surplus' : 'is-shortfall') + '">' + p.selisihTeks + '</span>' +
       '<span class="kpi-pill-target">dari target ' + formatRupiah(editAdsKpiTarget) + '</span>';
   }
 
