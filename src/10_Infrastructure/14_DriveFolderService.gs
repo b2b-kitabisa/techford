@@ -265,8 +265,28 @@ var DriveFolderService = (function (module) {
     return '';
   };
 
-  /** Email akun yang menjalankan script — yang harus diberi akses Editor. */
+  /**
+   * Email akun yang menjalankan script — tujuan transfer ownership.
+   *
+   * Drive.About.get() DIUTAMAKAN, BUKAN Session.getEffectiveUser(). Web app
+   * ini executeAs USER_DEPLOYING, dan Session.getEffectiveUser() butuh scope
+   * userinfo.email TERSENDIRI yang cuma ter-otorisasi ulang kalau developer
+   * eksplisit klik consent lagi setelah kode BARU menambah pemanggilan itu —
+   * clasp deploy TIDAK memicu consent baru. Gagalnya SENYAP (bukan
+   * exception, cuma balik string kosong), jadi bug ini bisa lolos tanpa
+   * error di log sama sekali.
+   *
+   * Drive.About.get() memakai scope Drive yang SAMA dengan yang sudah
+   * dipakai Drive.Files.get/update di seluruh file ini — kalau itu jalan
+   * (dan sudah terbukti jalan, mengingat owner file lain berhasil terbaca),
+   * ini juga pasti jalan.
+   */
   module.serviceAccountEmail = function () {
+    try {
+      var about = Drive.About.get({ fields: 'user' });
+      var email = about.user && about.user.emailAddress;
+      if (email) return email;
+    } catch (e) { /* lanjut ke fallback di bawah */ }
     try {
       return Session.getEffectiveUser().getEmail() || '';
     } catch (e) {
@@ -314,7 +334,7 @@ var DriveFolderService = (function (module) {
     var file;
     try {
       file = Drive.Files.get(fileId, allDrives({
-        fields: 'id,name,mimeType,trashed,parents,driveId,owners(emailAddress),' +
+        fields: 'id,name,mimeType,trashed,parents,driveId,ownedByMe,owners(emailAddress),' +
           'shortcutDetails(targetId)'
       }));
     } catch (e) {
@@ -363,17 +383,21 @@ var DriveFolderService = (function (module) {
     }
 
     var ownerEmail = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
-    var b2bEmail = module.serviceAccountEmail();
-    var sudahMilikB2B = ownerEmail && b2bEmail &&
-      ownerEmail.toLowerCase() === b2bEmail.toLowerCase();
 
-    if (!sudahMilikB2B) {
+    // ownedByMe DIUTAMAKAN — field ini langsung dari Drive API, dihitung
+    // pakai identitas yang SAMA yang melakukan panggilan Files.get ini
+    // sendiri. TIDAK dibandingkan lewat string email (Session.getEffectiveUser
+    // vs owners[0].emailAddress) karena Session bisa balik string kosong
+    // secara SENYAP kalau scope-nya belum ter-otorisasi ulang di konteks web
+    // app — perbandingan string lalu selalu gagal walau pemiliknya sudah
+    // benar B2B. ownedByMe tidak punya masalah itu sama sekali.
+    if (!file.ownedByMe) {
       return {
         ok: false, canMove: false, needTransfer: true,
         fileId: fileId, name: file.name, ownerEmail: ownerEmail,
         reason: 'File ini masih dimiliki ' + (ownerEmail || 'pihak lain') + ', bukan B2B. ' +
-          'Transfer OWNERSHIP dulu ke email B2B (bukan sekadar beri akses Editor), ' +
-          'lalu klik Cek lagi.'
+          'Transfer OWNERSHIP dulu ke ' + (module.serviceAccountEmail() || 'email B2B') +
+          ' (bukan sekadar beri akses Editor), lalu klik Cek lagi.'
       };
     }
 
@@ -409,7 +433,7 @@ var DriveFolderService = (function (module) {
     var targetFolderId = module.folderForProject(projectId);
 
     var file = Drive.Files.get(fileId, allDrives({
-      fields: 'id,name,parents,mimeType,owners(emailAddress)'
+      fields: 'id,name,parents,mimeType,ownedByMe,owners(emailAddress)'
     }));
 
     if (file.mimeType === FOLDER_MIME) {
@@ -421,17 +445,16 @@ var DriveFolderService = (function (module) {
       return { fileId: fileId, name: file.name, moved: false, folderId: targetFolderId };
     }
 
-    // Gerbangnya KEPEMILIKAN, sama seperti checkLink — lihat catatan di sana.
+    // Gerbangnya KEPEMILIKAN via ownedByMe, sama seperti checkLink — lihat
+    // catatan di sana kenapa ini TIDAK dibandingkan lewat string email.
     // Dicek ULANG di sini (bukan percaya hasil checkLink dari client): owner
     // bisa berubah di antara dua klik, dan endpoint ini bisa dipanggil
     // langsung tanpa lewat tombol Cek.
-    var ownerEmail = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
-    var b2bEmail = module.serviceAccountEmail();
-    var sudahMilikB2B = ownerEmail && b2bEmail && ownerEmail.toLowerCase() === b2bEmail.toLowerCase();
-    if (!sudahMilikB2B) {
+    if (!file.ownedByMe) {
+      var ownerEmail = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
       throw new AppError('VALIDATION_ERROR',
         'File ini masih dimiliki ' + (ownerEmail || 'pihak lain') + ', bukan B2B. Transfer ' +
-        'ownership dulu ke ' + (b2bEmail || 'email B2B') + ', lalu coba lagi.');
+        'ownership dulu ke ' + (module.serviceAccountEmail() || 'email B2B') + ', lalu coba lagi.');
     }
 
     Drive.Files.update({}, fileId, null, allDrives({

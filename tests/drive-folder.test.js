@@ -65,9 +65,13 @@ function build(driveFiles, clients, projects) {
   vm.runInContext('var ErrorHandler;' + fs.readFileSync(path.join(SRC, '00_Core/02_ErrorHandler.gs'), 'utf8'), ctx);
 
   ctx.Config = { TECHFORD_ROOT_FOLDER_ID: ROOT };
+  // Session SENGAJA dibuat tampak berfungsi di sini — supaya test yang gagal
+  // karena logika ownership yang salah tidak bisa "lolos diam-diam" cuma
+  // gara-gara Session juga ikut dibuat rusak di harness. Skenario Session
+  // benar-benar rusak (mereproduksi bug aslinya) diuji terpisah di bagian 13.
   ctx.Session = { getEffectiveUser: () => ({ getEmail: () => 'b2b@kitabisa.com' }) };
-
   ctx.Drive = {
+    About: { get: () => ({ user: { emailAddress: 'b2b@kitabisa.com' } }) },
     Files: {
       get(fileId, opt) {
         // supportsAllDrives WAJIB. Tanpa itu operasi Shared Drive ditolak
@@ -76,7 +80,16 @@ function build(driveFiles, clients, projects) {
         if (!opt || opt.supportsAllDrives !== true) throw new Error('supportsAllDrives hilang di get');
         const f = store.files[fileId];
         if (!f) { const e = new Error('File not found: ' + fileId); e.code = 404; throw e; }
-        return JSON.parse(JSON.stringify(f));
+        const salinan = JSON.parse(JSON.stringify(f));
+        // ownedByMe DITURUNKAN dari owners, bukan ditulis manual di setiap
+        // fixture — meniru Drive API sungguhan: field itu murni cerminan
+        // "apakah owners[0] adalah akun yang menjalankan panggilan ini",
+        // bukan properti independen yang bisa diset sembarangan.
+        if (salinan.ownedByMe === undefined) {
+          const owner = salinan.owners && salinan.owners[0] && salinan.owners[0].emailAddress;
+          salinan.ownedByMe = !!owner && owner.toLowerCase() === 'b2b@kitabisa.com';
+        }
+        return salinan;
       },
       create(resource, media, opt) {
         if (!opt || opt.supportsAllDrives !== true) throw new Error('supportsAllDrives hilang di create');
@@ -127,7 +140,7 @@ function build(driveFiles, clients, projects) {
 
   vm.runInContext('var DriveFolderService;' +
     fs.readFileSync(path.join(SRC, '10_Infrastructure/14_DriveFolderService.gs'), 'utf8'), ctx);
-  return { svc: ctx.DriveFolderService, store: store };
+  return { svc: ctx.DriveFolderService, store: store, ctx: ctx };
 }
 
 const KLIEN = { Client_ID: 'CL26-00173', Brand_Name: 'PARAGON' };
@@ -387,6 +400,48 @@ console.log('\n12) moveIntoProjectFolder — lolos begitu B2B sudah owner');
   ok('berhasil dipindah', hasil.moved === true);
   ok('parent lama dilepas',
     store.files['1sudahAAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents.indexOf('PRIBADI') === -1);
+}
+
+console.log('\n13) Bug asli: identitas (About/Session) rusak SENYAP, tapi ownedByMe tetap benar');
+{
+  // Reproduksi laporan lapangan persis: file SUDAH dimiliki B2B (Drive tahu
+  // ini lewat ownedByMe, dihitung dari identitas yang benar-benar melakukan
+  // panggilan API), TAPI cara lama (bandingkan owners[0].emailAddress
+  // dengan Session.getEffectiveUser().getEmail()) akan gagal kalau Session
+  // balik string kosong — yang persis terjadi di web app executeAs
+  // USER_DEPLOYING kalau scope userinfo.email belum ter-otorisasi ulang
+  // setelah kode baru dideploy. Gagalnya SENYAP: bukan exception, cuma
+  // string kosong, jadi tidak ada apa pun di log yang menandakan ada
+  // masalah.
+  const { svc, store, ctx } = build({
+    '1ownedButBrokenAAAAAAAAAAAAAAAAAA': {
+      id: '1ownedButBrokenAAAAAAAAAAAAAAAAAA', name: 'Deck', mimeType: 'application/vnd.google-apps.spreadsheet',
+      trashed: false, parents: ['PRIBADI'], owners: [{ emailAddress: 'b2b@kitabisa.com' }]
+      // ownedByMe TIDAK ditulis manual di sini — diturunkan otomatis oleh
+      // Files.get tiruan dari kecocokan owner, persis Drive sungguhan.
+    }
+  }, [KLIEN], [PROJEK]);
+
+  // Rusak identitasnya SETELAH build — Drive.About.get melempar (persis
+  // scope belum diotorisasi), Session juga dibuat kosong (skenario TERBURUK,
+  // kedua fallback sama-sama gagal).
+  ctx.Drive.About.get = () => { throw new Error('insufficient authentication scopes'); };
+  ctx.Session.getEffectiveUser = () => ({ getEmail: () => '' });
+
+  const cek = svc.checkLink('https://docs.google.com/spreadsheets/d/1ownedButBrokenAAAAAAAAAAAAAAAAAA/edit', 'PRJ26-00084');
+  ok('checkLink TETAP lolos walau identitas B2B tidak terbaca',
+    cek.ok === true && cek.canMove === true, JSON.stringify(cek));
+
+  const hasil = svc.moveIntoProjectFolder('1ownedButBrokenAAAAAAAAAAAAAAAAAA', 'PRJ26-00084');
+  ok('moveIntoProjectFolder TETAP jalan', hasil.moved === true, JSON.stringify(hasil));
+  ok('file benar-benar berpindah',
+    store.files['1ownedButBrokenAAAAAAAAAAAAAAAAAA'].parents.indexOf('PRIBADI') === -1);
+
+  // serviceAccountEmail() sendiri boleh kembali kosong saat identitas rusak
+  // total (dua-duanya gagal) — itu cuma memengaruhi TAMPILAN "transfer ke
+  // email X", tidak pernah memengaruhi keputusan boleh-tidaknya pindah.
+  ok('serviceAccountEmail tidak melempar walau kedua sumber gagal',
+    svc.serviceAccountEmail() === '');
 }
 
 console.log('\n' + (failures.length
