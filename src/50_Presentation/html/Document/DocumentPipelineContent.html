@@ -254,7 +254,7 @@
     </div>
     <div id="attLinkResult" class="att-result" style="display:none;"></div>
     <div id="attLinkError" class="error"></div>
-    <div class="placeholder-note" id="attLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah.</div>
+    <div class="placeholder-note" id="attLinkHint">File akan <strong>dipindahkan</strong> ke folder project — bukan disalin. Link dan isinya tetap sama, hanya lokasinya yang berubah. Kalau file ini bukan milik B2B, pemiliknya perlu <strong>transfer ownership</strong> ke email B2B dulu (bukan sekadar beri akses) sebelum bisa dipindahkan.</div>
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeAttachmentLink()">Batal</button>
       <button class="btn-save" id="attLinkMoveBtn" onclick="submitAttachmentMove()" disabled>Pindahkan ke Folder Project</button>
@@ -1226,9 +1226,9 @@
     el.className = 'att-result warn';
     var html = '<strong>⚠ Belum bisa dipindahkan</strong><br>' + escHtmlDoc(data.reason || '');
     // Email B2B ditampilkan lengkap dengan tombol salin HANYA kalau memang
-    // masalahnya izin — untuk link salah ketik, menampilkan email cuma
-    // mengalihkan perhatian dari sebab sesungguhnya.
-    if (data.needEmail && data.b2bEmail) {
+    // masalahnya akses/ownership — untuk link salah ketik, menampilkan email
+    // cuma mengalihkan perhatian dari sebab sesungguhnya.
+    if ((data.needAccess || data.needTransfer) && data.b2bEmail) {
       html += '<div class="att-email-row">' +
         '<code>' + escHtmlDoc(data.b2bEmail) + '</code>' +
         '<button type="button" class="mini" onclick="copyAttachmentLink(this, \'' + escHtmlDoc(data.b2bEmail) + '\')">⧉ Salin</button>' +

@@ -288,6 +288,18 @@ var DriveFolderService = (function (module) {
    * @returns {Object} {ok, fileId, name, mimeType, canMove, alreadyInPlace,
    *   ownerEmail, reason, needEmail}
    */
+  /**
+   * Gerbangnya KEPEMILIKAN, bukan role akses (Viewer/Editor).
+   *
+   * Alasannya: role akses (Editor/Viewer) mengatur boleh-tidaknya MENGEDIT
+   * isi file, sedangkan hak MEMINDAHKAN file keluar dari lokasinya (terutama
+   * dari My Drive pribadi orang lain ke Shared Drive) hanya dipunyai
+   * pemiliknya — Google mengunci ini di level platform, bukan sesuatu yang
+   * bisa dibuka lewat Editor sekalipun. Jadi memeriksa Editor/Viewer di sini
+   * hanya akan menghasilkan status "OK" yang tetap gagal saat Move
+   * sungguhan dicoba. Satu-satunya pertanyaan yang relevan: apakah
+   * pemiliknya SUDAH B2B atau BELUM.
+   */
   module.checkLink = function (url, projectId) {
     var fileId = module.extractFileId(url);
     if (!fileId) {
@@ -303,19 +315,20 @@ var DriveFolderService = (function (module) {
     try {
       file = Drive.Files.get(fileId, allDrives({
         fields: 'id,name,mimeType,trashed,parents,driveId,owners(emailAddress),' +
-          'shortcutDetails(targetId),capabilities(canMoveItemIntoTeamDrive,canEdit)'
+          'shortcutDetails(targetId)'
       }));
     } catch (e) {
-      // 404 dari Drive TIDAK membedakan "tidak ada" dari "ada tapi kamu tidak
-      // punya akses" — itu memang disengaja Google demi privasi. Jadi pesannya
-      // harus menyebut kedua kemungkinan, bukan menebak salah satu.
+      // 404 Drive tidak membedakan "tidak ada" dari "ada tapi B2B tidak punya
+      // akses sama sekali" — perlu B2B minimal bisa MEMBUKA file untuk tahu
+      // siapa pemiliknya, jadi ini satu-satunya kasus yang masih minta
+      // "beri akses" (apa pun rolenya), bukan soal ownership.
       return {
         ok: false,
         canMove: false,
-        needEmail: true,
+        needAccess: true,
         fileId: fileId,
         reason: 'B2B belum punya akses ke file ini (atau file-nya sudah dihapus). ' +
-          'Beri akses Editor ke email B2B, lalu klik Cek lagi.'
+          'Beri akses ke email B2B dulu (Viewer pun cukup untuk langkah Cek ini), lalu klik Cek lagi.'
       };
     }
 
@@ -349,61 +362,18 @@ var DriveFolderService = (function (module) {
       };
     }
 
-    var caps = file.capabilities || {};
-    if (!caps.canMoveItemIntoTeamDrive) {
-      var owner = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
+    var ownerEmail = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
+    var b2bEmail = module.serviceAccountEmail();
+    var sudahMilikB2B = ownerEmail && b2bEmail &&
+      ownerEmail.toLowerCase() === b2bEmail.toLowerCase();
 
-      // caps.canEdit MEMBEDAKAN dua penyebab yang butuh tindakan berbeda.
-      // Sebelumnya pesan di sini SELALU bilang "kemungkinan masih Viewer"
-      // tanpa memeriksa caps.canEdit sama sekali — jadi tetap muncul apa
-      // adanya walau B2B SUDAH Editor, dan menyuruh user mengulang langkah
-      // yang sudah dia lakukan.
-      if (!caps.canEdit) {
-        return {
-          ok: false, canMove: false, needEmail: true, fileId: fileId, name: file.name,
-          ownerEmail: owner,
-          reason: 'B2B bisa MEMBUKA file ini, tapi belum bisa mengeditnya — aksesnya ' +
-            'kemungkinan masih Viewer/Commenter. Ubah akses email B2B menjadi Editor, ' +
-            'lalu klik Cek lagi.'
-        };
-      }
-
-      // Editor SUDAH benar di file ini, tapi Drive masih menolak Move. Sebab
-      // paling umum: izin "keluarkan dari folder" ada di level FOLDER INDUK,
-      // bukan di file — kalau pemilik hanya men-share filenya (bukan folder
-      // tempat file itu berada), B2B tidak bisa melepaskannya dari folder
-      // itu. Diperiksa langsung supaya pesannya memberi tindakan yang BENAR,
-      // bukan menyuruh mengulang "beri akses Editor" yang sudah dilakukan.
-      var parents = file.parents || [];
-      var pesan;
-      if (!parents.length) {
-        pesan = 'B2B sudah Editor di file ini, tapi Google tetap menolak pemindahannya — ' +
-          'kemungkinan besar dibatasi kebijakan admin Google Workspace organisasi pemilik ' +
-          'file (larangan menambah file pihak luar ke Shared Drive lain). Ini di luar ' +
-          'kendali Techford; sebagai jalan pintas, minta pemiliknya download filenya lalu ' +
-          'unggah lewat "Upload File" di sini.';
-      } else {
-        var parentOk = false;
-        try {
-          var parent = Drive.Files.get(parents[0], allDrives({ fields: 'id,name,capabilities(canRemoveChildren)' }));
-          parentOk = !!(parent.capabilities && parent.capabilities.canRemoveChildren);
-        } catch (e) {
-          parentOk = false; // B2B bahkan tidak punya akses sama sekali ke folder induknya
-        }
-        pesan = parentOk
-          ? 'B2B sudah Editor di file ini, tapi Google tetap menolak pemindahannya — ' +
-            'kemungkinan besar dibatasi kebijakan admin Google Workspace organisasi pemilik ' +
-            'file. Ini di luar kendali Techford; sebagai jalan pintas, minta pemiliknya ' +
-            'download filenya lalu unggah lewat "Upload File" di sini.'
-          : 'B2B sudah Editor di FILE ini, tapi TIDAK punya akses ke FOLDER tempat file ' +
-            'ini berada — Drive butuh izin di folder induk untuk bisa memindahkan isinya. ' +
-            'Minta pemiliknya membagikan FOLDER induknya juga (bukan cuma file), atau ' +
-            'pindahkan file itu ke My Drive root miliknya dulu, lalu klik Cek lagi.';
-      }
-
+    if (!sudahMilikB2B) {
       return {
-        ok: false, canMove: false, needEmail: false, fileId: fileId, name: file.name,
-        ownerEmail: owner, alreadyEditor: true, reason: pesan
+        ok: false, canMove: false, needTransfer: true,
+        fileId: fileId, name: file.name, ownerEmail: ownerEmail,
+        reason: 'File ini masih dimiliki ' + (ownerEmail || 'pihak lain') + ', bukan B2B. ' +
+          'Transfer OWNERSHIP dulu ke email B2B (bukan sekadar beri akses Editor), ' +
+          'lalu klik Cek lagi.'
       };
     }
 
@@ -413,7 +383,7 @@ var DriveFolderService = (function (module) {
       fileId: fileId,
       name: file.name,
       mimeType: file.mimeType,
-      ownerEmail: (file.owners && file.owners[0] && file.owners[0].emailAddress) || ''
+      ownerEmail: ownerEmail
     };
   };
 
@@ -439,7 +409,7 @@ var DriveFolderService = (function (module) {
     var targetFolderId = module.folderForProject(projectId);
 
     var file = Drive.Files.get(fileId, allDrives({
-      fields: 'id,name,parents,mimeType,capabilities(canMoveItemIntoTeamDrive)'
+      fields: 'id,name,parents,mimeType,owners(emailAddress)'
     }));
 
     if (file.mimeType === FOLDER_MIME) {
@@ -450,10 +420,18 @@ var DriveFolderService = (function (module) {
     if (parents.indexOf(targetFolderId) !== -1) {
       return { fileId: fileId, name: file.name, moved: false, folderId: targetFolderId };
     }
-    if (!(file.capabilities || {}).canMoveItemIntoTeamDrive) {
+
+    // Gerbangnya KEPEMILIKAN, sama seperti checkLink — lihat catatan di sana.
+    // Dicek ULANG di sini (bukan percaya hasil checkLink dari client): owner
+    // bisa berubah di antara dua klik, dan endpoint ini bisa dipanggil
+    // langsung tanpa lewat tombol Cek.
+    var ownerEmail = (file.owners && file.owners[0] && file.owners[0].emailAddress) || '';
+    var b2bEmail = module.serviceAccountEmail();
+    var sudahMilikB2B = ownerEmail && b2bEmail && ownerEmail.toLowerCase() === b2bEmail.toLowerCase();
+    if (!sudahMilikB2B) {
       throw new AppError('VALIDATION_ERROR',
-        'B2B belum punya izin memindahkan file ini. Beri akses Editor ke ' +
-        (module.serviceAccountEmail() || 'email B2B') + ' lalu coba lagi.');
+        'File ini masih dimiliki ' + (ownerEmail || 'pihak lain') + ', bukan B2B. Transfer ' +
+        'ownership dulu ke ' + (b2bEmail || 'email B2B') + ', lalu coba lagi.');
     }
 
     Drive.Files.update({}, fileId, null, allDrives({

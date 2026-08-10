@@ -226,34 +226,53 @@ console.log('\n6) Brand_Name berubah -> folder di-RENAME, bukan dibuat baru');
     store.files['ADA'].name);
 }
 
-console.log('\n7) checkLink — gerbangnya canMoveItemIntoTeamDrive, bukan "bisa dibuka"');
+console.log('\n7) checkLink — gerbangnya KEPEMILIKAN, bukan role akses (Viewer/Editor)');
 {
-  const dasar = { mimeType: 'application/vnd.google-apps.document', trashed: false, parents: ['PRIBADI'], owners: [{ emailAddress: 'orang@lain.com' }] };
-  const { svc, store } = build({
-    '1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA': Object.assign({ id: '1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA', name: 'Deck Viewer' }, dasar, { capabilities: { canEdit: false, canMoveItemIntoTeamDrive: false } }),
-    '1editorBBBBBBBBBBBBBBBBBBBBBBBBBB': Object.assign({ id: '1editorBBBBBBBBBBBBBBBBBBBBBBBBBB', name: 'Deck Editor' }, dasar, { capabilities: { canEdit: true, canMoveItemIntoTeamDrive: true } }),
-    '1sampahCCCCCCCCCCCCCCCCCCCCCCCCCC': Object.assign({ id: '1sampahCCCCCCCCCCCCCCCCCCCCCCCCCC', name: 'Deck Buang' }, dasar, { trashed: true, capabilities: { canMoveItemIntoTeamDrive: true } }),
-    '1folderDDDDDDDDDDDDDDDDDDDDDDDDDD': { id: '1folderDDDDDDDDDDDDDDDDDDDDDDDDDD', name: 'Folder', mimeType: 'application/vnd.google-apps.folder', trashed: false, parents: [], capabilities: { canMoveItemIntoTeamDrive: true } }
+  // Alasannya: role akses mengatur boleh-tidaknya MENGEDIT isi file, sedangkan
+  // hak MEMINDAHKAN file keluar dari lokasinya (dari My Drive pribadi orang
+  // lain ke Shared Drive) hanya dipunyai pemiliknya — dikunci Google di level
+  // platform, tidak bisa dibuka lewat Editor sekalipun. Jadi Editor/Viewer
+  // TIDAK LAGI diperiksa sama sekali: satu-satunya pertanyaan yang relevan
+  // adalah apakah pemiliknya SUDAH B2B atau BELUM.
+  const dasar = { mimeType: 'application/vnd.google-apps.document', trashed: false, parents: ['PRIBADI'] };
+  const { svc } = build({
+    // "Editor" — B2B punya akses Editor lengkap, TAPI pemiliknya tetap orang
+    // lain. INI inti bug yang dilaporkan: dulu ini dianggap "canMove" hanya
+    // karena capabilities bilang begitu, padahal Move sungguhan tetap gagal.
+    '1editorBBBBBBBBBBBBBBBBBBBBBBBBBB': Object.assign(
+      { id: '1editorBBBBBBBBBBBBBBBBBBBBBBBBBB', name: 'Deck Editor', owners: [{ emailAddress: 'orang@lain.com' }] }, dasar),
+    // Sudah dimiliki B2B — satu-satunya kondisi yang boleh lolos.
+    '1ownedZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ': Object.assign(
+      { id: '1ownedZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ', name: 'Deck Milik B2B', owners: [{ emailAddress: 'b2b@kitabisa.com' }] }, dasar),
+    '1sampahCCCCCCCCCCCCCCCCCCCCCCCCCC': Object.assign(
+      { id: '1sampahCCCCCCCCCCCCCCCCCCCCCCCCCC', name: 'Deck Buang', owners: [{ emailAddress: 'b2b@kitabisa.com' }] },
+      dasar, { trashed: true }),
+    '1folderDDDDDDDDDDDDDDDDDDDDDDDDDD': { id: '1folderDDDDDDDDDDDDDDDDDDDDDDDDDD', name: 'Folder', mimeType: 'application/vnd.google-apps.folder', trashed: false, parents: [] }
   }, [KLIEN], [PROJEK]);
 
-  // INI inti tesnya: file Viewer BISA dibaca API (get sukses, tidak melempar),
-  // tapi harus tetap ditolak.
-  const viewer = svc.checkLink('https://docs.google.com/document/d/1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA/edit', 'PRJ26-00084');
-  ok('file Viewer ditolak walau bisa dibaca', viewer.ok === false && viewer.canMove === false);
-  ok('alasannya menyebut Editor, bukan sekadar "tidak ada akses"',
-    /Editor/.test(viewer.reason), viewer.reason);
-  ok('ditandai perlu pemberian akses', viewer.needEmail === true);
+  const editorBukanOwner = svc.checkLink('https://docs.google.com/document/d/1editorBBBBBBBBBBBBBBBBBBBBBBBBBB/edit', 'PRJ26-00084');
+  ok('ditolak walau B2B punya akses Editor', editorBukanOwner.ok === false && editorBukanOwner.canMove === false);
+  ok('alasannya soal TRANSFER OWNERSHIP, bukan role akses',
+    /[Tt]ransfer OWNERSHIP/.test(editorBukanOwner.reason) && !/Viewer|Editor menjadi/.test(editorBukanOwner.reason),
+    editorBukanOwner.reason);
+  ok('menyebut pemilik sekarang supaya user tahu siapa yang harus transfer',
+    /orang@lain\.com/.test(editorBukanOwner.reason), editorBukanOwner.reason);
+  ok('ditandai needTransfer (bukan needAccess) — B2B sudah bisa buka filenya',
+    editorBukanOwner.needTransfer === true && !editorBukanOwner.needAccess);
 
-  const editor = svc.checkLink('https://docs.google.com/document/d/1editorBBBBBBBBBBBBBBBBBBBBBBBBBB/edit', 'PRJ26-00084');
-  ok('file Editor lolos', editor.ok === true && editor.canMove === true);
-  ok('nama file dikembalikan untuk ditampilkan', editor.name === 'Deck Editor', editor.name);
+  const owned = svc.checkLink('https://docs.google.com/document/d/1ownedZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ/edit', 'PRJ26-00084');
+  ok('lolos begitu B2B sudah owner', owned.ok === true && owned.canMove === true);
+  ok('nama file dikembalikan untuk ditampilkan', owned.name === 'Deck Milik B2B', owned.name);
 
   const hilang = svc.checkLink('https://docs.google.com/document/d/1hilangEEEEEEEEEEEEEEEEEEEEEEEEEE/edit', 'PRJ26-00084');
   ok('file tak terjangkau ditolak', hilang.ok === false);
-  // 404 Drive tidak membedakan "tidak ada" dari "tidak punya akses" — pesannya
-  // harus menyebut dua-duanya, bukan menebak salah satu.
+  // 404 Drive tidak membedakan "tidak ada" dari "tidak punya akses" — B2B
+  // butuh minimal bisa MEMBUKA file untuk tahu siapa pemiliknya, jadi ini
+  // satu-satunya kasus yang masih soal "beri akses" (apa pun rolenya).
   ok('pesannya tidak menebak: sebut dua kemungkinan',
     /belum punya akses/.test(hilang.reason) && /dihapus/.test(hilang.reason), hilang.reason);
+  ok('ditandai needAccess (bukan needTransfer) — belum tahu siapa pemiliknya',
+    hilang.needAccess === true && !hilang.needTransfer);
 
   ok('file di Tempat Sampah ditolak',
     svc.checkLink('https://docs.google.com/document/d/1sampahCCCCCCCCCCCCCCCCCCCCCCCCCC/edit', 'PRJ26-00084').ok === false);
@@ -263,75 +282,20 @@ console.log('\n7) checkLink — gerbangnya canMoveItemIntoTeamDrive, bukan "bisa
     svc.checkLink('bukan link', 'PRJ26-00084').ok === false);
 }
 
-console.log('\n7b) checkLink — SUDAH Editor tapi Move tetap ditolak (bug nyata dari lapangan)');
+console.log('\n7b) checkLink — cocokkan owner tanpa peduli besar/kecil huruf');
 {
-  // Reproduksi laporan: B2B sudah diberi akses Editor ke Sheet, tapi
-  // checkLink tetap bilang "kemungkinan masih Viewer/Commenter" — padahal
-  // caps.canEdit sudah true. Pesan itu adalah tebakan buta yang tidak pernah
-  // memeriksa caps.canEdit sama sekali. Perbaikannya harus membedakan tiga
-  // kemungkinan begitu canEdit TERBUKTI true:
-  //   a) folder induk tidak ikut dibagikan (paling umum di lapangan)
-  //   b) folder induk dibagikan tapi tanpa izin "keluarkan anak"
-  //   c) tidak ada folder induk sama sekali -> kebijakan domain pemilik
-  const dasarEditor = {
-    mimeType: 'application/vnd.google-apps.spreadsheet', trashed: false,
-    owners: [{ emailAddress: 'partner@luar.com' }],
-    capabilities: { canEdit: true, canMoveItemIntoTeamDrive: false }
-  };
-
-  // (a) Folder induk sama sekali tidak terjangkau B2B (Files.get atas folder
-  // itu melempar 404/403) — kasus paling sering: pemilik cuma share file-nya.
-  {
-    const { svc } = build({
-      '1editSheetAAAAAAAAAAAAAAAAAAAAAAA': Object.assign(
-        { id: '1editSheetAAAAAAAAAAAAAAAAAAAAAAA', name: 'Budget Partner', parents: ['FOLDER_TAK_TERJANGKAU'] },
-        dasarEditor)
-      // 'FOLDER_TAK_TERJANGKAU' SENGAJA tidak didaftarkan di store.files —
-      // Drive.Files.get atasnya akan melempar, sama seperti B2B yang benar-
-      // benar tidak punya akses ke folder itu.
-    }, [KLIEN], [PROJEK]);
-    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetAAAAAAAAAAAAAAAAAAAAAAA/edit', 'PRJ26-00084');
-    ok('tetap ditolak', r.ok === false && r.canMove === false);
-    ok('TIDAK mengulang tuduhan "masih Viewer" — B2B sudah Editor',
-      !/Viewer\/Commenter/.test(r.reason), r.reason);
-    ok('pesan menunjuk ke FOLDER INDUK, bukan file', /FOLDER/.test(r.reason) && /folder induk/.test(r.reason), r.reason);
-    ok('ditandai sudah Editor (supaya UI tidak menawarkan "beri akses" lagi)',
-      r.alreadyEditor === true);
-    ok('needEmail false — bukan lagi soal email yang harus diberi akses',
-      r.needEmail === false);
-  }
-
-  // (b) Folder induk terjangkau, tapi B2B tidak punya izin mengeluarkan isi
-  // folder itu (canRemoveChildren: false) — mis. cuma di-share Viewer di
-  // folder padahal Editor di file-nya.
-  {
-    const { svc } = build({
-      '1editSheetBBBBBBBBBBBBBBBBBBBBBBB': Object.assign(
-        { id: '1editSheetBBBBBBBBBBBBBBBBBBBBBBB', name: 'Budget Partner', parents: ['FOLDER_VIEWER_SAJA'] },
-        dasarEditor),
-      'FOLDER_VIEWER_SAJA': {
-        id: 'FOLDER_VIEWER_SAJA', name: 'Shared Folder', mimeType: 'application/vnd.google-apps.folder',
-        trashed: false, capabilities: { canRemoveChildren: false }
-      }
-    }, [KLIEN], [PROJEK]);
-    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetBBBBBBBBBBBBBBBBBBBBBBB/edit', 'PRJ26-00084');
-    ok('ditolak dengan alasan folder induk juga', /folder induk/.test(r.reason), r.reason);
-    ok('ditandai sudah Editor', r.alreadyEditor === true);
-  }
-
-  // (c) Tidak ada parent sama sekali (file di My Drive root) — satu-satunya
-  // sisa kemungkinan adalah kebijakan domain pemilik file, bukan soal berbagi.
-  {
-    const { svc } = build({
-      '1editSheetCCCCCCCCCCCCCCCCCCCCCCC': Object.assign(
-        { id: '1editSheetCCCCCCCCCCCCCCCCCCCCCCC', name: 'Budget Partner', parents: [] },
-        dasarEditor)
-    }, [KLIEN], [PROJEK]);
-    const r = svc.checkLink('https://docs.google.com/spreadsheets/d/1editSheetCCCCCCCCCCCCCCCCCCCCCCC/edit', 'PRJ26-00084');
-    ok('mengarah ke kebijakan Workspace pemilik, bukan minta akses lagi',
-      /kebijakan admin Google Workspace/.test(r.reason), r.reason);
-    ok('menawarkan jalan pintas Upload manual', /Upload File/.test(r.reason), r.reason);
-  }
+  // Alamat email TIDAK case-sensitive di Google — B2B@Kitabisa.com dan
+  // b2b@kitabisa.com adalah akun yang sama. Perbandingan yang case-sensitive
+  // akan menolak file yang SUDAH benar dimiliki B2B hanya karena Drive
+  // mengembalikan kapitalisasi yang berbeda dari yang diketik user.
+  const { svc } = build({
+    '1capsAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': {
+      id: '1capsAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', name: 'Deck', mimeType: 'application/vnd.google-apps.document',
+      trashed: false, parents: ['PRIBADI'], owners: [{ emailAddress: 'B2B@Kitabisa.com' }]
+    }
+  }, [KLIEN], [PROJEK]);
+  const r = svc.checkLink('https://docs.google.com/document/d/1capsAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/edit', 'PRJ26-00084');
+  ok('tetap dianggap milik B2B walau kapitalisasi beda', r.ok === true && r.canMove === true, r.reason);
 }
 
 console.log('\n8) checkLink — shortcut diikuti ke file aslinya');
@@ -366,7 +330,7 @@ console.log('\n10) moveIntoProjectFolder — parent lama DILEPAS');
     '1moveGGGGGGGGGGGGGGGGGGGGGGGGGGGG': {
       id: '1moveGGGGGGGGGGGGGGGGGGGGGGGGGGGG', name: 'Deck', mimeType: 'application/vnd.google-apps.presentation',
       trashed: false, parents: ['PRIBADI_USER'], webViewLink: 'https://x/1moveGGGGGGGGGGGGGGGGGGGGGGGGGGGG',
-      capabilities: { canMoveItemIntoTeamDrive: true }
+      owners: [{ emailAddress: 'b2b@kitabisa.com' }]
     }
   }, [KLIEN], [PROJEK]);
 
@@ -389,23 +353,40 @@ console.log('\n10) moveIntoProjectFolder — parent lama DILEPAS');
     ulang.moved === false && store.files['1moveGGGGGGGGGGGGGGGGGGGGGGGGGGGG'].parents.length === 1);
 }
 
-console.log('\n11) moveIntoProjectFolder — izin dicek ULANG di server');
+console.log('\n11) moveIntoProjectFolder — kepemilikan dicek ULANG di server');
 {
-  // Hasil tombol Cek dari client TIDAK dipercaya: izin bisa dicabut di antara
-  // dua klik, dan endpoint ini bisa dipanggil langsung tanpa lewat tombol.
+  // Hasil tombol Cek dari client TIDAK dipercaya: owner bisa berubah di
+  // antara dua klik, dan endpoint ini bisa dipanggil langsung tanpa lewat
+  // tombol Cek.
   const { svc, store } = build({
-    '1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA': {
-      id: '1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA', name: 'Deck', mimeType: 'application/vnd.google-apps.presentation',
-      trashed: false, parents: ['PRIBADI'], capabilities: { canMoveItemIntoTeamDrive: false }
+    '1belumAAAAAAAAAAAAAAAAAAAAAAAAAAA': {
+      id: '1belumAAAAAAAAAAAAAAAAAAAAAAAAAAA', name: 'Deck', mimeType: 'application/vnd.google-apps.presentation',
+      trashed: false, parents: ['PRIBADI'], owners: [{ emailAddress: 'orang@lain.com' }]
     }
   }, [KLIEN], [PROJEK]);
   let pesan = '';
-  try { svc.moveIntoProjectFolder('1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA', 'PRJ26-00084'); } catch (e) { pesan = e.message; }
-  ok('ditolak', /belum punya izin memindahkan/.test(pesan), pesan);
-  ok('menyebutkan email B2B yang harus diberi akses',
+  try { svc.moveIntoProjectFolder('1belumAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'PRJ26-00084'); } catch (e) { pesan = e.message; }
+  ok('ditolak', /[Tt]ransfer ownership/.test(pesan), pesan);
+  ok('menyebutkan pemilik sekarang', /orang@lain\.com/.test(pesan), pesan);
+  ok('menyebutkan email B2B tujuan transfer',
     /b2b@kitabisa\.com/.test(pesan), pesan);
   ok('file tidak tersentuh',
-    JSON.stringify(store.files['1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents) === '["PRIBADI"]', JSON.stringify(store.files['1viewerAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents));
+    JSON.stringify(store.files['1belumAAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents) === '["PRIBADI"]',
+    JSON.stringify(store.files['1belumAAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents));
+}
+
+console.log('\n12) moveIntoProjectFolder — lolos begitu B2B sudah owner');
+{
+  const { svc, store } = build({
+    '1sudahAAAAAAAAAAAAAAAAAAAAAAAAAAA': {
+      id: '1sudahAAAAAAAAAAAAAAAAAAAAAAAAAAA', name: 'Deck', mimeType: 'application/vnd.google-apps.presentation',
+      trashed: false, parents: ['PRIBADI'], owners: [{ emailAddress: 'b2b@kitabisa.com' }]
+    }
+  }, [KLIEN], [PROJEK]);
+  const hasil = svc.moveIntoProjectFolder('1sudahAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'PRJ26-00084');
+  ok('berhasil dipindah', hasil.moved === true);
+  ok('parent lama dilepas',
+    store.files['1sudahAAAAAAAAAAAAAAAAAAAAAAAAAAA'].parents.indexOf('PRIBADI') === -1);
 }
 
 console.log('\n' + (failures.length
