@@ -12,6 +12,22 @@
   </p>
   <div id="marginGuideError" class="error"></div>
   <div id="marginGuideSections" style="margin-top:8px;"></div>
+
+  <h3 style="margin-top:24px; margin-bottom:4px; font-size:14px;">Vendor Bank (Kalkulator COR)</h3>
+  <p style="color: var(--text-muted); font-size:13px;">
+    Daftar vendor/entitas beserta bank, status PKP, dan biaya pencairan tetap — mengisi dropdown "Via Vendor" di Kalkulator COR. Vendor baru yang ditambahkan di sini langsung tercantum di kalkulator, tanpa perlu edit sheet manual.
+  </p>
+  <div id="corEntityError" class="error"></div>
+  <div id="corEntityList" style="margin:10px 0;"></div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <input id="newCorEntityName" placeholder="Nama vendor..." style="flex:1; min-width:160px;">
+    <input id="newCorEntityBank" placeholder="Nama bank..." style="flex:1; min-width:140px;">
+    <label style="display:flex; align-items:center; gap:4px; font-size:12px; white-space:nowrap;">
+      <input type="checkbox" id="newCorEntityPkp" style="width:auto;"> PKP
+    </label>
+    <input id="newCorEntityBiaya" type="number" min="0" placeholder="Biaya pencairan (Rp)" style="width:170px;">
+    <button class="btn-outline" onclick="submitAddCorEntity()">+ Tambah Vendor</button>
+  </div>
 </div>
 
 <script>
@@ -33,6 +49,9 @@
   var allMarginGuides = [];
   var openMarginComponents = {};
 
+  var allCorEntities = [];
+  var corEntitiesLoaded = false;
+
   // ---- Bootstrap dengan retry otomatis ----
   // Jembatan google.script.run kadang belum sepenuhnya siap tepat saat
   // halaman baru dimuat — percobaan pertama bisa pulang kosong/tanpa
@@ -52,14 +71,16 @@
     masterDataBootstrapAttempts++;
     fetchMasterData();
     fetchMarginGuides();
+    fetchCorEntities();
     setTimeout(function () {
-      if ((allMasterData.length && marginGuidesLoaded) || masterDataBootstrapDone) return;
+      if ((allMasterData.length && marginGuidesLoaded && corEntitiesLoaded) || masterDataBootstrapDone) return;
       if (masterDataBootstrapAttempts < MASTER_DATA_MAX_ATTEMPTS) {
         bootstrapMasterData();
       } else {
         masterDataBootstrapDone = true;
         fetchMasterData();
         fetchMarginGuides();
+        fetchCorEntities();
       }
     }, MASTER_DATA_RETRY_INTERVAL_MS);
   }
@@ -224,5 +245,83 @@
         alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
       })
       .marginguide_remove(marginGuideId);
+  }
+
+  // ---- Vendor Bank (kalkulator COR — dropdown "Via Vendor") ----
+  function fetchCorEntities() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        corEntitiesLoaded = true;
+        document.getElementById('corEntityError').innerText = '';
+        allCorEntities = res.data;
+        renderCorEntityList();
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('corEntityError').innerText = 'Gagal memuat Vendor Bank: ' + (err && err.message ? err.message : err);
+      })
+      .corentity_getAll();
+  }
+
+  function escMd(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  function renderCorEntityList() {
+    var host = document.getElementById('corEntityList');
+    if (!allCorEntities.length) {
+      host.innerHTML = '<span style="color: var(--text-faint); font-size:12px;">Belum ada vendor.</span>';
+      return;
+    }
+    host.innerHTML = allCorEntities.map(function (e) {
+      var biaya = Number(e.Biaya_Pencairan) || 0;
+      return '<span class="badge badge-contacted" style="margin:2px; display:inline-flex; align-items:center; gap:6px;">' +
+        escMd(e.Entity_Name) + ' — ' + escMd(e.Bank) +
+        (e.Is_PKP ? ' · PKP' : '') +
+        ' · Rp' + biaya.toLocaleString('id-ID') +
+        '<button type="button" onclick="removeCorEntity(\'' + escMd(e.Entity_ID) + '\')" style="background:none;border:none;cursor:pointer;color:inherit;font-weight:700;padding:0;" title="Hapus">×</button>' +
+        '</span>';
+    }).join(' ');
+  }
+
+  function submitAddCorEntity() {
+    var nameInput = document.getElementById('newCorEntityName');
+    var bankInput = document.getElementById('newCorEntityBank');
+    var pkpInput = document.getElementById('newCorEntityPkp');
+    var biayaInput = document.getElementById('newCorEntityBiaya');
+    var entityName = nameInput.value.trim();
+    var bank = bankInput.value.trim();
+    var biaya = biayaInput.value;
+    if (!entityName || !bank || biaya === '') { alert('Nama vendor, bank, dan biaya pencairan wajib diisi.'); return; }
+    if (!techfordConfirm('Tambah vendor "' + entityName + '" (' + bank + ') ke daftar Vendor Bank?')) return;
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Menambah vendor...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        nameInput.value = ''; bankInput.value = ''; pkpInput.checked = false; biayaInput.value = '';
+        fetchCorEntities();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menambah vendor: ' + (err && err.message ? err.message : err));
+      })
+      .corentity_add(entityName, bank, pkpInput.checked, Number(biaya), createdBy);
+  }
+
+  function removeCorEntity(entityId) {
+    if (!techfordConfirm('Hapus vendor ini dari daftar Vendor Bank?')) return;
+    TechfordLoading.show('Menghapus...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchCorEntities();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
+      })
+      .corentity_remove(entityId);
   }
 </script>
