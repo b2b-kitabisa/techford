@@ -1121,9 +1121,106 @@
         return html;
       }
 
+      /**
+       * Rakit model laporan dari DRAFT TERSIMPAN (hasil cor_getDraft).
+       *
+       * KENAPA DI SINI, BUKAN DI TIAP HALAMAN
+       * -------------------------------------
+       * Dulu fungsi ini disalin dua kali — di DocumentPipelineContent
+       * ("Lihat COR") dan SalesPipelineContent (preview dari Document
+       * Request). Dua salinan itu tertinggal saat metode input cost
+       * ditambahkan: toCost-nya tidak membawa mode/category/categoryOrder/
+       * rowRole, sehingga "Lihat COR" kehilangan pengelompokan kategori DAN
+       * menampilkan baris rincian sebagai Rp0 — beda dari Download PDF yang
+       * memakai model lengkap. Bentuk bug yang tidak mungkin ketahuan dari
+       * salah satu halaman saja, karena masing-masing "konsisten" sendiri.
+       *
+       * Sekarang SATU sumber: kembaran server-side-nya adalah
+       * CorService.buildReportModel (yang membaca sheet langsung). Kalau
+       * salah satu berubah, samakan keduanya.
+       *
+       * @param draft hasil cor_getDraft: { doc, header, funds, costs, margins }
+       * @param taxonomy { entities, marginComponents } dari cor_getTaxonomy
+       * @param projectLabel string siap tampil ("PRJ26-1 — Nama Project")
+       */
+      function buildModelFromDraft(draft, taxonomy, projectLabel) {
+        var header = draft.header;
+        var vendorEntity = header ? (header.Vendor_Entity || '') : '';
+        var isViaSalset = header ? !!header.Is_Via_Salset : false;
+        var method = header ? (header.Cor_Method || 'GROSS_DOWN') : 'GROSS_DOWN';
+        var isMixFund = header ? !!header.Is_Mix_Fund : false;
+        var ngoRate = header ? (Number(header.Ngo_Rate) || 10) : 10;
+        var biayaSalset = header ? (Number(header.Biaya_Salset) || 0) : 0;
+
+        var entities = (taxonomy && taxonomy.entities) || [];
+        var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
+        var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
+        var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
+          { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
+        var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
+
+        function toFund(f) {
+          return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat };
+        }
+        // Empat field terakhir INILAH yang dulu hilang di dua salinan lama.
+        function toCost(c) {
+          return {
+            label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '',
+            harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1,
+            mode: c.Cost_Mode || 'GROUPED',
+            category: c.Cost_Category || '',
+            categoryOrder: (c.Category_Order === '' || c.Category_Order === undefined || c.Category_Order === null)
+              ? undefined : Number(c.Category_Order) || 0,
+            rowRole: c.Row_Role === 'ITEM' ? 'ITEM' : 'PRICE'
+          };
+        }
+        function marginFor(tab) {
+          var m = {};
+          (draft.margins || []).filter(function (r) { return r.Cor_Tab === tab; }).forEach(function (r) {
+            m[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 };
+          });
+          return m;
+        }
+
+        var fundObjs = (draft.funds || []).map(toFund);
+        var costs = draft.costs || [];
+        function salItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'SAL'; }).map(toCost); }
+        function baaItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'VENDOR'; }).map(toCost); }
+
+        var blocks;
+        if (isMixFund) {
+          blocks = [
+            { tabLabel: 'Client', funds: fundObjs.filter(function (f) { return f.fundType === 'CLIENT'; }), salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') },
+            { tabLabel: 'Campaign', funds: fundObjs.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), salItems: salItems('CAMPAIGN'), baaItems: baaItems('CAMPAIGN'), margin: marginFor('CAMPAIGN') }
+          ];
+        } else if (method === 'GROSS_DOWN') {
+          blocks = [{ tabLabel: null, funds: fundObjs, salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+        } else {
+          blocks = [{ tabLabel: null, funds: [], salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
+        }
+
+        return {
+          docLabel: draft.doc.Doc_ID,
+          projectLabel: projectLabel || '-',
+          method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
+          ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset,
+          // Dulu tidak ikut dikirim sama sekali, sehingga baris "Link Campaign"
+          // di Admin Pencairan (Gross Up) selalu "-" di Lihat COR walau terisi
+          // di Download PDF.
+          linkCampaigns: header ? (header.Link_Campaigns || []) : [],
+          marginComponents: (taxonomy && taxonomy.marginComponents) || [], blocks: blocks
+        };
+      }
+
       return {
         ri: ri, fmtRp: fmtRp, esc: esc, calcItemRow: calcItemRow, adminFee: adminFee,
-        REPORT_CSS: REPORT_CSS, renderDocumentHtml: renderDocumentHtml
+        REPORT_CSS: REPORT_CSS, renderDocumentHtml: renderDocumentHtml,
+        buildModelFromDraft: buildModelFromDraft,
+        // Diekspos supaya drawer Document Pipeline bisa menampilkan 4 box
+        // ringkasan COR (Alur Dana/Margin/SPP/Implementation Fee) dari draft
+        // tersimpan TANPA menghitung ulang rantai rumusnya sendiri — angkanya
+        // dijamin sama dengan kalkulator & PDF.
+        computeGD: computeGD, computeGU: computeGU, fundCalc: fundCalc
       };
     })();
 

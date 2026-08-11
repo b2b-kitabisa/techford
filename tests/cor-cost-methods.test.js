@@ -361,6 +361,75 @@ console.log('\n11) Baris rincian disimpan dengan angka NOL, bukan sisa angka mod
   }
 }
 
+console.log('\n12) "Lihat COR" HARUS identik dengan Download PDF (satu model builder)');
+{
+  // BUG NYATA YANG DITAMBAL: buildCorPreviewModel disalin dua kali (Document
+  // Pipeline & Sales Pipeline) dan tertinggal saat metode input cost
+  // ditambahkan — toCost-nya tidak membawa Cost_Mode/Cost_Category/Row_Role,
+  // sehingga "Lihat COR" kehilangan pengelompokan kategori DAN menampilkan
+  // baris rincian sebagai Rp0, sementara Download PDF menampilkan layout
+  // ter-merge yang benar. Dua halaman itu masing-masing "konsisten sendiri",
+  // jadi bug ini tidak mungkin terlihat dari salah satu halaman saja.
+  const draft = {
+    doc: { Doc_ID: 'DOC26-00009', Project_ID: 'PRJ26-1' },
+    header: {
+      Doc_ID: 'DOC26-00009', Cor_Method: 'GROSS_DOWN', Is_Via_Salset: false,
+      Vendor_Entity: 'Vendor A', Ngo_Rate: 10, Biaya_Salset: 0, Is_Mix_Fund: false,
+      Link_Campaigns: ['https://kitabisa.com/abc']
+    },
+    funds: [{ Fund_Type: 'CLIENT', Link_Campaign: 'bantuumkm', GDV: 100000000, Is_Zakat: false }],
+    costs: [
+      { Cor_Tab: 'CLIENT', Cost_Group: 'VENDOR', Keterangan: '', Kategori: 'Barang', Tipe: '', Harga: 100000, Qty: 1, Periode: 1, Cost_Mode: 'STANDALONE_ITEM', Cost_Category: 'FESTIVAL', Category_Order: 0, Row_Role: 'PRICE' },
+      { Cor_Tab: 'CLIENT', Cost_Group: 'VENDOR', Keterangan: 'MITRA', Kategori: '', Tipe: '', Harga: 0, Qty: 0, Periode: 0, Cost_Mode: 'STANDALONE_ITEM', Cost_Category: 'FESTIVAL', Category_Order: 0, Row_Role: 'ITEM' },
+      { Cor_Tab: 'CLIENT', Cost_Group: 'VENDOR', Keterangan: 'PARTNER', Kategori: '', Tipe: '', Harga: 0, Qty: 0, Periode: 0, Cost_Mode: 'STANDALONE_ITEM', Cost_Category: 'FESTIVAL', Category_Order: 0, Row_Role: 'ITEM' }
+    ],
+    margins: ['CONS', 'CRE', 'PROG', 'IMP'].map((k, i) => ({ Cor_Tab: 'CLIENT', Component: k, Sub_Category: 'X', Percentage: i === 3 ? 5 : 10 }))
+  };
+  const taxonomy = {
+    entities: [{ Entity_Name: 'Vendor A', Bank: 'BCA', Is_PKP: false, Biaya_Pencairan: 6500 }],
+    marginComponents: MARGIN_COMPONENTS
+  };
+
+  const model = C.buildModelFromDraft(draft, taxonomy, 'PRJ26-1 — Uji');
+  const baa = model.blocks[0].baaItems;
+
+  ok('field metode cost ikut terbawa dari draft tersimpan',
+    baa[0].mode === 'STANDALONE_ITEM' && baa[0].category === 'FESTIVAL' && baa[0].rowRole === 'PRICE',
+    JSON.stringify({ mode: baa[0].mode, category: baa[0].category, rowRole: baa[0].rowRole }));
+  ok('baris rincian ditandai ITEM, bukan ikut dianggap berharga',
+    baa[1].rowRole === 'ITEM' && baa[2].rowRole === 'ITEM');
+  ok('linkCampaigns ikut dikirim (dulu selalu kosong di Lihat COR)',
+    model.linkCampaigns.length === 1, JSON.stringify(model.linkCampaigns));
+
+  // Bukti akhir: HTML "Lihat COR" (dari draft) HARUS sama dengan HTML PDF
+  // server (dari sheet yang sama) — bukan cuma "field-nya ada".
+  const fragmenPreview = C.renderDocumentHtml(model);
+  const halamanPdf = R.renderDocumentHtml(model);
+  ok('HTML Lihat COR muncul utuh di dalam keluaran PDF server',
+    halamanPdf.indexOf(fragmenPreview) !== -1);
+  ok('layout ter-merge ikut terbawa ke Lihat COR (bukan 3 baris terpisah)',
+    fragmenPreview.indexOf('rowspan="3">FESTIVAL') !== -1);
+  ok('baris rincian TIDAK tampil sebagai Rp0 di Lihat COR',
+    fragmenPreview.indexOf('>MITRA<') !== -1 &&
+    fragmenPreview.split('<tr>').filter(t => t.indexOf('>MITRA<') !== -1)[0].indexOf('Rp0') === -1);
+
+  // Regresi paling gampang terjadi: seseorang menulis ulang model builder
+  // lokal di salah satu halaman lagi. Dicek dari sumbernya.
+  ['50_Presentation/html/Document/DocumentPipelineContent.html',
+    '50_Presentation/html/Project/SalesPipelineContent.html'].forEach(function (rel) {
+    const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
+    const blok = /function buildCorPreviewModel\(draft\) \{[\s\S]*?\n  \}/.exec(src);
+    ok(rel + ': buildCorPreviewModel ada', !!blok);
+    if (blok) {
+      ok(rel + ': mendelegasikan ke CorCalc.buildModelFromDraft',
+        /CorCalc\.buildModelFromDraft/.test(blok[0]));
+      ok(rel + ': TIDAK punya toCost/blocks salinan sendiri lagi',
+        !/function toCost/.test(blok[0]) && !/salItems\(/.test(blok[0]),
+        blok[0].length + ' char');
+    }
+  });
+}
+
 console.log('\n' + (failures.length
   ? '=== ' + failures.length + ' GAGAL, ' + pass + ' lolos ===\n\n' + failures.join('\n')
   : '=== SEMUA ' + pass + ' LOLOS ==='));

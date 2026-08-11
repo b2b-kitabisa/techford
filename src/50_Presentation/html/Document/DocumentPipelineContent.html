@@ -158,6 +158,16 @@
       </div>
       <div class="placeholder-note" id="docCorActionNote">Membuka halaman penuh Kalkulator COR — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.</div>
       <div class="placeholder-note">Status COR mengikuti progres pengerjaan secara otomatis (Not Started → Drafting → Waiting Approval → Approved) — tidak bisa diubah manual di sini.</div>
+
+      <!-- Ringkasan 4 box yang sama dengan header Kalkulator COR. Muncul
+           hanya kalau draft COR SUDAH pernah disimpan (ada COR_Header) —
+           sebelum itu tidak ada angka apa pun untuk ditampilkan. Angkanya
+           dihitung lewat CorCalc.computeGD dari draft tersimpan, jadi dijamin
+           sama dengan kalkulator & PDF (bukan rumus salinan ketiga). -->
+      <div id="docCorSummary" style="display:none; margin-top:12px;">
+        <span class="taxonomy-label">Ringkasan COR</span>
+        <div class="doc-cor-summary-grid" id="docCorSummaryGrid"></div>
+      </div>
     </div>
 
     <div class="drawer-section" id="docQuotationActionWrap" style="display:none;">
@@ -210,6 +220,29 @@
     display: inline-block; padding: 3px 10px; border-radius: 999px;
     font-size: 11px; font-weight: 700; background: #9aa0a622; color: #6b7075;
   }
+
+  /* Ringkasan COR di drawer — 4 box yang sama dengan header Kalkulator COR.
+     Drawer jauh lebih sempit dari halaman kalkulator, jadi auto-fit 2 kolom
+     (bukan 4 berjajar) lalu turun jadi 1 kolom di layar kecil. */
+  .doc-cor-summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px; margin-top: 8px;
+  }
+  .doc-cor-sbox {
+    border: 1px solid var(--border-soft); border-radius: 8px;
+    padding: 10px 12px; background: var(--color-white);
+  }
+  .doc-cor-sbox-hd {
+    font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase;
+    margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border-softer);
+  }
+  .doc-cor-srow {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 2px 0; font-size: 11.5px; border-bottom: 1px solid var(--border-softer);
+  }
+  .doc-cor-srow:last-child { border-bottom: none; }
+  .doc-cor-srow .v { font-family: monospace; font-weight: 700; white-space: nowrap; }
+  .doc-cor-sdiv { height: 1px; background: var(--border-softer); margin: 6px 0; }
 </style>
 <!-- ================= Tambah Dokumen: pilih metode, lalu upload / input link =================
      Tiga popup terpisah, bukan satu popup bercabang. Alasannya: langkah
@@ -683,6 +716,11 @@
   function refreshAllDocumentData() {
     var btn = document.getElementById('docRefreshBtn');
     if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
+    // Draft COR di-cache per Doc_ID supaya membuka drawer berulang kali tidak
+    // menembak server terus. Refresh manual adalah satu-satunya titik di mana
+    // user menyatakan "ambil yang terbaru" — kalkulator ada di halaman lain,
+    // jadi perubahan draft di sana tidak terpantau dari sini.
+    docCorDraftCache = {};
     fetchDocuments();
     fetchAttachments();
     fetchActivity();
@@ -1495,6 +1533,136 @@
     } else {
       approvalNote.style.display = 'none';
     }
+
+    renderCorSummary(doc, !!header);
+  }
+
+  /* ---- Ringkasan COR di drawer: 4 box yang sama dengan header Kalkulator ----
+     Angkanya TIDAK dihitung ulang di sini — dirakit lewat
+     CorCalc.buildModelFromDraft + CorCalc.computeGD, rumus yang sama yang
+     dipakai kalkulator dan PDF. Menyalin rumusnya untuk kali ketiga adalah
+     cara paling pasti membuat drawer dan kalkulator menampilkan angka
+     berbeda untuk dokumen yang sama. */
+  var docCorDraftCache = {};
+
+  function renderCorSummary(doc, hasHeader) {
+    var wrap = document.getElementById('docCorSummary');
+    var grid = document.getElementById('docCorSummaryGrid');
+    // Belum pernah Simpan Draft = belum ada angka apa pun untuk ditampilkan.
+    if (!hasHeader) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    if (docCorDraftCache[doc.Doc_ID]) {
+      grid.innerHTML = corSummaryHtml(docCorDraftCache[doc.Doc_ID]);
+      return;
+    }
+    grid.innerHTML = '<div class="placeholder-note" style="margin:0;"><span class="inline-spinner"></span>Memuat ringkasan...</div>';
+    gsRunWithRetry('cor_getDraft', [doc.Doc_ID], function (res) {
+      if (!res || !res.ok || !res.data || !res.data.header) {
+        grid.innerHTML = '<div class="placeholder-note" style="margin:0;">Ringkasan belum bisa dimuat.</div>';
+        return;
+      }
+      docCorDraftCache[doc.Doc_ID] = res.data;
+      // Drawer bisa sudah berpindah dokumen saat respons datang.
+      if (currentDocDrawerId === doc.Doc_ID) grid.innerHTML = corSummaryHtml(res.data);
+    }, function () {
+      grid.innerHTML = '<div class="placeholder-note" style="margin:0;">Ringkasan belum bisa dimuat.</div>';
+    });
+  }
+
+  function sboxHtml(title, rows) {
+    return '<div class="doc-cor-sbox"><div class="doc-cor-sbox-hd">' + escHtmlDoc(title) + '</div>' +
+      rows.map(function (r) {
+        if (r === '-') return '<div class="doc-cor-sdiv"></div>';
+        return '<div class="doc-cor-srow"' + (r[2] ? ' style="font-weight:700;"' : '') + '>' +
+          '<span>' + escHtmlDoc(r[0]) + '</span><span class="v">' + escHtmlDoc(r[1]) + '</span></div>';
+      }).join('') + '</div>';
+  }
+
+  function corSummaryHtml(draft) {
+    var project = getProjectById(draft.doc.Project_ID) || {};
+    var projectLabel = project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-';
+    var model = CorCalc.buildModelFromDraft(draft, corTaxonomy, projectLabel);
+    var rp = CorCalc.fmtRp;
+    var biayaPencairan = Number(model.entity.Biaya_Pencairan) || 0;
+
+    return model.blocks.map(function (block) {
+      var judul = block.tabLabel ? '<div class="drawer-field-label" style="grid-column:1/-1; margin:6px 0 0;">Dana ' + escHtmlDoc(block.tabLabel) + '</div>' : '';
+
+      if (model.method !== 'GROSS_DOWN') {
+        // Gross Up menampilkan 3 box-nya sendiri, sama seperti header
+        // kalkulator saat metodenya Gross Up.
+        var gu = CorCalc.computeGU({
+          salItems: block.salItems, baaItems: block.baaItems, margin: block.margin,
+          marginComponents: model.marginComponents, isViaSalset: model.isViaSalset,
+          ngoRatePct: model.guNgoRatePct, pkp: model.pkp, biayaPencairan: biayaPencairan
+        });
+        return judul +
+          sboxHtml('Gross Up Chain', [
+            ['Amount (cost vendor)', rp(gu.totalGuBaa)],
+            ['Gross up margin', rp(gu.guMargin)],
+            ['Gross up PPh', rp(gu.guPph)],
+            ['Total hasil gross up', rp(gu.totalHasilGu)],
+            ['Biaya admin', rp(gu.guAdmin)],
+            ['Gross up platform & tech', rp(gu.guFinal)]
+          ]) +
+          sboxHtml('SPP Amount', [
+            ['DPP', rp(gu.guDpp)], ['PPN (11%)', rp(gu.guPpn11)],
+            ['PPh 23 (2%)', rp(gu.guPphSpp)], ['Total neto', rp(gu.guNeto)]
+          ]) +
+          sboxHtml('Program Fee', [
+            ['Profit vendor', rp(gu.guProfit)],
+            ['Salset fee', rp(gu.guSalFee)],
+            ['Margin', (gu.guTotalMgnFrac * 100).toFixed(0) + '%']
+          ]);
+      }
+
+      var pphOn = model.isViaSalset || block.funds.some(function (f) { return f.fundType === 'CLIENT'; });
+      var gd = CorCalc.computeGD({
+        funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
+        margin: block.margin, marginComponents: model.marginComponents,
+        isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
+        pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
+      });
+      var totalImpFee = gd.salFee + gd.pmProfit;
+      var impPct = gd.totalMasuk > 0 ? (totalImpFee / gd.totalMasuk) : 0;
+      var vl = model.vendorEntity || 'vendor';
+
+      var alurRows = [['Total masuk', rp(gd.totalMasuk)]];
+      if (model.isViaSalset) {
+        alurRows.push(['SALSET cash in', rp(gd.totalMasuk)]);
+        alurRows.push(['SALSET fee (NGO)', rp(gd.salFee)]);
+        alurRows.push(['Biaya pengeluaran SAL', rp(model.biayaSalset)]);
+      }
+      alurRows.push(['Cash in ' + vl + ' (gross)', rp(gd.cashGross)]);
+      alurRows.push(['PPh 23 (2%)', rp(gd.pph23)]);
+      alurRows.push(['Cash in ' + vl + ' (net)', rp(gd.cashNet)]);
+
+      return judul +
+        sboxHtml('Alur Dana', alurRows) +
+        sboxHtml('Margin & Profit Margin', [
+          ['Total margin %', (gd.totalMgnFrac * 100).toFixed(0) + '%'],
+          ['Profit (margin)', rp(gd.profit)],
+          ['Available cost', rp(gd.availCost)],
+          '-',
+          ['Revenue after tax', rp(gd.cashNet)],
+          ['Total cost', rp(gd.totalBaa)],
+          ['Profit', rp(gd.pmProfit)],
+          ['Persentase', (gd.pmPct * 100).toFixed(2) + '%']
+        ]) +
+        sboxHtml('SPP Amount', [
+          ['DPP', rp(gd.dpp)], ['PPN (11%)', rp(gd.ppn11)],
+          ['PPh 23 (2%)', rp(gd.pphSpp)], ['Total neto', rp(gd.neto)]
+        ]) +
+        sboxHtml('Implementation Fee', [
+          ['Implementation Fund', rp(gd.totalMasuk)],
+          ['Salset Fee', rp(gd.salFee)],
+          ['Profit Program', rp(gd.pmProfit)],
+          '-',
+          ['Total Implementation Fee', rp(totalImpFee), true],
+          ['Implementation Fee %', (impPct * 100).toFixed(2) + '%']
+        ]);
+    }).join('');
   }
 
   // ---- Preview "Lihat COR" — merender ulang dokumen COR persis seperti
@@ -1510,58 +1678,15 @@
     document.head.appendChild(s);
   }
 
+  // Model laporan dirakit oleh CorCalc.buildModelFromDraft (Shell.html) —
+  // SATU sumber yang dipakai bersama halaman ini & Sales Pipeline. Dulu
+  // fungsinya disalin di kedua halaman dan tertinggal saat metode input cost
+  // ditambahkan, sehingga "Lihat COR" beda hasil dari Download PDF.
   function buildCorPreviewModel(draft) {
-    var header = draft.header;
-    var vendorEntity = header ? (header.Vendor_Entity || '') : '';
-    var isViaSalset = header ? !!header.Is_Via_Salset : false;
-    var method = header ? (header.Cor_Method || 'GROSS_DOWN') : 'GROSS_DOWN';
-    var isMixFund = header ? !!header.Is_Mix_Fund : false;
-    var ngoRate = header ? (Number(header.Ngo_Rate) || 10) : 10;
-    var biayaSalset = header ? (Number(header.Biaya_Salset) || 0) : 0;
-
-    var entities = corTaxonomy.entities || [];
-    var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
-    var pkp = vendorEnt ? !!vendorEnt.Is_PKP : false;
-    var salsetEnt = entities.filter(function (e) { return e.Entity_Name === 'Salam Setara'; })[0] ||
-      { Entity_Name: 'Salam Setara', Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 };
-    var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
-
-    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
-    function toCost(c) { return { label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '', harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1 }; }
-    function marginFor(tab) {
-      var m = {};
-      (draft.margins || []).filter(function (r) { return r.Cor_Tab === tab; }).forEach(function (r) {
-        m[r.Component] = { subCategory: r.Sub_Category, percentage: Number(r.Percentage) || 0 };
-      });
-      return m;
-    }
-
-    var funds = (draft.funds || []).map(toFund);
-    var costs = draft.costs || [];
-    function salItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'SAL'; }).map(toCost); }
-    function baaItems(tab) { return costs.filter(function (c) { return c.Cor_Tab === tab && c.Cost_Group === 'VENDOR'; }).map(toCost); }
-
-    var blocks;
-    if (isMixFund) {
-      blocks = [
-        { tabLabel: 'Client', funds: funds.filter(function (f) { return f.fundType === 'CLIENT'; }), salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') },
-        { tabLabel: 'Campaign', funds: funds.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), salItems: salItems('CAMPAIGN'), baaItems: baaItems('CAMPAIGN'), margin: marginFor('CAMPAIGN') }
-      ];
-    } else if (method === 'GROSS_DOWN') {
-      blocks = [{ tabLabel: null, funds: funds, salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
-    } else {
-      blocks = [{ tabLabel: null, funds: [], salItems: salItems('CLIENT'), baaItems: baaItems('CLIENT'), margin: marginFor('CLIENT') }];
-    }
-
     var project = getProjectById(draft.doc.Project_ID) || {};
-
-    return {
-      docLabel: draft.doc.Doc_ID,
-      projectLabel: project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-',
-      method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
-      ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset,
-      marginComponents: corTaxonomy.marginComponents || [], blocks: blocks
-    };
+    var projectLabel = project.Project_ID
+      ? (project.Project_ID + ' \u2014 ' + (project.Project_Name || '-')) : '-';
+    return CorCalc.buildModelFromDraft(draft, corTaxonomy, projectLabel);
   }
 
   // "Lihat COR" sering muncul "Gagal memuat" bukan karena datanya benar2
