@@ -148,23 +148,23 @@ var CorReportRenderer = (function (module) {
     '.pdf-meta td{padding:5px 7px;font-size:12px;border:1px solid #ccc;}' +
     '.pdf-label{font-weight:700;width:260px;color:#444;background:#f8f8f8;}' +
     '.pdf-empty{color:#999;font-style:italic;text-align:center;}' +
-    '.pdf-footer{margin-top:28px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#333;font-style:italic;}';
+    '.pdf-footer{margin-top:28px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#333;font-style:italic;}' +
+    '.pdf-zakat-note{font-style:italic;font-size:10.5px;color:#666;margin:2px 0 10px;}';
 
   function pdfRow(label, value) {
     return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
   }
-  var FUND_COLS = [28, 15, 9, 14, 14, 20];
-  // 9 kolom sejak metode input cost (Metode + Kategori di depan). Kolom
-  // Barang/Jasa diberi judul "Jenis", bukan "Kategori" lagi — dua kolom
-  // berjudul "Kategori" bersebelahan akan terbaca sebagai salah cetak.
-  var COST_COLS = [11, 13, 19, 7, 8, 6, 16, 10, 10];
-  var COST_HEADERS = ['Metode', 'Kategori', 'Keterangan', 'Jenis', 'Tipe', 'PPh',
+  // Kolom Zakat DIHAPUS dari tabel (jadi catatan italic di bawahnya, lihat
+  // zakatNoteHtml) — diganti Biaya Admin, yang sebelumnya cuma memengaruhi
+  // Total Masuk tanpa pernah ditampilkan sebagai angka sendiri.
+  var FUND_COLS = [24, 14, 14, 14, 14, 20];
+  // 8 kolom — TANPA "Metode" (dokumen final tidak perlu tahu metode
+  // pengisiannya, cukup tahu kategori & angkanya). Kolom Barang/Jasa diberi
+  // judul "Jenis", bukan "Kategori" lagi — dua kolom berjudul "Kategori"
+  // bersebelahan akan terbaca sebagai salah cetak.
+  var COST_COLS = [15, 22, 8, 9, 7, 18, 11, 10];
+  var COST_HEADERS = ['Kategori', 'Keterangan', 'Jenis', 'Tipe', 'PPh',
     'Harga x Qty x Periode', 'Total', 'Total stlh PPh'];
-  var COST_MODE_LABEL = {
-    GROUPED: 'Grouped',
-    STANDALONE_ITEM: 'Standalone + Item',
-    STANDALONE_NO_ITEM: 'Standalone tanpa Item'
-  };
   var MARGIN_COLS = [28, 40, 10, 22];
   var MARGIN_COLS_3COL = [35, 45, 20];
   function colgroup(widths) {
@@ -179,9 +179,22 @@ var CorReportRenderer = (function (module) {
     return rows.map(function (f) {
       var c = fundCalc(f, biayaPencairan);
       return '<tr><td>' + esc(f.linkCampaign || '-') + '</td><td class="r">' + fmtRp(f.nominal) + '</td>' +
-        '<td>' + (f.isZakat ? 'Ya' : '-') + '</td><td class="r">' + fmtRp(c.pf) + '</td>' +
-        '<td class="r">' + fmtRp(c.tf) + '</td><td class="r">' + fmtRp(c.total) + '</td></tr>';
+        '<td class="r">' + fmtRp(c.pf) + '</td><td class="r">' + fmtRp(c.tf) + '</td>' +
+        '<td class="r">' + fmtRp(c.adm) + '</td><td class="r">' + fmtRp(c.total) + '</td></tr>';
     }).join('');
+  }
+
+  /**
+   * Zakat bukan lagi kolom tabel — jadi catatan italic di bawahnya, satu
+   * baris per link campaign yang ditandai zakat. Dana bukan-zakat tidak
+   * menyisakan bekas apa pun (fungsi ini return string kosong).
+   */
+  function zakatNoteHtml(rows) {
+    var zakatRows = (rows || []).filter(function (f) { return f.isZakat; });
+    if (!zakatRows.length) return '';
+    return '<p class="pdf-zakat-note">' +
+      zakatRows.map(function (f) { return '*' + esc(f.linkCampaign || '-') + ' campaign zakat.'; }).join('<br>') +
+      '</p>';
   }
   /**
    * Kelompokkan baris cost jadi blok kategori — satu blok = satu sel Metode
@@ -221,24 +234,39 @@ var CorReportRenderer = (function (module) {
     });
   }
 
+  /**
+   * Standalone + Item: SATU nominal untuk seluruh kategori — bukan diulang
+   * placeholder "rincian" di tiap baris item seperti sebelumnya, tapi
+   * kolom angkanya (Jenis/Tipe/PPh/Harga.../Total/Total stlh PPh) benar-benar
+   * DI-MERGE (rowspan) menurun sepanjang seluruh baris kategori itu, satu
+   * kali di baris pertama. Baris item di bawahnya cuma mengisi Keterangan
+   * (nama rincian) dan tidak menuliskan sel apa pun untuk kolom yang sudah
+   * di-merge — itulah yang membuatnya tampil sebagai satu sel gabungan.
+   */
   function costRowsHtml(rows) {
     var groups = groupCostRows(rows);
-    if (!groups.length) return '<tr><td colspan="9" class="pdf-empty">Tidak ada data.</td></tr>';
+    if (!groups.length) return '<tr><td colspan="8" class="pdf-empty">Tidak ada data.</td></tr>';
     return groups.map(function (g) {
+      var priceRow = g.items[0]; // groupCostRows selalu menaruh baris PRICE di depan.
+      var pc = calcItemRow(priceRow);
       return g.items.map(function (r, ii) {
-        var c = calcItemRow(r);
-        var lead = ii > 0 ? '' :
-          '<td rowspan="' + g.items.length + '">' + esc(COST_MODE_LABEL[g.mode] || g.mode) + '</td>' +
-          '<td rowspan="' + g.items.length + '">' + esc(g.category || '-') + '</td>';
-        if (!c.priced) {
-          // Sel angkanya sengaja DIKOSONGKAN, bukan diisi Rp0 — nol berarti
-          // "nilainya nol", sedangkan baris ini memang tidak punya nominal
-          // sendiri (nominalnya milik kategori, di baris paling atas blok).
-          return '<tr>' + lead + '<td>' + esc(r.label || '-') + '</td>' +
-            '<td colspan="6" class="pdf-empty" style="text-align:left;">rincian &mdash; nominal ada di baris kategori</td></tr>';
+        var leadKategori = ii > 0 ? '' : '<td rowspan="' + g.items.length + '">' + esc(g.category || '-') + '</td>';
+
+        if (g.mode === 'STANDALONE_ITEM') {
+          var label = r.label || (ii === 0 ? 'Nominal kategori' : '-');
+          var numeric = ii > 0 ? '' :
+            '<td rowspan="' + g.items.length + '">' + esc(priceRow.kategori) + '</td>' +
+            '<td rowspan="' + g.items.length + '">' + esc(priceRow.tipe || '-') + '</td>' +
+            '<td rowspan="' + g.items.length + '" class="r">' + (pc.rt > 0 ? (pc.rt * 100).toFixed(1) + '%' : '-') + '</td>' +
+            '<td rowspan="' + g.items.length + '" class="r">' + fmtRp(priceRow.harga) + ' &times; ' + priceRow.qty + ' &times; ' + priceRow.periode + '</td>' +
+            '<td rowspan="' + g.items.length + '" class="r">' + fmtRp(pc.total) + '</td>' +
+            '<td rowspan="' + g.items.length + '" class="r">' + fmtRp(pc.tap) + '</td>';
+          return '<tr>' + leadKategori + '<td>' + esc(label) + '</td>' + numeric + '</tr>';
         }
-        var label = r.label || (g.mode === 'STANDALONE_ITEM' ? 'Nominal kategori' : '-');
-        return '<tr>' + lead + '<td>' + esc(label) + '</td><td>' + esc(r.kategori) + '</td><td>' + esc(r.tipe || '-') + '</td>' +
+
+        var c = calcItemRow(r);
+        var labelBiasa = r.label || '-';
+        return '<tr>' + leadKategori + '<td>' + esc(labelBiasa) + '</td><td>' + esc(r.kategori) + '</td><td>' + esc(r.tipe || '-') + '</td>' +
           '<td class="r">' + (c.rt > 0 ? (c.rt * 100).toFixed(1) + '%' : '-') + '</td>' +
           '<td class="r">' + fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode + '</td>' +
           '<td class="r">' + fmtRp(c.total) + '</td><td class="r">' + fmtRp(c.tap) + '</td></tr>';
@@ -290,11 +318,15 @@ var CorReportRenderer = (function (module) {
           pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
         });
 
+        var danaClientRows = block.funds.filter(function (f) { return f.fundType === 'CLIENT'; });
+        var danaCampaignRows = block.funds.filter(function (f) { return f.fundType === 'CAMPAIGN'; });
         html += '<h2>Source of Fund</h2>' +
-          '<h3>Dana Client</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk'], FUND_COLS) +
-          '<tbody>' + fundRowsHtml(block.funds.filter(function (f) { return f.fundType === 'CLIENT'; }), biayaPencairan) + '</tbody></table>' +
-          '<h3>Dana Campaign</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Zakat', 'Platform Fee', 'Tech Fee', 'Total Masuk'], FUND_COLS) +
-          '<tbody>' + fundRowsHtml(block.funds.filter(function (f) { return f.fundType === 'CAMPAIGN'; }), biayaPencairan) + '</tbody></table>' +
+          '<h3>Dana Client</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Platform Fee', 'Tech Fee', 'Biaya Admin', 'Total Masuk'], FUND_COLS) +
+          '<tbody>' + fundRowsHtml(danaClientRows, biayaPencairan) + '</tbody></table>' +
+          zakatNoteHtml(danaClientRows) +
+          '<h3>Dana Campaign</h3><table class="pdf-tbl">' + tblHead(['Link Campaign', 'Nominal', 'Platform Fee', 'Tech Fee', 'Biaya Admin', 'Total Masuk'], FUND_COLS) +
+          '<tbody>' + fundRowsHtml(danaCampaignRows, biayaPencairan) + '</tbody></table>' +
+          zakatNoteHtml(danaCampaignRows) +
           '<table class="pdf-meta"><tbody>' + pdfRow('Total Dana Masuk', fmtRp(gd.totalMasuk)) + '</tbody></table>';
 
         if (model.isViaSalset) {

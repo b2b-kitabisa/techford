@@ -11,7 +11,19 @@
 </script>
 
 <style>
-  .cor-page { max-width: 1400px; }
+  .cor-page { max-width: 1680px; }
+
+  /* Ringkasan (Alur Dana/Margin/SPP Amount/Profit Margin — dulu sidebar
+     320px di kanan) sekarang jadi baris horizontal di ATAS konten utama,
+     dan konten utama melebar penuh mengisi ruang yang dulu dipakai sidebar. */
+  .cor-summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .cor-summary-row .cor-rbox { margin-bottom: 0; position: static; }
+
+  /* Penanda warna: kotak yang bisa DIISI admin (ada input/select/textarea di
+     dalamnya) diberi garis kiri biru — membedakannya dari kotak ringkasan
+     yang murni hasil hitungan (cor-rbox di .cor-summary-row, TIDAK diberi
+     garis ini karena tidak ada satu pun yang bisa diketik di sana). */
+  .cor-box-input { border-left: 4px solid var(--color-cerulean); }
 
   /* Wizard routing Gross Down saat "Convert ke Gross Down" — style sama
      persis dengan wizard "Kerjakan COR" di DocumentPipelineContent.html
@@ -47,9 +59,6 @@
   .cor-mtab.locked:not(.on) { opacity: 0.5; }
   .cor-route-locked-note { font-size: 10px; color: var(--text-faint); margin-left: 4px; }
   .cor-fund-locked-note { font-size: 11px; color: var(--text-faint); font-style: italic; padding: 8px 0; text-align: center; }
-
-  .cor-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
-  @media (max-width: 1100px) { .cor-grid { grid-template-columns: 1fr; } }
 
   .cor-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
   .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
@@ -168,13 +177,69 @@
     </div>
   </div>
 
-  <div class="cor-grid">
-    <div>
-      <!-- ══════════ GROSS DOWN VIEW ══════════ -->
-      <div id="corGdView">
+  <div class="cor-summary-row" id="corRpGd">
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">Alur Dana</div>
+      <div class="cor-rrow"><span>Total masuk</span><span class="v" id="corRrTotalMasuk">Rp0</span></div>
+      <div class="cor-rrow" id="corRrSalRow" style="display:none;"><span>SALSET cash in</span><span class="v" id="corRrSalsetGross">Rp0</span></div>
+      <div class="cor-rrow" id="corRrSalFeeRow" style="display:none;"><span>SALSET fee (NGO)</span><span class="v" id="corRrSalsetFee">Rp0</span></div>
+      <div class="cor-rrow" id="corRrBsalRow" style="display:none;"><span>Biaya pengeluaran SAL</span><span class="v" id="corRrBiayaSal">Rp0</span></div>
+      <div class="cor-rrow"><span>Cash in <span id="corRrVl">vendor</span> (gross)</span><span class="v" id="corRrCashGross">Rp0</span></div>
+      <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
+      <div class="cor-rrow"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
+    </div>
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">Margin</div>
+      <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
+      <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
+      <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
+    </div>
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">SPP Amount</div>
+      <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrSppDpp">Rp0</span></div>
+      <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrSppPpn">Rp0</span></div>
+      <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrSppPph">Rp0</span></div>
+      <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrSppNeto">Rp0</span></div>
+    </div>
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">Profit Margin</div>
+      <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
+      <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
+      <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
+      <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
+    </div>
+  </div>
+  <div class="cor-summary-row" id="corRpGu" style="display:none;">
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">Gross Up Chain</div>
+      <div class="cor-rrow" id="corRrGuSalRow" style="display:none;"><span>SALSET gross up</span><span class="v" id="corRrGuSal">Rp0</span></div>
+      <div class="cor-rrow"><span>Amount (cost vendor)</span><span class="v" id="corRrGuAmt">Rp0</span></div>
+      <div class="cor-rrow"><span>Gross up margin</span><span class="v" id="corRrGuMgn">Rp0</span></div>
+      <div class="cor-rrow"><span>Gross up PPh</span><span class="v" id="corRrGuPph">Rp0</span></div>
+      <div class="cor-rrow"><span>Total hasil gross up</span><span class="v" id="corRrGuTotal">Rp0</span></div>
+      <div class="cor-rrow"><span>Biaya admin</span><span class="v" id="corRrGuAdm">Rp0</span></div>
+      <div class="cor-rrow"><span>Gross up platform &amp; tech</span><span class="v" id="corRrGuFinal">Rp0</span></div>
+    </div>
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">SPP Amount</div>
+      <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrGuSppDpp">Rp0</span></div>
+      <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrGuSppPpn">Rp0</span></div>
+      <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrGuSppPph">Rp0</span></div>
+      <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrGuSppNeto">Rp0</span></div>
+    </div>
+    <div class="cor-rbox">
+      <div class="cor-rbox-hd">Program Fee</div>
+      <div class="cor-rrow"><span>Profit vendor</span><span class="v" id="corRrGuProfit">Rp0</span></div>
+      <div class="cor-rrow" id="corRrGuSalfRow" style="display:none;"><span>Salset fee</span><span class="v" id="corRrGuSalf">Rp0</span></div>
+      <div class="cor-rrow"><span>Margin</span><span class="v" id="corRrGuMpct">0%</span></div>
+    </div>
+  </div>
 
-        <div class="cor-box">
-          <div class="cor-box-hd">1. Source of Fund</div>
+  <!-- ══════════ GROSS DOWN VIEW ══════════ -->
+  <div id="corGdView">
+
+    <div class="cor-box cor-box-input">
+      <div class="cor-box-hd">1. Source of Fund</div>
 
           <div id="corClientFundSection">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -205,7 +270,7 @@
           </div>
         </div>
 
-        <div class="cor-box" id="corBoxImpl" style="display:none;">
+        <div class="cor-box cor-box-input" id="corBoxImpl" style="display:none;">
           <div class="cor-box-hd">2. Implementation Fund <span class="sub">(via SALSET)</span></div>
           <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
             <div>
@@ -227,7 +292,7 @@
           </div>
         </div>
 
-        <div class="cor-box">
+        <div class="cor-box cor-box-input">
           <div class="cor-box-hd">3. Fund Detail</div>
           <div id="corBiayaSalsetWrap" style="display:none; margin-bottom:10px;">
             <div class="drawer-field-label">Biaya pengeluaran SALSET <span style="font-weight:400; color:#188038;">(input manual)</span></div>
@@ -253,7 +318,7 @@
           <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">PPh 23 (2%): <strong id="corPph23" style="color:#c5221f;">Rp0</strong></div>
         </div>
 
-        <div class="cor-box">
+        <div class="cor-box cor-box-input">
           <div class="cor-box-hd">4. Default Margin</div>
           <div class="cor-margin-hd">
             <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
@@ -276,7 +341,7 @@
           </div>
         </div>
 
-        <div class="cor-box" id="corBoxCostSal" style="display:none;">
+        <div class="cor-box cor-box-input" id="corBoxCostSal" style="display:none;">
           <div class="cor-box-hd">5. Biaya Pengeluaran SALSET <span class="sub">Budget: <strong id="corBudSal">Rp0</strong></span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
@@ -294,7 +359,7 @@
           <div id="corGdSalSaldo"></div>
         </div>
 
-        <div class="cor-box">
+        <div class="cor-box cor-box-input">
           <div class="cor-box-hd"><span id="corGdVendorBoxNum">5</span>. Biaya Pengeluaran <span id="corVl4">Vendor</span> <span class="sub">Budget: <strong id="corBudVendor">Rp0</strong></span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
@@ -317,7 +382,7 @@
       <!-- ══════════ GROSS UP VIEW ══════════ -->
       <div id="corGuView" style="display:none;">
 
-        <div class="cor-box" id="corGuBoxSal" style="display:none;">
+        <div class="cor-box cor-box-input" id="corGuBoxSal" style="display:none;">
           <div class="cor-box-hd">1. Cost SALSET</div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
@@ -334,7 +399,7 @@
           <button class="btn-outline" onclick="addCostGroup('GROSS_UP','SAL')" style="margin-top:8px;">+ Tambah Kategori</button>
         </div>
 
-        <div class="cor-box">
+        <div class="cor-box cor-box-input">
           <div class="cor-box-hd"><span id="corGuVendorBoxNum">1</span>. Cost <span id="corVlGu1">Vendor</span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
@@ -352,7 +417,7 @@
         </div>
 
         <div class="form-grid-2col">
-          <div class="cor-box" id="corGuBoxSalsum" style="display:none;">
+          <div class="cor-box cor-box-input" id="corGuBoxSalsum" style="display:none;">
             <div class="cor-box-hd">SALSET Gross Up</div>
             <div class="drawer-field-label">Total cost SALSET</div>
             <div class="cor-hi" style="background:var(--accent-tint); margin-bottom:8px;"><span class="cor-hi-value" id="corGuSalsetIn">Rp0</span></div>
@@ -363,7 +428,7 @@
             </div>
             <div class="cor-hi" style="background:#e6f4ea; margin-top:8px;"><span class="cor-hi-value" id="corGuSalsetGrossup" style="color:#188038;">Rp0</span></div>
           </div>
-          <div class="cor-box">
+          <div class="cor-box cor-box-input">
             <div class="cor-box-hd">Default Margin <span class="sub">estimasi — independen dari Gross Down</span></div>
             <div class="cor-margin-hd cor-margin-hd-3col">
               <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div>
@@ -387,7 +452,7 @@
           <div class="cor-step result"><span>Total hasil gross up</span><span class="cor-step-val" id="corGuStTotal">Rp0</span></div>
         </div>
 
-        <div class="cor-box">
+        <div class="cor-box cor-box-input">
           <div class="cor-box-hd">Admin Pencairan</div>
           <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom:10px;">
             <div>
@@ -417,69 +482,6 @@
         </div>
 
       </div><!-- end corGuView -->
-    </div>
-
-    <!-- RIGHT PANEL -->
-    <div>
-      <div id="corRpGd">
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">Alur Dana</div>
-          <div class="cor-rrow"><span>Total masuk</span><span class="v" id="corRrTotalMasuk">Rp0</span></div>
-          <div class="cor-rrow" id="corRrSalRow" style="display:none;"><span>SALSET cash in</span><span class="v" id="corRrSalsetGross">Rp0</span></div>
-          <div class="cor-rrow" id="corRrSalFeeRow" style="display:none;"><span>SALSET fee (NGO)</span><span class="v" id="corRrSalsetFee">Rp0</span></div>
-          <div class="cor-rrow" id="corRrBsalRow" style="display:none;"><span>Biaya pengeluaran SAL</span><span class="v" id="corRrBiayaSal">Rp0</span></div>
-          <div class="cor-rrow"><span>Cash in <span id="corRrVl">vendor</span> (gross)</span><span class="v" id="corRrCashGross">Rp0</span></div>
-          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
-          <div class="cor-rrow"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
-        </div>
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">Margin</div>
-          <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
-          <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
-          <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
-        </div>
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">SPP Amount</div>
-          <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrSppDpp">Rp0</span></div>
-          <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrSppPpn">Rp0</span></div>
-          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrSppPph">Rp0</span></div>
-          <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrSppNeto">Rp0</span></div>
-        </div>
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">Profit Margin</div>
-          <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
-          <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
-          <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
-          <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
-        </div>
-      </div>
-      <div id="corRpGu" style="display:none;">
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">Gross Up Chain</div>
-          <div class="cor-rrow" id="corRrGuSalRow" style="display:none;"><span>SALSET gross up</span><span class="v" id="corRrGuSal">Rp0</span></div>
-          <div class="cor-rrow"><span>Amount (cost vendor)</span><span class="v" id="corRrGuAmt">Rp0</span></div>
-          <div class="cor-rrow"><span>Gross up margin</span><span class="v" id="corRrGuMgn">Rp0</span></div>
-          <div class="cor-rrow"><span>Gross up PPh</span><span class="v" id="corRrGuPph">Rp0</span></div>
-          <div class="cor-rrow"><span>Total hasil gross up</span><span class="v" id="corRrGuTotal">Rp0</span></div>
-          <div class="cor-rrow"><span>Biaya admin</span><span class="v" id="corRrGuAdm">Rp0</span></div>
-          <div class="cor-rrow"><span>Gross up platform &amp; tech</span><span class="v" id="corRrGuFinal">Rp0</span></div>
-        </div>
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">SPP Amount</div>
-          <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrGuSppDpp">Rp0</span></div>
-          <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrGuSppPpn">Rp0</span></div>
-          <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrGuSppPph">Rp0</span></div>
-          <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrGuSppNeto">Rp0</span></div>
-        </div>
-        <div class="cor-rbox">
-          <div class="cor-rbox-hd">Program Fee</div>
-          <div class="cor-rrow"><span>Profit vendor</span><span class="v" id="corRrGuProfit">Rp0</span></div>
-          <div class="cor-rrow" id="corRrGuSalfRow" style="display:none;"><span>Salset fee</span><span class="v" id="corRrGuSalf">Rp0</span></div>
-          <div class="cor-rrow"><span>Margin</span><span class="v" id="corRrGuMpct">0%</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
   </div>
 </div>
 

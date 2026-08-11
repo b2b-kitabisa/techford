@@ -215,33 +215,39 @@ console.log('\n7) PDF — blok kategori & sel angka rincian DIKOSONGKAN, bukan R
   };
   const html = R.renderDocumentHtml(model);
 
-  ok('kolom Metode & Kategori ada di header tabel cost',
-    html.indexOf('<th>Metode</th>') !== -1 && html.indexOf('<th>Kategori</th>') !== -1);
-  ok('label metode tampil apa adanya, bukan kode mentah',
-    html.indexOf('Standalone + Item') !== -1 && html.indexOf('Standalone tanpa Item') !== -1 &&
-    html.indexOf('STANDALONE_ITEM') === -1, 'kode mentah bocor: ' + (html.indexOf('STANDALONE_ITEM') !== -1));
-  ok('CEREMONY di-rowspan 2 baris (2 item + 0 baris aksi)',
+  ok('kolom Metode TIDAK ADA lagi di header tabel cost',
+    html.indexOf('<th>Metode</th>') === -1);
+  ok('kolom Kategori tetap ada', html.indexOf('<th>Kategori</th>') !== -1);
+  ok('CEREMONY di-rowspan 2 baris (2 item, tiap baris angka sendiri)',
     html.indexOf('rowspan="2">CEREMONY') !== -1);
   ok('FESTIVAL di-rowspan 3 baris (1 nominal + 2 rincian)',
     html.indexOf('rowspan="3">FESTIVAL') !== -1);
   ok('baris nominal kategori diberi label yang menjelaskan',
     html.indexOf('Nominal kategori') !== -1);
-  ok('baris rincian menjelaskan nominalnya ada di baris kategori',
-    (html.match(/rincian &mdash; nominal ada di baris kategori/g) || []).length === 2,
-    (html.match(/rincian &mdash; nominal ada di baris kategori/g) || []).length);
-  ok('MITRA & PARTNER tetap TAMPIL di dokumen (cuma tanpa angka)',
+  ok('MITRA & PARTNER tetap TAMPIL di dokumen (cuma nama, tanpa sel angka apa pun)',
     html.indexOf('>MITRA<') !== -1 && html.indexOf('>PARTNER<') !== -1);
+
+  // INI inti poin 2: kolom Jenis/Tipe/PPh/Harga.../Total/Total stlh PPh
+  // di-MERGE (rowspan) turun sepanjang seluruh baris FESTIVAL — bukan
+  // diulang di tiap baris item. rowspan="3" harus muncul PERSIS 7 kali:
+  // 1 untuk sel Kategori + 6 untuk keenam kolom angka yang di-merge.
+  ok('6 kolom angka + 1 kolom Kategori sama-sama di-merge rowspan=3',
+    (html.match(/rowspan="3"/g) || []).length === 7,
+    (html.match(/rowspan="3"/g) || []).length);
+
+  // Baris MITRA/PARTNAR harus PERSIS <tr><td>MITRA</td></tr> — tidak ada
+  // <td> lain sama sekali (bukan cuma dikosongkan, tapi memang tidak
+  // dituliskan — itulah yang membuatnya tampil sebagai sel gabungan).
+  const barisItem = html.split('<tr>').filter(t => t.indexOf('>MITRA<') !== -1 || t.indexOf('>PARTNER<') !== -1);
+  ok('baris item cuma punya 1 sel (Keterangan), tanpa sel angka nyasar',
+    barisItem.length === 2 && barisItem.every(t => (t.match(/<td/g) || []).length === 1),
+    barisItem.map(t => (t.match(/<td/g) || []).length));
+
   ok('Standalone tanpa Item: sel kategorinya strip, bukan nama',
     html.indexOf('rowspan="1">-</td>') !== -1);
-
-  // Rp0 yang tidak dikehendaki: baris rincian tidak boleh punya sel angka
-  // sama sekali. Kalau ada, ia akan muncul sebagai Rp0 di kolom Total.
-  const barisRincian = html.split('<tr>').filter(t => t.indexOf('rincian &mdash; nominal') !== -1);
-  ok('baris rincian tidak punya sel Rp0 nyasar',
-    barisRincian.every(t => t.indexOf('Rp0') === -1), barisRincian.length + ' baris diperiksa');
 }
 
-console.log('\n8) Tabel cost kosong -> colspan mengikuti jumlah kolom baru (9)');
+console.log('\n8) Tabel cost kosong -> colspan mengikuti jumlah kolom baru (8, tanpa Metode)');
 {
   const model = {
     docLabel: 'D', projectLabel: 'P', method: 'GROSS_DOWN', isViaSalset: false, vendorEntity: 'V',
@@ -251,8 +257,36 @@ console.log('\n8) Tabel cost kosong -> colspan mengikuti jumlah kolom baru (9)')
     blocks: [{ tabLabel: null, funds: [], salItems: [], baaItems: [], margin: MARGIN }]
   };
   const html = R.renderDocumentHtml(model);
-  ok('empty state cost pakai colspan 9', html.indexOf('colspan="9" class="pdf-empty"') !== -1);
-  ok('tidak ada sisa colspan 7 lama', html.indexOf('colspan="7" class="pdf-empty"') === -1);
+  ok('empty state cost pakai colspan 8', html.indexOf('colspan="8" class="pdf-empty"') !== -1);
+  ok('tidak ada sisa colspan 9 lama', html.indexOf('colspan="9" class="pdf-empty"') === -1);
+}
+
+console.log('\n7b) Source of Fund — kolom Zakat diganti Biaya Admin, catatan italic utk dana zakat');
+{
+  const model = {
+    docLabel: 'DOC26-00002', projectLabel: 'PRJ26-2 — Uji Zakat',
+    method: 'GROSS_DOWN', isViaSalset: false, vendorEntity: 'Vendor A',
+    entity: { Entity_Name: 'Vendor A', Bank: 'BCA', Biaya_Pencairan: 6500 }, pkp: false,
+    ngoRatePct: 10, guNgoRatePct: 10, biayaSalset: 0, linkCampaigns: [],
+    marginComponents: MARGIN_COMPONENTS,
+    blocks: [{
+      tabLabel: null,
+      funds: [
+        { fundType: 'CLIENT', nominal: 50000000, isZakat: false, linkCampaign: 'bantuumkm' },
+        { fundType: 'CLIENT', nominal: 20000000, isZakat: true, linkCampaign: 'https://kitabisa.com/linkajasupportteach4hope' }
+      ],
+      salItems: [], baaItems: [], margin: MARGIN
+    }]
+  };
+  const html = R.renderDocumentHtml(model);
+
+  ok('header Zakat TIDAK ADA lagi', html.indexOf('<th>Zakat</th>') === -1);
+  ok('header Biaya Admin ADA', html.indexOf('<th>Biaya Admin</th>') !== -1);
+  ok('catatan zakat muncul, italic, menyebut link campaign-nya',
+    html.indexOf('class="pdf-zakat-note"') !== -1 &&
+    html.indexOf('*https://kitabisa.com/linkajasupportteach4hope campaign zakat.') !== -1);
+  ok('dana yang BUKAN zakat tidak ikut disebut di catatan',
+    !new RegExp('pdf-zakat-note"[^<]*bantuumkm').test(html));
 }
 
 console.log('\n9) Server & client TIDAK BOLEH menyimpang (duplikasi rumus yang disengaja)');
