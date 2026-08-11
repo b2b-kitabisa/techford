@@ -1192,7 +1192,7 @@
       mode: c.Cost_Mode || 'GROUPED',
       cat: c.Cost_Category || '',
       role: c.Row_Role === 'ITEM' ? 'ITEM' : 'PRICE',
-      ket: c.Keterangan || '', kat: c.Kategori || 'Barang', tipe: c.Tipe || '',
+      ket: c.Keterangan || '', kat: normalizeKat(c.Kategori) || 'Barang', tipe: c.Tipe || '',
       h: Number(c.Harga) || 0, q: Number(c.Qty) || 1, p: Number(c.Periode) || 1
     };
   }
@@ -1259,6 +1259,9 @@
     return Number(String(el.value).replace(/[^0-9]/g, '')) || 0;
   }
   var KATS = ['Barang', 'Jasa', 'Ops', 'Uang Saku'];
+  // Dokumen lama simpan 'Operasional' (sebelum disingkat) — dibaca ulang
+  // jadi 'Ops' di sini, satu titik saja, biar kalkulator & PDF konsisten.
+  function normalizeKat(k) { return k === 'Operasional' ? 'Ops' : k; }
 
   function getEntityByName(name) {
     return (corTaxonomy.entities || []).filter(function (e) { return e.Entity_Name === name; })[0] || null;

@@ -427,9 +427,12 @@ var CorService = (function (module) {
     // mengosongkan (bukan menolkan) sel angka baris rincian. Baris lama yang
     // belum punya kolom-kolom ini jatuh ke GROUPED + PRICE, persis perilaku
     // sebelum metode input cost ada.
+    // Dokumen lama simpan 'Operasional' (sebelum disingkat "Ops") —
+    // dinormalisasi di sini biar kalkulator, Lihat COR, & PDF konsisten.
+    function normalizeKat(k) { return k === 'Operasional' ? 'Ops' : k; }
     function toCost(c) {
       return {
-        label: c.Keterangan || '', kategori: c.Kategori || 'Barang', tipe: c.Tipe || '',
+        label: c.Keterangan || '', kategori: normalizeKat(c.Kategori) || 'Barang', tipe: c.Tipe || '',
         harga: Number(c.Harga) || 0, qty: Number(c.Qty) || 1, periode: Number(c.Periode) || 1,
         mode: c.Cost_Mode || Config.COR_COST_MODE.GROUPED,
         category: c.Cost_Category || '',
