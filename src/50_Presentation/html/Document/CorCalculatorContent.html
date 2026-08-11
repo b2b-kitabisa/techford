@@ -118,6 +118,10 @@
 
   .cor-rbox { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: sticky; top: 8px; }
   .cor-rbox-hd { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-softer); }
+  /* Pemisah antar komponen di dalam satu cor-rbox yang digabung (Margin +
+     Profit Margin, Implementation Fee) — beda dari cor-rbox-hd (judul box),
+     ini murni jarak antar kelompok baris di DALAM satu box yang sama. */
+  .cor-rbox-divider { height: 1px; background: var(--border-softer); margin: 8px 0; }
   .cor-rrow { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border-softer); }
   .cor-rrow:last-child { border-bottom: none; }
   .cor-rrow .v { font-family: monospace; font-weight: 700; }
@@ -188,11 +192,20 @@
       <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
       <div class="cor-rrow"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
     </div>
+    <!-- Margin & Profit Margin digabung satu box — dua-duanya sama-sama
+         "seberapa untung", cuma beda basis (margin dari panduan vs profit
+         aktual setelah cost sungguhan terisi). Divider memisahkan supaya
+         tetap terbaca sebagai dua komponen, bukan satu daftar campur. -->
     <div class="cor-rbox">
-      <div class="cor-rbox-hd">Margin</div>
+      <div class="cor-rbox-hd">Margin &amp; Profit Margin</div>
       <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
       <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
       <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
+      <div class="cor-rbox-divider"></div>
+      <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
+      <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
+      <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
+      <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
     </div>
     <div class="cor-rbox">
       <div class="cor-rbox-hd">SPP Amount</div>
@@ -201,12 +214,21 @@
       <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrSppPph">Rp0</span></div>
       <div class="cor-rrow"><span>Total neto</span><span class="v" id="corRrSppNeto">Rp0</span></div>
     </div>
+    <!-- Box ke-4 (dulu Profit Margin, sekarang digabung ke atas) diisi
+         Implementation Fee — sama makna dengan kolom COR_Result:
+         Total_Implementation_Fund, Salset_NGO_Fee, Profit_Estimate_Vendor.
+         Dihitung live dari angka yang sama yang dipersist ke COR_Result
+         saat Simpan Draft (lihat CorService.computeAndPersistCorResult),
+         bukan dibaca dari sheet — supaya box ini ikut update sambil admin
+         masih mengetik, sama seperti 3 box lain di baris ini. -->
     <div class="cor-rbox">
-      <div class="cor-rbox-hd">Profit Margin</div>
-      <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
-      <div class="cor-rrow"><span>Total cost</span><span class="v" id="corRrPmCost">Rp0</span></div>
-      <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
-      <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
+      <div class="cor-rbox-hd">Implementation Fee</div>
+      <div class="cor-rrow"><span>Implementation Fund</span><span class="v" id="corRrImpFund">Rp0</span></div>
+      <div class="cor-rrow"><span>Salset Fee</span><span class="v" id="corRrImpSalsetFee">Rp0</span></div>
+      <div class="cor-rrow"><span>Profit Program</span><span class="v" id="corRrImpProfit">Rp0</span></div>
+      <div class="cor-rbox-divider"></div>
+      <div class="cor-rrow" style="font-weight:700;"><span>Total Implementation Fee</span><span class="v" id="corRrImpTotal">Rp0</span></div>
+      <div class="cor-rrow"><span>Implementation Fee %</span><span class="v" id="corRrImpPct">0%</span></div>
     </div>
   </div>
   <div class="cor-summary-row" id="corRpGu" style="display:none;">
@@ -1426,10 +1448,13 @@
   // seluruh perhitungan di halaman ini (.map(calcItemRow), total per tabel,
   // saldo budget, Gross Up/Down) membaca array datar itu, dan menyarangkannya
   // berarti menyentuh ulang setiap titik penjumlahan cuma demi bentuk data.
+  // Label TAMPILAN saja — kode internal (STANDALONE_ITEM/STANDALONE_NO_ITEM,
+  // dipakai di value <option> & disimpan ke Cost_Mode) TIDAK berubah, supaya
+  // baris yang sudah tersimpan di sheet dengan mode lama tetap terbaca.
   var COR_COST_MODES = [
     { v: 'GROUPED', label: 'Grouped' },
-    { v: 'STANDALONE_ITEM', label: 'Standalone + Item' },
-    { v: 'STANDALONE_NO_ITEM', label: 'Standalone tanpa Item' }
+    { v: 'STANDALONE_ITEM', label: 'Lump Sum + Rincian' },
+    { v: 'STANDALONE_NO_ITEM', label: 'Lump Sum' }
   ];
 
   function costGroupsOf(arr) {
@@ -1819,6 +1844,18 @@
     document.getElementById('corRrPmCost').innerText = fmtRp(totalBaa);
     document.getElementById('corRrPmProfit').innerText = fmtRp(pmProfit);
     document.getElementById('corRrPmPct').innerText = cashNet > 0 ? (pmPct * 100).toFixed(2) + '%' : '0%';
+
+    // Implementation Fee — sama formula dengan yang dipersist ke COR_Result
+    // (Total_Implementation_Fund/Salset_NGO_Fee/Profit_Estimate_Vendor, lihat
+    // CorService.computeAndPersistCorResult), dihitung ulang di sini dari
+    // totalMasuk/salFee/pmProfit yang SUDAH ADA di atas — bukan sumber baru.
+    var totalImplementationFee = salFee + pmProfit;
+    var implementationFeePct = totalMasuk > 0 ? (totalImplementationFee / totalMasuk) : 0;
+    document.getElementById('corRrImpFund').innerText = fmtRp(totalMasuk);
+    document.getElementById('corRrImpSalsetFee').innerText = fmtRp(salFee);
+    document.getElementById('corRrImpProfit').innerText = fmtRp(pmProfit);
+    document.getElementById('corRrImpTotal').innerText = fmtRp(totalImplementationFee);
+    document.getElementById('corRrImpPct').innerText = (implementationFeePct * 100).toFixed(2) + '%';
     document.getElementById('corRrSppDpp').innerText = fmtRp(dpp);
     document.getElementById('corRrSppPpn').innerText = fmtRp(ppn11);
     document.getElementById('corRrSppPph').innerText = fmtRp(pphSpp);
