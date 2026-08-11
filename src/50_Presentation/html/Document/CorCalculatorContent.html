@@ -281,16 +281,16 @@
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
               <colgroup>
-                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
-                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
-                <col style="width:12%;"><col style="width:4%;">
+                <col style="width:11%;"><col style="width:11%;"><col style="width:15%;"><col style="width:8%;">
+                <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
+                <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdSalCostRows"></tbody>
-              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran SALSET</td><td><span class="cor-cv" id="corGdSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdSalTotal">Rp0</span></td><td></td></tr></tfoot>
+              <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total pengeluaran SALSET</td><td><span class="cor-cv" id="corGdSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdSalTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
           </div>
-          <button class="btn-outline" onclick="addCostRow('GROSS_DOWN','SAL')" style="margin-top:8px;">+ Tambah item</button>
+          <button class="btn-outline" onclick="addCostGroup('GROSS_DOWN','SAL')" style="margin-top:8px;">+ Tambah Kategori</button>
           <div id="corGdSalSaldo"></div>
         </div>
 
@@ -299,16 +299,16 @@
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
               <colgroup>
-                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
-                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
-                <col style="width:12%;"><col style="width:4%;">
+                <col style="width:11%;"><col style="width:11%;"><col style="width:15%;"><col style="width:8%;">
+                <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
+                <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdVendorCostRows"></tbody>
-              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total pengeluaran <span id="corVl5">Vendor</span></td><td><span class="cor-cv" id="corGdVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdVendorTotal">Rp0</span></td><td></td></tr></tfoot>
+              <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total pengeluaran <span id="corVl5">Vendor</span></td><td><span class="cor-cv" id="corGdVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdVendorTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
           </div>
-          <button class="btn-outline" onclick="addCostRow('GROSS_DOWN','VENDOR')" style="margin-top:8px;">+ Tambah item</button>
+          <button class="btn-outline" onclick="addCostGroup('GROSS_DOWN','VENDOR')" style="margin-top:8px;">+ Tambah Kategori</button>
           <div id="corGdVendorSaldo"></div>
         </div>
 
@@ -322,16 +322,16 @@
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
               <colgroup>
-                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
-                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
-                <col style="width:12%;"><col style="width:4%;">
+                <col style="width:11%;"><col style="width:11%;"><col style="width:15%;"><col style="width:8%;">
+                <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
+                <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuSalCostRows"></tbody>
-              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost SALSET</td><td><span class="cor-cv" id="corGuSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuSalTotal">Rp0</span></td><td></td></tr></tfoot>
+              <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total cost SALSET</td><td><span class="cor-cv" id="corGuSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuSalTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
           </div>
-          <button class="btn-outline" onclick="addCostRow('GROSS_UP','SAL')" style="margin-top:8px;">+ Tambah item</button>
+          <button class="btn-outline" onclick="addCostGroup('GROSS_UP','SAL')" style="margin-top:8px;">+ Tambah Kategori</button>
         </div>
 
         <div class="cor-box">
@@ -339,16 +339,16 @@
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
               <colgroup>
-                <col style="width:22%;"><col style="width:12%;"><col style="width:10%;"><col style="width:6%;">
-                <col style="width:12%;"><col style="width:7%;"><col style="width:7%;"><col style="width:11%;">
-                <col style="width:12%;"><col style="width:4%;">
+                <col style="width:11%;"><col style="width:11%;"><col style="width:15%;"><col style="width:8%;">
+                <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
+                <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Keterangan</th><th>Kategori</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuVendorCostRows"></tbody>
-              <tfoot><tr class="cor-ct-total"><td colspan="7" style="text-align:left;">Total cost <span id="corVlGu2">Vendor</span></td><td><span class="cor-cv" id="corGuVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuVendorTotal">Rp0</span></td><td></td></tr></tfoot>
+              <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total cost <span id="corVlGu2">Vendor</span></td><td><span class="cor-cv" id="corGuVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuVendorTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
           </div>
-          <button class="btn-outline" onclick="addCostRow('GROSS_UP','VENDOR')" style="margin-top:8px;">+ Tambah item</button>
+          <button class="btn-outline" onclick="addCostGroup('GROSS_UP','VENDOR')" style="margin-top:8px;">+ Tambah Kategori</button>
         </div>
 
         <div class="form-grid-2col">
@@ -492,6 +492,16 @@
     <div style="margin-bottom:12px;">
       <label class="taxonomy-label">Kirim ke (Head of B2B)</label>
       <select id="corApprovalApprover" style="width:100%; margin-top:6px;"></select>
+    </div>
+    <!-- Pagar margin — muncul HANYA kalau margin di bawah panduan
+         Margin_Guide (lihat CorService.evaluateMarginGuard). Bukan blokir:
+         boleh lanjut, tapi alasannya wajib ditulis dan ikut terkirim ke
+         approver, supaya ia tahu sedang menyetujui pengecualian. -->
+    <div id="corMarginGuardBox" style="display:none; margin-bottom:12px; padding:12px 14px; border-radius:8px; background:var(--warn-tint); border:1px solid var(--warn);">
+      <div style="font-weight:700; font-size:12.5px; color:var(--warn); margin-bottom:4px;">⚠ Margin di bawah panduan</div>
+      <div id="corMarginGuardDetail" style="font-size:12px; color:var(--text-muted); margin-bottom:8px;"></div>
+      <label class="taxonomy-label">Alasan menerima margin ini <span style="color:var(--bad);">(wajib)</span></label>
+      <textarea id="corMarginAckNote" rows="3" placeholder="Contoh: klien strategis, proyek rintisan untuk membuka kerja sama tahun depan." style="width:100%; margin-top:6px; box-sizing:border-box; font-family:inherit; font-size:12px; resize:vertical;"></textarea>
     </div>
     <div style="margin-bottom:4px;">
       <label class="taxonomy-label">Catatan (opsional, isi body email)</label>
@@ -886,8 +896,14 @@
         '<tr><th style="text-align:left; border-bottom:1px solid var(--border-soft); padding:4px;">Keterangan</th>' +
         '<th style="text-align:right; border-bottom:1px solid var(--border-soft); padding:4px;">Harga &times; Qty &times; Periode</th></tr>' +
         costRows.map(function (r) {
+          // Baris rincian (metode Standalone dengan Item) tidak punya nominal
+          // sendiri — ditulis strip, bukan "Rp0 × 0 × 0" yang terbaca seperti
+          // angka yang hilang.
+          var nominal = String(r.rowRole || '') === 'ITEM'
+            ? '<span style="color:var(--text-faint);">&mdash;</span>'
+            : fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode;
           return '<tr><td style="padding:4px; border-bottom:1px solid var(--border-softer);">' + escHtmlCor(r.label || '-') + '</td>' +
-            '<td style="padding:4px; text-align:right; border-bottom:1px solid var(--border-softer);">' + fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode + '</td></tr>';
+            '<td style="padding:4px; text-align:right; border-bottom:1px solid var(--border-softer);">' + nominal + '</td></tr>';
         }).join('') + '</table>'
       : '<em>Tidak ada baris cost.</em>';
 
@@ -905,12 +921,41 @@
     return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Hasil pemeriksaan pagar margin terakhir. Cuma dipakai untuk memutuskan
+  // apakah kolom alasan wajib diisi di sisi UI — server MEMERIKSA ULANG
+  // sendiri saat kirim (lihat CorService.requestApproval), jadi state ini
+  // tidak pernah jadi satu-satunya penjaga.
+  var corMarginGuard = { below: false };
+
+  function renderMarginGuardBox(guard) {
+    corMarginGuard = guard || { below: false };
+    var box = document.getElementById('corMarginGuardBox');
+    if (!corMarginGuard.below) { box.style.display = 'none'; return; }
+    document.getElementById('corMarginGuardDetail').innerHTML =
+      (corMarginGuard.blocks || []).filter(function (b) { return b.below; }).map(function (b) {
+        return escHtmlCor(b.tabLabel) + ': panduan <strong>' + b.planPct + '%</strong>, aktual <strong>' +
+          b.actualPct + '%</strong> — kurang ' + b.gapPct + ' poin.';
+      }).join('<br>');
+    box.style.display = '';
+  }
+
   function openRequestApproval() {
     if (!CALCULATOR_DOC_ID) return;
     document.getElementById('corApprovalDescription').value = '';
+    document.getElementById('corMarginAckNote').value = '';
+    renderMarginGuardBox({ below: false });
     var sel = document.getElementById('corApprovalApprover');
     sel.innerHTML = '<option value="">Memuat...</option>';
     document.getElementById('corApprovalModal').classList.add('open');
+
+    // Pemeriksaan pagar margin — murni membaca, jadi aman di-retry kalau
+    // transport-nya menelan respons. Kegagalannya TIDAK memblokir popup:
+    // server tetap memeriksa ulang saat kirim, jadi paling buruk user
+    // melihat peringatannya belakangan alih-alih tidak bisa mengirim.
+    gsRunWithRetry('cor_checkMarginGuard', [CALCULATOR_DOC_ID], function (res) {
+      if (res && res.ok) renderMarginGuardBox(res.data);
+    }, function () { /* dibiarkan — server tetap jadi penjaga sesungguhnya */ });
+
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || !res.ok) { sel.innerHTML = '<option value="">Gagal memuat daftar approver.</option>'; return; }
@@ -930,7 +975,16 @@
   function submitRequestApproval() {
     var approverId = document.getElementById('corApprovalApprover').value;
     if (!approverId) { alert('Pilih Head of B2B tujuan approval dulu.'); return; }
-    if (!techfordConfirm('Kirim permintaan approval COR ini?')) return;
+
+    var marginAckNote = document.getElementById('corMarginAckNote').value.trim();
+    if (corMarginGuard.below && !marginAckNote) {
+      alert('Margin COR ini di bawah panduan. Tuliskan dulu alasan menerimanya — alasan itu ikut dikirim ke approver.');
+      document.getElementById('corMarginAckNote').focus();
+      return;
+    }
+    if (!techfordConfirm(corMarginGuard.below
+      ? 'Kirim permintaan approval COR ini? Approver akan diberi tahu bahwa marginnya di bawah panduan, beserta alasan yang Anda tulis.'
+      : 'Kirim permintaan approval COR ini?')) return;
 
     var description = document.getElementById('corApprovalDescription').value;
     var requestedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
@@ -960,7 +1014,7 @@
         btn.innerText = 'Kirim';
         recheckRequestApprovalOutcome(approverLabel);
       })
-      .cor_requestApproval(CALCULATOR_DOC_ID, approverId, description, requestedBy);
+      .cor_requestApproval(CALCULATOR_DOC_ID, approverId, description, requestedBy, marginAckNote);
   }
 
   // google.script.run terbukti (di beberapa modul lain juga) kadang
@@ -1090,8 +1144,33 @@
     initDefaultsIfEmpty();
   }
 
-  function costRowFromServer(c) {
-    return { idx: nextIdx(), ket: c.Keterangan || '', kat: c.Kategori || 'Barang', tipe: c.Tipe || '', h: Number(c.Harga) || 0, q: Number(c.Qty) || 1, p: Number(c.Periode) || 1 };
+  /**
+   * gid (id kelompok di layar) TIDAK disimpan di sheet — ia dibangun ulang
+   * dari Cost_Mode + Category_Order + Cost_Category, karena ketiganya itulah
+   * yang benar-benar mendefinisikan "baris ini sekategori dengan baris itu".
+   * Baris lama (sebelum kolom ini ada) tidak punya ketiganya, jadi tiap baris
+   * jatuh ke kelompoknya sendiri bermode GROUPED — tampil persis seperti
+   * sebelum fitur metode input cost ada.
+   */
+  var costGidByKey = {};
+  function gidForCostRow(c, fallbackSeq) {
+    var mode = c.Cost_Mode || 'GROUPED';
+    var hasCat = !(c.Category_Order === '' || c.Category_Order === undefined || c.Category_Order === null);
+    var key = (c.Cor_Tab || '') + '|' + (c.Cost_Group || '') + '|' + mode + '|' +
+      (hasCat ? String(c.Category_Order) : ('solo' + fallbackSeq)) + '|' + String(c.Cost_Category || '');
+    if (!costGidByKey[key]) costGidByKey[key] = nextIdx();
+    return costGidByKey[key];
+  }
+
+  function costRowFromServer(c, i) {
+    return {
+      idx: nextIdx(), gid: gidForCostRow(c, i),
+      mode: c.Cost_Mode || 'GROUPED',
+      cat: c.Cost_Category || '',
+      role: c.Row_Role === 'ITEM' ? 'ITEM' : 'PRICE',
+      ket: c.Keterangan || '', kat: c.Kategori || 'Barang', tipe: c.Tipe || '',
+      h: Number(c.Harga) || 0, q: Number(c.Qty) || 1, p: Number(c.Periode) || 1
+    };
   }
 
   function initDefaultsIfEmpty() {
@@ -1199,11 +1278,16 @@
     if (kat === 'Jasa') { if (tipe === 'Lembaga') return 0.02; if (tipe === 'Individu') return 0.025; }
     return 0;
   }
+  // Baris rincian (role ITEM, metode Standalone dengan Item) bernilai nol
+  // untuk semuanya — nominalnya milik baris kategori, bukan baris ini.
+  // Gerbangnya di sini supaya SEMUA total di layar (per tabel, saldo budget,
+  // Gross Up/Down) otomatis ikut benar tanpa masing-masing perlu tahu mode.
   function calcItemRow(item) {
+    if (item && item.role === 'ITEM') return { total: 0, rt: 0, tap: 0, priced: false };
     var total = ri(item.h * item.q * item.p);
     var rt = pphRate(item.kat, item.tipe);
     var tap = rt > 0 ? total / (1 - rt) : total;
-    return { total: total, rt: rt, tap: tap };
+    return { total: total, rt: rt, tap: tap, priced: true };
   }
   function adminFee(bankRate, afterFee) {
     if (!afterFee || afterFee <= 0) return 0;
@@ -1334,11 +1418,124 @@
     return group === 'SAL' ? cor.salItems : cor.baaItems;
   }
 
-  function addCostRow(method, group) {
-    var row = { idx: nextIdx(), ket: '', kat: 'Barang', tipe: '', h: 0, q: 1, p: 1 };
-    getCostArray(method, group).push(row);
+  // ── 3 metode input cost per KATEGORI (lihat Config.COR_COST_MODE) ──
+  // Array baris tetap DATAR seperti sebelumnya; yang mengikat baris jadi satu
+  // kategori adalah field gid. Sengaja tidak diubah jadi array bersarang:
+  // seluruh perhitungan di halaman ini (.map(calcItemRow), total per tabel,
+  // saldo budget, Gross Up/Down) membaca array datar itu, dan menyarangkannya
+  // berarti menyentuh ulang setiap titik penjumlahan cuma demi bentuk data.
+  var COR_COST_MODES = [
+    { v: 'GROUPED', label: 'Grouped' },
+    { v: 'STANDALONE_ITEM', label: 'Standalone + Item' },
+    { v: 'STANDALONE_NO_ITEM', label: 'Standalone tanpa Item' }
+  ];
+
+  function costGroupsOf(arr) {
+    var byGid = {};
+    var order = [];
+    arr.forEach(function (r) {
+      if (!r.gid) r.gid = nextIdx();
+      if (!r.role) r.role = 'PRICE';
+      if (!r.mode) r.mode = 'GROUPED';
+      if (!byGid[r.gid]) {
+        byGid[r.gid] = { gid: r.gid, mode: r.mode, cat: r.cat || '', rows: [] };
+        order.push(r.gid);
+      }
+      byGid[r.gid].rows.push(r);
+    });
+    return order.map(function (gid) { return byGid[gid]; });
+  }
+
+  function newCostRow(gid, mode, cat, role) {
+    var priced = role !== 'ITEM';
+    return {
+      idx: nextIdx(), gid: gid, mode: mode, cat: cat || '', role: role,
+      ket: '', kat: 'Barang', tipe: '', h: 0, q: priced ? 1 : 0, p: priced ? 1 : 0
+    };
+  }
+
+  function addCostGroup(method, group) {
+    getCostArray(method, group).push(newCostRow(nextIdx(), 'GROUPED', '', 'PRICE'));
     renderAll();
   }
+
+  function removeCostGroup(method, group, gid) {
+    var arr = getCostArray(method, group);
+    for (var i = arr.length - 1; i >= 0; i--) if (arr[i].gid === gid) arr.splice(i, 1);
+    renderAll();
+  }
+
+  function addCostItemRow(method, group, gid) {
+    var arr = getCostArray(method, group);
+    var g = costGroupsOf(arr).filter(function (x) { return x.gid === gid; })[0];
+    if (!g || g.mode === 'STANDALONE_NO_ITEM') return;
+    // Disisipkan tepat setelah baris TERAKHIR kelompok ini, bukan di ujung
+    // array — kalau didorong ke ujung, kelompok yang punya kelompok lain di
+    // bawahnya akan terbelah dua di layar.
+    var lastPos = -1;
+    arr.forEach(function (r, i) { if (r.gid === gid) lastPos = i; });
+    arr.splice(lastPos + 1, 0, newCostRow(gid, g.mode, g.cat, g.mode === 'STANDALONE_ITEM' ? 'ITEM' : 'PRICE'));
+    renderAll();
+  }
+
+  /**
+   * Ganti metode satu kategori. Aturannya dipilih supaya NOMINAL & NAMA yang
+   * sudah diketik tidak pernah hilang diam-diam hanya karena ganti metode —
+   * itu jenis kehilangan yang baru ketahuan setelah dokumen terkirim.
+   */
+  function setCostGroupMode(method, group, gid, mode) {
+    var arr = getCostArray(method, group);
+    var rows = arr.filter(function (r) { return r.gid === gid; });
+    if (!rows.length) return;
+    var firstPriced = rows.filter(function (r) { return r.role === 'PRICE'; })[0] || rows[0];
+
+    if (mode === 'STANDALONE_NO_ITEM') {
+      // Tepat 1 baris, tanpa nama kategori. Nominal diambil dari baris yang
+      // memang memegang nominal, namanya dari baris pertama yang bernama.
+      var bernama = rows.filter(function (r) { return String(r.ket || '').trim(); })[0];
+      firstPriced.role = 'PRICE';
+      firstPriced.cat = '';
+      firstPriced.ket = firstPriced.ket || (bernama ? bernama.ket : '');
+      if (!firstPriced.q) firstPriced.q = 1;
+      if (!firstPriced.p) firstPriced.p = 1;
+      for (var i = arr.length - 1; i >= 0; i--) {
+        if (arr[i].gid === gid && arr[i] !== firstPriced) arr.splice(i, 1);
+      }
+    } else if (mode === 'STANDALONE_ITEM') {
+      var sudahPunyaBarisNominal = rows[0].role === 'PRICE' && !String(rows[0].ket || '').trim() &&
+        rows.filter(function (r) { return r.role === 'PRICE'; }).length === 1;
+      if (!sudahPunyaBarisNominal) {
+        // Baris nominal kategori dibuat TERSENDIRI (bukan menumpang baris
+        // item pertama) — supaya nama item pertama tidak tertelan jadi label
+        // "Nominal kategori" dan hilang dari layar.
+        var barisNominal = newCostRow(gid, mode, rows[0].cat || '', 'PRICE');
+        barisNominal.h = firstPriced.h; barisNominal.q = firstPriced.q || 1; barisNominal.p = firstPriced.p || 1;
+        barisNominal.kat = firstPriced.kat; barisNominal.tipe = firstPriced.tipe;
+        rows.forEach(function (r) { r.role = 'ITEM'; r.h = 0; r.q = 0; r.p = 0; r.kat = 'Barang'; r.tipe = ''; });
+        var pos = -1;
+        arr.forEach(function (r, i) { if (r.gid === gid && pos === -1) pos = i; });
+        arr.splice(pos, 0, barisNominal);
+      }
+    } else {
+      // GROUPED — semua baris kembali memegang nominal sendiri. Baris nominal
+      // kategori yang tadi tidak dibuang: ia jadi baris biasa (namanya kosong,
+      // tinggal diisi), sehingga angkanya tetap ada di layar.
+      rows.forEach(function (r) {
+        r.role = 'PRICE';
+        if (!r.q) r.q = 1;
+        if (!r.p) r.p = 1;
+      });
+    }
+    arr.forEach(function (r) { if (r.gid === gid) r.mode = mode; });
+    renderAll();
+  }
+
+  // Nama kategori TANPA renderAll() — sama alasannya dengan updateCostTextField:
+  // kursor akan lepas tiap ketikan kalau tabelnya digambar ulang.
+  function updateCostGroupLabel(method, group, gid, value) {
+    getCostArray(method, group).forEach(function (r) { if (r.gid === gid) r.cat = value; });
+  }
+
   function removeCostRow(method, group, idx) {
     var arr = getCostArray(method, group);
     var i = arr.findIndex(function (x) { return x.idx === idx; });
@@ -1372,20 +1569,78 @@
     var changeFn = 'onCostTipeChange_' + method + '_' + group;
     window[changeFn] = function (idx, field, value) { updateCostField(method, group, idx, field, value); };
     var tb = document.getElementById(tbodyId);
-    tb.innerHTML = arr.map(function (r) {
-      var c = calcItemRow(r);
-      return '<tr>' +
-        '<td><textarea placeholder="Keterangan..." rows="1" oninput="updateCostTextField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'ket\',this.value)">' + esc(r.ket) + '</textarea></td>' +
-        '<td><select onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'kat\',this.value)">' + katOptions(r.kat) + '</select></td>' +
-        '<td>' + tipeCellHtml(r.kat, r.tipe, r.idx, changeFn) + '</td>' +
-        '<td><span class="cor-cv pph">' + (c.rt * 100).toFixed(1) + '%</span></td>' +
-        '<td><input type="text" inputmode="numeric" value="' + formatThousands(r.h) + '" placeholder="0" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'h\',parseThousands(this))"></td>' +
-        '<td><input type="number" value="' + r.q + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'q\',parseFloat(this.value)||1)"></td>' +
-        '<td><input type="number" value="' + r.p + '" min="1" style="width:50px;" onchange="updateCostField(\'' + method + '\',\'' + group + '\',' + r.idx + ',\'p\',parseFloat(this.value)||1)"></td>' +
-        '<td><span class="cor-cv">' + fmtRp(c.total) + '</span></td>' +
-        '<td><span class="cor-cv ' + (c.rt > 0 ? 'pph' : '') + '">' + fmtRp(c.tap) + '</span></td>' +
-        '<td><button class="cor-btn-del" onclick="removeCostRow(\'' + method + '\',\'' + group + '\',' + r.idx + ')">&times;</button></td>' +
-        '</tr>';
+    var groups = costGroupsOf(arr);
+    if (!groups.length) {
+      tb.innerHTML = '<tr><td colspan="12" style="text-align:center; color:var(--text-faint); padding:14px;">' +
+        'Belum ada kategori biaya. Klik &ldquo;+ Tambah Kategori&rdquo; di bawah.</td></tr>';
+      return;
+    }
+    var mg = "'" + method + "','" + group + "'";
+
+    tb.innerHTML = groups.map(function (g) {
+      // +1 = baris aksi kelompok di bawahnya, yang ikut tercakup rowspan
+      // sel Metode & Kategori.
+      var span = g.rows.length + 1;
+      var modeCell =
+        '<select onchange="setCostGroupMode(' + mg + ',' + g.gid + ',this.value)" style="width:100%;">' +
+        COR_COST_MODES.map(function (m) {
+          return '<option value="' + m.v + '"' + (g.mode === m.v ? ' selected' : '') + '>' + m.label + '</option>';
+        }).join('') + '</select>' +
+        '<button class="cor-btn-del" title="Hapus kategori ini beserta seluruh barisnya" ' +
+        'onclick="removeCostGroup(' + mg + ',' + g.gid + ')" style="margin-top:4px;">&times; kategori</button>';
+      // Metode "Standalone tanpa Item" memang tidak memakai nama kategori —
+      // inputnya dihilangkan, bukan sekadar dikosongkan, supaya tidak ada
+      // yang mengetik di kolom yang nilainya tidak akan pernah tersimpan.
+      var catCell = g.mode === 'STANDALONE_NO_ITEM'
+        ? '<span style="color:var(--text-faint);">&mdash;</span>'
+        : '<input type="text" placeholder="Nama kategori..." value="' + esc(g.cat) +
+          '" oninput="updateCostGroupLabel(' + mg + ',' + g.gid + ',this.value)">';
+
+      var rowsHtml = g.rows.map(function (r, ri2) {
+        var c = calcItemRow(r);
+        var lead = ri2 > 0 ? '' :
+          '<td rowspan="' + span + '" style="vertical-align:top;">' + modeCell + '</td>' +
+          '<td rowspan="' + span + '" style="vertical-align:top;">' + catCell + '</td>';
+
+        if (r.role === 'ITEM') {
+          return '<tr>' + lead +
+            '<td><textarea placeholder="Nama item (tanpa nominal)..." rows="1" oninput="updateCostTextField(' + mg + ',' + r.idx + ',\'ket\',this.value)">' + esc(r.ket) + '</textarea></td>' +
+            '<td colspan="8" style="color:var(--text-faint); font-size:11px;">rincian &mdash; nominal ada di baris kategori</td>' +
+            '<td><button class="cor-btn-del" onclick="removeCostRow(' + mg + ',' + r.idx + ')">&times;</button></td>' +
+            '</tr>';
+        }
+
+        var ketCell = g.mode === 'STANDALONE_ITEM'
+          ? '<span style="font-size:11px; font-weight:700; color:var(--color-cerulean);">Nominal kategori</span>'
+          : '<textarea placeholder="Keterangan..." rows="1" oninput="updateCostTextField(' + mg + ',' + r.idx + ',\'ket\',this.value)">' + esc(r.ket) + '</textarea>';
+        // Baris satu-satunya di kelompoknya tidak punya tombol hapus baris —
+        // menghapusnya berarti menghapus kategorinya, dan itu sudah punya
+        // tombol sendiri yang mengatakan persis apa yang akan terjadi.
+        var delCell = (g.mode === 'GROUPED' && g.rows.length > 1)
+          ? '<button class="cor-btn-del" onclick="removeCostRow(' + mg + ',' + r.idx + ')">&times;</button>' : '';
+
+        return '<tr>' + lead +
+          '<td>' + ketCell + '</td>' +
+          '<td><select onchange="updateCostField(' + mg + ',' + r.idx + ',\'kat\',this.value)">' + katOptions(r.kat) + '</select></td>' +
+          '<td>' + tipeCellHtml(r.kat, r.tipe, r.idx, changeFn) + '</td>' +
+          '<td><span class="cor-cv pph">' + (c.rt * 100).toFixed(1) + '%</span></td>' +
+          '<td><input type="text" inputmode="numeric" value="' + formatThousands(r.h) + '" placeholder="0" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateCostField(' + mg + ',' + r.idx + ',\'h\',parseThousands(this))"></td>' +
+          '<td><input type="number" value="' + r.q + '" min="1" style="width:50px;" onchange="updateCostField(' + mg + ',' + r.idx + ',\'q\',parseFloat(this.value)||1)"></td>' +
+          '<td><input type="number" value="' + r.p + '" min="1" style="width:50px;" onchange="updateCostField(' + mg + ',' + r.idx + ',\'p\',parseFloat(this.value)||1)"></td>' +
+          '<td><span class="cor-cv">' + fmtRp(c.total) + '</span></td>' +
+          '<td><span class="cor-cv ' + (c.rt > 0 ? 'pph' : '') + '">' + fmtRp(c.tap) + '</span></td>' +
+          '<td>' + delCell + '</td>' +
+          '</tr>';
+      }).join('');
+
+      var aksiRow = '<tr><td colspan="10" style="padding:4px 6px;">' +
+        (g.mode === 'STANDALONE_NO_ITEM'
+          ? '<span style="font-size:11px; color:var(--text-faint);">Metode ini tepat 1 baris &mdash; ganti metode kalau perlu menambah rincian.</span>'
+          : '<button class="btn-outline" style="padding:2px 8px; font-size:11px;" onclick="addCostItemRow(' + mg + ',' + g.gid + ')">+ Tambah Item</button>' +
+            (g.mode === 'STANDALONE_ITEM'
+              ? '<span style="font-size:11px; color:var(--text-faint); margin-left:8px;">nominal di baris atas berlaku untuk SELURUH item kategori ini</span>' : '')) +
+        '</td></tr>';
+      return rowsHtml + aksiRow;
     }).join('');
   }
 
@@ -1679,12 +1934,12 @@
     var costs_payload = [];
     if (currentMethod === 'GROSS_DOWN') {
       ['CLIENT', 'CAMPAIGN'].forEach(function (tab) {
-        corState[tab].salItems.forEach(function (r) { costs_payload.push({ tab: tab, group: 'SAL', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
-        corState[tab].baaItems.forEach(function (r) { costs_payload.push({ tab: tab, group: 'VENDOR', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+        pushCostPayload(costs_payload, corState[tab].salItems, tab, 'SAL');
+        pushCostPayload(costs_payload, corState[tab].baaItems, tab, 'VENDOR');
       });
     } else {
-      guState.salItems.forEach(function (r) { costs_payload.push({ tab: 'CLIENT', group: 'SAL', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
-      guState.baaItems.forEach(function (r) { costs_payload.push({ tab: 'CLIENT', group: 'VENDOR', keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p }); });
+      pushCostPayload(costs_payload, guState.salItems, 'CLIENT', 'SAL');
+      pushCostPayload(costs_payload, guState.baaItems, 'CLIENT', 'VENDOR');
     }
 
     var margins_payload = [];
@@ -1771,8 +2026,34 @@
   function toPdfFund(f) {
     return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
   }
+  /**
+   * Susun baris payload cost untuk satu tabel. Category_Order dihitung ulang
+   * dari urutan kelompok di layar (bukan memakai gid apa adanya) supaya nomor
+   * yang tersimpan di sheet rapat 0,1,2… dan enak dibaca manusia yang membuka
+   * sheet-nya langsung — gid cuma id sementara di browser.
+   */
+  function pushCostPayload(target, arr, tab, group) {
+    var orderByGid = {};
+    var n = 0;
+    arr.forEach(function (r) {
+      if (orderByGid[r.gid] === undefined) orderByGid[r.gid] = n++;
+      target.push({
+        tab: tab, group: group,
+        keterangan: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p,
+        mode: r.mode || 'GROUPED', category: r.cat || '', categoryOrder: orderByGid[r.gid],
+        rowRole: r.role === 'ITEM' ? 'ITEM' : 'PRICE'
+      });
+    });
+  }
+
+  // categoryOrder untuk PDF cukup memakai gid: yang dibutuhkan CorCalc cuma
+  // "baris ini sekelompok dengan baris itu", bukan nomor urut yang rapi.
   function toPdfCost(r) {
-    return { label: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p };
+    return {
+      label: r.ket, kategori: r.kat, tipe: r.tipe, harga: r.h, qty: r.q, periode: r.p,
+      mode: r.mode || 'GROUPED', category: r.cat || '', categoryOrder: r.gid,
+      rowRole: r.role === 'ITEM' ? 'ITEM' : 'PRICE'
+    };
   }
   function buildPdfModel() {
     var isMix = getEffectiveMixFund();

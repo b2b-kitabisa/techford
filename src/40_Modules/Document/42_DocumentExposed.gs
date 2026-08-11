@@ -44,6 +44,15 @@ function document_getAllAttachments() {
 }
 
 /**
+ * Riwayat putaran approval semua dokumen (diajukan/disetujui/ditolak) —
+ * append-only, jadi alasan penolakan putaran ke-1 tetap ada walau sudah
+ * ada putaran ke-3. Lihat DocumentActivityRepository.
+ */
+function document_getAllActivity() {
+  return DocumentController.getAllActivity();
+}
+
+/**
  * Lepas lampiran dari dokumen. File di Drive TIDAK dihapus — lihat catatan
  * di DocumentService.removeAttachment.
  */

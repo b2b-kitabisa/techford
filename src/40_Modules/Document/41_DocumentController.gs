@@ -36,6 +36,12 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.getAllActivity = function () {
+    return ErrorHandler.handle('DocumentController.getAllActivity', function () {
+      return DocumentService.getAllActivity();
+    });
+  };
+
   module.checkDocumentLink = function (docId, url) {
     return ErrorHandler.handle('DocumentController.checkDocumentLink', function () {
       return DocumentService.checkDocumentLink(docId, url);

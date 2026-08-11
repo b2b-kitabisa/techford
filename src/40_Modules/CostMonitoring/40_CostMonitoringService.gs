@@ -39,7 +39,11 @@ var CostMonitoringService = (function (module) {
     if (!header || header.Cor_Method !== Config.COR_METHOD.GROSS_DOWN) return;
     if (CorBudgetItemRepository.findByDocId(docId).length > 0) return;
 
-    var costs = CorCostRepository.findByDocId(docId);
+    // Baris rincian (Row_Role ITEM, metode Standalone dengan Item) TIDAK
+    // punya nominal sendiri — nominalnya milik baris kategori. Kalau ikut
+    // di-snapshot, Cost Monitoring akan penuh item anggaran Rp0 yang tidak
+    // pernah bisa direalisasikan dan cuma mengaburkan daftar yang sungguhan.
+    var costs = CorCostRepository.findByDocId(docId).filter(Config.isPricedCostRow);
     var now = new Date();
     var rows = costs.map(function (c, i) {
       var calc = CorReportRenderer.calcItemRow({

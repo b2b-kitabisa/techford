@@ -24,11 +24,24 @@ var CorReportRenderer = (function (module) {
     if (kat === 'Jasa') { if (tipe === 'Lembaga') return 0.02; if (tipe === 'Individu') return 0.025; }
     return 0;
   }
+  /**
+   * Baris yang BUKAN pemegang nominal (rowRole 'ITEM' — cuma ada di metode
+   * Standalone dengan Item) mengembalikan nol untuk semuanya.
+   *
+   * Gerbangnya sengaja ditaruh DI SINI, bukan di tiap penjumlahan: computeGD,
+   * computeGU, tabel PDF, dan snapshot budget Cost Monitoring semuanya lewat
+   * fungsi ini, jadi satu penjagaan di titik ini membuat keempatnya benar
+   * sekaligus — dan metode input cost yang ditambahkan nanti tidak perlu
+   * menyisir ulang setiap tempat penjumlahan.
+   */
   function calcItemRow(item) {
+    if (item && String(item.rowRole || '') === 'ITEM') {
+      return { total: 0, rt: 0, tap: 0, priced: false };
+    }
     var total = ri((item.harga || 0) * (item.qty || 1) * (item.periode || 1));
     var rt = pphRate(item.kategori, item.tipe);
     var tap = rt > 0 ? total / (1 - rt) : total;
-    return { total: total, rt: rt, tap: tap };
+    return { total: total, rt: rt, tap: tap, priced: true };
   }
   function adminFee(bankRate, afterFee) {
     if (!afterFee || afterFee <= 0) return 0;
@@ -141,7 +154,17 @@ var CorReportRenderer = (function (module) {
     return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
   }
   var FUND_COLS = [28, 15, 9, 14, 14, 20];
-  var COST_COLS = [24, 12, 10, 8, 19, 13, 14];
+  // 9 kolom sejak metode input cost (Metode + Kategori di depan). Kolom
+  // Barang/Jasa diberi judul "Jenis", bukan "Kategori" lagi — dua kolom
+  // berjudul "Kategori" bersebelahan akan terbaca sebagai salah cetak.
+  var COST_COLS = [11, 13, 19, 7, 8, 6, 16, 10, 10];
+  var COST_HEADERS = ['Metode', 'Kategori', 'Keterangan', 'Jenis', 'Tipe', 'PPh',
+    'Harga x Qty x Periode', 'Total', 'Total stlh PPh'];
+  var COST_MODE_LABEL = {
+    GROUPED: 'Grouped',
+    STANDALONE_ITEM: 'Standalone + Item',
+    STANDALONE_NO_ITEM: 'Standalone tanpa Item'
+  };
   var MARGIN_COLS = [28, 40, 10, 22];
   var MARGIN_COLS_3COL = [35, 45, 20];
   function colgroup(widths) {
@@ -160,14 +183,66 @@ var CorReportRenderer = (function (module) {
         '<td class="r">' + fmtRp(c.tf) + '</td><td class="r">' + fmtRp(c.total) + '</td></tr>';
     }).join('');
   }
+  /**
+   * Kelompokkan baris cost jadi blok kategori — satu blok = satu sel Metode
+   * & Kategori yang di-rowspan, persis bentuk yang disepakati di prototipe.
+   *
+   * Baris LAMA (sebelum kolom Cost_Mode ada) tidak punya category/
+   * categoryOrder sama sekali; fallback ke indeks baris membuat tiap baris
+   * jadi bloknya sendiri, sehingga tabelnya tampil sama seperti sebelum
+   * fitur ini ada — satu baris satu nominal.
+   */
+  function groupCostRows(rows) {
+    var byCat = {};
+    var order = [];
+    (rows || []).forEach(function (r, i) {
+      var mode = String(r.mode || 'GROUPED');
+      var catKey = (r.categoryOrder === undefined || r.categoryOrder === null || r.categoryOrder === '')
+        ? ('row' + i) : String(r.categoryOrder);
+      var key = mode + '::' + catKey + '::' + String(r.category || '');
+      if (!byCat[key]) {
+        byCat[key] = { mode: mode, category: String(r.category || ''), items: [] };
+        order.push(key);
+      }
+      byCat[key].items.push(r);
+    });
+    return order.map(function (k) {
+      var g = byCat[k];
+      // Baris pemegang nominal selalu ditampilkan paling atas dalam bloknya.
+      // Client memang selalu mengirim urutan itu; penjagaan di sini supaya
+      // sheet yang pernah diurutkan ulang manual tidak menghasilkan PDF yang
+      // angkanya nyangkut di tengah daftar rincian.
+      g.items = g.items.slice().sort(function (a, b) {
+        var ap = String(a.rowRole || '') === 'ITEM' ? 1 : 0;
+        var bp = String(b.rowRole || '') === 'ITEM' ? 1 : 0;
+        return ap - bp;
+      });
+      return g;
+    });
+  }
+
   function costRowsHtml(rows) {
-    if (!rows.length) return '<tr><td colspan="7" class="pdf-empty">Tidak ada data.</td></tr>';
-    return rows.map(function (r) {
-      var c = calcItemRow(r);
-      return '<tr><td>' + esc(r.label || '-') + '</td><td>' + esc(r.kategori) + '</td><td>' + esc(r.tipe || '-') + '</td>' +
-        '<td class="r">' + (c.rt > 0 ? (c.rt * 100).toFixed(1) + '%' : '-') + '</td>' +
-        '<td class="r">' + fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode + '</td>' +
-        '<td class="r">' + fmtRp(c.total) + '</td><td class="r">' + fmtRp(c.tap) + '</td></tr>';
+    var groups = groupCostRows(rows);
+    if (!groups.length) return '<tr><td colspan="9" class="pdf-empty">Tidak ada data.</td></tr>';
+    return groups.map(function (g) {
+      return g.items.map(function (r, ii) {
+        var c = calcItemRow(r);
+        var lead = ii > 0 ? '' :
+          '<td rowspan="' + g.items.length + '">' + esc(COST_MODE_LABEL[g.mode] || g.mode) + '</td>' +
+          '<td rowspan="' + g.items.length + '">' + esc(g.category || '-') + '</td>';
+        if (!c.priced) {
+          // Sel angkanya sengaja DIKOSONGKAN, bukan diisi Rp0 — nol berarti
+          // "nilainya nol", sedangkan baris ini memang tidak punya nominal
+          // sendiri (nominalnya milik kategori, di baris paling atas blok).
+          return '<tr>' + lead + '<td>' + esc(r.label || '-') + '</td>' +
+            '<td colspan="6" class="pdf-empty" style="text-align:left;">rincian &mdash; nominal ada di baris kategori</td></tr>';
+        }
+        var label = r.label || (g.mode === 'STANDALONE_ITEM' ? 'Nominal kategori' : '-');
+        return '<tr>' + lead + '<td>' + esc(label) + '</td><td>' + esc(r.kategori) + '</td><td>' + esc(r.tipe || '-') + '</td>' +
+          '<td class="r">' + (c.rt > 0 ? (c.rt * 100).toFixed(1) + '%' : '-') + '</td>' +
+          '<td class="r">' + fmtRp(r.harga) + ' &times; ' + r.qty + ' &times; ' + r.periode + '</td>' +
+          '<td class="r">' + fmtRp(c.total) + '</td><td class="r">' + fmtRp(c.tap) + '</td></tr>';
+      }).join('');
     }).join('');
   }
   function marginTableHtml(marginState, marginComponents, base, showNominal) {
@@ -249,13 +324,13 @@ var CorReportRenderer = (function (module) {
 
         if (model.isViaSalset) {
           html += '<h2>Biaya Pengeluaran SALSET</h2><table class="pdf-tbl">' +
-            tblHead(['Keterangan', 'Kategori', 'Tipe', 'PPh', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
+            tblHead(COST_HEADERS, COST_COLS) +
             '<tbody>' + costRowsHtml(block.salItems) + '</tbody></table>' +
             '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gd.totalSal)) + '</tbody></table>';
         }
 
         html += '<h2>Biaya Pengeluaran ' + model.vendorEntity + '</h2><table class="pdf-tbl">' +
-          tblHead(['Keterangan', 'Kategori', 'Tipe', 'PPh', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
+          tblHead(COST_HEADERS, COST_COLS) +
           '<tbody>' + costRowsHtml(block.baaItems) + '</tbody></table>' +
           '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gd.totalBaa)) + '</tbody></table>' +
 
@@ -276,12 +351,12 @@ var CorReportRenderer = (function (module) {
 
         if (model.isViaSalset) {
           html += '<h2>Cost SALSET</h2><table class="pdf-tbl">' +
-            tblHead(['Keterangan', 'Kategori', 'Tipe', 'PPh', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
+            tblHead(COST_HEADERS, COST_COLS) +
             '<tbody>' + costRowsHtml(block.salItems) + '</tbody></table>' +
             '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gu.totalGuSal)) + '</tbody></table>';
         }
         html += '<h2>Cost ' + model.vendorEntity + '</h2><table class="pdf-tbl">' +
-          tblHead(['Keterangan', 'Kategori', 'Tipe', 'PPh', 'Harga x Qty x Periode', 'Total', 'Total stlh PPh'], COST_COLS) +
+          tblHead(COST_HEADERS, COST_COLS) +
           '<tbody>' + costRowsHtml(block.baaItems) + '</tbody></table>' +
           '<table class="pdf-meta"><tbody>' + pdfRow('Total', fmtRp(gu.totalGuBaa)) + '</tbody></table>';
 

@@ -44,6 +44,12 @@ var Config = (function (module) {
     // baris — itulah sebabnya ia sheet tersendiri, bukan kolom di
     // Document_Pipeline: satu kolom hanya muat satu nilai.
     DOCUMENT_ATTACHMENT: 'Document_Attachment',
+    // Riwayat putaran approval (diajukan / disetujui / ditolak) — APPEND-ONLY.
+    // Sengaja sheet tersendiri, bukan kolom di COR_Header/Quotation_Header:
+    // kolom Rejection_Note di sana cuma muat SATU nilai dan ditimpa tiap
+    // putaran, sehingga COR yang ditolak tiga kali cuma menyisakan alasan
+    // yang ketiga. Lihat DocumentActivityRepository.
+    DOCUMENT_ACTIVITY: 'Document_Activity',
     REVENUE_BREAKDOWN: 'Revenue_Breakdown',
     COR_ENTITY: 'COR_Entity',
     COR_HEADER: 'COR_Header',
@@ -429,6 +435,40 @@ var Config = (function (module) {
   // sama untuk method Gross Down maupun Gross Up.
   module.COR_COST_GROUP = { SAL: 'SAL', VENDOR: 'VENDOR' };
 
+  /**
+   * 3 metode input cost per KATEGORI di kalkulator COR — pola yang sama
+   * dengan Category_Mode di Quotation Composer, dipakai ulang di sini
+   * supaya admin tidak perlu belajar dua model mental berbeda untuk hal
+   * yang sama. Lihat CorCostRepository untuk bentuk barisnya di sheet.
+   *
+   *   GROUPED            tiap item punya Harga/Qty/Periode sendiri.
+   *   STANDALONE_ITEM    satu nominal untuk SELURUH kategori; baris item di
+   *                      bawahnya murni nama/rincian tanpa angka.
+   *   STANDALONE_NO_ITEM tepat satu baris berharga, TANPA nama kategori.
+   */
+  module.COR_COST_MODE = {
+    GROUPED: 'GROUPED',
+    STANDALONE_ITEM: 'STANDALONE_ITEM',
+    STANDALONE_NO_ITEM: 'STANDALONE_NO_ITEM'
+  };
+
+  /**
+   * Penanda baris mana yang memegang nominal. PRICE = ikut dihitung, ITEM =
+   * murni nama (cuma ada di STANDALONE_ITEM). Kosong dibaca sebagai PRICE
+   * supaya baris lama (sebelum fitur ini) tetap terhitung seperti dulu.
+   */
+  module.COR_COST_ROW_ROLE = { PRICE: 'PRICE', ITEM: 'ITEM' };
+
+  /**
+   * Apakah baris COR_Cost ini memegang nominal. SATU definisi yang dipakai
+   * server (CorReportRenderer/CostMonitoringService) — kembarannya di client
+   * ada di CorCalc (Shell.html) & CorCalculatorContent, lihat catatan
+   * duplikasi di CorReportRenderer.
+   */
+  module.isPricedCostRow = function (row) {
+    return String((row && (row.Row_Role || row.rowRole)) || '') !== module.COR_COST_ROW_ROLE.ITEM;
+  };
+
   // 4 komponen Default Margin — struktur ini tetap (mengikuti Panduan
   // Margin), tapi daftar sub-kategori & persentase tiap komponen dikelola
   // admin lewat sheet Margin_Guide (Setting > Master Data), bukan hardcode.
@@ -441,6 +481,27 @@ var Config = (function (module) {
 
   module.MAIL = {
     SENDER_NAME: 'Techford Platform'
+  };
+
+  /**
+   * Masa berlaku magic link approval COR/Quotation (hari).
+   *
+   * Approval di alur ini adalah persetujuan angka yang dilakukan TANPA
+   * login — siapa pun yang memegang URL-nya bisa memutuskan. Tanpa batas
+   * waktu, tautan di email enam bulan lalu (yang bisa saja sudah diteruskan
+   * ke mana-mana) masih sah hari ini. Token juga otomatis mati begitu
+   * Request Approval diulang, karena token barunya menimpa yang lama.
+   */
+  module.APPROVAL_TOKEN_VALID_DAYS = 14;
+
+  /**
+   * Jenis aktivitas yang dicatat ke Document_Activity (append-only).
+   * Dipakai bareng COR & Quotation — alur approval keduanya identik.
+   */
+  module.DOCUMENT_ACTIVITY_TYPE = {
+    APPROVAL_REQUESTED: 'APPROVAL_REQUESTED',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED'
   };
 
   // Cache default (detik) untuk data referensi yang jarang berubah.

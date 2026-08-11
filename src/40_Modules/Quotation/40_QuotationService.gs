@@ -374,9 +374,15 @@ var QuotationService = (function (module) {
 
       var pdf = generateAndStorePdf(docId, '', '');
       var token = Utilities.getUuid();
+      // Token lama mati begitu ditimpa token baru ini, dan token baru punya
+      // kedaluwarsa — sama pola & alasan dengan COR, lihat
+      // Config.APPROVAL_TOKEN_VALID_DAYS.
+      var expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + Config.APPROVAL_TOKEN_VALID_DAYS);
 
       QuotationHeaderRepository.patchApprovalFields(docId, {
         Approval_Token: token,
+        Approval_Expires_At: expiresAt,
         Approval_Requested_To: approver.Email,
         Approval_Requested_Name: approver.Name,
         Approval_Requested_At: new Date(),
@@ -398,9 +404,18 @@ var QuotationService = (function (module) {
         'Silakan review dokumen Quotation berikut:\n' + pdf.url + '\n\n' +
         'Kalau sudah sesuai dan disetujui, klik link berikut untuk approve & upload tanda tangan:\n' + approveUrl + '\n\n' +
         'Kalau perlu revisi, klik link berikut untuk menolak & memberi catatan:\n' + rejectUrl + '\n\n' +
+        'Kedua link di atas berlaku sampai ' +
+        Utilities.formatDate(expiresAt, Session.getScriptTimeZone(), 'dd MMMM yyyy') +
+        '. Setelah itu mintalah pengaju mengirim ulang permintaan approval.\n\n' +
         '— Dikirim otomatis oleh Techford Platform, diajukan oleh ' + (requestedBy || '-');
 
       MailApp.sendEmail({ to: approver.Email, subject: subject, body: body });
+
+      DocumentService.recordActivity(docId, Config.DOCUMENT_ACTIVITY_TYPE.APPROVAL_REQUESTED, {
+        actorName: requestedBy || '',
+        actorEmail: approver.Email,
+        note: description || ''
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
       Log.error('QuotationService.requestApproval', 'Gagal mengirim approval', err);
@@ -415,13 +430,28 @@ var QuotationService = (function (module) {
     return module.getDraft(docId);
   };
 
+  /**
+   * Tiga gerbang dengan pesan yang BERBEDA — sama persis pola & alasannya
+   * dengan CorService.assertApprovalToken (lihat catatan panjang di sana).
+   */
   function assertApprovalToken(docId, token) {
     var header = QuotationHeaderRepository.findByDocId(docId);
     if (!header || !header.Approval_Token || String(header.Approval_Token) !== String(token)) {
-      throw new AppError('VALIDATION_ERROR', 'Link approval tidak valid atau sudah kedaluwarsa.');
+      throw new AppError('VALIDATION_ERROR',
+        'Link approval ini sudah tidak berlaku — kemungkinan besar sudah ada permintaan approval yang lebih baru untuk dokumen yang sama. ' +
+        'Mintalah pengaju mengirim ulang permintaan approval.');
     }
     if (header.Approval_Resolved_At) {
       throw new AppError('VALIDATION_ERROR', 'Permintaan approval ini sudah diputuskan sebelumnya.');
+    }
+    if (header.Approval_Expires_At) {
+      var expires = new Date(header.Approval_Expires_At);
+      if (!isNaN(expires.getTime()) && expires.getTime() < Date.now()) {
+        throw new AppError('VALIDATION_ERROR',
+          'Link approval ini sudah kedaluwarsa pada ' +
+          Utilities.formatDate(expires, Session.getScriptTimeZone(), 'dd MMMM yyyy') + '. ' +
+          'Mintalah pengaju mengirim ulang permintaan approval supaya Anda dapat tautan baru.');
+      }
     }
     return header;
   }
@@ -484,6 +514,12 @@ var QuotationService = (function (module) {
 
     DocumentService.updateStatus(docId, 'Approved');
 
+    DocumentService.recordActivity(docId, Config.DOCUMENT_ACTIVITY_TYPE.APPROVED, {
+      actorName: approverName,
+      actorEmail: header.Approval_Requested_To || '',
+      note: ''
+    });
+
     return { docId: docId, approvedBy: approverName, pdfUrl: pdf.url };
   };
 
@@ -503,12 +539,20 @@ var QuotationService = (function (module) {
     }
 
     var now = new Date();
+    // Rejection_Note cuma cerminan penolakan TERAKHIR; riwayat tiap putaran
+    // ada di Document_Activity — lihat DocumentActivityRepository.
     QuotationHeaderRepository.patchApprovalFields(docId, {
       Rejection_Note: wording,
       Approval_Resolved_At: now
     });
 
     DocumentService.updateStatus(docId, 'Revision');
+
+    DocumentService.recordActivity(docId, Config.DOCUMENT_ACTIVITY_TYPE.REJECTED, {
+      actorName: header.Approval_Requested_Name || 'Head of B2B',
+      actorEmail: header.Approval_Requested_To || '',
+      note: wording
+    });
 
     return { docId: docId, rejectedBy: header.Approval_Requested_Name || 'Head of B2B' };
   };

@@ -27,9 +27,15 @@ var CorController = (function (module) {
     });
   };
 
-  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy) {
+  module.requestApproval = function (docId, approverEmployeeId, description, requestedBy, marginAckNote) {
     return ErrorHandler.handle('CorController.requestApproval', function () {
-      return CorService.requestApproval(docId, approverEmployeeId, description, requestedBy);
+      return CorService.requestApproval(docId, approverEmployeeId, description, requestedBy, marginAckNote);
+    });
+  };
+
+  module.checkMarginGuard = function (docId) {
+    return ErrorHandler.handle('CorController.checkMarginGuard', function () {
+      return CorService.evaluateMarginGuard(docId);
     });
   };
 

@@ -142,6 +142,61 @@ var DocumentService = (function (module) {
   };
 
   /* ============================================================
+     RIWAYAT APPROVAL (Document_Activity)
+     ============================================================
+     Dipakai BERSAMA CorService & QuotationService — alur approval keduanya
+     identik, jadi pencatatannya satu pintu di sini, bukan disalin dua kali.
+     Append-only: lihat DocumentActivityRepository untuk alasannya. */
+
+  /**
+   * Putaran approval saat ini untuk satu dokumen. Putaran BARU dimulai tiap
+   * kali Request Approval ditekan; Approve/Reject menutup putaran yang sama,
+   * jadi keduanya memakai nomor yang sudah ada, bukan menaikkannya lagi.
+   */
+  function putaranSaatIni(docId) {
+    var riwayat = DocumentActivityRepository.findByDocId(docId);
+    var maks = 0;
+    riwayat.forEach(function (a) {
+      var n = Number(a.Round_No) || 0;
+      if (n > maks) maks = n;
+    });
+    return maks;
+  }
+
+  /**
+   * @param {string} type lihat Config.DOCUMENT_ACTIVITY_TYPE
+   * @param {Object} info { actorName, actorEmail, note }
+   *
+   * TIDAK PERNAH melempar ke pemanggil. Pencatatan riwayat yang gagal tidak
+   * boleh membatalkan approval yang secara bisnis sudah terjadi — email sudah
+   * terkirim, PDF sudah dicap, status sudah berpindah. Kehilangan satu baris
+   * catatan jauh lebih murah daripada approval yang menggantung separuh jalan.
+   */
+  module.recordActivity = function (docId, type, info) {
+    try {
+      var isMulaiPutaran = type === Config.DOCUMENT_ACTIVITY_TYPE.APPROVAL_REQUESTED;
+      var round = putaranSaatIni(docId);
+      DocumentActivityRepository.create({
+        Activity_ID: Utils.generateId('ACT'),
+        Doc_ID: docId,
+        Activity_Type: type,
+        Round_No: isMulaiPutaran ? (round + 1) : (round || 1),
+        Actor_Name: (info && info.actorName) || '',
+        Actor_Email: (info && info.actorEmail) || '',
+        Note: (info && info.note) || '',
+        Created_Date: new Date()
+      });
+    } catch (e) {
+      Log.warn('DocumentService', 'Riwayat approval ' + docId + ' (' + type + ') gagal dicatat: ' + e.message);
+    }
+  };
+
+  /** Seluruh riwayat semua dokumen — pola Load Once seperti getAllAttachments. */
+  module.getAllActivity = function () {
+    return DocumentActivityRepository.findAll();
+  };
+
+  /* ============================================================
      LAMPIRAN DOKUMEN
      ============================================================
      Tiga jalur masuk, semuanya bermuara ke folder project yang sama

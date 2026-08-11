@@ -187,6 +187,16 @@
       <button type="button" class="att-add" id="docAddAttachmentBtn" onclick="openAttachmentMethod()">+ Tambah Dokumen</button>
       <div class="placeholder-note" id="docAttachmentNote"></div>
     </div>
+
+    <!-- Riwayat putaran approval — append-only, jadi alasan penolakan
+         putaran ke-1 tetap terbaca walau sudah ada putaran ke-3. Kolom
+         Rejection_Note di header cuma menyimpan yang terakhir; lihat
+         DocumentActivityRepository. -->
+    <div class="drawer-section" id="docActivitySection" style="display:none;">
+      <span class="taxonomy-label" id="docActivityLabel">Riwayat Approval</span>
+      <div id="docActivityList" style="margin-top:8px;"></div>
+      <div class="placeholder-note">Setiap putaran dicatat terpisah — pengajuan, persetujuan, dan penolakan beserta alasannya.</div>
+    </div>
   </div>
 </div>
 
@@ -343,6 +353,7 @@
   // dengan allDocuments). Daftar per dokumen disaring di memori — memanggil
   // server tiap kali drawer dibuka akan membuat stepper ‹ › terasa berat.
   var allAttachments = [];
+  var allActivity = [];
   var allProjects = [];
   var allClients = [];
   var allCorHeaders = [];
@@ -393,6 +404,7 @@
   function bootstrapDocuments() {
     fetchDocuments();
     fetchAttachments();
+    fetchActivity();
     fetchProjects();
     fetchClients();
     fetchTaxonomy();
@@ -435,6 +447,17 @@
     gsRunWithRetry('document_getAllAttachments', [], function (res) {
       if (!res || !res.ok) return;   // daftar lampiran kosong bukan alasan menggagalkan halaman
       allAttachments = res.data || [];
+      refreshOpenDrawerIfNeeded();
+    }, function () {});
+  }
+
+  function fetchActivity() {
+    gsRunWithRetry('document_getAllActivity', [], function (res) {
+      // Riwayat kosong adalah keadaan normal (belum pernah ada approval),
+      // jadi kegagalannya tidak boleh menggagalkan halaman — sama pola
+      // dengan fetchAttachments.
+      if (!res || !res.ok) return;
+      allActivity = res.data || [];
       refreshOpenDrawerIfNeeded();
     }, function () {});
   }
@@ -662,6 +685,7 @@
     if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
     fetchDocuments();
     fetchAttachments();
+    fetchActivity();
     fetchProjects();
     fetchClients();
     fetchTaxonomy();
@@ -922,6 +946,7 @@
     }
 
     renderDocAttachments(doc);
+    renderDocActivity(doc);
   }
 
   /* ============================================================
@@ -1004,6 +1029,90 @@
         '</div>' +
         '</div>';
     }).join('') + '</div>';
+  }
+
+  var ACTIVITY_META = {
+    APPROVAL_REQUESTED: { ikon: '📤', label: 'Diajukan approval', warna: 'var(--color-cerulean)' },
+    APPROVED: { ikon: '✅', label: 'Disetujui', warna: 'var(--good)' },
+    REJECTED: { ikon: '↩️', label: 'Ditolak — minta revisi', warna: 'var(--bad)' }
+  };
+
+  /** "3 hari 4 jam", "5 jam", "12 menit" — durasi antar-langkah satu putaran. */
+  function durasiTeks(dariIso, keIso) {
+    var a = new Date(dariIso).getTime();
+    var b = new Date(keIso).getTime();
+    if (isNaN(a) || isNaN(b) || b < a) return '';
+    var menit = Math.round((b - a) / 60000);
+    if (menit < 60) return menit + ' menit';
+    var jam = Math.floor(menit / 60);
+    if (jam < 24) return jam + ' jam';
+    var hari = Math.floor(jam / 24);
+    var sisaJam = jam % 24;
+    return hari + ' hari' + (sisaJam ? ' ' + sisaJam + ' jam' : '');
+  }
+
+  /**
+   * Riwayat approval per dokumen, dikelompokkan per PUTARAN. Yang dijawab
+   * bagian ini bukan "apa saja yang pernah terjadi", tapi "putaran mana yang
+   * memakan waktu" — makanya durasi tiap putaran ditulis eksplisit, bukan
+   * dibiarkan dihitung sendiri dari dua tanggal oleh pembacanya.
+   */
+  function renderDocActivity(doc) {
+    var section = document.getElementById('docActivitySection');
+    var host = document.getElementById('docActivityList');
+    var list = allActivity.filter(function (a) { return a.Doc_ID === doc.Doc_ID; });
+    if (!list.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    list = list.slice().sort(function (a, b) {
+      var ra = Number(a.Round_No) || 0, rb = Number(b.Round_No) || 0;
+      if (ra !== rb) return ra - rb;
+      return new Date(a.Created_Date).getTime() - new Date(b.Created_Date).getTime();
+    });
+
+    var putaran = {};
+    var urutan = [];
+    list.forEach(function (a) {
+      var r = Number(a.Round_No) || 1;
+      if (!putaran[r]) { putaran[r] = []; urutan.push(r); }
+      putaran[r].push(a);
+    });
+
+    document.getElementById('docActivityLabel').innerText =
+      'Riwayat Approval · ' + urutan.length + ' putaran';
+
+    host.innerHTML = urutan.map(function (r) {
+      var langkah = putaran[r];
+      var awal = langkah[0];
+      var akhir = langkah[langkah.length - 1];
+      var lama = langkah.length > 1 ? durasiTeks(awal.Created_Date, akhir.Created_Date) : '';
+      // Putaran yang belum ditutup (baru diajukan, belum ada keputusan)
+      // ditandai eksplisit — kalau tidak, ia terlihat sama dengan putaran
+      // yang selesai tanpa jejak keputusan.
+      var belumDiputus = langkah.length === 1 &&
+        langkah[0].Activity_Type === 'APPROVAL_REQUESTED';
+      return '<div class="att" style="display:block; padding:10px 12px; margin-bottom:8px;">' +
+        '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;">' +
+          '<strong style="font-size:12.5px;">Putaran ' + r + '</strong>' +
+          (lama ? '<span class="entity-pic">selesai dalam ' + escHtmlDoc(lama) + '</span>' : '') +
+          (belumDiputus ? '<span class="entity-pic" style="color:var(--warn);">menunggu keputusan</span>' : '') +
+        '</div>' +
+        langkah.map(function (a) {
+          var meta = ACTIVITY_META[a.Activity_Type] || { ikon: '•', label: a.Activity_Type, warna: 'var(--text-muted)' };
+          return '<div style="display:flex; gap:8px; padding:4px 0; align-items:flex-start;">' +
+            '<span style="flex-shrink:0;">' + meta.ikon + '</span>' +
+            '<div style="min-width:0;">' +
+              '<div style="font-size:12px; font-weight:600; color:' + meta.warna + ';">' + escHtmlDoc(meta.label) + '</div>' +
+              '<div class="entity-pic">' +
+                escHtmlDoc(a.Actor_Name || a.Actor_Email || '-') +
+                (a.Created_Date ? ' · ' + escHtmlDoc(formatDate(a.Created_Date)) : '') +
+              '</div>' +
+              (a.Note ? '<div style="font-size:12px; margin-top:3px; white-space:pre-wrap;">' + escHtmlDoc(a.Note) + '</div>' : '') +
+            '</div>' +
+            '</div>';
+        }).join('') +
+        '</div>';
+    }).join('');
   }
 
   /* ---- Popup: rename nama tampilan lampiran (UI-only, Drive tidak berubah) ---- */
