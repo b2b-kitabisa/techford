@@ -281,7 +281,7 @@ console.log('\n7b) Source of Fund — kolom Zakat diganti Biaya Admin, catatan i
   const html = R.renderDocumentHtml(model);
 
   ok('header Zakat TIDAK ADA lagi', html.indexOf('<th>Zakat</th>') === -1);
-  ok('header Biaya Admin ADA', html.indexOf('<th>Biaya Admin</th>') !== -1);
+  ok('header Biaya Admin ADA', /<th[^>]*>Biaya Admin<\/th>/.test(html));
   ok('catatan zakat muncul, italic, menyebut link campaign-nya',
     html.indexOf('class="pdf-zakat-note"') !== -1 &&
     html.indexOf('*https://kitabisa.com/linkajasupportteach4hope campaign zakat.') !== -1);

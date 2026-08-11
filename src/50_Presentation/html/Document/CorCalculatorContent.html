@@ -372,7 +372,7 @@
                 <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
                 <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Item</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdSalCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total pengeluaran SALSET</td><td><span class="cor-cv" id="corGdSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdSalTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
@@ -390,7 +390,7 @@
                 <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
                 <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Item</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGdVendorCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total pengeluaran <span id="corVl5">Vendor</span></td><td><span class="cor-cv" id="corGdVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGdVendorTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
@@ -413,7 +413,7 @@
                 <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
                 <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Item</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuSalCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total cost SALSET</td><td><span class="cor-cv" id="corGuSalTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuSalTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
@@ -430,7 +430,7 @@
                 <col style="width:8%;"><col style="width:5%;"><col style="width:10%;"><col style="width:5%;">
                 <col style="width:6%;"><col style="width:9%;"><col style="width:9%;"><col style="width:3%;">
               </colgroup>
-              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Keterangan</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left;">Metode</th><th style="text-align:left;">Kategori</th><th style="text-align:left;">Item</th><th>Jenis</th><th>Tipe</th><th>PPh</th><th>Harga</th><th>Qty</th><th>Periode</th><th>Total</th><th>Total stlh PPh</th><th></th></tr></thead>
               <tbody id="corGuVendorCostRows"></tbody>
               <tfoot><tr class="cor-ct-total"><td colspan="9" style="text-align:left;">Total cost <span id="corVlGu2">Vendor</span></td><td><span class="cor-cv" id="corGuVendorTotalRaw">Rp0</span></td><td><span class="cor-cv" id="corGuVendorTotal">Rp0</span></td><td></td></tr></tfoot>
             </table>
@@ -917,7 +917,7 @@
     var costRows = [].concat(snap.salItems || [], snap.baaItems || []);
     var costHtml = costRows.length
       ? '<table style="width:100%; border-collapse:collapse; font-size:12px;">' +
-        '<tr><th style="text-align:left; border-bottom:1px solid var(--border-soft); padding:4px;">Keterangan</th>' +
+        '<tr><th style="text-align:left; border-bottom:1px solid var(--border-soft); padding:4px;">Item</th>' +
         '<th style="text-align:right; border-bottom:1px solid var(--border-soft); padding:4px;">Harga &times; Qty &times; Periode</th></tr>' +
         costRows.map(function (r) {
           // Baris rincian (metode Standalone dengan Item) tidak punya nominal
@@ -1258,7 +1258,7 @@
   function parseThousands(el) {
     return Number(String(el.value).replace(/[^0-9]/g, '')) || 0;
   }
-  var KATS = ['Barang', 'Jasa', 'Operasional', 'Uang Saku'];
+  var KATS = ['Barang', 'Jasa', 'Ops', 'Uang Saku'];
 
   function getEntityByName(name) {
     return (corTaxonomy.entities || []).filter(function (e) { return e.Entity_Name === name; })[0] || null;
@@ -1639,7 +1639,7 @@
 
         var ketCell = g.mode === 'STANDALONE_ITEM'
           ? '<span style="font-size:11px; font-weight:700; color:var(--color-cerulean);">Nominal kategori</span>'
-          : '<textarea placeholder="Keterangan..." rows="1" oninput="updateCostTextField(' + mg + ',' + r.idx + ',\'ket\',this.value)">' + esc(r.ket) + '</textarea>';
+          : '<textarea placeholder="Item..." rows="1" oninput="updateCostTextField(' + mg + ',' + r.idx + ',\'ket\',this.value)">' + esc(r.ket) + '</textarea>';
         // Baris satu-satunya di kelompoknya tidak punya tombol hapus baris —
         // menghapusnya berarti menghapus kategorinya, dan itu sudah punya
         // tombol sendiri yang mengatakan persis apa yang akan terjadi.
