@@ -10,6 +10,11 @@
 
 <div class="stat-tile-row" id="gdvMatchScoreRow" style="margin-bottom:12px;"></div>
 
+<!-- Breakdown Main Source (Apps/Web/3rd Party) — total GDV Actual & Platform
+     Fee per sumber, dari SELURUH baris GDV Controller (bukan per-link). -->
+<div style="font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px;">Main Source</div>
+<div class="stat-tile-row" id="gdvMatchMainSourceRow" style="margin-bottom:12px;"></div>
+
 <!-- Badge jumlah per status sinkronisasi (item 21). Sekaligus jadi filter
      cepat — lihat renderGdvMatchSyncBadges. -->
 <div class="sync-badge-row" id="gdvMatchSyncBadges"></div>
@@ -137,6 +142,7 @@
       gdvMatchRows = res.data.rows || [];
       renderGdvMatchAliasWarning(res.data.aliasAmbiguous || []);
       renderGdvMatchScoreCard(res.data.summary || {});
+      renderGdvMatchMainSourceCard(res.data.mainSourceSummary || []);
       // Pilihan filter diturunkan dari data, jadi harus dibangun ulang setiap
       // kali data datang — termasuk saat Refresh, bukan cuma saat bootstrap.
       renderGdvMatchFilterDropdowns();
@@ -175,6 +181,17 @@
       '<div class="stat-tile"><div class="st-label">Total Claim</div><div class="st-value">' + fmtRp(summary.totalClaimed) + '</div></div>' +
       '<div class="stat-tile accent"><div class="st-label">Department Portion</div><div class="st-value">' + fmtRp(summary.totalDepartmentPortion) + '</div></div>' +
       '<div class="stat-tile"><div class="st-label">Platform Fee</div><div class="st-value">' + fmtRp(summary.totalPlatformFee) + '</div></div>';
+  }
+
+  function renderGdvMatchMainSourceCard(list) {
+    var el = document.getElementById('gdvMatchMainSourceRow');
+    if (!el) return;
+    if (!list.length) { el.innerHTML = '<div style="font-size:12px; color:var(--text-faint);">Belum ada data GDV Controller.</div>'; return; }
+    el.innerHTML = list.map(function (s) {
+      return '<div class="stat-tile"><div class="st-label">' + esc(s.mainSource) + '</div>' +
+        '<div class="st-value">' + fmtRp(s.realizedNominal) + '</div>' +
+        '<div class="st-desc">Platform Fee: ' + fmtRp(s.platformFee) + '</div></div>';
+    }).join('');
   }
 
   function statusPill(status) {

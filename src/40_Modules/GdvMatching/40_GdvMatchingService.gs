@@ -225,6 +225,34 @@ var GdvMatchingService = (function (module) {
     return 'SINKRON';
   }
 
+  /**
+   * Total Realized_Nominal & Platform_Fee per Main_Source (Apps/Web/3rd
+   * Party) — dijumlah dari SELURUH baris GDV_Controller mentah, BUKAN dari
+   * byLink (yang sudah digabung per Link_Campaign kanonik). Satu campaign
+   * yang muncul di lebih dari satu Main_Source memang harus terhitung di
+   * kedua sumbernya di sini — beda tujuan dengan Department Portion yang
+   * butuh identitas 1 link = 1 baris.
+   *
+   * Nilai Main_Source diambil APA ADANYA dari data (bukan daftar tetap
+   * Apps/Web/3rd Party) — konsisten dengan filter Source Category & Project
+   * Status di atas, supaya nilai baru dari Tableau tidak diam-diam hilang.
+   */
+  function buildMainSourceSummary() {
+    var totals = {};
+    var order = [];
+    GdvControllerRepository.findAll().forEach(function (row) {
+      var src = String(row.Main_Source || '').trim() || 'Lainnya';
+      if (!totals[src]) {
+        totals[src] = { mainSource: src, realizedNominal: 0, platformFee: 0 };
+        order.push(src);
+      }
+      totals[src].realizedNominal += Number(row.Realized_Nominal) || 0;
+      totals[src].platformFee += Number(row.Platform_Fee) || 0;
+    });
+    return order.map(function (k) { return totals[k]; })
+      .sort(function (a, b) { return b.realizedNominal - a.realizedNominal; });
+  }
+
   module.getMatching = function () {
     var projectIndex = buildProjectIndex();
     var tableau = buildTableauIndex();
@@ -286,7 +314,7 @@ var GdvMatchingService = (function (module) {
       belumSinkronCount: 0, klaimMelebihiCount: 0, aliasMatchedClaimCount: 0
     });
 
-    return { rows: rows, summary: summary, aliasAmbiguous: tableau.aliasAmbiguous };
+    return { rows: rows, summary: summary, aliasAmbiguous: tableau.aliasAmbiguous, mainSourceSummary: buildMainSourceSummary() };
   };
 
   /**
