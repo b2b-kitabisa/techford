@@ -3156,28 +3156,10 @@
         return;
       }
       try {
-        var header = draft.header;
-        var model = {
-          entityCode: draft.entityCode,
-          language: header.Language,
-          entityName: header.Entity_Name,
-          picName: header.Pic_Name,
-          picEmail: header.Pic_Email,
-          picPhone: header.Pic_Phone,
-          picTitle: header.Pic_Title,
-          headName: header.Head_Name,
-          titleName: header.Title_Name,
-          serviceName: header.Service_Name,
-          firstStatementHtml: header.First_Statement,
-          importantRemarksHtml: header.Important_Remarks,
-          quotationNumber: header.Quotation_Number,
-          createdDateText: formatDate(header.Created_Date),
-          validDateText: formatDate(header.Valid_Date),
-          agencyFeeRate: header.Agency_Fee_Rate,
-          ppnRate: quotationTaxonomy.ppnRate || 11,
-          categories: QoCalc.buildCategoriesFromItems(draft.items || []),
-          logoDataUri: (logos && logos[draft.entityCode]) || ''
-        };
+        // Model dirakit oleh QoCalc.buildModelFromDraft (Shell.html) — SATU
+        // sumber yang dipakai bersama halaman ini & preview di halaman lain,
+        // supaya field model baru tidak pernah tertinggal di salah satunya.
+        var model = QoCalc.buildModelFromDraft(draft, quotationTaxonomy, logos);
         document.getElementById('pipelineQuotationPreviewContent').innerHTML = QoCalc.renderDocumentHtml(model);
       } catch (e) {
         document.getElementById('pipelineQuotationPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;

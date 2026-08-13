@@ -1784,15 +1784,20 @@
     var btn = document.getElementById('docQuotationActionBtn');
     var viewBtn = document.getElementById('docQuotationViewBtn');
     var note = document.getElementById('docQuotationActionNote');
+    // YKB menerbitkan dokumen ini sebagai Donation Commitment Letter, KAI
+    // tetap Quotation — teks tombolnya ikut, supaya nama yang dilihat
+    // consultant di sini sama dengan judul halaman composer & isi PDF-nya.
+    var word = String(doc.Entity || '').indexOf('KAI') !== -1 ? 'Quotation' : 'Donation Commitment Letter';
     if (header) {
-      btn.innerText = '▶️ Lanjutkan Quotation';
+      btn.innerText = '▶️ Lanjutkan ' + word;
       note.innerText = 'Draft sebelumnya akan dimuat lagi — lanjutkan dari terakhir disimpan.';
       viewBtn.style.display = '';
     } else {
-      btn.innerText = '📝 Kerjakan Quotation';
-      note.innerText = 'Membuka halaman penuh Quotation Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
+      btn.innerText = '📝 Kerjakan ' + word;
+      note.innerText = 'Membuka halaman penuh ' + word + ' Composer — hasil pengerjaan tersimpan sebagai draft dan bisa dilanjutkan kapan saja.';
       viewBtn.style.display = 'none';
     }
+    viewBtn.innerText = '👁️ Lihat ' + word;
 
     // Nomor Quotation dipindah ke sini (info saja) — tidak lagi ikut nempel
     // di teks tombol supaya tombolnya tetap ringkas.
@@ -1910,28 +1915,10 @@
         return;
       }
       try {
-        var header = draft.header;
-        var model = {
-          entityCode: draft.entityCode,
-          language: header.Language,
-          entityName: header.Entity_Name,
-          picName: header.Pic_Name,
-          picEmail: header.Pic_Email,
-          picPhone: header.Pic_Phone,
-          picTitle: header.Pic_Title,
-          headName: header.Head_Name,
-          titleName: header.Title_Name,
-          serviceName: header.Service_Name,
-          firstStatementHtml: header.First_Statement,
-          importantRemarksHtml: header.Important_Remarks,
-          quotationNumber: header.Quotation_Number,
-          createdDateText: formatDate(header.Created_Date),
-          validDateText: formatDate(header.Valid_Date),
-          agencyFeeRate: header.Agency_Fee_Rate,
-          ppnRate: quotationTaxonomy.ppnRate || 11,
-          categories: QoCalc.buildCategoriesFromItems(draft.items || []),
-          logoDataUri: (logos && logos[draft.entityCode]) || ''
-        };
+        // Model dirakit oleh QoCalc.buildModelFromDraft (Shell.html) — SATU
+        // sumber yang dipakai bersama halaman ini & preview di halaman lain,
+        // supaya field model baru tidak pernah tertinggal di salah satunya.
+        var model = QoCalc.buildModelFromDraft(draft, quotationTaxonomy, logos);
         document.getElementById('quotationPreviewContent').innerHTML = QoCalc.renderDocumentHtml(model);
       } catch (e) {
         document.getElementById('quotationPreviewContent').innerText = 'Gagal menampilkan preview: ' + e.message;

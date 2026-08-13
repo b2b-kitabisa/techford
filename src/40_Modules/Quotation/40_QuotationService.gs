@@ -76,6 +76,10 @@ var QuotationService = (function (module) {
       defaultValidDays: Config.QUOTATION_DEFAULT_VALID_DAYS,
       kaiDefaultFeeRate: Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
       ppnRate: Config.QUOTATION_PPN_RATE,
+      // Token nama PIC di dalam teks First Statement — client menggantinya
+      // dengan nama sungguhan saat PIC dipilih (lihat
+      // applyPicNameToFirstStatement di composer).
+      picNameToken: Config.QUOTATION_PIC_NAME_TOKEN,
       defaults: Config.QUOTATION_DEFAULTS
     };
   };
@@ -135,6 +139,12 @@ var QuotationService = (function (module) {
         First_Statement: header.First_Statement || '',
         Important_Remarks: header.Important_Remarks || '',
         Agency_Fee_Rate: Number(header.Agency_Fee_Rate) || Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
+        // Tiga saklar tampilan dokumen. Baris lama (ditulis sebelum
+        // kolomnya ada) membaca '' -> false, jadi dokumen lama tampil
+        // persis seperti sebelum fitur ini ada.
+        Hide_Valid_Date: !!header.Hide_Valid_Date,
+        Hide_Agency_Fee: !!header.Hide_Agency_Fee,
+        Single_Box_Price: !!header.Single_Box_Price,
         Pdf_File_Id: header.Pdf_File_Id || '',
         Pdf_File_Url: header.Pdf_File_Url || '',
         Created_Date: header.Created_Date,
@@ -166,6 +176,7 @@ var QuotationService = (function (module) {
    *   - entityName, picClientId, picName, picEmail, picPhone: string
    *   - headName, titleName, firstStatement, importantRemarks: string
    *   - agencyFeeRate: number (persen, KAI saja — diabaikan untuk YKB)
+   *   - hideValidDate, hideAgencyFee, singleBoxPrice: boolean (saklar tampilan)
    *   - items: [{ categoryLabel, categorySortOrder, itemLabel, itemSortOrder, value, qty, remarksDetail }]
    */
   module.saveDraft = function (docId, input, createdBy) {
@@ -199,6 +210,9 @@ var QuotationService = (function (module) {
       First_Statement: input.firstStatement || '',
       Important_Remarks: input.importantRemarks || '',
       Agency_Fee_Rate: Number(input.agencyFeeRate) || Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
+      Hide_Valid_Date: !!input.hideValidDate,
+      Hide_Agency_Fee: !!input.hideAgencyFee,
+      Single_Box_Price: !!input.singleBoxPrice,
       Pdf_File_Id: existing ? existing.Pdf_File_Id : '',
       Pdf_File_Url: existing ? existing.Pdf_File_Url : '',
       Created_By: existing ? existing.Created_By : (createdBy || ''),
@@ -288,6 +302,9 @@ var QuotationService = (function (module) {
         validDateText: formatQoDate(header.Valid_Date),
         agencyFeeRate: Number(header.Agency_Fee_Rate) || Config.QUOTATION_KAI_DEFAULT_FEE_RATE,
         ppnRate: Config.QUOTATION_PPN_RATE,
+        hideValidDate: !!header.Hide_Valid_Date,
+        hideAgencyFee: !!header.Hide_Agency_Fee,
+        singleBoxPrice: !!header.Single_Box_Price,
         categories: buildCategoriesFromItems(items),
         logoDataUri: module.getLogos()[header.Entity_Code] || ''
       }
@@ -301,6 +318,16 @@ var QuotationService = (function (module) {
    * dikirim lewat email tetap sama setelah approval. Sama pola persis
    * dengan CorService.generateAndStorePdf.
    */
+  /**
+   * YKB menerbitkan dokumen ini sebagai "Donation Commitment Letter", KAI
+   * tetap "Quotation" — dipakai untuk nama file PDF di Drive supaya isi
+   * folder project tidak menyebut Quotation untuk surat komitmen donasi.
+   * Kembarannya di renderer adalah docTitleWord().
+   */
+  function docLabelFor(entityCode) {
+    return entityCode === Config.QUOTATION_ENTITY_CODE.KAI ? 'Quotation' : 'Donation Commitment Letter';
+  }
+
   function generateAndStorePdf(docId, footerNote, signatureDataUri) {
     var doc = assertQuotationDocument(docId);
     var built = buildReportModel(docId);
@@ -310,7 +337,7 @@ var QuotationService = (function (module) {
     var html = QuotationReportRenderer.renderQuotationHtml(model);
 
     var pdfBlob = Utilities.newBlob(html, 'text/html', docId + '.html').getAs('application/pdf');
-    pdfBlob.setName('Quotation - ' + docId + '.pdf');
+    pdfBlob.setName(docLabelFor(model.entityCode) + ' - ' + docId + '.pdf');
 
     var header = QuotationHeaderRepository.findByDocId(docId);
     var file;

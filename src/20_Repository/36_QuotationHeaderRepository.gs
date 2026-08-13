@@ -4,8 +4,15 @@
  * Header sheet Quotation_Header: Doc_ID | Entity_Code | Language |
  * Quotation_Number | Valid_Days | Valid_Date | Entity_Name | Pic_Client_Id |
  * Pic_Name | Pic_Email | Pic_Phone | Head_Name | Title_Name |
- * First_Statement | Important_Remarks | Agency_Fee_Rate | Pdf_File_Id |
- * Pdf_File_Url | Created_By | Created_Date | Last_Updated
+ * First_Statement | Important_Remarks | Agency_Fee_Rate | Hide_Valid_Date |
+ * Hide_Agency_Fee | Single_Box_Price | Pdf_File_Id | Pdf_File_Url |
+ * Created_By | Created_Date | Last_Updated
+ *
+ * Tiga kolom Hide_*/Single_* adalah saklar tampilan dokumen (sembunyikan
+ * baris "Berlaku Hingga"; lewati Agency Service Fee sehingga PPN dihitung
+ * dari Subtotal; kotak harga 3 kolom tanpa baris ringkasan). Kosong dibaca
+ * sebagai false, jadi dokumen lama tampil persis seperti sebelum ada fitur
+ * ini — kolomnya sendiri ditambahkan otomatis oleh ensureColumns.
  *
  * Satu baris per dokumen Quotation (1:1 dengan Doc_ID di Document_Pipeline)
  * — pola & alasan sama persis dengan CorHeaderRepository (baris item ada

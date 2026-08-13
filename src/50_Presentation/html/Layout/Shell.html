@@ -1293,8 +1293,11 @@
         '.qo-report table.sign td{border:1px solid #fff;padding:6px 10px;font-size:12px;width:50%;text-align:center;}' +
         '.qo-report table.sign tr.qo-sign-space td{height:70px;vertical-align:middle;}' +
         '.qo-report table.sign tr.qo-sign-space img{max-height:64px;max-width:90%;}' +
-        '.qo-report .qo-price-section{page-break-before:always;}' +
+        // Box Price TIDAK lagi memulai halaman sendiri — dokumen cuma 2
+        // lembar: First Statement + Box Price yang mengalir di bawahnya, lalu
+        // Important Remarks. KEMBARAN dari QuotationReportRenderer.
         '.qo-report .qo-remarks-section{page-break-before:always;}' +
+        '.qo-report .qo-sign-block{margin-top:64px;page-break-inside:avoid;}' +
         '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
         '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;vertical-align:top;}' +
         '.qo-report table.price th{background:#f2f2f2;}' +
@@ -1306,8 +1309,15 @@
         '.qo-report .qo-freetext ol{list-style-type:decimal;}' +
         '.qo-report .qo-freetext ul{list-style-type:disc;}' +
         '.qo-report .qo-freetext li{display:list-item;margin-bottom:4px;}' +
-        '.qo-report .qo-remark-detail{font-size:11px;color:#555;margin-top:2px;text-align:left;}' +
+        '.qo-report .qo-item-detail-line{margin:0 0 6px;text-align:justify;}' +
         '@media print{.qo-report{padding:0;}}';
+
+      // KEMBARAN dari QuotationReportRenderer.isDcl/docTitleWord — YKB
+      // menerbitkan dokumen ini sebagai "Donation Commitment Letter".
+      function isDcl(entityCode) { return entityCode !== 'KAI'; }
+      function docTitleWord(entityCode) {
+        return isDcl(entityCode) ? 'DONATION COMMITMENT LETTER' : 'QUOTATION';
+      }
 
       function entityDisplayName(code) {
         return code === 'KAI' ? 'PT KOLABORASI AKSI INDONESIA' : 'YAYASAN KITA BISA';
@@ -1345,6 +1355,20 @@
           });
         });
         return sum;
+      }
+
+      // KEMBARAN dari QuotationReportRenderer.buildSingleBoxRows — 3 kolom
+      // (Kategori/Item/Total Nilai), mode kategori tidak berpengaruh.
+      function buildSingleBoxRows(categories) {
+        return categories.map(function (cat) {
+          var n = cat.items.length;
+          return cat.items.map(function (item, i) {
+            var catCell = i === 0 ? '<td rowspan="' + n + '">' + esc(cat.label || '-') + '</td>' : '';
+            var itemTotal = (Number(item.value) || 0) * (Number(item.qty) || 0);
+            return '<tr>' + catCell + '<td>' + esc(item.label || '-') + '</td>' +
+              '<td class="r">' + (itemTotal > 0 ? fmtRp(itemTotal) : '') + '</td></tr>';
+          }).join('');
+        }).join('');
       }
 
       function buildItemRows(categories) {
@@ -1403,83 +1427,159 @@
 
         var categories = model.categories || [];
         var subtotal = computeSubtotal(categories);
+        var singleBox = !!model.singleBoxPrice;
+        var dcl = isDcl(model.entityCode);
 
-        var priceHeaders = lang === 'EN'
-          ? ['INVESTMENT', 'REMARK', 'VALUE', 'QTY', 'TOTAL VALUE']
-          : ['KATEGORI', 'ITEM', 'NILAI', 'QTY', 'TOTAL NILAI'];
-
-        var summaryRows;
-        if (model.entityCode === 'KAI') {
-          var rate = Number(model.agencyFeeRate) || 0;
-          var fee = Math.round(subtotal * (rate / 100));
-          var total = subtotal + fee;
-          var ppn = Math.round(total * ((Number(model.ppnRate) || 11) / 100));
-          var grandTotal = total + ppn;
-          summaryRows =
-            '<tr><td colspan="4"><strong>SUBTOTAL</strong></td><td class="r">' + fmtRp(subtotal) + '</td></tr>' +
-            '<tr><td colspan="4">AGENCY SERVICE FEE RATE</td><td class="r">' + rate + '%</td></tr>' +
-            '<tr><td colspan="4">AGENCY SERVICE FEE</td><td class="r">' + fmtRp(fee) + '</td></tr>' +
-            '<tr><td colspan="4">TOTAL</td><td class="r">' + fmtRp(total) + '</td></tr>' +
-            '<tr><td colspan="4">PPN ' + (Number(model.ppnRate) || 11) + '%</td><td class="r">' + fmtRp(ppn) + '</td></tr>' +
-            '<tr><td colspan="4"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRp(grandTotal) + '</strong></td></tr>';
+        var priceHeaders;
+        if (singleBox) {
+          priceHeaders = lang === 'EN' ? ['INVESTMENT', 'REMARK', 'TOTAL VALUE'] : ['KATEGORI', 'ITEM', 'TOTAL NILAI'];
         } else {
-          summaryRows = '<tr><td colspan="4"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRp(subtotal) + '</strong></td></tr>';
+          priceHeaders = lang === 'EN'
+            ? ['INVESTMENT', 'REMARK', 'VALUE', 'QTY', 'TOTAL VALUE']
+            : ['KATEGORI', 'ITEM', 'NILAI', 'QTY', 'TOTAL NILAI'];
         }
 
-        var remarksDetailHtml = categories.map(function (cat) {
+        var summaryRows = '';
+        if (!singleBox) {
+          var labelSpan = priceHeaders.length - 1;
+          if (model.entityCode === 'KAI' && !model.hideAgencyFee) {
+            var rate = Number(model.agencyFeeRate) || 0;
+            var fee = Math.round(subtotal * (rate / 100));
+            var total = subtotal + fee;
+            var ppn = Math.round(total * ((Number(model.ppnRate) || 11) / 100));
+            var grandTotal = total + ppn;
+            summaryRows =
+              '<tr><td colspan="' + labelSpan + '"><strong>SUBTOTAL</strong></td><td class="r">' + fmtRp(subtotal) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '">AGENCY SERVICE FEE RATE</td><td class="r">' + rate + '%</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '">AGENCY SERVICE FEE</td><td class="r">' + fmtRp(fee) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '">TOTAL</td><td class="r">' + fmtRp(total) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '">PPN ' + (Number(model.ppnRate) || 11) + '%</td><td class="r">' + fmtRp(ppn) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRp(grandTotal) + '</strong></td></tr>';
+          } else if (model.entityCode === 'KAI') {
+            var ppnOnly = Math.round(subtotal * ((Number(model.ppnRate) || 11) / 100));
+            summaryRows =
+              '<tr><td colspan="' + labelSpan + '"><strong>SUBTOTAL</strong></td><td class="r">' + fmtRp(subtotal) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '">PPN ' + (Number(model.ppnRate) || 11) + '%</td><td class="r">' + fmtRp(ppnOnly) + '</td></tr>' +
+              '<tr><td colspan="' + labelSpan + '"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRp(subtotal + ppnOnly) + '</strong></td></tr>';
+          } else {
+            summaryRows = '<tr><td colspan="' + labelSpan + '"><strong>GRAND TOTAL</strong></td><td class="r"><strong>' + fmtRp(subtotal) + '</strong></td></tr>';
+          }
+        }
+
+        var itemDetailHtml = categories.map(function (cat) {
           if (!cat.label && !cat.items.some(function (it) { return it.remarksDetail; })) return '';
-          return '<p><strong>' + esc(cat.label || '-') + ' Remarks Detail:</strong></p><ol>' +
-            cat.items.map(function (item) {
-              return '<li>' + esc(item.label || '-') +
-                (item.remarksDetail ? '<div class="qo-remark-detail">' + esc(item.remarksDetail) + '</div>' : '') +
-                '</li>';
-            }).join('') + '</ol>';
+          var lines = cat.items.map(function (item) {
+            var name = esc(item.label || '-');
+            return '<strong>' + name + '.</strong>' + (item.remarksDetail ? ' ' + esc(item.remarksDetail) : '');
+          });
+          var head = '<p><strong>' + esc(cat.label || '-') + ' Item Detail:</strong></p>';
+          if (singleBox) {
+            return head + lines.map(function (l) { return '<div class="qo-item-detail-line">' + l + '</div>'; }).join('');
+          }
+          return head + '<ol>' + lines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ol>';
         }).join('');
 
         var entityName = model.entityName || '-';
         var picName = model.picName || '-';
         var signatureCell = model.signatureDataUri ? '<img src="' + model.signatureDataUri + '" alt="Tanda Tangan">' : '&nbsp;';
 
-        return '<div class="qo-header">' +
-          (model.logoDataUri ? '<img src="' + model.logoDataUri + '" alt="Logo">' : '<span></span>') +
-          '<div class="qo-header-text"><strong>' + entityDisplayName(model.entityCode) + '</strong><br>' + HEADER_ADDRESS + '<br>' + HEADER_CONTACT + '</div>' +
-          '</div>' +
-          '<h1>QUOTATION FOR ' + esc(entityName) + '</h1>' +
-          '<table class="meta"><tbody>' +
-          '<tr><td class="label">' + label('Quotation Number', 'Nomor Quotation') + '</td><td class="colon">:</td><td>' + esc(model.quotationNumber) + '</td></tr>' +
-          '<tr><td class="label">' + label('Quotation Date', 'Tanggal Quotation') + '</td><td class="colon">:</td><td>' + esc(model.createdDateText) + '</td></tr>' +
-          '<tr><td class="label">' + label('Valid Date', 'Berlaku Hingga') + '</td><td class="colon">:</td><td>' + esc(model.validDateText) + '</td></tr>' +
-          '</tbody></table>' +
-          '<p><strong>' + label('Billed to', 'Ditagihkan Kepada') + '</strong> :<br><strong>' + esc(entityName) + '</strong><br>' +
-          esc(picName) + ' | ' + esc(model.picEmail || '-') + ' | ' + esc(model.picPhone || '-') + '</p>' +
-          '<hr class="qo-divider">' +
-          '<p>Dear Bapak/Ibu ' + esc(picName) + ',</p>' +
-          '<div class="qo-freetext">' + (model.firstStatementHtml || '') + '</div>' +
-          '<table class="sign"><tbody>' +
+        var validDateRow = model.hideValidDate ? '' :
+          '<tr><td class="label">' + label('Valid Date', 'Berlaku Hingga') + '</td><td class="colon">:</td><td>' + esc(model.validDateText) + '</td></tr>';
+
+        var signBlock = '<div class="qo-sign-block"><table class="sign"><tbody>' +
           '<tr><td><strong>' + entityDisplayName(model.entityCode) + '</strong></td><td><strong>' + esc(entityName) + '</strong></td></tr>' +
           '<tr class="qo-sign-space"><td>' + signatureCell + '</td><td>&nbsp;</td></tr>' +
           '<tr><td>' + esc(model.headName || '-') + '</td><td>' + esc(picName) + '</td></tr>' +
           '<tr><td>' + esc(model.titleName || '-') + '</td><td>' + esc(model.picTitle || '') + '</td></tr>' +
           '<tr><td>' + entityDisplayName(model.entityCode) + '</td><td>' + esc(entityName) + '</td></tr>' +
           '<tr><td>Date: ' + esc(model.createdDateText) + '</td><td>Date:</td></tr>' +
+          '</tbody></table></div>';
+
+        return '<div class="qo-header">' +
+          (model.logoDataUri ? '<img src="' + model.logoDataUri + '" alt="Logo">' : '<span></span>') +
+          '<div class="qo-header-text"><strong>' + entityDisplayName(model.entityCode) + '</strong><br>' + HEADER_ADDRESS + '<br>' + HEADER_CONTACT + '</div>' +
+          '</div>' +
+          '<h1>' + docTitleWord(model.entityCode) + ' FOR ' + esc(entityName) + '</h1>' +
+          '<table class="meta"><tbody>' +
+          '<tr><td class="label">' + (dcl ? label('Letter Number', 'Nomor Surat') : label('Quotation Number', 'Nomor Quotation')) + '</td><td class="colon">:</td><td>' + esc(model.quotationNumber) + '</td></tr>' +
+          '<tr><td class="label">' + (dcl ? label('Letter Date', 'Tanggal Surat') : label('Quotation Date', 'Tanggal Quotation')) + '</td><td class="colon">:</td><td>' + esc(model.createdDateText) + '</td></tr>' +
+          validDateRow +
           '</tbody></table>' +
+          '<p><strong>' + label('Billed to', 'Ditagihkan Kepada') + '</strong> :<br><strong>' + esc(entityName) + '</strong><br>' +
+          esc(picName) + ' | ' + esc(model.picEmail || '-') + ' | ' + esc(model.picPhone || '-') + '</p>' +
+          '<hr class="qo-divider">' +
+          '<div class="qo-freetext">' + (model.firstStatementHtml || '') + '</div>' +
           '<div class="qo-price-section">' +
           '<h2>' + esc(model.serviceName || '-') + '</h2>' +
           '<table class="price"><thead><tr>' + priceHeaders.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead>' +
-          '<tbody>' + buildItemRows(categories) + summaryRows + '</tbody></table>' +
-          '<h3>Remarks Detail</h3>' + remarksDetailHtml +
+          '<tbody>' + (singleBox ? buildSingleBoxRows(categories) : buildItemRows(categories)) + summaryRows + '</tbody></table>' +
+          '<h3>Item Detail</h3>' + itemDetailHtml +
           '</div>' +
           '<div class="qo-remarks-section">' +
           '<h2>' + label('IMPORTANT REMARKS', 'CATATAN PENTING') + '</h2>' +
           '<div class="qo-freetext">' + (model.importantRemarksHtml || '') + '</div>' +
+          signBlock +
           '</div>' +
           (model.footerNote ? '<div class="qo-footer-note" style="margin-top:20px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#333;font-style:italic;">' + esc(model.footerNote) + '</div>' : '');
       }
 
+      function formatQoDate(value) {
+        if (!value) return '-';
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+      }
+
+      /**
+       * SATU perakit model laporan dari draft tersimpan — dipakai bersama oleh
+       * "Lihat Quotation" di Document Pipeline DAN di Sales Pipeline.
+       *
+       * Dulu kedua halaman itu menyalin perakitan ini sendiri-sendiri, dan
+       * salinannya pasti tertinggal tiap kali ada field model baru (persis
+       * bug yang pernah terjadi di "Lihat COR" — lihat catatan di
+       * CorCalc.buildModelFromDraft). Field seperti hideValidDate/
+       * hideAgencyFee/singleBoxPrice tidak akan pernah ikut terbawa kalau
+       * perakitannya masih tersebar. Kembaran server-nya adalah
+       * QuotationService.buildReportModel (membaca sheet langsung).
+       *
+       * @param draft hasil quotation_getDraft: { doc, entityCode, header, items }
+       * @param taxonomy hasil quotation_getTaxonomy (dipakai ppnRate-nya)
+       * @param logos hasil quotation_getLogos: { YKB, KAI }
+       */
+      function buildModelFromDraft(draft, taxonomy, logos) {
+        var header = draft.header || {};
+        return {
+          entityCode: draft.entityCode,
+          language: header.Language,
+          entityName: header.Entity_Name,
+          picName: header.Pic_Name,
+          picEmail: header.Pic_Email,
+          picPhone: header.Pic_Phone,
+          picTitle: header.Pic_Title,
+          headName: header.Head_Name,
+          titleName: header.Title_Name,
+          serviceName: header.Service_Name,
+          firstStatementHtml: header.First_Statement,
+          importantRemarksHtml: header.Important_Remarks,
+          quotationNumber: header.Quotation_Number,
+          createdDateText: formatQoDate(header.Created_Date),
+          validDateText: formatQoDate(header.Valid_Date),
+          agencyFeeRate: header.Agency_Fee_Rate,
+          ppnRate: (taxonomy && taxonomy.ppnRate) || 11,
+          hideValidDate: !!header.Hide_Valid_Date,
+          hideAgencyFee: !!header.Hide_Agency_Fee,
+          singleBoxPrice: !!header.Single_Box_Price,
+          categories: buildCategoriesFromItems(draft.items || []),
+          logoDataUri: (logos && logos[draft.entityCode]) || ''
+        };
+      }
+
       return {
-        esc: esc, fmtRp: fmtRp, entityDisplayName: entityDisplayName,
+        esc: esc, fmtRp: fmtRp, entityDisplayName: entityDisplayName, docTitleWord: docTitleWord,
         itemHasPricing: itemHasPricing, buildCategoriesFromItems: buildCategoriesFromItems,
-        computeSubtotal: computeSubtotal, REPORT_CSS: REPORT_CSS, renderDocumentHtml: renderDocumentHtml
+        computeSubtotal: computeSubtotal, REPORT_CSS: REPORT_CSS, renderDocumentHtml: renderDocumentHtml,
+        buildModelFromDraft: buildModelFromDraft
       };
     })();
 

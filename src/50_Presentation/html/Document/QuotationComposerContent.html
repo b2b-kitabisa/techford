@@ -3,7 +3,9 @@
 </script>
 
 <style>
-  .qo-page { max-width: 1200px; }
+  /* Lebar penuh — sebelumnya dibatasi 1200px sehingga selalu ada ruang
+     kosong menganggur di sisi kanan pada layar lebar. */
+  .qo-page { max-width: none; }
   .qo-back { font-size: 12px; color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 8px; }
   .qo-back:hover { color: var(--color-cerulean); }
   .qo-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
@@ -20,13 +22,23 @@
   .qo-cat-card { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--bg-tint); }
   .qo-cat-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .qo-cat-hd input { flex: 1; font-weight: 700; }
-  .qo-item-row { display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: start; }
+  /* grid-template-columns diisi INLINE saat render — jumlah kolomnya beda
+     per metode harga (Grouped/Bulk/Single) dan saat Single Box Price aktif,
+     lihat itemGridFor() di bawah. */
+  .qo-item-row { display: grid; gap: 8px; margin-bottom: 6px; align-items: start; }
   .qo-item-row input, .qo-item-row textarea { font-size: 12px; box-sizing: border-box; width: 100%; }
   .qo-item-row textarea { resize: vertical; min-height: 32px; }
   .qo-item-remove { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 16px; font-weight: 700; padding: 4px 8px; }
   .qo-item-remove:hover { color: #c5221f; }
   .qo-item-nopricing { text-align: center; color: var(--text-faint); font-size: 12px; padding: 6px 0; }
-  .qo-item-labels { display: grid; grid-template-columns: 2fr 1fr 90px 1fr auto; gap: 8px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 4px; }
+  .qo-item-labels { display: grid; gap: 8px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 4px; }
+
+  /* Harga Bulk Price duduk di BARIS KATEGORI (satu harga untuk seluruh
+     kategori), bukan menyamar sebagai harga item pertama seperti dulu. */
+  .qo-cat-price { display: flex; align-items: center; gap: 6px; margin: 6px 0 8px; padding: 8px 10px; background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 6px; }
+  .qo-cat-price span.lbl { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
+  .qo-cat-price input { font-size: 12px; box-sizing: border-box; }
+  .qo-cat-price .qo-cat-total { margin-left: auto; font-size: 12px; font-weight: 700; }
 
   .qo-totals { border-top: 1px solid var(--border-soft); margin-top: 10px; padding-top: 10px; }
   .qo-total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
@@ -95,7 +107,7 @@
           </div>
         </div>
         <div>
-          <label>Nomor Quotation</label>
+          <label id="qoNumberLabel">Nomor Quotation</label>
           <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
         </div>
         <div>
@@ -112,7 +124,12 @@
           <label>Valid Date</label>
           <div class="drawer-field-value" id="qoValidDateDisplay">-</div>
         </div>
-        <div></div>
+        <div>
+          <label>Baris "Berlaku Hingga" di dokumen</label>
+          <label class="switch-wrap" style="margin-top:6px;" title="Kalau ON, baris Berlaku Hingga beserta tanggalnya tidak ikut tercetak di PDF.">SEMBUNYIKAN
+            <span class="switch"><input type="checkbox" id="qoHideValidDate" onchange="onHideValidDateChange()"><span class="switch-slider"></span></span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -132,7 +149,7 @@
       <div class="qo-grid-3col" style="margin-top:12px;">
         <div>
           <label>Nama PIC</label>
-          <input type="text" id="qoPicName">
+          <input type="text" id="qoPicName" oninput="applyPicNameToFirstStatement()">
         </div>
         <div>
           <label>Email PIC</label>
@@ -182,7 +199,16 @@
   </div>
 
   <div class="qo-box">
-    <div class="qo-box-hd">3. Service / Box Price</div>
+    <div class="qo-box-hd">
+      <span>3. Service / Box Price</span>
+      <span style="flex:1;"></span>
+      <label class="switch-wrap" id="qoSingleBoxWrap" style="display:none;" title="Kotak harga jadi 3 kolom saja: Kategori, Item, Total Nilai — tanpa Nilai satuan, Qty, maupun baris ringkasan.">SINGLE BOX PRICE
+        <span class="switch"><input type="checkbox" id="qoSingleBoxPrice" onchange="onSingleBoxPriceChange()"><span class="switch-slider"></span></span>
+      </label>
+      <label class="switch-wrap" id="qoHideAgencyFeeWrap" style="display:none;" title="Kalau ON, Agency Service Fee tidak dihitung sama sekali — Subtotal langsung ditambah PPN jadi Grand Total. Dipakai kalau komponen ASF sudah ditulis sebagai item di kotak harga.">TANPA AGENCY SERVICE FEE
+        <span class="switch"><input type="checkbox" id="qoHideAgencyFee" onchange="renderTotals()"><span class="switch-slider"></span></span>
+      </label>
+    </div>
     <div id="qoCategoriesContainer"></div>
     <button class="btn-outline" onclick="addCategory()">+ Tambah Kategori</button>
 
@@ -349,11 +375,31 @@
       .quotation_getDraft(CALCULATOR_DOC_ID);
   }
 
+  /**
+   * YKB menerbitkan dokumen ini sebagai Donation Commitment Letter, KAI tetap
+   * Quotation — judul halaman, breadcrumb, dan judul tab browser ikut diksi
+   * itu. Route-nya sendiri tetap satu ('quotation-composer'), karena yang
+   * beda cuma penamaan, bukan alurnya. Judul di WebAppRouter statis per
+   * route, jadi override-nya dilakukan di sini setelah entitas diketahui
+   * (entitas baru terbaca setelah draft ter-fetch).
+   */
+  function qoDocWord() { return entityCode === 'KAI' ? 'Quotation' : 'Donation Commitment Letter'; }
+  function applyQoDocTitle() {
+    var word = qoDocWord();
+    document.title = 'Techford Platform - ' + word + ' Composer';
+    var crumb = document.querySelector('#topbarBreadcrumb .breadcrumb-current');
+    if (crumb) crumb.innerText = word + ' Composer';
+    var numLabel = document.getElementById('qoNumberLabel');
+    if (numLabel) numLabel.innerText = entityCode === 'KAI' ? 'Nomor Quotation' : 'Nomor Surat';
+  }
+
   function renderDocInfo() {
     if (!currentDoc) return;
     var project = allQoProjects.filter(function (p) { return p.Project_ID === currentDoc.Project_ID; })[0] || {};
     var client = allQoClients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] || {};
-    document.getElementById('qoDocIdDisplay').innerText = 'Quotation — ' + currentDoc.Doc_ID;
+    applyQoDocTitle();
+    renderQoToggleVisibility();
+    document.getElementById('qoDocIdDisplay').innerText = qoDocWord() + ' — ' + currentDoc.Doc_ID;
     document.getElementById('qoDocSubDisplay').innerText =
       (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-') + ' [' + entityCode + ']';
 
@@ -397,14 +443,14 @@
       btn.disabled = true;
       btn.innerText = '⏳ Menunggu Approval';
       var reqTo = (header && (header.Approval_Requested_Name || header.Approval_Requested_To)) || 'approver';
-      waitBanner.innerText = '⏳ Quotation ini sedang menunggu approval dari ' + reqTo + '. Composer dikunci sampai ada keputusan (Approve/Reject).';
+      waitBanner.innerText = '⏳ ' + qoDocWord() + ' ini sedang menunggu approval dari ' + reqTo + '. Composer dikunci sampai ada keputusan (Approve/Reject).';
       waitBanner.style.display = '';
       revBanner.style.display = 'none';
     } else if (currentDoc.Status === 'Revision') {
       btn.disabled = false;
       btn.innerText = '📨 Request Approval';
       waitBanner.style.display = 'none';
-      revBanner.innerText = '⚠️ Quotation ini perlu direvisi — catatan dari approver: "' + ((header && header.Rejection_Note) || '-') + '"';
+      revBanner.innerText = '⚠️ ' + qoDocWord() + ' ini perlu direvisi — catatan dari approver: "' + ((header && header.Rejection_Note) || '-') + '"';
       revBanner.style.display = '';
     } else if (currentDoc.Status === 'Approved' || currentDoc.Status === 'Signed' || currentDoc.Status === 'LOSS') {
       btn.disabled = true;
@@ -444,7 +490,7 @@
   function submitRequestApproval() {
     var approverId = document.getElementById('qoApprovalApprover').value;
     if (!approverId) { alert('Pilih Head of B2B tujuan approval dulu.'); return; }
-    if (!techfordConfirm('Kirim permintaan approval Quotation ini?')) return;
+    if (!techfordConfirm('Kirim permintaan approval ' + qoDocWord() + ' ini?')) return;
 
     var description = document.getElementById('qoApprovalDescription').value;
     var requestedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
@@ -519,6 +565,28 @@
     document.getElementById('qoPicEmail').value = pic.Email || '';
     document.getElementById('qoPicPhone').value = pic.Phone || '';
     document.getElementById('qoPicTitle').value = pic.Title || '';
+    applyPicNameToFirstStatement();
+  }
+
+  /**
+   * Sapaan "Yth./Dear Bapak/Ibu ..." sekarang jadi baris pertama First
+   * Statement yang bisa diedit admin (dulu ditempel mati oleh renderer).
+   * Nama PIC-nya diwakili token "[Nama PIC]" dan diganti di sini begitu PIC
+   * dipilih/diketik.
+   *
+   * Penggantian HANYA dilakukan selama token-nya masih utuh di dalam teks.
+   * Begitu admin menulis ulang kalimat sapaannya sendiri, token itu hilang
+   * dan fungsi ini tidak melakukan apa-apa — jadi ganti PIC tidak pernah
+   * merusak kalimat yang sudah disunting manual.
+   */
+  function applyPicNameToFirstStatement() {
+    var token = qoTaxonomy.picNameToken;
+    if (!token) return;
+    var name = String(document.getElementById('qoPicName').value || '').trim();
+    if (!name) return;
+    var el = document.getElementById('qoFirstStatement');
+    if (el.innerHTML.indexOf(token) === -1) return;
+    el.innerHTML = el.innerHTML.split(token).join(escQo(name));
   }
 
   function loadDraftIntoState(draft) {
@@ -547,20 +615,41 @@
       document.getElementById('qoFirstStatement').innerHTML = valueToHtml(header.First_Statement);
       document.getElementById('qoImportantRemarks').innerHTML = valueToHtml(header.Important_Remarks);
       qoSavedAgencyFeeRate = Number(header.Agency_Fee_Rate) || null;
+      document.getElementById('qoHideValidDate').checked = !!header.Hide_Valid_Date;
+      document.getElementById('qoHideAgencyFee').checked = !!header.Hide_Agency_Fee;
+      document.getElementById('qoSingleBoxPrice').checked = !!header.Single_Box_Price;
     }
+    renderQoToggleVisibility();
+    onHideValidDateChange();
+    applyQoDocTitle();
 
     categories = buildCategoriesFromItems(draft.items || []);
     if (!categories.length) categories.push(emptyCategory());
+    // Single Box Price mensyaratkan bentuk data yang seragam: semua kategori
+    // Grouped & Qty 1, sehingga Nilai yang tampil DI KOTAK ISIAN sama dengan
+    // Total Nilai yang tercetak. Normalisasi diulang saat memuat draft supaya
+    // baris yang pernah disunting langsung di sheet tidak membuat angka di
+    // layar berbeda dari angka di PDF.
+    if (isSingleBoxPrice()) {
+      categories.forEach(function (cat) {
+        cat.mode = QO_MODE_GROUPED;
+        cat.items.forEach(function (it) { it.qty = 1; });
+      });
+    }
     renderCategories();
     onValidDaysChange();
   }
 
-  // 3 tipe Box Price (lihat tab EXAMPLE di dokumen master):
-  // - grouped: tiap item harga & qty SENDIRI-SENDIRI (dijumlah semua).
-  // - standalone_with_item: satu kategori, banyak baris item deskriptif,
-  //   tapi HANYA SATU harga & qty untuk seluruh kategori (ditaruh di item
-  //   pertama, item lain murni deskripsi tanpa harga).
-  // - standalone_without_item: satu kategori = TEPAT SATU item, satu harga.
+  // 3 metode Box Price — nama TAMPILANNYA disamakan dengan kalkulator COR
+  // (Grouped Price / Bulk Price / Single Price) supaya admin tidak perlu
+  // dua model mental. Nilai yang DISIMPAN di sheet sengaja TIDAK ikut
+  // berubah, supaya dokumen lama tetap terbaca:
+  // - grouped                 -> "Grouped Price": tiap item harga & qty sendiri.
+  // - standalone_with_item    -> "Bulk Price": satu harga & qty untuk SELURUH
+  //   kategori (kotak isiannya ada di baris kategori; nilainya tetap
+  //   disimpan di item pertama), item lain murni deskripsi tanpa harga.
+  // - standalone_without_item -> "Single Price": satu kategori = TEPAT SATU
+  //   item, satu harga.
   var QO_MODE_GROUPED = 'grouped';
   var QO_MODE_WITH_ITEM = 'standalone_with_item';
   var QO_MODE_WITHOUT_ITEM = 'standalone_without_item';
@@ -618,34 +707,89 @@
     var titleEl = document.getElementById('qoTitleName');
     if (!titleEl.value || titleEl.value === prevDefaults.titleName) titleEl.value = defaults.titleName;
 
+    // Teks default yang baru saja diisi membawa token "[Nama PIC]" — kalau
+    // PIC sudah dipilih, langsung diganti nama sungguhannya di sini juga,
+    // bukan cuma saat PIC diubah.
+    applyPicNameToFirstStatement();
+
     if (!silent) { /* no-op, placeholder kalau nanti perlu render ulang lain */ }
   }
 
   // ---- Kategori & item layanan ----
+  // Susunan kolom baris item BEDA per metode harga, jadi grid-nya dihitung
+  // di sini (bukan tetap di CSS):
+  // - Single Box Price aktif : Item | Total Nilai | Item Detail
+  // - Bulk Price             : Item | Item Detail          (harga pindah ke baris kategori)
+  // - Grouped / Single Price : Item | Nilai | Qty | Item Detail
+  function itemGridFor(cat) {
+    if (isSingleBoxPrice()) return '2fr 1fr 2fr auto';
+    if (cat.mode === QO_MODE_WITH_ITEM) return '2fr 2fr auto';
+    return '2fr 1fr 90px 2fr auto';
+  }
+  function itemLabelsFor(cat) {
+    if (isSingleBoxPrice()) return ['Item', 'Total Nilai (Rp)', 'Item Detail', ''];
+    if (cat.mode === QO_MODE_WITH_ITEM) return ['Item', 'Item Detail', ''];
+    return ['Item', 'Nilai (Rp)', 'Qty', 'Item Detail', ''];
+  }
+
   function renderCategories() {
     var container = document.getElementById('qoCategoriesContainer');
+    var singleBox = isSingleBoxPrice();
     container.innerHTML = categories.map(function (cat, ci) {
-      var canAddItem = cat.mode !== QO_MODE_WITHOUT_ITEM;
+      // Single Box Price meniadakan pembedaan metode: tiap baris item punya
+      // Total Nilai sendiri, jadi dropdown metodenya ikut disembunyikan.
+      var canAddItem = singleBox || cat.mode !== QO_MODE_WITHOUT_ITEM;
+      var grid = itemGridFor(cat);
+      var modeSelect = singleBox ? '' :
+        '<select onchange="updateCategoryMode(' + ci + ', this.value)" style="max-width:200px;">' +
+          '<option value="' + QO_MODE_GROUPED + '"' + (cat.mode === QO_MODE_GROUPED ? ' selected' : '') + '>Grouped Price</option>' +
+          '<option value="' + QO_MODE_WITH_ITEM + '"' + (cat.mode === QO_MODE_WITH_ITEM ? ' selected' : '') + '>Bulk Price</option>' +
+          '<option value="' + QO_MODE_WITHOUT_ITEM + '"' + (cat.mode === QO_MODE_WITHOUT_ITEM ? ' selected' : '') + '>Single Price</option>' +
+        '</select>';
+
+      // Bulk Price: SATU harga untuk seluruh kategori — ditampilkan di baris
+      // kategori. Nilainya tetap disimpan di item pertama (bentuk data tidak
+      // berubah), yang pindah hanya letak kotak isiannya.
+      var catPrice = '';
+      if (!singleBox && cat.mode === QO_MODE_WITH_ITEM) {
+        var head = cat.items[0] || { value: 0, qty: 0 };
+        var headTotal = (Number(head.value) || 0) * (Number(head.qty) || 0);
+        catPrice = '<div class="qo-cat-price">' +
+          '<span class="lbl">Harga Kategori</span>' +
+          '<input type="text" inputmode="numeric" placeholder="0" style="width:150px;" value="' + formatQoThousands(head.value) + '" oninput="onCatValueInput(this,' + ci + ')">' +
+          '<span class="lbl">Qty</span>' +
+          '<input type="number" min="0" style="width:80px;" value="' + head.qty + '" oninput="onCatQtyInput(this,' + ci + ')">' +
+          '<span class="qo-cat-total">Total: ' + fmtRpQo(headTotal) + '</span>' +
+          '</div>';
+      }
+
       return '<div class="qo-cat-card">' +
         '<div class="qo-cat-hd">' +
           '<input type="text" placeholder="Nama kategori (misal: Digital Campaign)..." value="' + escQo(cat.label) + '" oninput="updateCategoryLabel(' + ci + ', this.value)">' +
-          '<select onchange="updateCategoryMode(' + ci + ', this.value)" style="max-width:260px;">' +
-            '<option value="' + QO_MODE_GROUPED + '"' + (cat.mode === QO_MODE_GROUPED ? ' selected' : '') + '>Grouped (tiap item harga sendiri)</option>' +
-            '<option value="' + QO_MODE_WITH_ITEM + '"' + (cat.mode === QO_MODE_WITH_ITEM ? ' selected' : '') + '>Standalone dengan Item (1 harga utk semua item)</option>' +
-            '<option value="' + QO_MODE_WITHOUT_ITEM + '"' + (cat.mode === QO_MODE_WITHOUT_ITEM ? ' selected' : '') + '>Standalone tanpa Item (1 item, 1 harga)</option>' +
-          '</select>' +
+          modeSelect +
           '<button type="button" class="btn-outline" onclick="removeCategory(' + ci + ')" title="Hapus kategori">Hapus Kategori</button>' +
         '</div>' +
-        '<div class="qo-item-labels"><span>Item</span><span>Nilai (Rp)</span><span>Qty</span><span>Remarks Detail</span><span></span></div>' +
+        catPrice +
+        '<div class="qo-item-labels" style="grid-template-columns:' + grid + ';">' +
+          itemLabelsFor(cat).map(function (l) { return '<span>' + l + '</span>'; }).join('') +
+        '</div>' +
         cat.items.map(function (item, ii) {
-          var hasPricing = itemHasPricing(cat, ii);
-          return '<div class="qo-item-row">' +
+          var priceCells;
+          if (singleBox) {
+            // Qty dikunci 1 (lihat onSingleBoxPriceChange) sehingga
+            // value x qty = Total Nilai yang diketik — semua rumus lain
+            // (computeSubtotal, PDF) tidak perlu tahu mode ini ada.
+            priceCells = '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">';
+          } else if (cat.mode === QO_MODE_WITH_ITEM) {
+            priceCells = '';
+          } else {
+            priceCells = '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">' +
+              '<input type="number" min="0" value="' + item.qty + '" oninput="updateItemField(' + ci + ',' + ii + ',\'qty\',this.value); onCategoriesChanged();">';
+          }
+          return '<div class="qo-item-row" style="grid-template-columns:' + grid + ';">' +
             '<input type="text" placeholder="Nama item..." value="' + escQo(item.label) + '" oninput="updateItemField(' + ci + ',' + ii + ',\'label\',this.value)">' +
-            (hasPricing
-              ? '<input type="text" inputmode="numeric" placeholder="0" value="' + formatQoThousands(item.value) + '" oninput="onItemValueInput(this,' + ci + ',' + ii + ')">' +
-                '<input type="number" min="0" value="' + item.qty + '" oninput="updateItemField(' + ci + ',' + ii + ',\'qty\',this.value); onCategoriesChanged();">'
-              : '<div class="qo-item-nopricing" title="Kategori mode ini cuma pakai 1 harga (di item pertama)">—</div><div class="qo-item-nopricing">—</div>') +
-            '<textarea placeholder="Detail remarks (opsional)..." oninput="updateItemField(' + ci + ',' + ii + ',\'remarksDetail\',this.value)">' + escQo(item.remarksDetail) + '</textarea>' +
+            priceCells +
+            '<textarea placeholder="Item detail (opsional)..." oninput="updateItemField(' + ci + ',' + ii + ',\'remarksDetail\',this.value)">' + escQo(item.remarksDetail) + '</textarea>' +
             (canAddItem || ii > 0
               ? '<button type="button" class="qo-item-remove" onclick="removeItem(' + ci + ',' + ii + ')" title="Hapus item">&times;</button>'
               : '<span></span>') +
@@ -655,6 +799,32 @@
         '</div>';
     }).join('');
     renderTotals();
+  }
+
+  // Harga Bulk Price disimpan di item pertama kategori — dua handler ini
+  // yang menjembatani kotak isian di baris kategori ke sana.
+  function onCatValueInput(el, ci) {
+    el.value = formatQoThousands(parseQoThousands(el));
+    var head = categories[ci].items[0];
+    if (head) head.value = parseQoThousands(el);
+    refreshCatTotal(ci);
+    renderTotals();
+  }
+  function onCatQtyInput(el, ci) {
+    var head = categories[ci].items[0];
+    if (head) head.qty = Number(el.value) || 0;
+    refreshCatTotal(ci);
+    renderTotals();
+  }
+  // Total per kategori di-update di tempat (bukan renderCategories penuh) —
+  // render ulang penuh akan melepas fokus kotak yang sedang diketik.
+  function refreshCatTotal(ci) {
+    var card = document.getElementById('qoCategoriesContainer').children[ci];
+    if (!card) return;
+    var el = card.querySelector('.qo-cat-total');
+    if (!el) return;
+    var head = categories[ci].items[0] || { value: 0, qty: 0 };
+    el.innerText = 'Total: ' + fmtRpQo((Number(head.value) || 0) * (Number(head.qty) || 0));
   }
 
   function updateCategoryMode(ci, mode) {
@@ -774,10 +944,73 @@
     return sum;
   }
 
+  // ---- Tiga saklar tampilan dokumen ----
+  // Dibaca langsung dari checkbox-nya (bukan disalin ke variabel state
+  // terpisah) supaya tidak pernah ada dua sumber kebenaran yang bisa beda.
+  function isSingleBoxPrice() {
+    var el = document.getElementById('qoSingleBoxPrice');
+    return !!(el && el.checked);
+  }
+  function isHideAgencyFee() {
+    var el = document.getElementById('qoHideAgencyFee');
+    return !!(el && el.checked);
+  }
+  function isHideValidDate() {
+    var el = document.getElementById('qoHideValidDate');
+    return !!(el && el.checked);
+  }
+
+  // Single Box Price khusus Donation Commitment Letter (YKB); Agency Service
+  // Fee cuma ada di KAI. Saklar yang tidak relevan disembunyikan supaya tidak
+  // ada tombol yang menyalakan sesuatu yang tidak dipakai entitas itu.
+  function renderQoToggleVisibility() {
+    document.getElementById('qoSingleBoxWrap').style.display = entityCode === 'KAI' ? 'none' : '';
+    document.getElementById('qoHideAgencyFeeWrap').style.display = entityCode === 'KAI' ? '' : 'none';
+  }
+
+  function onHideValidDateChange() {
+    var hidden = isHideValidDate();
+    document.getElementById('qoValidDateDisplay').style.opacity = hidden ? '0.4' : '';
+  }
+
+  /**
+   * Menyalakan Single Box Price menyeragamkan seluruh kategori: metodenya
+   * jadi Grouped dan Qty tiap item dikunci 1, sehingga Nilai yang diketik
+   * ADALAH Total Nilai-nya. Tanpa normalisasi ini, item lama ber-Qty 3 akan
+   * menampilkan total 3x lipat dari angka yang terlihat di kotak isian.
+   * Qty yang lama memang hilang — karena itu dikonfirmasi dulu.
+   */
+  function onSingleBoxPriceChange() {
+    if (!isSingleBoxPrice()) { renderCategories(); return; }
+    var adaQtyBukanSatu = categories.some(function (cat) {
+      return cat.mode !== QO_MODE_GROUPED || cat.items.some(function (it) { return Number(it.qty) !== 1; });
+    });
+    if (adaQtyBukanSatu &&
+        !techfordConfirm('Single Box Price menyatukan kotak harga jadi Kategori, Item, dan Total Nilai saja. Qty tiap item akan diset 1 dan metode harga per kategori tidak dipakai lagi. Lanjutkan?')) {
+      document.getElementById('qoSingleBoxPrice').checked = false;
+      return;
+    }
+    categories.forEach(function (cat) {
+      cat.mode = QO_MODE_GROUPED;
+      cat.items.forEach(function (it) { it.qty = 1; });
+    });
+    renderCategories();
+  }
+
   function renderTotals() {
     var subtotal = computeSubtotal();
     var box = document.getElementById('qoTotalsBox');
-    if (entityCode === 'KAI') {
+
+    // Single Box Price: dokumen memang TIDAK mencetak baris ringkasan apa
+    // pun. Angkanya tetap ditampilkan di sini sebagai alat bantu operator,
+    // tapi diberi keterangan tegas bahwa ia tidak ikut ke PDF.
+    if (isSingleBoxPrice()) {
+      box.innerHTML = '<div class="qo-total-row" style="color:var(--text-faint);">' +
+        '<span>Jumlah seluruh item <em>(tidak dicetak di dokumen)</em></span><span>' + fmtRpQo(subtotal) + '</span></div>';
+      return;
+    }
+
+    if (entityCode === 'KAI' && !isHideAgencyFee()) {
       var existingRateEl = document.getElementById('qoAgencyFeeRate');
       var rate = existingRateEl ? (Number(existingRateEl.value) || 0) : (qoSavedAgencyFeeRate || qoTaxonomy.kaiDefaultFeeRate);
       var fee = Math.round(subtotal * (rate / 100));
@@ -785,15 +1018,45 @@
       var ppn = Math.round(total * (qoTaxonomy.ppnRate / 100));
       var grandTotal = total + ppn;
       box.innerHTML =
+        '<div class="qo-total-row"><span>Subtotal</span><span id="qoSubtotalVal">' + fmtRpQo(subtotal) + '</span></div>' +
+        '<div class="qo-total-row"><span>Agency Service Fee Rate</span><span><input type="number" id="qoAgencyFeeRate" min="0" max="100" step="0.5" value="' + rate + '" style="width:70px; text-align:right;" oninput="onAgencyFeeRateInput(this)">%</span></div>' +
+        '<div class="qo-total-row"><span>Agency Service Fee</span><span id="qoFeeVal">' + fmtRpQo(fee) + '</span></div>' +
+        '<div class="qo-total-row"><span>Total</span><span id="qoTotalVal">' + fmtRpQo(total) + '</span></div>' +
+        '<div class="qo-total-row"><span>PPN ' + qoTaxonomy.ppnRate + '%</span><span id="qoPpnVal">' + fmtRpQo(ppn) + '</span></div>' +
+        '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span id="qoGrandVal">' + fmtRpQo(grandTotal) + '</span></div>';
+    } else if (entityCode === 'KAI') {
+      var ppnOnly = Math.round(subtotal * (qoTaxonomy.ppnRate / 100));
+      box.innerHTML =
         '<div class="qo-total-row"><span>Subtotal</span><span>' + fmtRpQo(subtotal) + '</span></div>' +
-        '<div class="qo-total-row"><span>Agency Service Fee Rate</span><span><input type="number" id="qoAgencyFeeRate" min="0" max="100" step="0.5" value="' + rate + '" style="width:70px; text-align:right;" oninput="renderTotals()">%</span></div>' +
-        '<div class="qo-total-row"><span>Agency Service Fee</span><span>' + fmtRpQo(fee) + '</span></div>' +
-        '<div class="qo-total-row"><span>Total</span><span>' + fmtRpQo(total) + '</span></div>' +
-        '<div class="qo-total-row"><span>PPN ' + qoTaxonomy.ppnRate + '%</span><span>' + fmtRpQo(ppn) + '</span></div>' +
-        '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span>' + fmtRpQo(grandTotal) + '</span></div>';
+        '<div class="qo-total-row"><span>PPN ' + qoTaxonomy.ppnRate + '%</span><span>' + fmtRpQo(ppnOnly) + '</span></div>' +
+        '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span>' + fmtRpQo(subtotal + ppnOnly) + '</span></div>';
     } else {
       box.innerHTML = '<div class="qo-total-row grand"><span>GRAND TOTAL</span><span>' + fmtRpQo(subtotal) + '</span></div>';
     }
+  }
+
+  /**
+   * Rate diingat di variabel juga — kotak isiannya ikut hilang saat saklar
+   * "Tanpa Agency Service Fee" menyala, dan tanpa ini rate yang sudah
+   * disimpan akan tertimpa nilai default saat draft disimpan berikutnya.
+   *
+   * Angka turunannya di-update DI TEMPAT, bukan lewat renderTotals() —
+   * render ulang menulis ulang innerHTML kotak ini termasuk input rate-nya
+   * sendiri, sehingga kursor lepas tiap satu ketikan (angka 12.5 hanya bisa
+   * diketik satu karakter per klik).
+   */
+  function onAgencyFeeRateInput(el) {
+    qoSavedAgencyFeeRate = Number(el.value) || 0;
+    var subtotal = computeSubtotal();
+    var fee = Math.round(subtotal * ((Number(el.value) || 0) / 100));
+    var total = subtotal + fee;
+    var ppn = Math.round(total * (qoTaxonomy.ppnRate / 100));
+    function setVal(id, v) { var n = document.getElementById(id); if (n) n.innerText = fmtRpQo(v); }
+    setVal('qoSubtotalVal', subtotal);
+    setVal('qoFeeVal', fee);
+    setVal('qoTotalVal', total);
+    setVal('qoPpnVal', ppn);
+    setVal('qoGrandVal', total + ppn);
   }
 
   function formatQoDate(value) {
@@ -839,19 +1102,27 @@
       serviceName: document.getElementById('qoServiceName').value,
       firstStatement: document.getElementById('qoFirstStatement').innerHTML,
       importantRemarks: document.getElementById('qoImportantRemarks').innerHTML,
-      agencyFeeRate: document.getElementById('qoAgencyFeeRate') ? Number(document.getElementById('qoAgencyFeeRate').value) : qoTaxonomy.kaiDefaultFeeRate,
+      // Kotak isian rate hilang saat saklar "Tanpa Agency Service Fee"
+      // menyala — pakai nilai terakhir yang diingat supaya rate tersimpan
+      // tidak tertimpa default hanya karena saklarnya sempat dinyalakan.
+      agencyFeeRate: document.getElementById('qoAgencyFeeRate')
+        ? Number(document.getElementById('qoAgencyFeeRate').value)
+        : (qoSavedAgencyFeeRate || qoTaxonomy.kaiDefaultFeeRate),
+      hideValidDate: isHideValidDate(),
+      hideAgencyFee: isHideAgencyFee(),
+      singleBoxPrice: isSingleBoxPrice(),
       items: itemsPayload
     };
   }
 
   function submitSaveDraft() {
     if (!CALCULATOR_DOC_ID) return;
-    if (!techfordConfirm('Simpan draft Quotation ini?')) return;
+    if (!techfordConfirm('Simpan draft ' + qoDocWord() + ' ini?')) return;
 
     var btn = document.getElementById('qoSaveDraftBtn');
     btn.disabled = true;
     btn.innerText = 'Menyimpan...';
-    TechfordLoading.show('Menyimpan draft Quotation...');
+    TechfordLoading.show('Menyimpan draft ' + qoDocWord() + '...');
 
     saveQoDraft(
       function (draft) {
@@ -860,7 +1131,7 @@
         btn.innerText = '💾 Simpan Draft';
         loadDraftIntoState(draft);
         renderDocInfo();
-        alert('Draft Quotation berhasil disimpan.');
+        alert('Draft ' + qoDocWord() + ' berhasil disimpan.');
       },
       function (message) {
         TechfordLoading.hide();
@@ -936,8 +1207,11 @@
       createdDateText: createdDateText,
       validDateText: document.getElementById('qoValidDateDisplay').innerText,
       categories: categories,
-      agencyFeeRate: rateEl ? (Number(rateEl.value) || 0) : qoTaxonomy.kaiDefaultFeeRate,
+      agencyFeeRate: rateEl ? (Number(rateEl.value) || 0) : (qoSavedAgencyFeeRate || qoTaxonomy.kaiDefaultFeeRate),
       ppnRate: qoTaxonomy.ppnRate,
+      hideValidDate: isHideValidDate(),
+      hideAgencyFee: isHideAgencyFee(),
+      singleBoxPrice: isSingleBoxPrice(),
       logoDataUri: qoLogos[entityCode] || ''
     };
   }
@@ -949,7 +1223,7 @@
     }
     var model = buildQuotationModel();
     var bodyHtml = QoCalc.renderDocumentHtml(model);
-    var fullHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quotation - ' + escQo(model.quotationNumber) + '</title>' +
+    var fullHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escQo(qoDocWord()) + ' - ' + escQo(model.quotationNumber) + '</title>' +
       '<style>body{padding:24px;max-width:900px;margin:0 auto;}' + QoCalc.REPORT_CSS + '@media print{body{padding:0;}}</style>' +
       '</head><body><div class="qo-report">' + bodyHtml + '</div></body></html>';
 
