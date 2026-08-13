@@ -80,7 +80,12 @@ var Config = (function (module) {
     ADS_PROGRESS_UPLOAD_LOG: 'Ads_Sponsorship_Progress_Upload_Log',
     // Sheet staging berisi data lead lama hasil impor CSV. Dibaca SEKALI
     // oleh MigrationService, tidak pernah disentuh aplikasi sehari-hari.
-    LEAD_MIGRATION: 'Lead_Migration'
+    LEAD_MIGRATION: 'Lead_Migration',
+    // Target GDV & Service Revenue per Consultant (Setting > Achievement
+    // Setting) — satu baris per Consultant, dipakai untuk membandingkan
+    // pencapaian sungguhan (lihat Project.Consultant/Revenue_Breakdown)
+    // terhadap target yang ditentukan di sini.
+    ACHIEVEMENT_TARGET: 'Achievement_Target'
   };
 
   // Kategori opsi dropdown yang dikelola lewat Setting > Master Data
@@ -273,6 +278,12 @@ var Config = (function (module) {
     'cost-monitoring': { 'Master Admin': 'full', 'Consultant': 'view', 'Operation': 'full', 'Head of B2B': 'full' },
     'configure-account': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'none', 'Head of B2B': 'none' },
     'master-data': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'none', 'Head of B2B': 'none' },
+    // Target GDV/Service Revenue per Consultant — belum ada di spesifikasi
+    // Role produk (fitur ini dibuat belakangan), disamakan levelnya dengan
+    // Master Data (Master Admin saja) karena sama-sama "atur nilai acuan",
+    // bukan pekerjaan sehari-hari. Ubah di sini kalau produk memutuskan
+    // Role lain juga perlu akses.
+    'achievement-setting': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'none', 'Head of B2B': 'none' },
     'gdv-controller': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'full', 'Head of B2B': 'full' },
     'gdv-matching': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
     'ads-progress': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' }

@@ -54,7 +54,8 @@ var NavigationConfig = (function (module) {
         { page: 'master-data', label: 'Master Data', enabled: true, icon: '🗄️' },
         { page: 'gdv-controller', label: 'GDV Controller', enabled: true, icon: '🎛️' },
         { page: 'gdv-matching', label: 'GDV Matching', enabled: true, icon: '🔗' },
-        { page: 'ads-progress', label: 'Ads Sponsorship Progress', enabled: true, icon: '📈' }
+        { page: 'ads-progress', label: 'Ads Sponsorship Progress', enabled: true, icon: '📈' },
+        { page: 'achievement-setting', label: 'Achievement Setting', enabled: true, icon: '🎯' }
       ]
     }
   ];

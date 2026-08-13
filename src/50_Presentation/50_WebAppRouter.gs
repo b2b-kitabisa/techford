@@ -100,6 +100,11 @@ var ROUTES = {
     content: '50_Presentation/html/Setting/AdsProgressContent',
     title: 'Ads Sponsorship Progress',
     headerActions: ''
+  },
+  'achievement-setting': {
+    content: '50_Presentation/html/Setting/AchievementSettingContent',
+    title: 'Achievement Setting',
+    headerActions: ''
   }
 };
 

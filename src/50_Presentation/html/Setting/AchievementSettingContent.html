@@ -1,0 +1,201 @@
+<div class="container" style="max-width: 900px;" id="achievementSettingRoot">
+  <p style="color: var(--text-muted); font-size:13px;">
+    Target GDV &amp; Service Revenue per Consultant — nama Consultant diambil dari daftar Employee ber-Role
+    <strong>Consultant</strong> (Configure Account), sama sumbernya dengan dropdown Consultant di Sales Pipeline,
+    supaya target di sini selalu cocok dengan pencapaian sungguhannya.
+  </p>
+
+  <div id="achievementError" class="error"></div>
+
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Consultant</th><th class="num">Target GDV</th><th class="num">Target Service Revenue</th><th style="width:70px;"></th></tr>
+      </thead>
+      <tbody id="achievementTableBody">
+        <tr class="empty-row"><td colspan="4">Memuat...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="qo-box" style="margin-top:16px;">
+    <div class="qo-box-hd">+ Tambah Target Consultant</div>
+    <div class="qo-grid-3col">
+      <div>
+        <label>Consultant</label>
+        <select id="newAchConsultant"><option value="">-- pilih Consultant --</option></select>
+      </div>
+      <div>
+        <label>Target GDV (Rp)</label>
+        <input type="text" inputmode="numeric" id="newAchTargetGdv" placeholder="0" oninput="this.value=formatAchThousands(parseAchThousands(this))">
+      </div>
+      <div>
+        <label>Target Service Revenue (Rp)</label>
+        <input type="text" inputmode="numeric" id="newAchTargetSvc" placeholder="0" oninput="this.value=formatAchThousands(parseAchThousands(this))">
+      </div>
+    </div>
+    <button class="btn-outline" type="button" style="margin-top:12px;" onclick="submitAddAchievementTarget()">+ Tambah</button>
+  </div>
+</div>
+
+<script>
+  var allAchievementTargets = [];
+  var allConsultantEmployees = [];
+  var achBootstrapAttempts = 0;
+  var achBootstrapDone = false;
+  var ACH_BOOTSTRAP_MAX_ATTEMPTS = 8;
+  var ACH_BOOTSTRAP_RETRY_INTERVAL_MS = 1500;
+  var achTargetsLoaded = false, achConsultantsLoaded = false;
+
+  function escAch(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function fmtRpAch(n) { n = Math.round(Number(n) || 0); return 'Rp' + n.toLocaleString('id-ID'); }
+  // Titik pemisah ribuan (id-ID) — sama pola dengan formatThousands di
+  // Kalkulator COR/Quotation Composer, supaya box input angka konsisten di
+  // seluruh platform.
+  function formatAchThousands(n) { n = Number(n) || 0; return n ? n.toLocaleString('id-ID') : ''; }
+  function parseAchThousands(el) { return Number(String(el.value).replace(/[^0-9]/g, '')) || 0; }
+
+  function bootstrapAchievement() {
+    achBootstrapAttempts++;
+    fetchAchievementTargets();
+    fetchConsultantEmployees();
+    setTimeout(function () {
+      if ((achTargetsLoaded && achConsultantsLoaded) || achBootstrapDone) return;
+      if (achBootstrapAttempts < ACH_BOOTSTRAP_MAX_ATTEMPTS) {
+        bootstrapAchievement();
+      } else {
+        achBootstrapDone = true;
+        fetchAchievementTargets();
+        fetchConsultantEmployees();
+      }
+    }, ACH_BOOTSTRAP_RETRY_INTERVAL_MS);
+  }
+
+  /**
+   * Pertahanan kedua selain gerbang TechfordNav/TechfordAccess.enforceCurrentPage
+   * (Shell.html) — lihat catatan panjang yang sama di ConfigureAccountContent/
+   * MasterDataContent. WAJIB lewat techfordOnReady: TechfordAuth baru ada
+   * setelah <main>.
+   */
+  techfordOnReady(function () {
+    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('achievement-setting')) {
+      document.getElementById('achievementSettingRoot').innerHTML =
+        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2>' +
+        '<p>Halaman ini khusus Master Admin.</p></div>';
+      return;
+    }
+    bootstrapAchievement();
+  });
+
+  function fetchAchievementTargets() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          if (!achBootstrapDone) return;
+          showAchievementError((res && res.error && res.error.message) || 'Tidak ada respons dari server.');
+          return;
+        }
+        achTargetsLoaded = true;
+        document.getElementById('achievementError').innerText = '';
+        allAchievementTargets = res.data;
+        renderAchievementTable();
+        renderConsultantDropdown();
+      })
+      .withFailureHandler(function (err) {
+        if (!achBootstrapDone) return;
+        showAchievementError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .achievement_getAll();
+  }
+
+  function fetchConsultantEmployees() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        achConsultantsLoaded = true;
+        allConsultantEmployees = res.data.filter(function (e) { return e.Role === 'Consultant'; });
+        renderConsultantDropdown();
+      })
+      .withFailureHandler(function () {})
+      .employee_listActive();
+  }
+
+  function showAchievementError(message) {
+    document.getElementById('achievementError').innerText = message;
+    document.getElementById('achievementTableBody').innerHTML = '<tr class="empty-row"><td colspan="4">' + escAch(message) + '</td></tr>';
+  }
+
+  function renderAchievementTable() {
+    var tbody = document.getElementById('achievementTableBody');
+    if (!allAchievementTargets.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada target Consultant.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = allAchievementTargets.map(function (t) {
+      return '<tr>' +
+        '<td><div class="entity-name">' + escAch(t.Consultant_Name) + '</div></td>' +
+        '<td class="num">' + fmtRpAch(t.Target_GDV) + '</td>' +
+        '<td class="num">' + fmtRpAch(t.Target_Service_Revenue) + '</td>' +
+        '<td><button class="btn-outline" type="button" onclick="removeAchievementTarget(\'' + escAch(t.Target_ID) + '\')" title="Hapus">Hapus</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // Consultant yang SUDAH punya target tidak muncul lagi di dropdown Tambah
+  // — mencegah dobel baris untuk Consultant yang sama (hapus dulu barisnya
+  // kalau mau mengganti nilai, lihat AchievementTargetService).
+  function renderConsultantDropdown() {
+    var sel = document.getElementById('newAchConsultant');
+    var current = sel.value;
+    var alreadyTargeted = {};
+    allAchievementTargets.forEach(function (t) { alreadyTargeted[t.Consultant_Name] = true; });
+    var available = allConsultantEmployees.filter(function (e) { return !alreadyTargeted[e.Name]; });
+
+    sel.innerHTML = '<option value="">-- pilih Consultant --</option>' + available.map(function (e) {
+      return '<option value="' + escAch(e.Name) + '">' + escAch(e.Name) + '</option>';
+    }).join('');
+    if (current && available.some(function (e) { return e.Name === current; })) sel.value = current;
+  }
+
+  function submitAddAchievementTarget() {
+    var consultantName = document.getElementById('newAchConsultant').value;
+    var targetGdv = parseAchThousands(document.getElementById('newAchTargetGdv'));
+    var targetSvc = parseAchThousands(document.getElementById('newAchTargetSvc'));
+    if (!consultantName) { alert('Pilih Consultant dulu.'); return; }
+    if (!techfordConfirm('Tambah target untuk "' + consultantName + '" — GDV ' + fmtRpAch(targetGdv) + ', Service Revenue ' + fmtRpAch(targetSvc) + '?')) return;
+
+    var createdBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Menambah target...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        document.getElementById('newAchConsultant').value = '';
+        document.getElementById('newAchTargetGdv').value = '';
+        document.getElementById('newAchTargetSvc').value = '';
+        fetchAchievementTargets();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menambah target: ' + (err && err.message ? err.message : err));
+      })
+      .achievement_add(consultantName, targetGdv, targetSvc, createdBy);
+  }
+
+  function removeAchievementTarget(targetId) {
+    if (!techfordConfirm('Hapus target Consultant ini?')) return;
+    TechfordLoading.show('Menghapus...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchAchievementTargets();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
+      })
+      .achievement_remove(targetId);
+  }
+</script>
