@@ -8,7 +8,7 @@
  * Hide_Agency_Fee | Single_Box_Price | Pdf_File_Id | Pdf_File_Url |
  * Created_By | Created_Date | Last_Updated
  *
- * Tiga kolom Hide_*/Single_* adalah saklar tampilan dokumen (sembunyikan
+ * Tiga kolom terakhir sebelum Pdf_File_Id adalah saklar tampilan dokumen (sembunyikan
  * baris "Berlaku Hingga"; lewati Agency Service Fee sehingga PPN dihitung
  * dari Subtotal; kotak harga 3 kolom tanpa baris ringkasan). Kosong dibaca
  * sebagai false, jadi dokumen lama tampil persis seperti sebelum ada fitur
