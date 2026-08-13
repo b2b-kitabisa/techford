@@ -152,6 +152,45 @@ console.log('\n3) Urutan kode: classList.add("open") mendahului panggilan render
   const renderAt = fnBody.indexOf('renderClientDrawer(client)');
   ok('classList.add(\'open\') dipanggil SEBELUM renderClientDrawer', openAt !== -1 && renderAt !== -1 && openAt < renderAt);
   ok('renderClientDrawer dibungkus try/catch', /try\s*\{\s*renderClientDrawer\(client\);\s*\}\s*catch/.test(fnBody));
+  // BUG LANJUTAN: catch sebelumnya memanggil alert() di SETIAP klik "Detail",
+  // bukan hanya saat benar-benar ada error — user harus klik OK tiap kali
+  // buka drawer. Sekarang catch cukup console.error, drawer tetap terbuka
+  // tanpa dialog yang memblokir.
+  const catchBody = fnBody.slice(fnBody.indexOf('catch'), fnBody.indexOf('catch') + 300);
+  ok('catch TIDAK lagi memanggil alert()', !/\balert\(/.test(catchBody));
+}
+
+console.log('\n4) Render drawer dengan data client REALISTIS (lengkap & minim field) TIDAK melempar exception sama sekali');
+{
+  const ctx = loadClientMonitoring();
+  ctx.allClients = [{
+    Client_ID: 'CL1', Brand_Name: 'Brand', Entity_Name: 'PT X', Head_Office: 'Jakarta',
+    Entity_Type: 'Perusahaan', Client_Source: 'Inbound', Industry: 'Fintech', Website: 'x.id',
+    Created_Date: new Date(2026, 0, 1), Created_By: 'Admin', Last_Updated: new Date(2026, 1, 1),
+    Other_Notes: 'catatan', Entity_Type_Other: '', Is_From_Lead: false
+  }];
+  ctx.allPics = [{ PIC_ID: 'P1', Client_ID: 'CL1', PIC_Name: 'Budi', Is_Primary: true, Email: 'a@b.com', Phone: '08123', Title: 'Manager' }];
+  ctx.picsLoaded = true;
+  ctx.projectSummary = { CL1: { total: 2, drafts: 1, gdv: 1000, rev: 500 } };
+
+  let threw = null;
+  const asliRender = ctx.renderClientDrawer;
+  ctx.renderClientDrawer = function () { try { return asliRender.apply(this, arguments); } catch (e) { threw = e; throw e; } };
+  try { ctx.openClientDetail('CL1'); } catch (e) { /* dibungkus try/catch di dalam openClientDetail */ }
+  ok('client lengkap dengan semua field terisi -> TIDAK ada exception', threw === null, threw && threw.message);
+}
+{
+  const ctx = loadClientMonitoring();
+  ctx.allClients = [{ Client_ID: 'CL2', Brand_Name: 'Brand Minim' }]; // hampir semua field lain sengaja tidak ada
+  ctx.allPics = [];
+  ctx.picsLoaded = true;
+  ctx.projectSummary = {};
+
+  let threw = null;
+  const asliRender = ctx.renderClientDrawer;
+  ctx.renderClientDrawer = function () { try { return asliRender.apply(this, arguments); } catch (e) { threw = e; throw e; } };
+  try { ctx.openClientDetail('CL2'); } catch (e) { /* dibungkus try/catch di dalam openClientDetail */ }
+  ok('client dengan field minim (baru dari Lead) -> TIDAK ada exception', threw === null, threw && threw.message);
 }
 
 console.log('');

@@ -542,7 +542,7 @@
   }
 
   var fetchClients = makeLoader('client_getAll', function (data) {
-    allClients = data;
+    allClients = data || [];
     document.getElementById('clientTableError').innerText = '';
     renderClients();
     fetchPics();
@@ -551,7 +551,7 @@
   });
 
   var fetchPics = makeLoader('client_getAllPics', function (data) {
-    allPics = data;
+    allPics = data || [];
     picsLoaded = true;
     renderClients();
     if (currentClientDrawerId) {
@@ -1553,8 +1553,11 @@
     try {
       renderClientDrawer(client);
     } catch (e) {
+      // Sengaja TIDAK memunculkan dialog pop-up di sini — drawer sudah
+      // kelihatan terbuka (baris di atas), jadi memaksa klik OK setiap kali
+      // buka drawer cuma mengganggu tanpa manfaat. console.error tetap cukup
+      // untuk ketahuan kalau ada bagian render yang gagal.
       console.error('renderClientDrawer gagal:', e);
-      alert('Drawer terbuka, tapi sebagian detail gagal ditampilkan: ' + (e && e.message ? e.message : e));
     }
 
     // allPics bisa saja belum memuat PIC yang baru dibuat bersamaan dengan
