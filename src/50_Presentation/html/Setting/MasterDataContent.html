@@ -1,4 +1,4 @@
-<div class="container" style="max-width: 900px;">
+<div class="container" style="max-width: 900px;" id="masterDataRoot">
   <p style="color: var(--text-muted); font-size:13px;">
     Opsi dropdown Head Office, Industry, Entity Type, dan Client Source di Client Monitoring diambil dari daftar ini.
     Klik judul tiap kategori untuk membuka/menutup daftarnya.
@@ -84,11 +84,19 @@
       }
     }, MASTER_DATA_RETRY_INTERVAL_MS);
   }
-  if (document.readyState === 'complete') {
+  // Pertahanan kedua selain gerbang TechfordNav/TechfordAccess.enforceCurrentPage
+  // (Shell.html) — lihat catatan panjang yang sama di ConfigureAccountContent.
+  // WAJIB lewat techfordOnReady: TechfordAuth baru ada setelah <main>.
+  techfordOnReady(function () {
+    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('master-data')) {
+      document.getElementById('masterDataRoot').innerHTML =
+        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2>' +
+        '<p>Halaman ini khusus Master Admin.</p></div>';
+      return;
+    }
     bootstrapMasterData();
-  } else {
-    window.addEventListener('load', bootstrapMasterData);
-  }
+  });
 
   function fetchMasterData() {
     google.script.run

@@ -38,3 +38,7 @@ function employee_setStatus(employeeId, status) {
 function employee_resetPassword(employeeId, newPassword) {
   return EmployeeController.resetPassword(employeeId, newPassword);
 }
+
+function employee_setRole(employeeId, role) {
+  return EmployeeController.setEmployeeRole(employeeId, role);
+}

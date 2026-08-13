@@ -158,6 +158,15 @@ function doGet(e) {
   shell.breadcrumbGroup = route.breadcrumbGroup || findBreadcrumbGroup(page);
   shell.breadcrumbParent = route.breadcrumbParent || '';
   shell.helpText = route.helpText || '';
+  // Peta hak akses & status "ada Master Admin atau tidak" — SATU-SATUNYA
+  // sumber di Config, disuntik ke client di sini (bukan diketik ulang di
+  // Shell.html) supaya TechfordAccess (lihat Shell.html) selalu memakai
+  // definisi yang sama dengan gerbang lain. Login/role sesungguhnya baru
+  // diketahui di BROWSER (localStorage, lihat TechfordAuth) — server tidak
+  // tahu siapa yang meminta doGet ini, jadi penguncian sesungguhnya terjadi
+  // di client begitu TechfordAuth resolve; ini hanya bahan bakunya.
+  shell.roleAccessMap = JSON.stringify(Config.ROLE_PAGE_ACCESS);
+  shell.hasMasterAdmin = EmployeeService.hasAnyMasterAdmin();
 
   // Link navigasi WAJIB pakai URL absolut, bukan relatif ("?page=...").
   // Apps Script merender halaman di dalam iframe sandbox — href relatif
@@ -198,7 +207,12 @@ function app_getPageFragment(page, queryParams) {
       helpText: route.helpText || '',
       breadcrumbGroup: route.breadcrumbGroup || findBreadcrumbGroup(page),
       breadcrumbParent: route.breadcrumbParent || '',
-      menu: buildMenuWithBadges()
+      menu: buildMenuWithBadges(),
+      // Dikirim ulang tiap navigasi SPA (bukan cuma sekali di doGet) supaya
+      // kalau status "ada Master Admin" berubah di tab lain (mis. baru
+      // ditunjuk), tab ini ikut menyadarinya begitu pindah section — lihat
+      // TechfordAccess.refresh di Shell.html.
+      hasMasterAdmin: EmployeeService.hasAnyMasterAdmin()
     };
   });
 }

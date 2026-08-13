@@ -206,7 +206,89 @@ var Config = (function (module) {
     'Loss': 'LOSS'
   };
   module.PIPELINE_DEFAULT_STAGE = 'Prospect';
-  module.CONSULTANT_ROLE = 'Consultant';
+
+  /**
+   * Role Employee — dulu kolom bebas ketik ('Admin' jadi default, 'Head of
+   * B2B'/'Consultant' dipakai beberapa tempat sebagai string literal tanpa
+   * daftar tertutup). Sekarang 4 nilai INI SAJA yang valid — lihat
+   * EmployeeService.normalizeRole untuk bagaimana nilai lama/tidak dikenal
+   * (termasuk default lama 'Admin') dipetakan ke salah satu dari 4 ini.
+   *
+   *   MASTER_ADMIN  akses penuh ke semua section, TERMASUK satu-satunya
+   *                 yang bisa mengubah Configure Account & Master Data.
+   *                 Platform WAJIB selalu punya minimal 1 yang aktif — lihat
+   *                 EmployeeService.assertKeepsMasterAdmin.
+   *   CONSULTANT    muncul sebagai pilihan "Consultant" (owner project) di
+   *                 Sales Pipeline — lihat ProjectService.consultantRole.
+   *   OPERATION     tim operasional — akses penuh Operation Module & GDV
+   *                 Controller, Sales Module cuma lihat.
+   *   HEAD_OF_B2B   approver COR/Donation Commitment Letter/Quotation —
+   *                 dropdown approver di CorService/QuotationService sudah
+   *                 memfilter persis string ini (JANGAN diganti nilainya).
+   */
+  module.EMPLOYEE_ROLE = {
+    MASTER_ADMIN: 'Master Admin',
+    CONSULTANT: 'Consultant',
+    OPERATION: 'Operation',
+    HEAD_OF_B2B: 'Head of B2B'
+  };
+  module.EMPLOYEE_ROLE_LIST = [
+    module.EMPLOYEE_ROLE.MASTER_ADMIN,
+    module.EMPLOYEE_ROLE.CONSULTANT,
+    module.EMPLOYEE_ROLE.OPERATION,
+    module.EMPLOYEE_ROLE.HEAD_OF_B2B
+  ];
+  // Dipertahankan (dipakai ProjectService/SalesPipelineContent) — nilainya
+  // sama persis dengan EMPLOYEE_ROLE.CONSULTANT, sengaja tidak dihapus supaya
+  // tidak perlu ganti nama di banyak tempat untuk sesuatu yang nilainya sama.
+  module.CONSULTANT_ROLE = module.EMPLOYEE_ROLE.CONSULTANT;
+
+  module.ACCESS_LEVEL = { FULL: 'full', VIEW: 'view', NONE: 'none' };
+
+  /**
+   * Hak akses per section (key = route di WebAppRouter.ROUTES) x Role.
+   * SATU-SATUNYA sumber kebenaran, dipakai server (gerbang Configure
+   * Account/Master Data) DAN client (sembunyikan menu sidebar, kunci
+   * tombol simpan/ubah di halaman "view"). Section yang TIDAK didaftarkan
+   * di sini (misal 'employee' — halaman lama, sengaja dibiarkan nonaktif,
+   * tidak ada di sidebar) dianggap FULL untuk semua role — supaya
+   * penambahan route baru tidak diam-diam ikut terkunci sebelum sengaja
+   * didaftarkan di sini.
+   *
+   * 'cor-calculator' & 'quotation-composer' disamakan levelnya dengan
+   * 'document-pipeline' (satu alur kerja yang sama, dibuka dari drawer-nya).
+   *
+   * GDV Matching & Ads Sponsorship Progress FULL untuk semua role — kedua
+   * halaman itu murni tabel yang bisa difilter, tidak ada aksi ubah data
+   * apa pun di sana, jadi tidak ada yang perlu dibatasi.
+   */
+  module.ROLE_PAGE_ACCESS = {
+    'home': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    'lead-capturing': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },
+    'client-monitoring': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },
+    'sales-pipeline': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },
+    'document-pipeline': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    'cor-calculator': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    'quotation-composer': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    'cost-monitoring': { 'Master Admin': 'full', 'Consultant': 'view', 'Operation': 'full', 'Head of B2B': 'full' },
+    'configure-account': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'none', 'Head of B2B': 'none' },
+    'master-data': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'none', 'Head of B2B': 'none' },
+    'gdv-controller': { 'Master Admin': 'full', 'Consultant': 'none', 'Operation': 'full', 'Head of B2B': 'full' },
+    'gdv-matching': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    'ads-progress': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' }
+  };
+
+  /**
+   * @returns {string} salah satu dari ACCESS_LEVEL — 'full' kalau page tidak
+   *   terdaftar di ROLE_PAGE_ACCESS (lihat catatan di atas), atau kalau role
+   *   yang diberikan tidak dikenal di baris page itu (dianggap paling ketat:
+   *   'none').
+   */
+  module.getAccessLevel = function (role, page) {
+    var row = module.ROLE_PAGE_ACCESS[page];
+    if (!row) return module.ACCESS_LEVEL.FULL;
+    return row[role] || module.ACCESS_LEVEL.NONE;
+  };
 
   // ---- Document Pipeline ----
   // Tiap Document_Type punya kosakata Status sendiri (beda-beda), tapi semua

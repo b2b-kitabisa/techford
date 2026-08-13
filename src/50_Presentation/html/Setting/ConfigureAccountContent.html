@@ -1,4 +1,4 @@
-<div class="container" style="max-width: 900px;">
+<div class="container" style="max-width: 900px;" id="configureAccountRoot">
   <p style="color: var(--text-muted); font-size:13px;">
     Kelola admin/user yang bisa "login" ke Techford Platform. Login ini adalah gerbang identitas
     (bukan keamanan utama) — akses sesungguhnya sudah dibatasi ke domain <strong>@kitabisa.com</strong>.
@@ -22,7 +22,11 @@
     <div class="drawer-edit-form open" style="padding:0; border:none;">
       <label>Nama *<input id="newAdminName"></label>
       <label>Email (@kitabisa.com) *<input id="newAdminEmail" type="email"></label>
-      <label>Role<input id="newAdminRole" placeholder="misal: Master Admin, Sales"></label>
+      <label>Role *
+        <select id="newAdminRole">
+          <option value="">-- pilih role --</option>
+        </select>
+      </label>
       <label>Password *
         <div class="password-field-wrap">
           <input id="newAdminPassword" type="password">
@@ -82,18 +86,36 @@
       }
     }, ADMIN_BOOTSTRAP_RETRY_INTERVAL_MS);
   }
-  renderAdminSkeleton();
   function renderAdminSkeleton() {
     document.getElementById('adminTableBody').innerHTML = new Array(3).fill(
       '<tr><td colspan="5" style="padding:14px;"><div class="skel skel-row"></div></td></tr>'
     ).join('');
   }
 
-  if (document.readyState === 'complete') {
+  /**
+   * Pertahanan kedua (belt-and-suspenders) selain gerbang di TechfordNav/
+   * TechfordAccess.enforceCurrentPage (Shell.html) — dua gerbang itu hanya
+   * mencegat navigasi SPA & sidebar. Kalau halaman ini dibuka lewat LOAD
+   * PENUH (?page=configure-account langsung di address bar), server SUDAH
+   * merender seluruh isi Configure Account sebelum satu baris JS pun jalan
+   * (server tidak tahu Role — lihat catatan TechfordAuth), jadi pemeriksaan
+   * ini TIDAK BOLEH langsung dijalankan di top-level: TechfordAuth baru
+   * didefinisikan di blok <script> besar Shell yang posisinya SETELAH
+   * <main> — dieksekusi lebih dulu akan salah baca Role sebagai kosong dan
+   * menolak Master Admin sungguhan juga. WAJIB lewat techfordOnReady, sama
+   * seperti bootstrap normal di bawah.
+   */
+  techfordOnReady(function () {
+    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('configure-account')) {
+      document.getElementById('configureAccountRoot').innerHTML =
+        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2>' +
+        '<p>Halaman ini khusus Master Admin.</p></div>';
+      return;
+    }
+    renderAdminSkeleton();
     bootstrapAdmins();
-  } else {
-    window.addEventListener('load', bootstrapAdmins);
-  }
+  });
 
   function fetchAdmins() {
     google.script.run
@@ -119,6 +141,22 @@
     document.getElementById('adminTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">' + message + '</td></tr>';
   }
 
+  // 4 Role baku (Master Admin/Consultant/Operation/Head of B2B) — diambil
+  // dari TECHFORD_ROLE_ACCESS (kembaran Config.ROLE_PAGE_ACCESS, sudah
+  // tersedia global lewat Shell.html) daripada bikin endpoint baru cuma
+  // untuk 4 string tetap. Baris 'home' full untuk semua Role, jadi key-nya
+  // pasti mencakup semuanya.
+  function employeeRoleList() {
+    return Object.keys((window.TECHFORD_ROLE_ACCESS || {}).home || {
+      'Master Admin': 1, 'Consultant': 1, 'Operation': 1, 'Head of B2B': 1
+    });
+  }
+  function roleSelectOptions(selected) {
+    return employeeRoleList().map(function (r) {
+      return '<option value="' + r + '"' + (r === selected ? ' selected' : '') + '>' + r + '</option>';
+    }).join('');
+  }
+
   function renderAdmins() {
     document.getElementById('adminTableError').innerText = '';
     var tbody = document.getElementById('adminTableBody');
@@ -131,7 +169,7 @@
       return '<tr>' +
         '<td><div class="entity-name">' + emp.Name + '</div></td>' +
         '<td>' + emp.Email + '</td>' +
-        '<td>' + (emp.Role || '-') + '</td>' +
+        '<td><select onchange="submitChangeRole(\'' + emp.Id + '\', this)">' + roleSelectOptions(emp.Role) + '</select></td>' +
         '<td><span class="badge ' + (isActive ? 'badge-contacted' : 'badge-spam') + '">' + emp.Status + '</span></td>' +
         '<td>' +
           '<button class="btn-outline" onclick="openResetPassword(\'' + emp.Id + '\')">Reset Password</button> ' +
@@ -143,10 +181,38 @@
     }).join('');
   }
 
+  /**
+   * Ganti Role langsung dari dropdown di tabel — server menolak (lewat
+   * LAST_MASTER_ADMIN) kalau perubahan ini akan menghilangkan Master Admin
+   * aktif terakhir di platform (lihat EmployeeService.assertKeepsMasterAdmin).
+   * Kalau ditolak, dropdown dikembalikan ke Role semula supaya tampilan
+   * tidak menyimpang dari data sebenarnya.
+   */
+  function submitChangeRole(employeeId, selectEl) {
+    var newRole = selectEl.value;
+    var prevRole = (allAdmins.filter(function (e) { return e.Id === employeeId; })[0] || {}).Role;
+    if (newRole === prevRole) return;
+    if (!techfordConfirm('Ubah role admin ini jadi "' + newRole + '"?')) { selectEl.value = prevRole; return; }
+
+    selectEl.disabled = true;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        selectEl.disabled = false;
+        if (res && res.ok === false) { alert(res.error.message); selectEl.value = prevRole; return; }
+        fetchAdmins();
+      })
+      .withFailureHandler(function (err) {
+        selectEl.disabled = false;
+        alert('Gagal mengubah role: ' + (err && err.message ? err.message : err));
+        selectEl.value = prevRole;
+      })
+      .employee_setRole(employeeId, newRole);
+  }
+
   function openAddAdmin() {
     document.getElementById('newAdminName').value = '';
     document.getElementById('newAdminEmail').value = '';
-    document.getElementById('newAdminRole').value = '';
+    document.getElementById('newAdminRole').innerHTML = '<option value="">-- pilih role --</option>' + roleSelectOptions('');
     document.getElementById('newAdminPassword').value = '';
     document.getElementById('addAdminModal').classList.add('open');
   }
@@ -161,11 +227,11 @@
       role: document.getElementById('newAdminRole').value.trim(),
       password: document.getElementById('newAdminPassword').value
     };
-    if (!input.name || !input.email || !input.password) {
-      alert('Nama, email, dan password wajib diisi.');
+    if (!input.name || !input.email || !input.password || !input.role) {
+      alert('Nama, email, role, dan password wajib diisi.');
       return;
     }
-    if (!techfordConfirm('Tambahkan admin baru "' + input.name + '"?')) return;
+    if (!techfordConfirm('Tambahkan admin baru "' + input.name + '" sebagai ' + input.role + '?')) return;
 
     // google.script.run terbukti kadang mengirim res=null ke browser walau
     // operasi di server berhasil (independen dari bentuk respons array/

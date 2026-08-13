@@ -189,6 +189,32 @@
   .nav-item-icon { flex-shrink: 0; font-size: 14px; width: 18px; text-align: center; }
   .nav-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* Kunci "view only" (hak akses per Role — lihat TechfordAccess di
+     Shell.html) — SATU class di <body>, bukan tiap halaman diedit
+     satu-satu. Cuma mengunci kontrol yang MENGUBAH data (tombol simpan/
+     tambah/hapus, kotak input/textarea/select/contenteditable) — filter,
+     pencarian, paginasi, dan buka-drawer di header topbar TETAP hidup,
+     supaya "hanya bisa melihat" tetap benar-benar bisa melihat. */
+  body.techford-view-only .content-area .btn-save,
+  body.techford-view-only .content-area .btn-sync,
+  body.techford-view-only .content-area .btn-onhead,
+  body.techford-view-only .content-area .btn-danger,
+  body.techford-view-only .content-area .pic-mini-btn,
+  body.techford-view-only .content-area .entity-other-btn,
+  body.techford-view-only #topbarActions .btn-sync,
+  body.techford-view-only #topbarActions .btn-save {
+    pointer-events: none !important; opacity: 0.45; cursor: not-allowed !important;
+  }
+  body.techford-view-only .content-area select:not(.filter-bar select):not(.status-filter-dropdown select):not(.filter-bar-even select),
+  body.techford-view-only .content-area input[type="checkbox"]:not(.filter-bar input):not(.filter-bar-even input),
+  body.techford-view-only .content-area input[type="text"]:not(.search-field input):not(.filter-bar input):not(.filter-bar-even input),
+  body.techford-view-only .content-area input[type="number"],
+  body.techford-view-only .content-area input[type="date"],
+  body.techford-view-only .content-area textarea,
+  body.techford-view-only .content-area [contenteditable="true"] {
+    pointer-events: none !important; opacity: 0.6; cursor: not-allowed !important; background: var(--bg-tint);
+  }
+
   /* Tag "Segera" pada menu enabled:false (NavigationConfig.MENU) — dulu
      item non-aktif cuma abu-abu tanpa keterangan, mudah dikira menu yang
      rusak/lupa dihapus alih-alih roadmap yang disengaja. */

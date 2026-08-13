@@ -53,5 +53,11 @@ var EmployeeController = (function (module) {
     });
   };
 
+  module.setEmployeeRole = function (employeeId, role) {
+    return ErrorHandler.handle('EmployeeController.setEmployeeRole', function () {
+      return EmployeeService.setEmployeeRole(employeeId, role);
+    });
+  };
+
   return module;
 })(EmployeeController || {});

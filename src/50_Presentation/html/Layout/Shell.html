@@ -259,6 +259,108 @@
             if (e.key === 'ArrowLeft') onPrev(); else onNext();
           });
         }
+
+        // Bahan baku hak akses dari server (SATU sumber: Config.ROLE_PAGE_ACCESS
+        // & Config.getAccessLevel, lihat WebAppRouter.doGet/app_getPageFragment)
+        // — dipakai TechfordAccess di blok <script> besar bawah. Ditaruh di
+        // sini (bukan di sana) supaya sudah tersedia SAAT PARSING kalau ada
+        // fragment yang butuh cek akses sendiri sebelum bootstrap normal
+        // jalan (lihat ConfigureAccountContent/MasterDataContent), sama
+        // alasan dengan gsRunWithRetry/techfordOnReady di atas.
+        var TECHFORD_ROLE_ACCESS = <?!= roleAccessMap ?>;
+        var TECHFORD_HAS_MASTER_ADMIN = <?= hasMasterAdmin ?>;
+        var TECHFORD_ACTIVE_PAGE = '<?= activePage ?>';
+
+        /**
+         * Gerbang hak akses per Role — KEMBARAN Config.getAccessLevel (Apps
+         * Script tidak bisa berbagi 1 file antara server .gs dan client
+         * HTML). Data mentahnya (TECHFORD_ROLE_ACCESS) dikirim server dari
+         * SATU sumber yang sama, jadi yang perlu disamakan di sini cuma
+         * logika pembacaannya, bukan daftar Role/halamannya sendiri.
+         *
+         * PENTING — ini gerbang UI, BUKAN keamanan sungguhan: platform ini
+         * tidak punya sesi server per-user (lihat catatan TechfordAuth di
+         * bawah), jadi google.script.run tidak pernah benar-benar tahu siapa
+         * yang memanggil. Tujuannya menyembunyikan/mengunci tombol yang
+         * tidak relevan untuk Role tertentu, konsisten dengan model
+         * keamanan platform ini (pembatasan domain @kitabisa.com adalah
+         * lapisan yang sungguhan).
+         */
+        var TechfordAccess = (function () {
+          function currentRole() {
+            var user = (typeof TechfordAuth !== 'undefined') ? TechfordAuth.getCurrentUser() : null;
+            return user ? (user.Role || '') : '';
+          }
+
+          function levelFor(page) {
+            // Break-glass: belum ada Master Admin aktif sama sekali (misal
+            // baru migrasi dari Role bebas-ketik lama) — kedua halaman ini
+            // dibuka sementara untuk siapa pun yang login, supaya ada jalan
+            // menunjuk Master Admin pertama tanpa perlu edit sheet manual.
+            if ((page === 'configure-account' || page === 'master-data') && !TECHFORD_HAS_MASTER_ADMIN) {
+              return 'full';
+            }
+            var row = TECHFORD_ROLE_ACCESS[page];
+            if (!row) return 'full';
+            return row[currentRole()] || 'none';
+          }
+
+          function canOpen(page) { return levelFor(page) !== 'none'; }
+          function isViewOnly(page) { return levelFor(page) === 'view'; }
+
+          // Dipanggil setiap kali status master-admin/menu terbaru datang
+          // dari server (login awal & tiap navigasi SPA) supaya break-glass
+          // di atas selalu pakai data terkini, bukan snapshot doGet pertama.
+          function refreshHasMasterAdmin(value) {
+            if (typeof value === 'boolean') TECHFORD_HAS_MASTER_ADMIN = value;
+          }
+
+          /**
+           * Sidebar tidak tahu Role sama sekali saat dirender server (lihat
+           * catatan TechfordAuth) — begitu Role diketahui di browser, item
+           * menu yang levelnya 'none' untuk Role itu disembunyikan dengan
+           * pola YANG SAMA seperti fitur belum aktif (.nav-item-disabled),
+           * supaya tampilannya konsisten dengan menu yang memang belum
+           * dibangun.
+           */
+          function applySidebarLocks() {
+            document.querySelectorAll('.sidebar-nav .nav-item[data-page]').forEach(function (el) {
+              var page = el.getAttribute('data-page');
+              if (canOpen(page)) return;
+              el.classList.add('nav-item-disabled');
+              el.removeAttribute('onclick');
+              el.removeAttribute('href');
+            });
+          }
+
+          // Tombol simpan/tambah/hapus di halaman "view" dikunci lewat SATU
+          // class di <body> (lihat aturan .techford-view-only di Style.html)
+          // — bukan mengedit tiap halaman satu-satu. Filter/pencarian/
+          // paginasi/buka-drawer TETAP jalan (yang dikunci cuma kontrol yang
+          // MENGUBAH data), supaya "hanya bisa melihat" tetap bisa
+          // benar-benar melihat, bukan ikut terkunci.
+          function applyBodyLock(page) {
+            document.body.classList.toggle('techford-view-only', isViewOnly(page));
+          }
+
+          function enforceCurrentPage() {
+            applySidebarLocks();
+            applyBodyLock(TECHFORD_ACTIVE_PAGE);
+            if (canOpen(TECHFORD_ACTIVE_PAGE)) return;
+            var main = document.getElementById('mainContent');
+            if (main) {
+              main.innerHTML = '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+                '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2>' +
+                '<p>Role Anda tidak memiliki akses ke halaman ini.</p></div>';
+            }
+          }
+
+          return {
+            currentRole: currentRole, levelFor: levelFor, canOpen: canOpen, isViewOnly: isViewOnly,
+            refreshHasMasterAdmin: refreshHasMasterAdmin, applySidebarLocks: applySidebarLocks,
+            applyBodyLock: applyBodyLock, enforceCurrentPage: enforceCurrentPage
+          };
+        })();
       </script>
 
       <main class="content-area" id="mainContent"><?!= content ?></main>
@@ -573,6 +675,11 @@
         setActiveSidebarLink(page);
         syncSidebarBadges(res.data.menu);
 
+        TECHFORD_ACTIVE_PAGE = page;
+        TechfordAccess.refreshHasMasterAdmin(res.data.hasMasterAdmin);
+        TechfordAccess.applySidebarLocks();
+        TechfordAccess.applyBodyLock(page);
+
         // Cosmetic saja (lihat catatan class TechfordNav) — tidak membuat
         // entri history baru, jadi tidak mengubah perilaku tombol Back.
         try {
@@ -596,6 +703,10 @@
 
       function navigateTo(page, params) {
         if (navigating) return;
+        if (!TechfordAccess.canOpen(page)) {
+          alert('Role Anda tidak memiliki akses ke halaman ini.');
+          return;
+        }
         params = params || {};
         var cacheKey = Object.keys(params).length === 0 ? page : null;
         var mainContent = document.getElementById('mainContent');
@@ -1723,6 +1834,7 @@
         var user = getCurrentUser();
         if (user) {
           applyUserToChrome(user);
+          TechfordAccess.enforceCurrentPage();
           return;
         }
         document.getElementById('loginOverlay').classList.add('open');
@@ -1758,6 +1870,7 @@
             setCurrentUser(user);
             document.getElementById('loginOverlay').classList.remove('open');
             applyUserToChrome(user);
+            TechfordAccess.enforceCurrentPage();
           })
           .withFailureHandler(function (err) {
             btn.disabled = false;

@@ -15,11 +15,30 @@
  */
 var EmployeeService = (function (module) {
 
+  /**
+   * Role di sheet dulu bebas ketik ('Admin' jadi default lama, atau apa pun
+   * yang pernah diketik admin). Nilai yang tidak termasuk 4 Role baku
+   * (lihat Config.EMPLOYEE_ROLE_LIST) — TERMASUK default lama 'Admin' —
+   * dipetakan ke Operation. Ini fungsi TUNGGAL yang menentukan "role
+   * efektif" seorang Employee; semua pengecekan akses (di sini maupun
+   * client) harus lewat sini, JANGAN baca kolom Role mentah langsung.
+   */
+  function normalizeRole(raw) {
+    var r = String(raw == null ? '' : raw).trim();
+    return Config.EMPLOYEE_ROLE_LIST.indexOf(r) !== -1 ? r : Config.EMPLOYEE_ROLE.OPERATION;
+  }
+  module.normalizeRole = normalizeRole;
+
+  // Role yang dikirim ke client SELALU sudah dinormalisasi — supaya tidak
+  // ada satu pun tempat (badge sidebar, tabel Configure Account, dropdown
+  // approver/Consultant) yang menampilkan sisa string lama 'Admin' yang
+  // sudah tidak punya arti lagi di model 4-Role ini.
   function sanitize(emp) {
     var copy = {};
     for (var key in emp) {
       if (key !== 'PasswordHash') copy[key] = emp[key];
     }
+    copy.Role = normalizeRole(emp.Role);
     return copy;
   }
 
@@ -32,6 +51,46 @@ var EmployeeService = (function (module) {
     return target.indexOf('@' + Config.ALLOWED_EMAIL_DOMAIN.toLowerCase()) !== -1 &&
       target.endsWith('@' + Config.ALLOWED_EMAIL_DOMAIN.toLowerCase());
   }
+
+  /**
+   * Platform WAJIB selalu punya minimal 1 Master Admin AKTIF — dicek di
+   * SATU titik ini, dipanggil sebelum benar-benar menyimpan perubahan Role
+   * atau Status yang menyangkut Employee tersebut. Menghitung ULANG dari
+   * seluruh sheet (bukan percaya cache di memory) supaya aman dipanggil
+   * berkali-kali tanpa race sederhana antar-request.
+   *
+   * @param employeeId Employee yang statusnya/role-nya akan diubah.
+   * @param nextRole Role BARU untuk employee itu (pakai role saat ini kalau
+   *   yang diubah cuma Status).
+   * @param nextStatus Status BARU untuk employee itu ('Active'/'Inactive').
+   */
+  function assertKeepsMasterAdmin(employeeId, nextRole, nextStatus) {
+    var stillHasOne = EmployeeRepository.findAll().some(function (e) {
+      var role = e.Id === employeeId ? nextRole : normalizeRole(e.Role);
+      var status = e.Id === employeeId ? nextStatus : e.Status;
+      return status === 'Active' && role === Config.EMPLOYEE_ROLE.MASTER_ADMIN;
+    });
+    if (!stillHasOne) {
+      throw new AppError('LAST_MASTER_ADMIN',
+        'Platform wajib selalu punya minimal 1 Master Admin yang aktif — perubahan ini akan menghilangkan Master Admin yang terakhir, jadi tidak bisa dilakukan.');
+    }
+  }
+
+  /**
+   * Dipakai gerbang akses Configure Account/Master Data (lihat
+   * Config.getAccessLevel dipanggil dari WebAppRouter) — kalau TERNYATA
+   * tidak ada Master Admin aktif sama sekali (misal baru migrasi dari role
+   * bebas-ketik lama dan belum ada satu pun yang eksplisit "Master Admin"),
+   * kedua halaman itu dibuka sementara untuk SIAPA PUN yang sedang login,
+   * supaya ada jalan memperbaikinya sendiri — bukan terkunci permanen tanpa
+   * ada yang bisa membuka Configure Account untuk menunjuk Master Admin
+   * pertama.
+   */
+  module.hasAnyMasterAdmin = function () {
+    return EmployeeRepository.findAll().some(function (e) {
+      return e.Status === 'Active' && normalizeRole(e.Role) === Config.EMPLOYEE_ROLE.MASTER_ADMIN;
+    });
+  };
 
   module.getActiveEmployees = function () {
     return sanitizeAll(EmployeeRepository.findAll().filter(function (emp) {
@@ -75,12 +134,16 @@ var EmployeeService = (function (module) {
     if (EmployeeRepository.findByEmail(input.email)) {
       throw new AppError('DUPLICATE_EMAIL', 'Email ini sudah terdaftar.');
     }
+    var role = String(input.role || '').trim();
+    if (Config.EMPLOYEE_ROLE_LIST.indexOf(role) === -1) {
+      throw new AppError('VALIDATION_ERROR', 'Role wajib dipilih — salah satu dari: ' + Config.EMPLOYEE_ROLE_LIST.join(', ') + '.');
+    }
 
     var employee = {
       Id: Utils.generateId('EMP'),
       Name: input.name,
       Email: input.email,
-      Role: input.role || 'Admin',
+      Role: role,
       PasswordHash: Utils.hashPassword(input.password),
       Status: 'Active',
       CreatedAt: new Date()
@@ -95,10 +158,35 @@ var EmployeeService = (function (module) {
     if (status !== 'Active' && status !== 'Inactive') {
       throw new AppError('VALIDATION_ERROR', 'Status tidak valid.');
     }
-    var updated = EmployeeRepository.updateStatus(employeeId, status);
-    if (!updated) {
+    var employee = EmployeeRepository.findById(employeeId);
+    if (!employee) {
       throw new AppError('NOT_FOUND', 'Admin tidak ditemukan.');
     }
+    if (status === 'Inactive') {
+      assertKeepsMasterAdmin(employeeId, normalizeRole(employee.Role), status);
+    }
+    EmployeeRepository.updateStatus(employeeId, status);
+    return sanitizeAll(EmployeeRepository.findAll());
+  };
+
+  /**
+   * Ganti Role Employee — dipanggil dari Configure Account. Hanya Master
+   * Admin yang bisa membuka Configure Account sama sekali (lihat
+   * Config.getAccessLevel), jadi TIDAK ada pengecekan siapa pemanggil di
+   * sini (sesuai model login formalitas platform ini — lihat catatan
+   * keamanan di kepala file); yang WAJIB dijaga di titik ini adalah
+   * invarian "minimal 1 Master Admin aktif", bukan siapa yang mengubahnya.
+   */
+  module.setEmployeeRole = function (employeeId, role) {
+    if (Config.EMPLOYEE_ROLE_LIST.indexOf(role) === -1) {
+      throw new AppError('VALIDATION_ERROR', 'Role tidak valid — pilih salah satu: ' + Config.EMPLOYEE_ROLE_LIST.join(', ') + '.');
+    }
+    var employee = EmployeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new AppError('NOT_FOUND', 'Admin tidak ditemukan.');
+    }
+    assertKeepsMasterAdmin(employeeId, role, employee.Status);
+    EmployeeRepository.update(employeeId, { Role: role });
     return sanitizeAll(EmployeeRepository.findAll());
   };
 
