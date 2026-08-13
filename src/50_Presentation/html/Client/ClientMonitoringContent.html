@@ -1526,6 +1526,20 @@
   /* ============================================================
      CLIENT DETAIL DRAWER
      ============================================================ */
+  /**
+   * BUG YANG DIPERBAIKI: drawer dibuka (classList.add('open')) SETELAH
+   * renderClientDrawer() dipanggil — kalau ADA satu langkah render yang
+   * melempar exception (data client tertentu punya bentuk yang tidak
+   * terduga), seluruh fungsi berhenti DI SITU dan baris classList.add
+   * ini tidak pernah tereksekusi. Efeknya: klik "Detail"/baris tabel
+   * terasa seperti tidak melakukan apa-apa — tidak ada error yang
+   * terlihat, drawer-nya memang benar-benar tidak pernah terbuka.
+   *
+   * Sekarang drawer DIBUKA DULU (container-nya, sebelum diisi), lalu
+   * pengisian kontennya dibungkus try/catch — kalau ada yang gagal,
+   * drawer tetap kelihatan (bukan diam-diam tidak terbuka) dan errornya
+   * dilaporkan lewat alert supaya bisa ditelusuri, bukan cuma hilang.
+   */
   function openClientDetail(clientId, startInEditMode) {
     var client = allClients.filter(function (c) { return c.Client_ID === clientId; })[0];
     if (!client) return;
@@ -1534,9 +1548,14 @@
     // kalau tidak, client berikutnya mewarisi "sudah dibuka semua" dari
     // client sebelumnya.
     showAllPics = false;
-    renderClientDrawer(client);
     document.getElementById('clientDrawer').classList.add('open');
     document.body.classList.add('drawer-open');
+    try {
+      renderClientDrawer(client);
+    } catch (e) {
+      console.error('renderClientDrawer gagal:', e);
+      alert('Drawer terbuka, tapi sebagian detail gagal ditampilkan: ' + (e && e.message ? e.message : e));
+    }
 
     // allPics bisa saja belum memuat PIC yang baru dibuat bersamaan dengan
     // Client-nya — tarik ulang supaya carousel & kelengkapan selalu fresh.
