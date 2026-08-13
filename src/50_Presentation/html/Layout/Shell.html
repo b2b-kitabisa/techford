@@ -1295,9 +1295,11 @@
         '.qo-report table.sign tr.qo-sign-space img{max-height:64px;max-width:90%;}' +
         // Box Price TIDAK lagi memulai halaman sendiri — dokumen cuma 2
         // lembar: First Statement + Box Price yang mengalir di bawahnya, lalu
-        // Important Remarks. KEMBARAN dari QuotationReportRenderer.
-        '.qo-report .qo-remarks-section{page-break-before:always;}' +
-        '.qo-report .qo-sign-block{margin-top:64px;page-break-inside:avoid;}' +
+        // Important Remarks. Tanda tangan didorong ke dasar lembar itu lewat
+        // flexbox + min-height ≈ 1 lembar A4, bukan jarak tetap dari isi di
+        // atasnya — lihat catatan panjang di QuotationReportRenderer (KEMBARAN).
+        '.qo-report .qo-remarks-section{page-break-before:always;display:flex;flex-direction:column;min-height:900px;}' +
+        '.qo-report .qo-sign-block{margin-top:auto;padding-top:32px;page-break-inside:avoid;}' +
         '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
         '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;vertical-align:top;}' +
         '.qo-report table.price th{background:#f2f2f2;}' +

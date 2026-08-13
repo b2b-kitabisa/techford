@@ -213,8 +213,26 @@ console.log('\n5) Sapaan pembuka TIDAK lagi ditempel renderer (sudah jadi bagian
     String((cfg.match(/firstStatement: '(Yth\.|Dear) Bapak\/Ibu ' \+ PIC_NAME_TOKEN/g) || []).length));
   ok('teks default YKB ID memakai diksi baru (komitmen penyaluran donasi)',
     cfg.indexOf('Para Pihak mencatat komitmen awal penyaluran donasi') !== -1);
-  ok('teks EN tidak ikut diubah diksinya',
-    cfg.indexOf('Thank you for the opportunity and time for us to introduce Kitabisa ORG services') !== -1);
+  ok('teks default YKB EN ikut ditulis ulang selaras dengan diksi Donation Commitment Letter',
+    cfg.indexOf('the Parties record an initial commitment to the donation disbursement') !== -1);
+  ok('teks default KAI (EN & ID) TIDAK ikut diubah diksinya — hanya YKB yang jadi Donation Commitment Letter',
+    cfg.indexOf('Thank you for the opportunity and time for us to introduce Kolaborasi Aksi Indonesia services') !== -1 &&
+    cfg.indexOf('Terima kasih atas kesempatan yang telah diberikan kepada kami untuk memperkenalkan layanan PT Kolaborasi Aksi Indonesia') !== -1);
+}
+
+console.log('\n5b) Important Remarks default TIDAK BOLEH campur ID/EN di satu dokumen');
+{
+  const cfg = fs.readFileSync(path.join(SRC, '00_Core/00_Config.gs'), 'utf8');
+  // "Statement / Pernyataan", "Payment Scheme / Ketentuan Pembayaran", dst
+  // adalah header bilingual yang dulu nyangkut di KEDUA varian bahasa —
+  // dokumen ID menampilkan judul section berbahasa Inggris juga, dan
+  // sebaliknya. Satu dokumen harus konsisten satu bahasa saja.
+  ok('tidak ada header bilingual "X / Y" tersisa di importantRemarks manapun',
+    !/importantRemarks: '[^']*[A-Za-z ]+ \/ [A-Za-z ]+:/.test(cfg));
+  ok('KAI ID: "Ketentuan Pembatalan" TANPA embel-embel Inggris',
+    cfg.indexOf('\\n\\nKetentuan Pembatalan:\\n1. Apabila pembatalan') !== -1);
+  ok('KAI EN: "Cancellation Fee" TANPA embel-embel Indonesia',
+    cfg.indexOf('\\n\\nCancellation Fee:\\n1. If there is a cancellation') !== -1);
 }
 
 console.log('\n6) Item Detail — menempel di sebelah nama item, nama di-bold + titik');
@@ -242,7 +260,7 @@ console.log('\n7) Tata letak halaman — 2 lembar, tanda tangan di lembar Import
   ok('box price TIDAK lagi memulai halaman sendiri',
     h.indexOf('.qo-price-section{page-break-before:always;}') === -1);
   ok('Important Remarks tetap memulai halaman sendiri',
-    h.indexOf('.qo-remarks-section{page-break-before:always;}') !== -1);
+    h.indexOf('page-break-before:always') !== -1 && h.indexOf('.qo-remarks-section{page-break-before:always') !== -1);
   ok('tepat 1 page-break di seluruh dokumen',
     (h.match(/page-break-before:always/g) || []).length === 1,
     String((h.match(/page-break-before:always/g) || []).length));
@@ -255,8 +273,10 @@ console.log('\n7) Tata letak halaman — 2 lembar, tanda tangan di lembar Import
   const signAt = body.indexOf('qo-sign-block');
   ok('blok tanda tangan ada DI DALAM lembar Important Remarks',
     signAt !== -1 && signAt > remarksAt);
-  ok('tanda tangan didorong ke bawah & tidak boleh pecah antar-halaman',
-    h.indexOf('.qo-sign-block{margin-top:64px;page-break-inside:avoid;}') !== -1);
+  ok('lembar Important Remarks diberi tinggi minimum ~1 lembar A4 supaya tanda tangan bisa didorong ke dasarnya',
+    h.indexOf('.qo-remarks-section{page-break-before:always;display:flex;flex-direction:column;min-height:900px;}') !== -1);
+  ok('tanda tangan didorong ke DASAR lembar via margin-top:auto (bukan jarak tetap dari isi di atasnya) & tidak boleh pecah antar-halaman',
+    h.indexOf('.qo-sign-block{margin-top:auto;padding-top:32px;page-break-inside:avoid;}') !== -1);
   ok('urutan cetak: First Statement -> Box Price -> Important Remarks -> tanda tangan',
     body.indexOf('qo-freetext') < priceAt && priceAt < remarksAt && remarksAt < signAt);
   ok('tanda tangan TIDAK lagi berada sebelum box price (posisi lamanya)',

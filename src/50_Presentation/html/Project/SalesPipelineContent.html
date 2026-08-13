@@ -2964,6 +2964,14 @@
     return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
   }
 
+  // YKB menerbitkan dokumen QUOTATION-nya sebagai "Donation Commitment
+  // Letter", KAI tetap "Quotation" — Document_Type-nya sendiri SATU nilai
+  // ('QUOTATION') untuk kedua entitas, jadi diksinya diturunkan dari kolom
+  // Entity per baris/opsi, bukan dari label taxonomy yang statis.
+  function quotationDocWordFor(entity) {
+    return String(entity || '').indexOf('YKB') !== -1 ? 'Donation Commitment Letter' : 'Quotation';
+  }
+
   // ---- Document Request (Deck/Quotation-YKB/Quotation-PT KAI/COR/RAB/
   // Prodcost/PKS/Transfer Request/BAST) — HANYA dari sini, tidak ada lagi
   // tombol "+ ADD" di halaman Document Pipeline. Quotation direpresentasikan
@@ -2974,7 +2982,7 @@
     (docTaxonomy.documentTypes || []).forEach(function (t) {
       if (t.key === 'QUOTATION') {
         (docTaxonomy.quotationEntities || []).forEach(function (entity) {
-          rows.push({ key: 'QUOTATION::' + entity, documentType: 'QUOTATION', entity: entity, label: 'Quotation (' + entity.split(' ')[0] + ')' });
+          rows.push({ key: 'QUOTATION::' + entity, documentType: 'QUOTATION', entity: entity, label: quotationDocWordFor(entity) + ' (' + entity.split(' ')[0] + ')' });
         });
       } else {
         rows.push({ key: t.key, documentType: t.key, entity: '', label: t.label });
@@ -3059,6 +3067,7 @@
   // Label dokumen mengikuti taxonomy (bukan kode mentah Document_Type), dan
   // Quotation diberi keterangan entitasnya — sama seperti Document Pipeline.
   function getDocRequestLabelFor(doc) {
+    if (doc.Document_Type === 'QUOTATION') return quotationDocWordFor(doc.Entity) + (doc.Entity ? ' — ' + doc.Entity : '');
     var type = (docTaxonomy.documentTypes || []).filter(function (t) { return t.key === doc.Document_Type; })[0];
     var label = type ? type.label : (doc.Document_Type || '-');
     return label + (doc.Entity ? ' — ' + doc.Entity : '');

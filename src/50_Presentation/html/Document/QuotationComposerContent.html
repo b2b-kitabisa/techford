@@ -44,7 +44,7 @@
   .qo-total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
   .qo-total-row.grand { font-weight: 700; font-size: 15px; border-top: 1px solid var(--border-soft); margin-top: 4px; padding-top: 8px; }
 
-  /* Box "Informasi Umum" dirapikan jadi 3 sub-bagian bersekat, bukan satu
+  /* Box "Informasi Umum" dirapikan jadi sub-bagian bersekat, bukan satu
      tumpukan field panjang. */
   .qo-subsection { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border-softer); }
   .qo-subsection:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
@@ -52,6 +52,47 @@
   .qo-grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 24px; }
   .qo-grid-3col label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
   .qo-grid-3col input, .qo-grid-3col select { width: 100%; box-sizing: border-box; }
+  /* Varian 2 kolom — dipakai di dalam layout 2 kolom Informasi Umum, supaya
+     tiap field tidak keremesan di kolom yang cuma separuh lebar. */
+  .qo-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+  .qo-grid-2col label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .qo-grid-2col input, .qo-grid-2col select { width: 100%; box-sizing: border-box; }
+  .qo-grid-2col .span2 { grid-column: 1 / -1; }
+
+  /* Informasi Umum — 2 kolom: DOKUMEN di kiri, CLIENT & PIC + PENANDATANGAN
+     bersusun di kanan (dipisah garis putus-putus), supaya box ini tidak
+     memanjang ke bawah pada layar lebar. */
+  .qo-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-items: start; }
+
+  /* Valid Date + saklar SEMBUNYIKAN duduk di baris yang sama sebagai satu
+     kesatuan kecil ("Valid Date" [switch mini] "Hide") — bukan kolom
+     tersendiri selebar 1/3 grid seperti sebelumnya. */
+  .qo-valid-date-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .qo-valid-date-row .drawer-field-value { flex: 1; min-width: 70px; }
+  .qo-hide-switch { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; white-space: nowrap; }
+  .qo-hide-switch .switch { width: 28px; height: 16px; }
+  .qo-hide-switch .switch-slider:before { width: 12px; height: 12px; left: 2px; top: 2px; }
+  .qo-hide-switch input:checked + .switch-slider:before { transform: translateX(12px); }
+
+  /* First Statement & Important Remarks BERDAMPINGAN (dua kolom) — urutan
+     tampilan ditukar dengan Box Price (Box Price pindah ke paling bawah),
+     TAPI urutan di PDF/generate TIDAK berubah (lihat buildQuotationModel —
+     modelnya dirakit dari field terpisah, tidak dari urutan DOM). */
+  .qo-freetext-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
+  @media (max-width: 980px) {
+    .qo-info-grid, .qo-freetext-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Tombol kunci edit First Statement/Important Remarks — box tampil
+     read-only (preview default bahasa terpilih) sampai tombol ini diklik,
+     supaya toggle bahasa bisa dipakai bebas SEBELUM ada teks kustom yang
+     berisiko tertimpa. Lihat qoEditingStarted. */
+  .qo-rte-lockbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .qo-rte-lock-note { font-size: 11px; color: var(--text-faint); font-style: italic; }
+  .qo-rte-edit-btn { border: 1px solid var(--color-cerulean); background: var(--color-white); color: var(--color-cerulean); border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .qo-rte-edit-btn:hover { background: var(--accent-tint); }
+  .qo-rte.qo-rte-readonly { background: var(--bg-tint); cursor: default; }
+  .qo-lang-toggle.qo-lang-toggle-locked button { cursor: not-allowed; opacity: 0.6; }
 
   /* Rich-text editor First Statement/Important Remarks — resize CSS hanya
      diberi arah vertical (bukan "both" default), jadi tidak bisa diperbesar
@@ -96,106 +137,135 @@
   <div class="qo-box">
     <div class="qo-box-hd">1. Informasi Umum</div>
 
-    <div class="qo-subsection">
-      <div class="qo-subsection-label">Dokumen</div>
-      <div class="qo-grid-3col">
-        <div>
-          <label>Bahasa Dokumen</label>
-          <div class="qo-lang-toggle">
-            <button type="button" class="on" id="qoLangIdBtn" onclick="setLanguage('ID')">Bahasa Indonesia</button>
-            <button type="button" id="qoLangEnBtn" onclick="setLanguage('EN')">English</button>
+    <div class="qo-info-grid">
+      <div>
+        <div class="qo-subsection-label">Dokumen</div>
+        <div class="qo-grid-2col">
+          <div>
+            <label>Bahasa Dokumen</label>
+            <div class="qo-lang-toggle" id="qoLangToggle">
+              <button type="button" class="on" id="qoLangIdBtn" onclick="onLangBtnClick('ID')">Bahasa Indonesia</button>
+              <button type="button" id="qoLangEnBtn" onclick="onLangBtnClick('EN')">English</button>
+            </div>
+          </div>
+          <div>
+            <label id="qoNumberLabel">Nomor Quotation</label>
+            <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
           </div>
         </div>
-        <div>
-          <label id="qoNumberLabel">Nomor Quotation</label>
-          <div class="drawer-field-value" id="qoNumberDisplay">Belum ada — dibuat otomatis saat pertama kali disimpan.</div>
+        <div class="qo-grid-2col" style="margin-top:12px;">
+          <div class="span2">
+            <label>Nama Layanan (judul tabel Box Price)</label>
+            <input type="text" id="qoServiceName" placeholder="Misal: Digital Campaign Package">
+          </div>
         </div>
-        <div>
-          <label>Nama Layanan (judul tabel Box Price)</label>
-          <input type="text" id="qoServiceName" placeholder="Misal: Digital Campaign Package">
-        </div>
-      </div>
-      <div class="qo-grid-3col" style="margin-top:12px;">
-        <div>
-          <label>Berlaku Selama (hari)</label>
-          <input type="number" id="qoValidDays" value="30" min="1" oninput="onValidDaysChange()">
-        </div>
-        <div>
-          <label>Valid Date</label>
-          <div class="drawer-field-value" id="qoValidDateDisplay">-</div>
-        </div>
-        <div>
-          <label>Baris "Berlaku Hingga" di dokumen</label>
-          <label class="switch-wrap" style="margin-top:6px;" title="Kalau ON, baris Berlaku Hingga beserta tanggalnya tidak ikut tercetak di PDF.">SEMBUNYIKAN
-            <span class="switch"><input type="checkbox" id="qoHideValidDate" onchange="onHideValidDateChange()"><span class="switch-slider"></span></span>
-          </label>
+        <div class="qo-grid-2col" style="margin-top:12px;">
+          <div>
+            <label>Berlaku Selama (hari)</label>
+            <input type="number" id="qoValidDays" value="30" min="1" oninput="onValidDaysChange()">
+          </div>
+          <div>
+            <label>Valid Date</label>
+            <div class="qo-valid-date-row">
+              <div class="drawer-field-value" id="qoValidDateDisplay">-</div>
+              <label class="qo-hide-switch" title="Kalau ON, baris Berlaku Hingga beserta tanggalnya tidak ikut tercetak di PDF.">
+                <span class="switch"><input type="checkbox" id="qoHideValidDate" onchange="onHideValidDateChange()"><span class="switch-slider"></span></span>
+                Hide
+              </label>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="qo-subsection">
-      <div class="qo-subsection-label">Client &amp; PIC</div>
-      <div class="qo-grid-3col">
-        <div>
-          <label>Entity Name (nama PT/Brand pada dokumen)</label>
-          <input type="text" id="qoEntityName" placeholder="Nama PT/Brand client...">
+      <div>
+        <div class="qo-subsection" style="margin-bottom:14px; padding-bottom:12px;">
+          <div class="qo-subsection-label">Client &amp; PIC</div>
+          <div class="qo-grid-2col">
+            <div>
+              <label>Entity Name (nama PT/Brand pada dokumen)</label>
+              <input type="text" id="qoEntityName" placeholder="Nama PT/Brand client...">
+            </div>
+            <div>
+              <label>Pilih PIC Client</label>
+              <select id="qoPicSelect" onchange="onPicSelectChange()"></select>
+            </div>
+          </div>
+          <div class="qo-grid-2col" style="margin-top:12px;">
+            <div>
+              <label>Nama PIC</label>
+              <input type="text" id="qoPicName" oninput="applyPicNameToFirstStatement()">
+            </div>
+            <div>
+              <label>Email PIC</label>
+              <input type="text" id="qoPicEmail">
+            </div>
+          </div>
+          <div class="qo-grid-2col" style="margin-top:12px;">
+            <div>
+              <label>Nomor Telepon PIC</label>
+              <input type="text" id="qoPicPhone">
+            </div>
+            <div>
+              <label>Jabatan PIC</label>
+              <input type="text" id="qoPicTitle" placeholder="Terisi otomatis dari data PIC, bisa diedit">
+            </div>
+          </div>
         </div>
-        <div>
-          <label>Pilih PIC Client</label>
-          <select id="qoPicSelect" onchange="onPicSelectChange()"></select>
-        </div>
-        <div></div>
-      </div>
-      <div class="qo-grid-3col" style="margin-top:12px;">
-        <div>
-          <label>Nama PIC</label>
-          <input type="text" id="qoPicName" oninput="applyPicNameToFirstStatement()">
-        </div>
-        <div>
-          <label>Email PIC</label>
-          <input type="text" id="qoPicEmail">
-        </div>
-        <div>
-          <label>Nomor Telepon PIC</label>
-          <input type="text" id="qoPicPhone">
-        </div>
-      </div>
-      <div class="qo-grid-3col" style="margin-top:12px;">
-        <div>
-          <label>Jabatan PIC</label>
-          <input type="text" id="qoPicTitle" placeholder="Terisi otomatis dari data PIC, bisa diedit">
-        </div>
-        <div></div>
-        <div></div>
-      </div>
-    </div>
 
-    <div class="qo-subsection">
-      <div class="qo-subsection-label">Penandatangan</div>
-      <div class="qo-grid-3col">
-        <div>
-          <label>Nama Penandatangan (Head)</label>
-          <input type="text" id="qoHeadName">
+        <div class="qo-subsection">
+          <div class="qo-subsection-label">Penandatangan</div>
+          <div class="qo-grid-2col">
+            <div>
+              <label>Nama Penandatangan (Head)</label>
+              <input type="text" id="qoHeadName">
+            </div>
+            <div>
+              <label>Jabatan Penandatangan</label>
+              <input type="text" id="qoTitleName">
+            </div>
+          </div>
         </div>
-        <div>
-          <label>Jabatan Penandatangan</label>
-          <input type="text" id="qoTitleName">
-        </div>
-        <div></div>
       </div>
     </div>
   </div>
 
-  <div class="qo-box">
-    <div class="qo-box-hd">2. First Statement <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(paragraf pembuka — bisa diedit, default sudah terisi)</span></div>
-    <div class="qo-rte-toolbar">
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
+  <!-- First Statement & Important Remarks berdampingan — Box Price pindah
+       ke bawah. Urutan TAMPILAN ini murni kosmetik: model laporan dirakit
+       dari field terpisah (firstStatementHtml/categories/importantRemarksHtml),
+       jadi urutan di PDF/generate TETAP First Statement -> Box Price ->
+       Important Remarks seperti sebelumnya, lihat buildQuotationModel. -->
+  <div class="qo-freetext-grid">
+    <div class="qo-box">
+      <div class="qo-box-hd">2. First Statement <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(paragraf pembuka)</span></div>
+      <div class="qo-rte-lockbar">
+        <span class="qo-rte-lock-note" id="qoFsLockNote">Pratinjau teks default — klik Edit untuk menyunting.</span>
+        <button type="button" class="qo-rte-edit-btn" id="qoFsEditBtn" onclick="startQoEditing()">✏️ Edit</button>
+      </div>
+      <div class="qo-rte-toolbar" id="qoFsToolbar" style="display:none;">
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
+      </div>
+      <div id="qoFirstStatement" class="qo-rte qo-rte-readonly" contenteditable="false"></div>
     </div>
-    <div id="qoFirstStatement" class="qo-rte" contenteditable="true"></div>
+
+    <div class="qo-box">
+      <div class="qo-box-hd">4. Important Remarks <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(bisa diedit, default sudah terisi)</span></div>
+      <div class="qo-rte-lockbar">
+        <span class="qo-rte-lock-note" id="qoIrLockNote">Pratinjau teks default — klik Edit untuk menyunting.</span>
+        <button type="button" class="qo-rte-edit-btn" id="qoIrEditBtn" onclick="startQoEditing()">✏️ Edit</button>
+      </div>
+      <div class="qo-rte-toolbar" id="qoIrToolbar" style="display:none;">
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
+      </div>
+      <div id="qoImportantRemarks" class="qo-rte qo-rte-readonly" contenteditable="false"></div>
+    </div>
   </div>
 
   <div class="qo-box">
@@ -210,21 +280,9 @@
       </label>
     </div>
     <div id="qoCategoriesContainer"></div>
-    <button class="btn-outline" onclick="addCategory()">+ Tambah Kategori</button>
+    <button class="btn-outline" type="button" onclick="addCategory()">+ Tambah Kategori</button>
 
     <div class="qo-totals" id="qoTotalsBox"></div>
-  </div>
-
-  <div class="qo-box">
-    <div class="qo-box-hd">4. Important Remarks <span style="font-weight:400; color:var(--text-faint); font-size:11px;">(bisa diedit, default sudah terisi)</span></div>
-    <div class="qo-rte-toolbar">
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('bold')"><b>B</b></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('italic')"><i>I</i></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('underline')"><u>U</u></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertUnorderedList')">• List</button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="qoExec('insertOrderedList')">1. List</button>
-    </div>
-    <div id="qoImportantRemarks" class="qo-rte" contenteditable="true"></div>
   </div>
   </div>
 </div>
@@ -265,6 +323,11 @@
   var qoSavedAgencyFeeRate = null;
   var qoCurrentHeader = null;
   var qoLogos = { YKB: '', KAI: '' };
+  // Begitu true, First Statement/Important Remarks jadi editable dan bahasa
+  // dokumen TIDAK BISA diganti lagi — lihat startQoEditing/onLangBtnClick.
+  // Dokumen yang sudah pernah disimpan (header ada) otomatis mulai dalam
+  // keadaan ini (isinya sudah teks tersimpan, bukan lagi pratinjau default).
+  var qoEditingStarted = false;
 
   // Dulu window.top.location.href (full reload). Sekarang lewat router SPA
   // (TechfordNav, di Shell.html) supaya balik ke Document Pipeline instan
@@ -596,8 +659,13 @@
     var header = draft.header;
     qoCurrentHeader = header;
     qoDraftHasHeader = !!header;
+    // Dokumen yang SUDAH pernah disimpan otomatis dianggap "sudah diedit" —
+    // isinya sudah teks tersimpan (bukan lagi pratinjau default), jadi tidak
+    // perlu menunggu klik Edit lagi, tapi bahasa juga langsung terkunci.
+    qoEditingStarted = !!header;
     currentLanguage = header ? header.Language : 'ID';
-    setLanguage(currentLanguage, true);
+    setLanguage(currentLanguage);
+    applyQoEditLockUI();
 
     if (header) {
       document.getElementById('qoValidDays').value = header.Valid_Days;
@@ -682,37 +750,83 @@
     return { idx: nextQoIdx(), label: '', value: 0, qty: 1, remarksDetail: '' };
   }
 
-  // ---- Bahasa: ganti default First Statement/Important Remarks/Head/Title
-  // HANYA kalau field itu masih kosong ATAU masih persis sama dengan
-  // default bahasa SEBELUMNYA (belum diedit admin) — supaya tidak menimpa
-  // hasil edit manual admin.
-  function setLanguage(lang, silent) {
-    var prevLang = currentLanguage;
+  /**
+   * Klik tombol bahasa di UI — dulu langsung memanggil setLanguage(), dan
+   * heuristik di sana ("timpa hanya kalau kontennya masih SAMA PERSIS
+   * dengan default bahasa sebelumnya") gagal begitu admin sudah mengedit
+   * teksnya sendiri: perbandingan string itu jadi selalu tidak cocok, jadi
+   * dari sudut pandang user tombolnya "tidak berjalan" — highlight bahasa
+   * berubah, tapi kontennya diam saja (memang sengaja tidak ditimpa, tapi
+   * tidak ada penjelasan kenapa).
+   *
+   * Sekarang digantikan gerbang tegas: begitu editing dimulai (lihat
+   * startQoEditing), bahasa TIDAK BISA diganti lagi sama sekali — bukan
+   * "mungkin diganti mungkin tidak" tergantung isi teks.
+   */
+  function onLangBtnClick(lang) {
+    if (qoEditingStarted) {
+      alert('Bahasa dokumen tidak bisa diubah lagi karena First Statement/Important Remarks sudah masuk mode edit.');
+      return;
+    }
+    setLanguage(lang);
+  }
+
+  /**
+   * Menimpa First Statement/Important Remarks/Head/Title dengan default
+   * bahasa yang dipilih. HANYA dipanggil selagi qoEditingStarted masih
+   * false (dijamin oleh onLangBtnClick di jalur klik user; jalur internal —
+   * loadDraftIntoState & fetchQoTaxonomy — juga aman karena kontennya masih
+   * pratinjau default atau langsung ditimpa ulang oleh data draft
+   * tersimpan sesudahnya).
+   */
+  function setLanguage(lang) {
     currentLanguage = lang;
     document.getElementById('qoLangIdBtn').className = lang === 'ID' ? 'on' : '';
     document.getElementById('qoLangEnBtn').className = lang === 'EN' ? 'on' : '';
 
     var defaults = (qoTaxonomy.defaults[entityCode] || {})[lang];
-    if (!defaults) return;
-    var prevDefaults = (qoTaxonomy.defaults[entityCode] || {})[prevLang] || {};
-
-    var fsEl = document.getElementById('qoFirstStatement');
-    var fsDefaultHtml = plainToHtml(defaults.firstStatement);
-    if (!fsEl.innerHTML || fsEl.innerHTML === plainToHtml(prevDefaults.firstStatement || '')) fsEl.innerHTML = fsDefaultHtml;
-    var irEl = document.getElementById('qoImportantRemarks');
-    var irDefaultHtml = plainToHtml(defaults.importantRemarks);
-    if (!irEl.innerHTML || irEl.innerHTML === plainToHtml(prevDefaults.importantRemarks || '')) irEl.innerHTML = irDefaultHtml;
-    var headEl = document.getElementById('qoHeadName');
-    if (!headEl.value || headEl.value === prevDefaults.headName) headEl.value = defaults.headName;
-    var titleEl = document.getElementById('qoTitleName');
-    if (!titleEl.value || titleEl.value === prevDefaults.titleName) titleEl.value = defaults.titleName;
+    if (defaults && !qoEditingStarted) {
+      document.getElementById('qoFirstStatement').innerHTML = plainToHtml(defaults.firstStatement);
+      document.getElementById('qoImportantRemarks').innerHTML = plainToHtml(defaults.importantRemarks);
+      document.getElementById('qoHeadName').value = defaults.headName;
+      document.getElementById('qoTitleName').value = defaults.titleName;
+    }
 
     // Teks default yang baru saja diisi membawa token "[Nama PIC]" — kalau
     // PIC sudah dipilih, langsung diganti nama sungguhannya di sini juga,
     // bukan cuma saat PIC diubah.
     applyPicNameToFirstStatement();
+  }
 
-    if (!silent) { /* no-op, placeholder kalau nanti perlu render ulang lain */ }
+  /**
+   * Tombol "✏️ Edit" di box First Statement/Important Remarks — box mulai
+   * dalam keadaan READ-ONLY (pratinjau default bahasa terpilih) supaya
+   * toggle bahasa bisa dipakai bebas dulu sebelum ada teks kustom yang
+   * berisiko tertimpa. Begitu tombol ini diklik (dan dikonfirmasi), KEDUA
+   * box jadi editable dan bahasa terkunci permanen untuk dokumen ini.
+   */
+  function startQoEditing() {
+    if (qoEditingStarted) return;
+    if (!techfordConfirm('Setelah mulai mengedit, bahasa dokumen ini (First Statement & Important Remarks) tidak bisa diganti lagi. Lanjutkan mengedit?')) return;
+    qoEditingStarted = true;
+    applyQoEditLockUI();
+  }
+
+  function applyQoEditLockUI() {
+    var fs = document.getElementById('qoFirstStatement');
+    var ir = document.getElementById('qoImportantRemarks');
+    fs.contentEditable = qoEditingStarted ? 'true' : 'false';
+    ir.contentEditable = qoEditingStarted ? 'true' : 'false';
+    fs.classList.toggle('qo-rte-readonly', !qoEditingStarted);
+    ir.classList.toggle('qo-rte-readonly', !qoEditingStarted);
+    document.getElementById('qoFsToolbar').style.display = qoEditingStarted ? '' : 'none';
+    document.getElementById('qoIrToolbar').style.display = qoEditingStarted ? '' : 'none';
+    document.getElementById('qoFsEditBtn').style.display = qoEditingStarted ? 'none' : '';
+    document.getElementById('qoIrEditBtn').style.display = qoEditingStarted ? 'none' : '';
+    var note = qoEditingStarted ? 'Sedang diedit — bahasa dokumen tidak bisa diganti lagi.' : 'Pratinjau teks default — klik Edit untuk menyunting.';
+    document.getElementById('qoFsLockNote').innerText = note;
+    document.getElementById('qoIrLockNote').innerText = note;
+    document.getElementById('qoLangToggle').classList.toggle('qo-lang-toggle-locked', qoEditingStarted);
   }
 
   // ---- Kategori & item layanan ----

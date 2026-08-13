@@ -46,13 +46,20 @@ var QuotationReportRenderer = (function (module) {
     // lembar: (1) First Statement + Box Price yang mengalir di bawahnya, dan
     // (2) Important Remarks. Kalau isi box price panjang, ia melanjut sendiri
     // ke lembar berikutnya seperti teks biasa.
-    '.qo-report .qo-remarks-section{page-break-before:always;}' +
-    // Kolom tanda tangan pindah ke lembar Important Remarks dan didorong ke
-    // bawah dengan jarak tetap dari isi di atasnya. Anchor ke dasar halaman
-    // sungguhan tidak bisa diandalkan di konverter HTML->PDF Apps Script
-    // (position:fixed malah jadi footer berulang di TIAP halaman), jadi
-    // dipakai jarak tetap + larangan pecah di tengah blok.
-    '.qo-report .qo-sign-block{margin-top:64px;page-break-inside:avoid;}' +
+    //
+    // Kolom tanda tangan HARUS selalu di dasar lembar ini, beberapa cm di
+    // atas footer — bukan cuma berjarak tetap dari isi di atasnya (itu bikin
+    // tanda tangan menempel tinggi kalau Important Remarks-nya pendek).
+    // Anchor ke dasar HALAMAN sungguhan (position:fixed/@page footer) tidak
+    // bisa diandalkan di konverter HTML->PDF Apps Script (fixed malah
+    // terulang di tiap halaman, bukan sekali di akhir), jadi dipakai flexbox
+    // + min-height setara satu lembar A4 (kertas 297mm ≈ 1122px @ 96dpi,
+    // dikurangi padding atas/bawah body & judul section) — dengan
+    // margin-top:auto, tanda tangan didorong ke DASAR area setinggi itu
+    // kalau isi Important Remarks pendek, dan tetap mengikuti tepat di
+    // bawah isi (tidak ke-clip) kalau isinya lebih panjang dari itu.
+    '.qo-report .qo-remarks-section{page-break-before:always;display:flex;flex-direction:column;min-height:900px;}' +
+    '.qo-report .qo-sign-block{margin-top:auto;padding-top:32px;page-break-inside:avoid;}' +
     '.qo-report table.price{border:1px solid #ccc;table-layout:fixed;}' +
     '.qo-report table.price th,.qo-report table.price td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:left;overflow-wrap:break-word;vertical-align:top;}' +
     '.qo-report table.price th{background:#f2f2f2;}' +

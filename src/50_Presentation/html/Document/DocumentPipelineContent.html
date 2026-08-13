@@ -633,6 +633,12 @@
     var t = (taxonomy.documentTypes || []).filter(function (d) { return d.key === key; })[0];
     return t ? t.label : key;
   }
+  // YKB menerbitkan dokumen QUOTATION-nya sebagai "Donation Commitment
+  // Letter", KAI tetap "Quotation" — sama helper & alasan dengan
+  // SalesPipelineContent.quotationDocWordFor.
+  function quotationDocWordFor(entity) {
+    return String(entity || '').indexOf('YKB') !== -1 ? 'Donation Commitment Letter' : 'Quotation';
+  }
 
   function formatDate(value) {
     if (!value) return '-';
@@ -769,7 +775,7 @@
     tbody.innerHTML = paged.items.map(function (d) {
       var project = getProjectById(d.Project_ID) || {};
       var client = getClientById(project.Client_ID) || {};
-      var typeLabel = getDocTypeLabel(d.Document_Type) + (d.Entity ? ' — ' + d.Entity : '');
+      var typeLabel = (d.Document_Type === 'QUOTATION' ? quotationDocWordFor(d.Entity) : getDocTypeLabel(d.Document_Type)) + (d.Entity ? ' — ' + d.Entity : '');
       // Seluruh baris bisa diklik; tombol DETAIL tetap ada sebagai penanda
       // bahwa baris ini punya drawer. techfordRowOpen mencegah klik pada
       // tombol itu (dan seleksi teks) menjalankannya dua kali.
