@@ -1,19 +1,40 @@
 /**
  * Module.Dashboard.DashboardService
  *
- * Backend Dashboard Sales — Section 1 (Pencapaian Department) & Section 2
- * (Kinerja Consultant), keduanya HANYA bicara GDV (lihat keputusan produk:
- * Service Revenue dikeluarkan sampai logika pencocokannya jelas seperti
- * GDV Matching). Section 3 (Leads & Client) BELUM dibangun di sini — butuh
- * satu RPC agregat baru di atas Lead (lihat catatan di getSalesGdv), jadi
- * sengaja menyusul.
+ * Backend Dashboard Sales — DUA RPC terpisah, sengaja TIDAK digabung jadi
+ * satu:
+ *   - getSalesGdv()         Section 1 (Pencapaian Department) & Section 2
+ *                           (Kinerja Consultant). HANYA bicara GDV — Service
+ *                           Revenue dikeluarkan sampai logika pencocokannya
+ *                           jelas seperti GDV Matching.
+ *   - getSalesLeadsClient() Section 3 (Leads Capturing & Client Monitoring).
  *
- * SATU RPC (dashboard_getSalesGdv) memanggil ulang service yang sudah ada
- * (GdvMatchingService, ProjectService, AchievementTargetService,
- * AdsProgressService) dan menyusunnya jadi satu payload kecil — tidak ada
- * rumus baru yang menghitung ulang apa yang sudah dihitung service lain,
- * supaya angka di Dashboard tidak mungkin diam-diam berbeda dari angka di
- * halaman aslinya (GDV Matching, Sales Pipeline, Achievement Setting).
+ * DIPISAH SUPAYA KEDUANYA SALING INDEPENDEN: Section 1&2 membaca DUA
+ * spreadsheet (database utama + GDV_Controller yang terpisah, lihat
+ * Config.getGdvControllerSpreadsheet) sementara Section 3 hanya database
+ * utama. Kalau digabung satu RPC, satu sisi yang lambat/gagal (misal
+ * GDV_Controller belum dikonfigurasi) menggelapkan SEMUA section sekaligus
+ * di client — persis kelas bug "Tidak ada respons dari server" yang sudah
+ * pernah menyerang Lead Capturing & Client Monitoring (lihat catatan
+ * diagnosis panjang di LeadService.getLeadPage dan makeLoader di
+ * ClientMonitoringContent.html): payload gabungan yang membengkak, atau
+ * satu bagian lambat, membuat google.script.run pulang dengan res=null
+ * walau computation-nya sendiri tidak error apa pun (jadi TIDAK tertangkap
+ * ErrorHandler.handle — client-nya yang harus retry, lihat makeLoader di
+ * DashboardSalesContent.html).
+ *
+ * Konsekuensi lain dari pelajaran yang sama: TIDAK ADA objek Date mentah
+ * yang dikembalikan ke client (lihat isoOrNull) — dikirim sebagai string
+ * ISO, sama seperti yang sudah dilakukan LeadService untuk alasan yang
+ * sama persis.
+ *
+ * SATU RPC memanggil ulang service yang sudah ada (GdvMatchingService,
+ * ProjectService, AchievementTargetService, AdsProgressService,
+ * LeadRepository, ClientRepository) dan menyusunnya jadi payload kecil —
+ * tidak ada rumus baru yang menghitung ulang apa yang sudah dihitung
+ * service lain, supaya angka di Dashboard tidak mungkin diam-diam berbeda
+ * dari angka di halaman aslinya (GDV Matching, Sales Pipeline, Achievement
+ * Setting, Lead Capturing, Client Monitoring).
  *
  * Klaim vs Department Portion (Section 1): gdvMatching_getMatching() per
  * LINK mendefinisikan departmentPortion = max(0, realisasi - totalKlaim),
@@ -39,9 +60,21 @@
 var DashboardService = (function (module) {
 
   var DEAL_MANDEK_THRESHOLD_DAYS = 45;
+  var LEAD_STALE_DAYS = 7;
   var MS_PER_DAY = 24 * 60 * 60 * 1000;
+  var MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
   function num(v) { return Number(v) || 0; }
+
+  /**
+   * Date -> ISO string, TIDAK PERNAH mengembalikan objek Date mentah ke
+   * client — lihat catatan modul di atas soal serialisasi google.script.run.
+   */
+  function isoOrNull(v) {
+    if (!v) return null;
+    var d = v instanceof Date ? v : new Date(v);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
 
   /**
    * Pecah rows gdvMatching_getMatching() jadi bagian yang genap dengan
@@ -210,11 +243,15 @@ var DashboardService = (function (module) {
       b.terminCount++;
       b.totalGdv += num(r.Amount);
       var d = new Date(r.Entry_Date);
-      if (!isNaN(d.getTime()) && (!b.lastEntryDate || d > b.lastEntryDate)) b.lastEntryDate = d;
+      if (!isNaN(d.getTime()) && (!b._lastEntryDateObj || d > b._lastEntryDateObj)) b._lastEntryDateObj = d;
     });
 
-    return Object.keys(byProject).map(function (k) { return byProject[k]; })
-      .sort(function (a, b) { return b.totalGdv - a.totalGdv; });
+    return Object.keys(byProject).map(function (k) {
+      var b = byProject[k];
+      b.lastEntryDate = isoOrNull(b._lastEntryDateObj);
+      delete b._lastEntryDateObj;
+      return b;
+    }).sort(function (a, b) { return b.totalGdv - a.totalGdv; });
   }
 
   /**
@@ -315,7 +352,7 @@ var DashboardService = (function (module) {
         // upload, BUKAN seri waktu (lihat catatan modul GdvMatchingService).
         // Stempel ini WAJIB ditampilkan di sisi kartu supaya angkanya tidak
         // dibaca sebagai "GDV hari ini", melainkan "GDV per upload terakhir".
-        dataAsOf: uploadLog ? uploadLog.Uploaded_At : null
+        dataAsOf: isoOrNull(uploadLog ? uploadLog.Uploaded_At : null)
       },
       section2: {
         consultants: consultants.sort(function (a, b) {
@@ -330,12 +367,175 @@ var DashboardService = (function (module) {
         hygiene: buildHygieneByConsultant(matching.rows),
         consultantMismatchCount: countConsultantMismatch(projects)
       },
-      // Section 3 (Leads & Client) SENGAJA tidak ada di payload ini —
-      // lead_getPage maksimal 500 baris per panggilan dan Techford sudah
-      // punya ribuan lead, jadi butuh satu RPC agregat server-side
-      // tersendiri (belum dibuat) supaya tidak mengulang kelas bug "Tidak
-      // ada respons dari server" yang pernah muncul di halaman Lead.
-      generatedAt: new Date()
+      generatedAt: isoOrNull(new Date())
+    };
+  };
+
+  /**
+   * ============================================================
+   * SECTION 3 — Leads Capturing & Client Monitoring
+   * ============================================================
+   * Tidak ada angka rupiah di sini sama sekali (lihat saran desain versi 2)
+   * — ini mengukur aktivitas & kebersihan data, bukan uang.
+   *
+   * Dibaca lewat LeadRepository/ClientRepository/PicClientRepository.findAll()
+   * SEKALI di server (sudah di-cache 60s oleh masing-masing repo), diagregasi
+   * jadi angka-angka kecil di sini — BUKAN lewat lead_getPage (maksimal 500
+   * baris per panggilan, dibuat untuk tabel UI, bukan agregasi). Payload yang
+   * dikirim balik ke client cuma hitungan, bukan baris mentah, jadi ukurannya
+   * tidak tumbuh seiring jumlah lead/client bertambah.
+   */
+
+  function realLeads() {
+    return LeadRepository.findAll().filter(function (l) {
+      return String(l.Inbound_ID || '').trim() !== '';
+    });
+  }
+
+  function daysSince(dateVal) {
+    if (!dateVal) return null;
+    var d = new Date(dateVal);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / MS_PER_DAY);
+  }
+
+  /**
+   * Inbound Health — RUMUS SAMA PERSIS dengan computeStats.convertedPct di
+   * LeadCapturingContent.html (Moved / total tanpa Spam) supaya dua halaman
+   * tidak mungkin menampilkan angka berbeda untuk hal yang sama. staleCount
+   * juga rumus yang sama: status New Leads DAN umur > 7 hari.
+   */
+  function buildInboundHealth(leads) {
+    var nonSpam = 0, moved = 0, spam = 0, stale = 0;
+    leads.forEach(function (l) {
+      var status = l.Status;
+      if (status === Config.LEAD_STATUS.SPAM) { spam++; return; }
+      nonSpam++;
+      if (status === Config.LEAD_STATUS.MOVED) moved++;
+      if (status === Config.LEAD_STATUS.NEW) {
+        var age = daysSince(l.Timestamp);
+        if (age !== null && age > LEAD_STALE_DAYS) stale++;
+      }
+    });
+    return {
+      nonSpamTotal: nonSpam,
+      grandTotal: leads.length,
+      moved: moved,
+      spam: spam,
+      stalePct: nonSpam ? (moved / nonSpam * 100) : 0,
+      staleCount: stale
+    };
+  }
+
+  /** Porsi status Lead, URUTAN TETAP sesuai tangga tindak lanjut (bukan alfabet). */
+  function buildLeadStatus(leads) {
+    var order = [Config.LEAD_STATUS.NEW, Config.LEAD_STATUS.CONTACTED, Config.LEAD_STATUS.MOVED,
+      Config.LEAD_STATUS.OTHER, Config.LEAD_STATUS.SPAM];
+    var counts = {};
+    order.forEach(function (s) { counts[s] = 0; });
+    leads.forEach(function (l) { if (counts.hasOwnProperty(l.Status)) counts[l.Status]++; });
+    return order.map(function (s) { return { k: s, v: counts[s] }; });
+  }
+
+  /** 12 bulan terakhir, termasuk bulan berjalan — bulan tanpa lead tetap muncul dengan v=0. */
+  function buildLeadsByMonth(leads) {
+    var buckets = [];
+    var now = new Date();
+    for (var i = 11; i >= 0; i--) {
+      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ key: d.getFullYear() + '-' + d.getMonth(), label: MONTH_LABELS[d.getMonth()], v: 0 });
+    }
+    var byKey = {};
+    buckets.forEach(function (b) { byKey[b.key] = b; });
+    leads.forEach(function (l) {
+      if (!l.Timestamp) return;
+      var d = new Date(l.Timestamp);
+      if (isNaN(d.getTime())) return;
+      var key = d.getFullYear() + '-' + d.getMonth();
+      if (byKey[key]) byKey[key].v++;
+    });
+    return buckets.map(function (b) { return { k: b.label, v: b.v }; });
+  }
+
+  function groupCount(items, keyFn, fallback) {
+    var counts = {};
+    items.forEach(function (item) {
+      var k = String(keyFn(item) || '').trim() || fallback;
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    return Object.keys(counts).map(function (k) { return { k: k, v: counts[k] }; })
+      .sort(function (a, b) { return b.v - a.v; });
+  }
+
+  /**
+   * Kelengkapan data Client — definisi SAMA PERSIS dengan COMPLETENESS_FIELDS
+   * di ClientMonitoringContent.html (Brand Name, Entity Name, Head Office,
+   * Entity Type, Client Source, minimal 1 PIC). Definisi ini sekarang hidup
+   * di DUA tempat (di sana untuk gerbang tombol "Buat Project" & panel
+   * drawer, di sini untuk angka Dashboard) — kalau salah satu diubah,
+   * lihat & ubah yang lain juga supaya tidak diam-diam beda.
+   */
+  var COMPLETENESS_FIELDS = ['Brand_Name', 'Entity_Name', 'Head_Office', 'Entity_Type', 'Client_Source'];
+
+  function buildClientCleanliness(clients, pics, projects) {
+    var picCountByClient = {};
+    pics.forEach(function (p) { picCountByClient[p.Client_ID] = (picCountByClient[p.Client_ID] || 0) + 1; });
+    var hasProjectByClient = {};
+    projects.forEach(function (p) { if (p.Client_ID) hasProjectByClient[p.Client_ID] = true; });
+
+    var incomplete = 0, noIndustry = 0, noProject = 0;
+    clients.forEach(function (c) {
+      var missingCore = COMPLETENESS_FIELDS.some(function (f) { return !String(c[f] || '').trim(); });
+      if (missingCore || (picCountByClient[c.Client_ID] || 0) < 1) incomplete++;
+      if (!String(c.Industry || '').trim()) noIndustry++;
+      if (!hasProjectByClient[c.Client_ID]) noProject++;
+    });
+    return { total: clients.length, incomplete: incomplete, noIndustry: noIndustry, noProject: noProject };
+  }
+
+  /**
+   * Corong Lead -> Won. HANYA client dengan Is_From_Lead=true yang boleh
+   * masuk — client outbound tidak boleh ikut terhitung, kalau ikut angka
+   * konversinya akan terlihat jauh lebih bagus dari kenyataan.
+   */
+  function buildFunnel(leads, clients, projects) {
+    var nonSpamLeads = leads.filter(function (l) { return l.Status !== Config.LEAD_STATUS.SPAM; }).length;
+    var moved = leads.filter(function (l) { return l.Status === Config.LEAD_STATUS.MOVED; }).length;
+
+    var fromLeadClientIds = {};
+    clients.forEach(function (c) { if (c.Is_From_Lead) fromLeadClientIds[c.Client_ID] = true; });
+
+    var hasProject = {}, hasWon = {};
+    projects.forEach(function (p) {
+      if (!p.Client_ID || !fromLeadClientIds[p.Client_ID] || p.Is_Draft) return;
+      hasProject[p.Client_ID] = true;
+      if (p.Stage === 'Won') hasWon[p.Client_ID] = true;
+    });
+
+    return [
+      { k: 'Leads masuk (tanpa Spam)', v: nonSpamLeads },
+      { k: 'Moved → jadi Client', v: moved },
+      { k: 'Client punya ≥1 project', v: Object.keys(hasProject).length },
+      { k: 'Project Won', v: Object.keys(hasWon).length }
+    ];
+  }
+
+  module.getSalesLeadsClient = function () {
+    var leads = realLeads();
+    var clients = ClientRepository.findAll();
+    var pics = PicClientRepository.findAll();
+    var projects = ProjectRepository.findAll();
+
+    return {
+      inboundHealth: buildInboundHealth(leads),
+      leadStatus: buildLeadStatus(leads),
+      leadsByMonth: buildLeadsByMonth(leads),
+      clientSource: groupCount(clients, function (c) { return c.Client_Source; }, '(kosong)'),
+      industry: groupCount(clients, function (c) { return c.Industry; }, 'Belum diisi'),
+      funnel: buildFunnel(leads, clients, projects),
+      clientCleanliness: buildClientCleanliness(clients, pics, projects),
+      totalClients: clients.length,
+      generatedAt: isoOrNull(new Date())
     };
   };
 

@@ -74,6 +74,9 @@ function buildService(opts) {
   ctx.AdsProgressService = { getProgressForLinks: () => ({}) };
   ctx.EmployeeService = { getActiveEmployees: () => opts.employees || [] };
   ctx.GdvControllerUploadLogRepository = { findLatest: () => null };
+  ctx.LeadRepository = { findAll: () => opts.leads || [] };
+  ctx.ClientRepository = { findAll: () => opts.clients || [] };
+  ctx.PicClientRepository = { findAll: () => opts.pics || [] };
 
   vm.runInContext(fs.readFileSync(path.join(SRC, '40_Modules/Dashboard/40_DashboardService.gs'), 'utf8'), ctx);
   return ctx.DashboardService;
@@ -214,9 +217,33 @@ console.log('\n5) Retainer & Deal Mandek — hanya masuk kalau syaratnya benar-b
   ok('total GDV Retainer benar (100+100)', res.section2.retainer[0].totalGdv === 200);
   ok('deal mandek hanya yang >45 hari (MANDEK1, bukan MASIHBARU)',
     res.section2.dealMandek.length === 1 && res.section2.dealMandek[0].projectId === 'MANDEK1');
+  ok('lastEntryDate dikirim sebagai string ISO, bukan objek Date',
+    typeof res.section2.retainer[0].lastEntryDate === 'string');
 }
 
-console.log('\n6) Target department (Scope=DEPARTMENT) tidak bocor ke getAllTargets()');
+console.log('\n6) Tidak ada objek Date mentah di payload getSalesGdv() (google.script.run wajib string ISO)');
+{
+  const matching = { rows: [], summary: { totalRealized: 0, totalPlatformFee: 0 }, aliasAmbiguous: [], mainSourceSummary: [] };
+  const svc = buildService({
+    matching, projects: [], targets: [], employees: [],
+    deptTarget: { targetGdv: 48000000000, targetServiceRevenue: 0, updatedBy: 'Admin', updatedDate: new Date() }
+  });
+  const res = svc.getSalesGdv();
+
+  function assertNoDateObjects(value, pathLabel) {
+    if (value instanceof Date) { ok('tidak ada Date mentah di ' + pathLabel, false, 'ketemu Date object'); return; }
+    if (Array.isArray(value)) { value.forEach((v, i) => assertNoDateObjects(v, pathLabel + '[' + i + ']')); return; }
+    if (value !== null && typeof value === 'object') {
+      Object.keys(value).forEach(k => assertNoDateObjects(value[k], pathLabel + '.' + k));
+    }
+  }
+  const before = failures.length;
+  assertNoDateObjects(res, 'res');
+  if (failures.length === before) ok('seluruh payload getSalesGdv() bebas dari objek Date mentah', true);
+  ok('generatedAt berupa string', typeof res.generatedAt === 'string', res.generatedAt);
+}
+
+console.log('\n7) Target department (Scope=DEPARTMENT) tidak bocor ke getAllTargets()');
 {
   const ctx = { console, Log: { info() {}, warn() {}, error() {} } };
   ctx.global = ctx;
@@ -254,6 +281,64 @@ console.log('\n6) Target department (Scope=DEPARTMENT) tidak bocor ke getAllTarg
   let threw = false;
   try { ctx.AchievementTargetService.setDepartmentTarget(-1, 'Admin'); } catch (e) { threw = e.code === 'VALIDATION_ERROR'; }
   ok('setDepartmentTarget() menolak angka negatif', threw);
+}
+
+console.log('\n8) Section 3 — Inbound Health, corong Lead→Won, dan kebersihan data Client');
+{
+  const now = new Date();
+  const daysAgo = (n) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
+
+  const leads = [
+    { Inbound_ID: 'L1', Status: 'New Leads', Timestamp: daysAgo(10) },   // stale (New Leads, >7 hari)
+    { Inbound_ID: 'L2', Status: 'New Leads', Timestamp: daysAgo(2) },    // belum stale
+    { Inbound_ID: 'L3', Status: 'Contacted', Timestamp: daysAgo(3) },
+    { Inbound_ID: 'L4', Status: 'Moved', Timestamp: daysAgo(20) },
+    { Inbound_ID: 'L5', Status: 'Spam', Timestamp: daysAgo(1) },
+    { Inbound_ID: '', Status: 'New Leads', Timestamp: daysAgo(1) }        // baris kosong -> dibuang
+  ];
+  const clients = [
+    // hasil Move dari Lead, lengkap, punya PIC, punya project Won -> masuk funnel sampai akhir
+    { Client_ID: 'C1', Is_From_Lead: true, Brand_Name: 'A', Entity_Name: 'A', Head_Office: 'JKT', Entity_Type: 'Perusahaan', Client_Source: 'Inbound', Industry: 'FMCG' },
+    // hasil Move dari Lead, belum lengkap (Head_Office kosong) -> masuk hitungan incomplete
+    { Client_ID: 'C2', Is_From_Lead: true, Brand_Name: 'B', Entity_Name: 'B', Head_Office: '', Entity_Type: 'Perusahaan', Client_Source: 'Inbound', Industry: '' },
+    // Outbound (BUKAN dari Lead) -> tidak boleh ikut masuk corong Lead->Won
+    { Client_ID: 'C3', Is_From_Lead: false, Brand_Name: 'C', Entity_Name: 'C', Head_Office: 'JKT', Entity_Type: 'Perusahaan', Client_Source: 'Outbound', Industry: 'Retail' }
+  ];
+  const pics = [{ Client_ID: 'C1', PIC_Name: 'X' }, { Client_ID: 'C3', PIC_Name: 'Y' }];   // C2 tidak punya PIC
+  const projects = [
+    { Project_ID: 'P1', Client_ID: 'C1', Stage: 'Won', Is_Draft: false },
+    { Project_ID: 'P2', Client_ID: 'C3', Stage: 'Won', Is_Draft: false }  // outbound, harus DIKECUALIKAN dari funnel
+  ];
+
+  const svc = buildService({ matching: null, projects, leads, clients, pics, targets: [], employees: [] });
+  const res = svc.getSalesLeadsClient();
+
+  ok('baris Lead kosong (Inbound_ID blank) dibuang dari agregasi', res.inboundHealth.grandTotal === 5, res.inboundHealth.grandTotal);
+  ok('Inbound Health: nonSpamTotal = 4 (5 lead - 1 Spam)', res.inboundHealth.nonSpamTotal === 4, res.inboundHealth.nonSpamTotal);
+  ok('Inbound Health: moved = 1', res.inboundHealth.moved === 1, res.inboundHealth.moved);
+  ok('Inbound Health: staleCount = 1 (L1 saja, New Leads >7 hari; L2 belum)', res.inboundHealth.staleCount === 1, res.inboundHealth.staleCount);
+
+  const statusMap = {};
+  res.leadStatus.forEach(s => { statusMap[s.k] = s.v; });
+  ok('Porsi status Lead: New Leads = 2', statusMap['New Leads'] === 2, JSON.stringify(res.leadStatus));
+  ok('Porsi status Lead urut sesuai tangga (New Leads dulu, Spam terakhir)',
+    res.leadStatus.map(s => s.k).join(',') === 'New Leads,Contacted,Moved,Other,Spam');
+
+  ok('leadsByMonth selalu 12 bucket, termasuk bulan tanpa lead', res.leadsByMonth.length === 12, res.leadsByMonth.length);
+
+  const funnelMap = {};
+  res.funnel.forEach(f => { funnelMap[f.k] = f.v; });
+  ok('Corong hanya menghitung client Is_From_Lead=true (C3/outbound dikecualikan meski Won)',
+    funnelMap['Project Won'] === 1, JSON.stringify(res.funnel));
+  ok('Corong: Client punya >=1 project = 1 (C1 saja, C2 belum punya project)',
+    funnelMap['Client punya ≥1 project'] === 1, JSON.stringify(res.funnel));
+
+  ok('Kebersihan Client: incomplete = 1 (C2, Head_Office kosong)', res.clientCleanliness.incomplete === 1, res.clientCleanliness);
+  ok('Kebersihan Client: noIndustry = 1 (C2)', res.clientCleanliness.noIndustry === 1, res.clientCleanliness);
+  ok('Kebersihan Client: noProject = 1 (C2, belum punya project)', res.clientCleanliness.noProject === 1, res.clientCleanliness);
+  ok('Kebersihan Client: total = 3', res.clientCleanliness.total === 3);
+
+  ok('generatedAt Section 3 berupa string ISO, bukan objek Date', typeof res.generatedAt === 'string', res.generatedAt);
 }
 
 console.log('\n=== ' + pass + ' LOLOS, ' + failures.length + ' GAGAL ===');

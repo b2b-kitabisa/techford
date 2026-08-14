@@ -9,5 +9,11 @@ var DashboardController = (function (module) {
     });
   };
 
+  module.getSalesLeadsClient = function () {
+    return ErrorHandler.handle('DashboardController.getSalesLeadsClient', function () {
+      return DashboardService.getSalesLeadsClient();
+    });
+  };
+
   return module;
 })(DashboardController || {});

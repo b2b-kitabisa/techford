@@ -1,11 +1,11 @@
 <div class="container" style="max-width: 1160px;" id="dashboardSalesRoot">
   <p style="color: var(--text-muted); font-size:13px; margin-bottom:18px;">
     Section 1 &amp; 2 bicara <strong>GDV saja</strong> — Service Revenue dikeluarkan sampai logika
-    pencocokannya jelas seperti GDV Matching. Section 3 (Leads &amp; Client) belum ada di halaman
-    ini, lihat catatan di kaki halaman.
+    pencocokannya jelas seperti GDV Matching. Section 3 bicara aktivitas &amp; kebersihan data, jadi
+    sengaja tidak ada angka rupiah di sana.
   </p>
 
-  <div id="dshError" class="error"></div>
+  <div id="dshErrorGdv" class="error"></div>
 
   <!-- ══════════════════ SECTION 1 — PENCAPAIAN DEPARTMENT ══════════════════ -->
   <div class="dsh-section">
@@ -164,16 +164,96 @@
     </div>
   </div>
 
-  <p style="font-size:11.5px;color:var(--text-faint);border-top:1px solid var(--border-soft);padding-top:12px;">
-    <strong>Section 3 (Leads Capturing &amp; Client Monitoring) belum dibangun di halaman ini</strong> —
-    <code>lead_getPage</code> maksimal 500 baris per panggilan dan lead-nya sudah ribuan, jadi butuh satu
-    RPC agregat server-side tersendiri supaya tidak mengulang kelas bug "Tidak ada respons dari server"
-    yang pernah muncul di halaman Lead. Menyusul sebagai fase berikutnya.
-  </p>
+  <div id="dshErrorLeadsClient" class="error"></div>
+
+  <!-- ══════════════════ SECTION 3 — LEADS & CLIENT ══════════════════ -->
+  <div class="dsh-section">
+    <div class="dsh-section-hd">
+      <span class="dsh-section-n">3</span>
+      <span class="dsh-section-t">Leads Capturing &amp; Client Monitoring</span>
+      <span class="dsh-section-s">Isi bagian atas corong dan kesehatan basis client — tidak ada angka rupiah di sini</span>
+    </div>
+    <div class="dsh-grid">
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>Inbound Health</h4>
+          <p class="dsh-card-sub">Moved &divide; total leads (tanpa Spam)</p>
+        </div>
+        <div class="dsh-hero" id="dshIhVal" style="font-size:28px;">—</div>
+        <div id="dshIhMeter" style="height:10px;border-radius:5px;background:var(--bg-hover);overflow:hidden;margin-top:6px;">
+          <i id="dshIhMeterFill" style="display:block;height:100%;width:0;background:var(--color-cerulean);"></i>
+        </div>
+        <div class="dsh-subrows" id="dshIhSub" style="margin-top:8px;"></div>
+        <div class="dsh-card-ft">
+          Rumus sama persis dengan <code>computeStats.convertedPct</code> di Lead Capturing — dua halaman
+          tidak mungkin menampilkan angka berbeda untuk hal yang sama.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Leads masuk per bulan</h4>
+          <p class="dsh-card-sub">Berdasarkan <code>Lead.Timestamp</code> · 12 bulan terakhir</p>
+        </div>
+        <div id="dshMonthRows"></div>
+      </article>
+
+      <article class="dsh-card dsh-c6">
+        <div class="dsh-card-hd">
+          <h4>Porsi status Leads</h4>
+          <p class="dsh-card-sub">Bagian dari keseluruhan, urut sesuai tangga tindak lanjut</p>
+        </div>
+        <div id="dshLeadStatusBar"></div>
+      </article>
+
+      <article class="dsh-card dsh-c6">
+        <div class="dsh-card-hd">
+          <h4>Corong Lead &rarr; Won</h4>
+          <p class="dsh-card-sub">Empat langkah, satu kohort — hanya client hasil Move dari Lead</p>
+        </div>
+        <div id="dshFunnelRows"></div>
+        <div class="dsh-subrows" id="dshFunnelSub" style="margin-top:8px;"></div>
+      </article>
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>Porsi Client Source</h4>
+          <p class="dsh-card-sub">Inbound · Outbound · Referral</p>
+        </div>
+        <div id="dshSourceCRows"></div>
+      </article>
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Porsi Industry Client</h4>
+          <p class="dsh-card-sub">8 terbesar · sisanya dilipat jadi &ldquo;Lainnya&rdquo;</p>
+        </div>
+        <div id="dshIndustryRows"></div>
+      </article>
+
+      <article class="dsh-card dsh-c12">
+        <div class="dsh-card-hd">
+          <h4>Kebersihan Data Client</h4>
+          <p class="dsh-card-sub">Bukan laporan — ini daftar kerja: tiap angka bisa dibersihkan di Client Monitoring</p>
+        </div>
+        <div id="dshCleanRows"></div>
+        <div class="dsh-card-ft">
+          Definisi &ldquo;lengkap&rdquo; sama persis dengan <code>COMPLETENESS_FIELDS</code> di Client
+          Monitoring (Brand Name, Entity Name, Head Office, Entity Type, Client Source, minimal 1 PIC).
+        </div>
+      </article>
+
+    </div>
+  </div>
 </div>
 
 <script>
-  var dshData = null;
+  var dshGdv = null;
+  var dshLeadsClient = null;
+  var DSH_ROOT = document.getElementById('dashboardSalesRoot');
+
+  function dshMounted() { return !!DSH_ROOT && document.body.contains(DSH_ROOT); }
 
   function escDsh(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function idDsh(n, d) { return Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: d == null ? 0 : d }); }
@@ -195,30 +275,78 @@
         '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2><p>Anda tidak punya akses ke halaman ini.</p></div>';
       return;
     }
-    fetchDashboard();
+    fetchGdv();
+    fetchLeadsClient();
   });
 
-  function fetchDashboard() {
-    google.script.run
-      .withSuccessHandler(function (res) {
-        if (!res || !res.ok) {
-          showDshError((res && res.error && res.error.message) || 'Tidak ada respons dari server.');
+  /**
+   * ============================================================
+   * PEMUATAN DATA — pola in-flight + retry-hanya-kalau-gagal
+   * ============================================================
+   * SAMA PERSIS dengan makeLoader di ClientMonitoringContent.html (lihat
+   * catatan panjang di sana): google.script.run kadang pulang dengan
+   * res=null atau res.data null/undefined tanpa error apa pun — bukan
+   * karena computation-nya salah, tapi jembatan HtmlService-nya sendiri
+   * yang kadang gagal sesaat, terutama untuk permintaan yang membaca lebih
+   * dari satu sheet sekaligus (persis apa yang dilakukan kedua RPC
+   * Dashboard ini). Tanpa retry, hiccup pertama langsung tampil sebagai
+   * "Tidak ada respons dari server" walau data & kodenya benar. Section 1&2
+   * (dashboard_getSalesGdv) dan Section 3 (dashboard_getSalesLeadsClient)
+   * dimuat lewat loader TERPISAH supaya satu sisi yang lambat/gagal tidak
+   * ikut menggelapkan sisi lain.
+   */
+  function makeDshLoader(rpcName, onData, onGiveUp, maxAttempts) {
+    var inFlight = false;
+    var attempt = 0;
+    maxAttempts = maxAttempts || 5;
+
+    return function load() {
+      if (inFlight) return;
+      inFlight = true;
+      attempt++;
+
+      function fail(message) {
+        inFlight = false;
+        if (!dshMounted()) return;
+        if (attempt < maxAttempts) {
+          setTimeout(load, Math.min(1000 * Math.pow(2, attempt - 1), 8000));
           return;
         }
-        dshData = res.data;
-        document.getElementById('dshError').innerText = '';
-        renderSection1();
-        renderSection2();
-      })
-      .withFailureHandler(function (err) {
-        showDshError('Gagal memuat data: ' + (err && err.message ? err.message : err));
-      })
-      .dashboard_getSalesGdv();
+        onGiveUp(message);
+      }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res) { fail('Tidak ada respons dari server setelah beberapa kali percobaan.'); return; }
+          if (!res.ok) { fail((res.error && res.error.message) || 'Terjadi kesalahan.'); return; }
+          if (res.data === null || res.data === undefined) { fail('Server menjawab tanpa data. Coba klik 🔄 Refresh.'); return; }
+          inFlight = false;
+          attempt = 0;
+          if (!dshMounted()) return;
+          onData(res.data);
+        })
+        .withFailureHandler(function (err) {
+          fail(err && err.message ? err.message : String(err));
+        })[rpcName]();
+    };
   }
 
-  function showDshError(message) {
-    document.getElementById('dshError').innerText = message;
-  }
+  var fetchGdv = makeDshLoader('dashboard_getSalesGdv', function (data) {
+    dshGdv = data;
+    document.getElementById('dshErrorGdv').innerText = '';
+    renderSection1();
+    renderSection2();
+  }, function (message) {
+    document.getElementById('dshErrorGdv').innerText = 'Gagal memuat Section 1 & 2: ' + message;
+  });
+
+  var fetchLeadsClient = makeDshLoader('dashboard_getSalesLeadsClient', function (data) {
+    dshLeadsClient = data;
+    document.getElementById('dshErrorLeadsClient').innerText = '';
+    renderSection3();
+  }, function (message) {
+    document.getElementById('dshErrorLeadsClient').innerText = 'Gagal memuat Section 3: ' + message;
+  });
 
   function subrows(hostId, pairs) {
     var host = document.getElementById(hostId);
@@ -228,16 +356,32 @@
   }
 
   /* stacked bar 100% — items: [{k, v, color}] */
-  function stackedBar(hostId, items, total) {
+  function stackedBar(hostId, items, total, fmt) {
+    fmt = fmt || rpDsh;
     var host = document.getElementById(hostId);
     var bar = items.map(function (s) {
       var pct = total ? (s.v / total * 100) : 0;
-      return '<span style="flex:0 0 ' + pct + '%;background:' + s.color + ';" title="' + escDsh(s.k) + ' — ' + rpDsh(s.v) + '"></span>';
+      return '<span style="flex:0 0 ' + pct + '%;background:' + s.color + ';" title="' + escDsh(s.k) + ' — ' + fmt(s.v) + '"></span>';
     }).join('');
     var legend = items.map(function (s) {
-      return '<span class="dsh-legend-item"><i style="background:' + s.color + ';"></i>' + escDsh(s.k) + ' <b>' + rpDsh(s.v) + ' · ' + pcDsh(s.v, total, 1) + '</b></span>';
+      return '<span class="dsh-legend-item"><i style="background:' + s.color + ';"></i>' + escDsh(s.k) + ' <b>' + fmt(s.v) + ' · ' + pcDsh(s.v, total, 1) + '</b></span>';
     }).join('');
     host.innerHTML = '<div class="dsh-sbar">' + bar + '</div><div class="dsh-legend" style="margin-top:8px;">' + legend + '</div>';
+  }
+
+  /* bar horizontal biasa (satu warna) — items: [{k, v}], fmt opsional */
+  function hbars(hostId, items, opt) {
+    opt = opt || {};
+    var fmt = opt.fmt || idDsh;
+    var host = document.getElementById(hostId);
+    if (!items.length) { host.innerHTML = '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada data.</p>'; return; }
+    var max = Math.max.apply(null, items.map(function (r) { return r.v; }));
+    var total = items.reduce(function (a, r) { return a + r.v; }, 0);
+    host.innerHTML = '<div class="dsh-rows">' + items.map(function (r) {
+      return '<div class="dsh-row"><div class="dsh-row-lbl" title="' + escDsh(r.k) + '">' + escDsh(r.k) + '</div>' +
+        '<div class="dsh-bar-track" title="' + escDsh(r.k) + ' — ' + fmt(r.v) + '"><div class="dsh-bar-fill" style="width:' + (max ? (r.v / max * 100) : 0) + '%;background:' + (r.color || 'var(--color-cerulean)') + ';"></div></div>' +
+        '<div class="dsh-row-r"><span class="dsh-row-val">' + fmt(r.v) + (opt.showPct === false ? '' : ' · ' + pcDsh(r.v, total, 1)) + '</span></div></div>';
+    }).join('') + '</div>';
   }
 
   /* bullet row: actual vs target, opsional lapis kedua (verified) */
@@ -265,7 +409,7 @@
   }
 
   function renderSection1() {
-    var s1 = dshData.section1;
+    var s1 = dshGdv.section1;
 
     document.getElementById('dshHeroGdv').textContent = rpDsh(s1.realized);
     document.getElementById('dshHeroBul').innerHTML = s1.deptTarget
@@ -300,18 +444,11 @@
       ? '<div class="dsh-rows">' + adsSorted.map(function (a) { return bulletRow(a.projectName, a.real, a.target); }).join('') + '</div>'
       : '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada project Ads Sponsorship dengan KPI target.</p>';
 
-    document.getElementById('dshSourceRows').innerHTML = s1.mainSource.length
-      ? '<div class="dsh-rows">' + s1.mainSource.map(function (m) {
-          var max = Math.max.apply(null, s1.mainSource.map(function (x) { return x.v; }));
-          return '<div class="dsh-row"><div class="dsh-row-lbl">' + escDsh(m.k) + '</div>' +
-            '<div class="dsh-bar-track"><div class="dsh-bar-fill" style="width:' + (max ? (m.v / max * 100) : 0) + '%;"></div></div>' +
-            '<div class="dsh-row-r"><span class="dsh-row-val">' + rpDsh(m.v) + '</span></div></div>';
-        }).join('') + '</div>'
-      : '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada data.</p>';
+    hbars('dshSourceRows', s1.mainSource, { fmt: rpDsh });
   }
 
   function renderSection2() {
-    var s2 = dshData.section2;
+    var s2 = dshGdv.section2;
 
     document.getElementById('dshConsRows').innerHTML = s2.consultants.length
       ? '<div class="dsh-rows">' + s2.consultants.map(function (c) {
@@ -327,7 +464,7 @@
     document.getElementById('dshConsFt').innerHTML =
       '<code>Achievement_Target.Target_GDV</code> di-join ke <code>Project.Consultant</code> lewat kecocokan nama.' + ftExtra;
 
-    var deptTarget = dshData.section1.deptTarget;
+    var deptTarget = dshGdv.section1.deptTarget;
     if (deptTarget) {
       var gap = Math.max(0, deptTarget - s2.assignedTarget);
       stackedBar('dshCovBar', [
@@ -387,5 +524,62 @@
             '<td class="num">' + (h.lebihN ? (idDsh(h.lebihN) + ' link · ' + rpDsh(h.lebihRp)) : '–') + '</td></tr>';
         }).join('')
       : '<tr class="empty-row"><td colspan="3">Tidak ada klaim bermasalah.</td></tr>';
+  }
+
+  function renderSection3() {
+    var s3 = dshLeadsClient;
+    var ih = s3.inboundHealth;
+
+    document.getElementById('dshIhVal').textContent = idDsh(ih.stalePct, 1) + '%';
+    document.getElementById('dshIhMeterFill').style.width = Math.min(ih.stalePct / 25 * 100, 100) + '%';
+    subrows('dshIhSub', [
+      ['Moved dari leads tanpa Spam', idDsh(ih.moved) + ' dari ' + idDsh(ih.nonSpamTotal)],
+      ['Didiamkan &gt;7 hari', idDsh(ih.staleCount) + ' lead'],
+      ['Porsi spam', pcDsh(ih.spam, ih.grandTotal)]
+    ]);
+
+    hbars('dshMonthRows', s3.leadsByMonth.map(function (m, i) {
+      return { k: m.k + (i === s3.leadsByMonth.length - 1 ? ' (berjalan)' : ''), v: m.v };
+    }), { showPct: false });
+
+    var leadStatusColors = { 'New Leads': '#4ABBF3', 'Contacted': 'var(--color-cerulean)', 'Moved': '#005E8B', 'Other': 'var(--bg-hover)', 'Spam': '#9AA6AC' };
+    var leadTotal = s3.leadStatus.reduce(function (a, s) { return a + s.v; }, 0);
+    stackedBar('dshLeadStatusBar', s3.leadStatus.map(function (s) {
+      return { k: s.k, v: s.v, color: leadStatusColors[s.k] || 'var(--bg-hover)' };
+    }), leadTotal, idDsh);
+
+    hbars('dshFunnelRows', s3.funnel, { showPct: false });
+    var f = s3.funnel;
+    subrows('dshFunnelSub', [
+      ['Lead → Moved jadi Client', pcDsh(f[1].v, f[0].v, 1)],
+      ['Client → punya minimal 1 project', pcDsh(f[2].v, f[1].v, 1)],
+      ['Project → Won', pcDsh(f[3].v, f[2].v, 1)],
+      ['Ujung ke ujung (lead → Won)', pcDsh(f[3].v, f[0].v, 2)]
+    ]);
+
+    hbars('dshSourceCRows', s3.clientSource);
+
+    var industry = s3.industry.slice();
+    var top = industry.slice(0, 8);
+    var restCount = industry.length - top.length;
+    var restTotal = industry.slice(8).reduce(function (a, r) { return a + r.v; }, 0);
+    var industryRows = top.map(function (r) { return { k: r.k, v: r.v, color: r.k === 'Belum diisi' ? 'var(--bg-hover)' : 'var(--color-cerulean)' }; });
+    if (restCount > 0) industryRows.push({ k: 'Lainnya (' + restCount + ' kategori)', v: restTotal, color: 'var(--bg-hover)' });
+    hbars('dshIndustryRows', industryRows);
+
+    var c = s3.clientCleanliness;
+    document.getElementById('dshCleanRows').innerHTML =
+      '<div class="dsh-rows">' +
+      '<div class="dsh-row"><div class="dsh-row-lbl">Client belum lengkap</div>' +
+      '<div class="dsh-bar-track"><div class="dsh-bar-fill" style="width:' + pcDsh(c.incomplete, c.total, 0).replace('%', '') + '%;background:var(--warn);"></div></div>' +
+      '<div class="dsh-row-r"><span class="dsh-row-val">' + idDsh(c.incomplete) + ' · ' + pcDsh(c.incomplete, c.total, 1) + '</span></div></div>' +
+      '<div class="dsh-row"><div class="dsh-row-lbl">Client tanpa Industry</div>' +
+      '<div class="dsh-bar-track"><div class="dsh-bar-fill" style="width:' + pcDsh(c.noIndustry, c.total, 0).replace('%', '') + '%;background:var(--warn);"></div></div>' +
+      '<div class="dsh-row-r"><span class="dsh-row-val">' + idDsh(c.noIndustry) + ' · ' + pcDsh(c.noIndustry, c.total, 1) + '</span></div></div>' +
+      '<div class="dsh-row"><div class="dsh-row-lbl">Client belum punya project</div>' +
+      '<div class="dsh-bar-track"><div class="dsh-bar-fill" style="width:' + pcDsh(c.noProject, c.total, 0).replace('%', '') + '%;background:var(--bad);"></div></div>' +
+      '<div class="dsh-row-r"><span class="dsh-row-val">' + idDsh(c.noProject) + ' · ' + pcDsh(c.noProject, c.total, 1) + '</span></div></div>' +
+      '</div>' +
+      '<div class="dsh-subrows" style="margin-top:8px;"><div class="dsh-subrow"><span>Total client</span><b>' + idDsh(c.total) + '</b></div></div>';
   }
 </script>
