@@ -218,6 +218,18 @@ var DashboardService = (function (module) {
       });
   }
 
+  /** Ads_Sponsorship_Progress hidup di spreadsheet eksternal yang sama
+   * dengan GDV_Controller — kalau gagal dibaca, kartu ini kosong, TAPI
+   * TIDAK BOLEH menjatuhkan seluruh Section 1&2. */
+  function safeBuildAdsRows(projects) {
+    try {
+      return buildAdsRows(projects);
+    } catch (err) {
+      Log.error('DashboardService.getSalesGdv', 'buildAdsRows gagal', err);
+      return [];
+    }
+  }
+
   /**
    * Retainer — Revenue_Breakdown TIDAK menyimpan nilai kontrak penuh, hanya
    * baris per termin (Entry_Date + Amount) yang dijumlah jadi Total_GDV.
@@ -295,10 +307,30 @@ var DashboardService = (function (module) {
     }).length;
   }
 
+  var EMPTY_MATCHING = { rows: [], summary: { totalRealized: 0, totalPlatformFee: 0 }, aliasAmbiguous: [], mainSourceSummary: [] };
+
+  /**
+   * GdvMatchingService.getMatching() membaca spreadsheet TERPISAH
+   * (GDV_Controller) — kalau ID-nya salah konfigurasi atau sheet-nya
+   * bermasalah, seluruh Dashboard TIDAK BOLEH ikut kosong/macet cuma
+   * karena bagian ini gagal. Degradasi ke struktur kosong + tandai
+   * gdvMatchingError supaya Section 1&2 tetap tampil (dengan angka GDV
+   * realisasi = 0, jelas terlihat salah, bukan diam-diam kosong semua).
+   */
+  function safeGetMatching() {
+    try {
+      return { matching: GdvMatchingService.getMatching(), error: null };
+    } catch (err) {
+      Log.error('DashboardService.getSalesGdv', 'GdvMatchingService.getMatching gagal', err);
+      return { matching: EMPTY_MATCHING, error: (err && err.message) ? err.message : String(err) };
+    }
+  }
+
   module.getSalesGdv = function () {
     var projects = ProjectRepository.findAll();
     var nonDraftProjects = projects.filter(function (p) { return !p.Is_Draft; });
-    var matching = GdvMatchingService.getMatching();
+    var matchingResult = safeGetMatching();
+    var matching = matchingResult.matching;
     var split = splitClaims(matching.rows);
     var deptTarget = AchievementTargetService.getDepartmentTarget();
     var uploadLog = GdvControllerUploadLogRepository.findLatest();
@@ -347,12 +379,17 @@ var DashboardService = (function (module) {
         mainSource: (matching.mainSourceSummary || []).map(function (m) {
           return { k: m.mainSource, v: m.realizedNominal };
         }),
-        ads: buildAdsRows(projects),
+        ads: safeBuildAdsRows(projects),
         // "Data per" — GDV_Controller adalah snapshot yang ditimpa setiap
         // upload, BUKAN seri waktu (lihat catatan modul GdvMatchingService).
         // Stempel ini WAJIB ditampilkan di sisi kartu supaya angkanya tidak
         // dibaca sebagai "GDV hari ini", melainkan "GDV per upload terakhir".
-        dataAsOf: isoOrNull(uploadLog ? uploadLog.Uploaded_At : null)
+        dataAsOf: isoOrNull(uploadLog ? uploadLog.Uploaded_At : null),
+        // null = tidak ada masalah. Kalau terisi, GDV_Controller/Ads Progress
+        // gagal dibaca dan angka Section 1 di atas TIDAK bisa dipercaya (0,
+        // bukan sungguhan nol) — client HARUS menampilkan ini secara jelas,
+        // bukan menyembunyikannya di balik angka 0 yang terlihat normal.
+        error: matchingResult.error
       },
       section2: {
         consultants: consultants.sort(function (a, b) {

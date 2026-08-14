@@ -283,6 +283,37 @@ console.log('\n7) Target department (Scope=DEPARTMENT) tidak bocor ke getAllTarg
   ok('setDepartmentTarget() menolak angka negatif', threw);
 }
 
+console.log('\n8b) GdvMatchingService gagal (spreadsheet eksternal bermasalah) -> Dashboard TIDAK BOLEH ikut mati');
+{
+  const ctx = { console, Log: { info() {}, warn() {}, error() {} } };
+  ctx.global = ctx;
+  vm.createContext(ctx);
+  vm.runInContext('var Utils;' + fs.readFileSync(path.join(SRC, '00_Core/03_Utils.gs'), 'utf8'), ctx);
+  vm.runInContext('function AppError' +
+    fs.readFileSync(path.join(SRC, '00_Core/02_ErrorHandler.gs'), 'utf8').split('function AppError')[1], ctx);
+  ctx.Config = Config;
+  ctx.ProjectRepository = { findAll: () => [{ Project_ID: 'P1', Consultant: 'Rina', Stage: 'Won', Total_GDV: 500, Is_Draft: false }] };
+  ctx.RevenueBreakdownRepository = { findAll: () => [] };
+  ctx.GdvMatchingService = { getMatching: () => { throw new ctx.AppError('SHEET_NOT_FOUND', 'Sheet GDV_Controller tidak ditemukan.'); } };
+  ctx.AchievementTargetService = { getAllTargets: () => [{ Consultant_Name: 'Rina', Target_GDV: 1000 }], getDepartmentTarget: () => null };
+  ctx.AdsProgressService = { getProgressForLinks: () => ({}) };
+  ctx.EmployeeService = { getActiveEmployees: () => [] };
+  ctx.GdvControllerUploadLogRepository = { findLatest: () => null };
+  ctx.LeadRepository = { findAll: () => [] };
+  ctx.ClientRepository = { findAll: () => [] };
+  ctx.PicClientRepository = { findAll: () => [] };
+  vm.runInContext(fs.readFileSync(path.join(SRC, '40_Modules/Dashboard/40_DashboardService.gs'), 'utf8'), ctx);
+
+  let res;
+  let didThrow = false;
+  try { res = ctx.DashboardService.getSalesGdv(); } catch (e) { didThrow = true; }
+  ok('getSalesGdv() TIDAK melempar error walau GdvMatchingService gagal', !didThrow);
+  ok('section1.error terisi pesan aslinya', res && res.error === undefined && res.section1.error === 'Sheet GDV_Controller tidak ditemukan.', res && res.section1.error);
+  ok('section1.realized default 0 (bukan crash) saat matching gagal', res && res.section1.realized === 0);
+  ok('Section 2 (Consultant/Pipeline, TIDAK bergantung GDV_Controller) tetap terisi normal',
+    res && res.section2.consultants.length === 1 && res.section2.consultants[0].won === 500);
+}
+
 console.log('\n8) Section 3 — Inbound Health, corong Lead→Won, dan kebersihan data Client');
 {
   const now = new Date();

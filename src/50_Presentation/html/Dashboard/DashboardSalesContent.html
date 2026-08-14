@@ -295,17 +295,33 @@
    * dimuat lewat loader TERPISAH supaya satu sisi yang lambat/gagal tidak
    * ikut menggelapkan sisi lain.
    */
+  // Batas tunggu per percobaan. google.script.run TIDAK punya timeout
+  // bawaan — kalau eksekusi server macet/lambat (bukan error), success/
+  // failure handler TIDAK PERNAH dipanggil sama sekali, dan tanpa watchdog
+  // ini halaman diam selamanya di "—" TANPA pesan error apa pun (persis
+  // bug yang dilaporkan: bukan error merah, cuma kosong terus).
+  var DSH_WATCHDOG_MS = 20000;
+
   function makeDshLoader(rpcName, onData, onGiveUp, maxAttempts) {
     var inFlight = false;
     var attempt = 0;
+    var callToken = 0;
     maxAttempts = maxAttempts || 5;
 
     return function load() {
       if (inFlight) return;
       inFlight = true;
       attempt++;
+      callToken++;
+      var myToken = callToken;
+      var watchdog = setTimeout(function () {
+        fail('Server tidak menjawab dalam ' + (DSH_WATCHDOG_MS / 1000) + ' detik (macet, bukan error) — mencoba lagi.');
+      }, DSH_WATCHDOG_MS);
 
       function fail(message) {
+        if (myToken !== callToken) return;   // respons/watchdog basi, sudah ditangani percobaan lain
+        clearTimeout(watchdog);
+        callToken++;                          // basikan sisa timer/handler milik percobaan ini
         inFlight = false;
         if (!dshMounted()) return;
         if (attempt < maxAttempts) {
@@ -317,15 +333,18 @@
 
       google.script.run
         .withSuccessHandler(function (res) {
+          if (myToken !== callToken) return;  // watchdog sudah menyerah lebih dulu, jangan proses lagi
           if (!res) { fail('Tidak ada respons dari server setelah beberapa kali percobaan.'); return; }
           if (!res.ok) { fail((res.error && res.error.message) || 'Terjadi kesalahan.'); return; }
           if (res.data === null || res.data === undefined) { fail('Server menjawab tanpa data. Coba klik 🔄 Refresh.'); return; }
+          clearTimeout(watchdog);
           inFlight = false;
           attempt = 0;
           if (!dshMounted()) return;
           onData(res.data);
         })
         .withFailureHandler(function (err) {
+          if (myToken !== callToken) return;
           fail(err && err.message ? err.message : String(err));
         })[rpcName]();
     };
@@ -410,6 +429,13 @@
 
   function renderSection1() {
     var s1 = dshGdv.section1;
+
+    // GdvMatchingService gagal dibaca (spreadsheet GDV_Controller eksternal
+    // bermasalah) -> angka Section 1 di bawah adalah 0 palsu, BUKAN nol
+    // sungguhan. HARUS terlihat, bukan didiamkan seperti angka normal.
+    document.getElementById('dshErrorGdv').innerText = s1.error
+      ? 'GDV Controller gagal dibaca, angka GDV Actual/Klaim di bawah ini TIDAK BISA dipercaya: ' + s1.error
+      : '';
 
     document.getElementById('dshHeroGdv').textContent = rpDsh(s1.realized);
     document.getElementById('dshHeroBul').innerHTML = s1.deptTarget
