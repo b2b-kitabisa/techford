@@ -20,7 +20,7 @@ var NavigationConfig = (function (module) {
     {
       group: 'Dashboard Analytics',
       items: [
-        { page: 'dashboard-sales', label: 'Dashboard Sales', enabled: false, icon: '📊' },
+        { page: 'dashboard-sales', label: 'Dashboard Sales', enabled: true, icon: '📊' },
         { page: 'financial-tracker', label: 'Financial Tracker', enabled: false, icon: '📈' },
         { page: 'program-dashboard', label: 'Program Dashboard', enabled: false, icon: '🗂️' }
       ]

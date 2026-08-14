@@ -5,6 +5,27 @@
     supaya target di sini selalu cocok dengan pencapaian sungguhannya.
   </p>
 
+  <!-- Target DEPARTMENT — dipakai kartu "GDV Actual" di Dashboard Sales.
+       Satu baris, terpisah dari tabel per Consultant di bawah (beda Scope
+       di sheet yang sama, lihat AchievementTargetService). Sengaja hanya
+       GDV — Dashboard Sales belum menampilkan Service Revenue sama sekali. -->
+  <div class="qo-box" style="margin-bottom:16px;">
+    <div class="qo-box-hd">🎯 Target GDV Department (tahun berjalan)</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+      Dipakai kartu <strong>GDV Actual</strong> di Dashboard Sales sebagai patokan pencapaian
+      department secara menyeluruh — berbeda dari target per Consultant di bawah, yang jumlahnya
+      belum tentu sama dengan angka ini.
+    </p>
+    <div class="qo-grid-3col">
+      <div>
+        <label>Target GDV Department (Rp)</label>
+        <input type="text" inputmode="numeric" id="deptTargetGdv" placeholder="0" oninput="this.value=formatAchThousands(parseAchThousands(this))">
+      </div>
+    </div>
+    <button class="btn-outline" type="button" style="margin-top:12px;" onclick="submitDepartmentTarget()">💾 Simpan Target Department</button>
+    <div id="deptTargetMeta" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+  </div>
+
   <div id="achievementError" class="error"></div>
 
   <div class="table-scroll">
@@ -86,7 +107,47 @@
       return;
     }
     bootstrapAchievement();
+    fetchDepartmentTarget();
   });
+
+  function fetchDepartmentTarget() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) return;
+        var t = res.data;
+        var meta = document.getElementById('deptTargetMeta');
+        if (!t) {
+          document.getElementById('deptTargetGdv').value = '';
+          meta.innerText = 'Belum pernah ditetapkan.';
+          return;
+        }
+        document.getElementById('deptTargetGdv').value = formatAchThousands(t.targetGdv);
+        meta.innerText = t.updatedBy
+          ? ('Terakhir diubah oleh ' + t.updatedBy + (t.updatedDate ? (' · ' + new Date(t.updatedDate).toLocaleString('id-ID')) : ''))
+          : '';
+      })
+      .withFailureHandler(function () {})
+      .achievement_getDepartmentTarget();
+  }
+
+  function submitDepartmentTarget() {
+    var targetGdv = parseAchThousands(document.getElementById('deptTargetGdv'));
+    if (!techfordConfirm('Simpan target GDV Department sebesar ' + fmtRpAch(targetGdv) + '? Ini akan langsung dipakai kartu GDV Actual di Dashboard Sales.')) return;
+
+    var updatedBy = (TechfordAuth.getCurrentUser() || {}).Name || '';
+    TechfordLoading.show('Menyimpan target department...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        if (res && res.ok === false) return alert(res.error.message);
+        fetchDepartmentTarget();
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      })
+      .achievement_setDepartmentTarget(targetGdv, updatedBy);
+  }
 
   function fetchAchievementTargets() {
     google.script.run

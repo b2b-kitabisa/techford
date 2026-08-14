@@ -21,5 +21,17 @@ var AchievementTargetController = (function (module) {
     });
   };
 
+  module.getDepartmentTarget = function () {
+    return ErrorHandler.handle('AchievementTargetController.getDepartmentTarget', function () {
+      return AchievementTargetService.getDepartmentTarget();
+    });
+  };
+
+  module.setDepartmentTarget = function (targetGdv, updatedBy) {
+    return ErrorHandler.handle('AchievementTargetController.setDepartmentTarget', function () {
+      return AchievementTargetService.setDepartmentTarget(targetGdv, updatedBy);
+    });
+  };
+
   return module;
 })(AchievementTargetController || {});

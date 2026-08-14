@@ -269,6 +269,9 @@ var Config = (function (module) {
    */
   module.ROLE_PAGE_ACCESS = {
     'home': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
+    // Read-only untuk semua Role — halaman ini tidak punya aksi tulis sama
+    // sekali, jadi tidak ada beda antara 'view' dan 'full' di sini.
+    'dashboard-sales': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'full', 'Head of B2B': 'full' },
     'lead-capturing': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },
     'client-monitoring': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },
     'sales-pipeline': { 'Master Admin': 'full', 'Consultant': 'full', 'Operation': 'view', 'Head of B2B': 'full' },

@@ -1,0 +1,391 @@
+<div class="container" style="max-width: 1160px;" id="dashboardSalesRoot">
+  <p style="color: var(--text-muted); font-size:13px; margin-bottom:18px;">
+    Section 1 &amp; 2 bicara <strong>GDV saja</strong> — Service Revenue dikeluarkan sampai logika
+    pencocokannya jelas seperti GDV Matching. Section 3 (Leads &amp; Client) belum ada di halaman
+    ini, lihat catatan di kaki halaman.
+  </p>
+
+  <div id="dshError" class="error"></div>
+
+  <!-- ══════════════════ SECTION 1 — PENCAPAIAN DEPARTMENT ══════════════════ -->
+  <div class="dsh-section">
+    <div class="dsh-section-hd">
+      <span class="dsh-section-n">1</span>
+      <span class="dsh-section-t">Pencapaian Department</span>
+      <span class="dsh-section-s">GDV yang benar-benar terealisasi (Tableau) terhadap target department</span>
+    </div>
+    <div class="dsh-grid">
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>GDV Actual</h4>
+          <p class="dsh-card-sub">Realisasi Tableau — bukan angka yang diklaim di Sales Pipeline</p>
+        </div>
+        <div class="dsh-hero" id="dshHeroGdv">—</div>
+        <div id="dshHeroBul"></div>
+        <div class="dsh-subrows" id="dshHeroSub"></div>
+        <div class="dsh-card-ft">
+          SUM <code>GDV_Controller.Realized_Nominal</code> per <code>Link_Campaign</code>. Angka ini
+          <strong>snapshot per upload terakhir</strong>, bukan seri waktu — <code>GDV_Controller</code>
+          ditimpa seluruhnya setiap kali CSV Tableau diupload ulang.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Klaim Consultant vs Department Portion</h4>
+          <p class="dsh-card-sub">Satu bar = 100% GDV realisasi. Klaim yang tidak tertampung realisasi ada di luar bar.</p>
+        </div>
+        <div id="dshSplitBar"></div>
+        <div class="dsh-subrows" id="dshSplitSub"></div>
+        <div class="dsh-card-ft">
+          <code>gdvMatching_getMatching()</code> — halaman yang sama dipakai Setting &gt; GDV Matching.
+          departmentPortion di-floor 0 per link, jadi klaim yang melebihi realisasi atau belum ada di
+          Tableau ditaruh <strong>di luar bar</strong>, bukan dipaksa masuk ke 100%.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Ads Sponsorship — realisasi vs KPI</h4>
+          <p class="dsh-card-sub">Per project. Bar = realisasi Tableau, garis tegak = 100% <code>Ads_Kpi_Target</code></p>
+        </div>
+        <div id="dshAdsRows"></div>
+        <div class="dsh-card-ft">
+          Snapshot terbaru per <code>Campaign_Id</code> (<code>Ads_Sponsorship_Progress</code> append-only).
+          Kosong <strong>bukan</strong> nol. Angka di kartu ini tidak dijumlahkan dengan GDV Actual —
+          keduanya ekspor Tableau yang berbeda.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>GDV per Main Source</h4>
+          <p class="dsh-card-sub">Apps · Web · 3rd Party — dari kolom yang sudah ikut terupload</p>
+        </div>
+        <div id="dshSourceRows"></div>
+        <div class="dsh-card-ft">
+          <code>buildMainSourceSummary()</code> di dalam GDV Matching — dijumlah dari SELURUH baris
+          <code>GDV_Controller</code> mentah, bukan per link kanonik.
+        </div>
+      </article>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════ SECTION 2 — KINERJA CONSULTANT ══════════════════ -->
+  <div class="dsh-section">
+    <div class="dsh-section-hd">
+      <span class="dsh-section-n">2</span>
+      <span class="dsh-section-t">Kinerja Consultant</span>
+      <span class="dsh-section-s">Pencapaian terhadap target, isi pipeline, dan retainer yang sedang berjalan</span>
+    </div>
+    <div class="dsh-grid">
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Achievement GDV per Consultant</h4>
+          <p class="dsh-card-sub">Bar = GDV Won diklaim; blok pekat di dalamnya = bagian yang terkonfirmasi Tableau</p>
+        </div>
+        <div id="dshConsRows"></div>
+        <div class="dsh-card-ft" id="dshConsFt">
+          <code>Achievement_Target.Target_GDV</code> di-join ke <code>Project.Consultant</code> lewat
+          kecocokan nama.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>Cakupan Target</h4>
+          <p class="dsh-card-sub">Berapa dari target department yang sudah punya pemilik</p>
+        </div>
+        <div id="dshCovBar"></div>
+        <div class="dsh-subrows" id="dshCovSub"></div>
+        <div class="dsh-card-ft">
+          Jumlah <code>Target_GDV</code> seluruh Consultant dibanding target department (Setting &gt;
+          Achievement Setting). Kartu ini yang mengikat Section 1 &amp; 2 — department bisa gagal walau
+          semua Consultant mencapai targetnya sendiri, kalau porsi ini kurang dari 100%.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c7">
+        <div class="dsh-card-hd">
+          <h4>Sales Pipeline — porsi Stage &amp; nilai GDV</h4>
+          <p class="dsh-card-sub">Panjang segmen = nilai GDV, bukan jumlah project</p>
+        </div>
+        <div id="dshStageBar"></div>
+        <div class="dsh-subrows" id="dshStageSub"></div>
+        <div class="dsh-card-ft">Draft tidak dihitung ke mana pun, sama seperti score card Sales Pipeline.</div>
+      </article>
+
+      <article class="dsh-card dsh-c5">
+        <div class="dsh-card-hd">
+          <h4>Deal Mandek</h4>
+          <p class="dsh-card-sub">Prospect/Negotiation yang Stage-nya diam &gt;45 hari</p>
+        </div>
+        <div class="table-scroll" style="max-height:260px;">
+          <table class="data-table" id="dshMacetTable">
+            <thead><tr><th>Project</th><th>Stage</th><th>Diam</th><th class="num">GDV</th><th>Consultant</th></tr></thead>
+            <tbody><tr class="empty-row"><td colspan="5">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c6">
+        <div class="dsh-card-hd">
+          <h4>CSR Retainer</h4>
+          <p class="dsh-card-sub">Termin &amp; GDV terkumpul sejauh ini per project retainer</p>
+        </div>
+        <div class="table-scroll" style="max-height:220px;">
+          <table class="data-table" id="dshRetainerTable">
+            <thead><tr><th>Project</th><th>Consultant</th><th class="num">Termin</th><th class="num">GDV terkumpul</th><th>Termin terakhir</th></tr></thead>
+            <tbody><tr class="empty-row"><td colspan="5">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="dsh-card-ft">
+          Revenue_Breakdown tidak menyimpan nilai kontrak penuh — hanya baris per termin. Kartu ini
+          menampilkan yang <strong>sudah tercatat</strong>, bukan persentase dari kontrak.
+        </div>
+      </article>
+
+      <article class="dsh-card dsh-c6">
+        <div class="dsh-card-hd">
+          <h4>Klaim Bermasalah per Consultant</h4>
+          <p class="dsh-card-sub">Selisih Section 1 (belum sinkron / melebihi realisasi), dipulangkan ke orangnya</p>
+        </div>
+        <div class="table-scroll" style="max-height:220px;">
+          <table class="data-table" id="dshHygieneTable">
+            <thead><tr><th>Consultant</th><th class="num">Belum sinkron</th><th class="num">Melebihi realisasi</th></tr></thead>
+            <tbody><tr class="empty-row"><td colspan="3">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+      </article>
+
+    </div>
+  </div>
+
+  <p style="font-size:11.5px;color:var(--text-faint);border-top:1px solid var(--border-soft);padding-top:12px;">
+    <strong>Section 3 (Leads Capturing &amp; Client Monitoring) belum dibangun di halaman ini</strong> —
+    <code>lead_getPage</code> maksimal 500 baris per panggilan dan lead-nya sudah ribuan, jadi butuh satu
+    RPC agregat server-side tersendiri supaya tidak mengulang kelas bug "Tidak ada respons dari server"
+    yang pernah muncul di halaman Lead. Menyusul sebagai fase berikutnya.
+  </p>
+</div>
+
+<script>
+  var dshData = null;
+
+  function escDsh(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function idDsh(n, d) { return Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: d == null ? 0 : d }); }
+  function fix1Dsh(n) { return Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+  function rpDsh(n) {
+    if (n === null || n === undefined) return '–';
+    var a = Math.abs(n);
+    if (a >= 1e12) return 'Rp' + idDsh(n / 1e12, 2) + ' T';
+    if (a >= 1e9) return 'Rp' + fix1Dsh(n / 1e9) + ' M';
+    if (a >= 1e6) return 'Rp' + idDsh(n / 1e6, 0) + ' jt';
+    return 'Rp' + idDsh(n);
+  }
+  function pcDsh(part, whole, d) { return whole ? idDsh(part / whole * 100, d == null ? 0 : d) + '%' : '0%'; }
+
+  techfordOnReady(function () {
+    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('dashboard-sales')) {
+      document.getElementById('dashboardSalesRoot').innerHTML =
+        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2><p>Anda tidak punya akses ke halaman ini.</p></div>';
+      return;
+    }
+    fetchDashboard();
+  });
+
+  function fetchDashboard() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          showDshError((res && res.error && res.error.message) || 'Tidak ada respons dari server.');
+          return;
+        }
+        dshData = res.data;
+        document.getElementById('dshError').innerText = '';
+        renderSection1();
+        renderSection2();
+      })
+      .withFailureHandler(function (err) {
+        showDshError('Gagal memuat data: ' + (err && err.message ? err.message : err));
+      })
+      .dashboard_getSalesGdv();
+  }
+
+  function showDshError(message) {
+    document.getElementById('dshError').innerText = message;
+  }
+
+  function subrows(hostId, pairs) {
+    var host = document.getElementById(hostId);
+    host.innerHTML = pairs.map(function (p) {
+      return '<div class="dsh-subrow"><span>' + p[0] + '</span><b>' + p[1] + '</b></div>';
+    }).join('');
+  }
+
+  /* stacked bar 100% — items: [{k, v, color}] */
+  function stackedBar(hostId, items, total) {
+    var host = document.getElementById(hostId);
+    var bar = items.map(function (s) {
+      var pct = total ? (s.v / total * 100) : 0;
+      return '<span style="flex:0 0 ' + pct + '%;background:' + s.color + ';" title="' + escDsh(s.k) + ' — ' + rpDsh(s.v) + '"></span>';
+    }).join('');
+    var legend = items.map(function (s) {
+      return '<span class="dsh-legend-item"><i style="background:' + s.color + ';"></i>' + escDsh(s.k) + ' <b>' + rpDsh(s.v) + ' · ' + pcDsh(s.v, total, 1) + '</b></span>';
+    }).join('');
+    host.innerHTML = '<div class="dsh-sbar">' + bar + '</div><div class="dsh-legend" style="margin-top:8px;">' + legend + '</div>';
+  }
+
+  /* bullet row: actual vs target, opsional lapis kedua (verified) */
+  function bulletRow(label, actual, target, verified) {
+    if (actual === null || actual === undefined) {
+      return '<div class="dsh-row"><div class="dsh-row-lbl" title="' + escDsh(label) + '">' + escDsh(label) + '</div>' +
+        '<div class="dsh-bul-empty"></div>' +
+        '<div class="dsh-row-r"><span class="pill neutral">belum ada data</span></div></div>';
+    }
+    var att = target ? (actual / target * 100) : 0;
+    var scale = 125;
+    var tone = att >= 90 ? 'good' : att >= 70 ? 'warn' : 'bad';
+    var toneLabel = att >= 90 ? 'aman' : att >= 70 ? 'awas' : 'tertinggal';
+    var fillWidth = Math.min(att, scale) / scale * 100;
+    var fill2 = '';
+    if (verified !== null && verified !== undefined) {
+      var vPct = Math.min(target ? (verified / target * 100) : 0, scale) / scale * 100;
+      fill2 = '<div class="dsh-bul-fill2" style="width:' + vPct + '%;"></div>';
+    }
+    return '<div class="dsh-row"><div class="dsh-row-lbl" title="' + escDsh(label) + '">' + escDsh(label) + '</div>' +
+      '<div class="dsh-bul" title="' + escDsh(label) + ' — ' + rpDsh(actual) + ' / ' + rpDsh(target) + ' (' + idDsh(att, 1) + '%)">' +
+      '<div class="dsh-bul-fill" style="width:' + fillWidth + '%;"></div>' + fill2 +
+      '<div class="dsh-bul-tick" style="left:' + (100 / scale * 100) + '%;"></div></div>' +
+      '<div class="dsh-row-r"><span class="dsh-row-val">' + Math.round(att) + '%</span><span class="pill ' + tone + '">' + toneLabel + '</span></div></div>';
+  }
+
+  function renderSection1() {
+    var s1 = dshData.section1;
+
+    document.getElementById('dshHeroGdv').textContent = rpDsh(s1.realized);
+    document.getElementById('dshHeroBul').innerHTML = s1.deptTarget
+      ? '<div class="dsh-rows">' + bulletRow('vs target', s1.realized, s1.deptTarget) + '</div>'
+      : '<p style="font-size:11.5px;color:var(--text-faint);">Target department belum ditetapkan — atur di Setting &gt; Achievement Setting.</p>';
+
+    var totalClaimTracked = s1.claimedWithin + s1.claimExcess + s1.claimUnsynced;
+    subrows('dshHeroSub', [
+      ['Target department', s1.deptTarget ? rpDsh(s1.deptTarget) : '–'],
+      ['Sisa ke target', s1.deptTarget ? (rpDsh(Math.max(0, s1.deptTarget - s1.realized)) + ' · ' + pcDsh(Math.max(0, s1.deptTarget - s1.realized), s1.deptTarget, 1)) : '–'],
+      ['Data per', s1.dataAsOf ? new Date(s1.dataAsOf).toLocaleString('id-ID') : 'belum pernah upload']
+    ]);
+
+    stackedBar('dshSplitBar', [
+      { k: 'Diklaim Consultant (tertampung)', v: s1.claimedWithin, color: 'var(--color-cerulean)' },
+      { k: 'Department Portion', v: s1.deptPortion, color: 'var(--accent-tint-strong)' }
+    ], s1.realized);
+    subrows('dshSplitSub', [
+      ['Di luar bar — klaim melebihi realisasi', rpDsh(s1.claimExcess) + ' · ' + idDsh(s1.linkMelebihi) + ' link'],
+      ['Di luar bar — klaim belum sinkron', rpDsh(s1.claimUnsynced) + ' · ' + idDsh(s1.linkBelum) + ' link'],
+      ['Total klaim tercatat', rpDsh(totalClaimTracked)],
+      ['Link diperiksa', idDsh(s1.linkSinkron) + ' sinkron dari ' + idDsh(s1.linkTotal)],
+      ['Platform fee (tidak dikurangkan dari GDV)', rpDsh(s1.platformFee)]
+    ]);
+
+    var adsSorted = s1.ads.slice().sort(function (a, b) {
+      var x = a.real === null ? -1 : (a.target ? a.real / a.target : 0);
+      var y = b.real === null ? -1 : (b.target ? b.real / b.target : 0);
+      return y - x;
+    });
+    document.getElementById('dshAdsRows').innerHTML = adsSorted.length
+      ? '<div class="dsh-rows">' + adsSorted.map(function (a) { return bulletRow(a.projectName, a.real, a.target); }).join('') + '</div>'
+      : '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada project Ads Sponsorship dengan KPI target.</p>';
+
+    document.getElementById('dshSourceRows').innerHTML = s1.mainSource.length
+      ? '<div class="dsh-rows">' + s1.mainSource.map(function (m) {
+          var max = Math.max.apply(null, s1.mainSource.map(function (x) { return x.v; }));
+          return '<div class="dsh-row"><div class="dsh-row-lbl">' + escDsh(m.k) + '</div>' +
+            '<div class="dsh-bar-track"><div class="dsh-bar-fill" style="width:' + (max ? (m.v / max * 100) : 0) + '%;"></div></div>' +
+            '<div class="dsh-row-r"><span class="dsh-row-val">' + rpDsh(m.v) + '</span></div></div>';
+        }).join('') + '</div>'
+      : '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada data.</p>';
+  }
+
+  function renderSection2() {
+    var s2 = dshData.section2;
+
+    document.getElementById('dshConsRows').innerHTML = s2.consultants.length
+      ? '<div class="dsh-rows">' + s2.consultants.map(function (c) {
+          return bulletRow(c.name, c.won, c.target, c.verified);
+        }).join('') + '</div>' +
+        '<div class="dsh-legend" style="margin-top:2px;"><span class="dsh-legend-item"><i style="background:var(--color-cerulean);"></i>diklaim</span>' +
+        '<span class="dsh-legend-item"><i style="background:#007CB1;"></i>terkonfirmasi Tableau</span></div>'
+      : '<p style="font-size:11.5px;color:var(--text-faint);">Belum ada target Consultant — atur di Setting &gt; Achievement Setting.</p>';
+
+    var ftExtra = s2.consultantMismatchCount > 0
+      ? ' <span class="pill warn" style="margin-left:6px;">⚠ ' + idDsh(s2.consultantMismatchCount) + ' project dengan nama Consultant tidak cocok Employee manapun</span>'
+      : '';
+    document.getElementById('dshConsFt').innerHTML =
+      '<code>Achievement_Target.Target_GDV</code> di-join ke <code>Project.Consultant</code> lewat kecocokan nama.' + ftExtra;
+
+    var deptTarget = dshData.section1.deptTarget;
+    if (deptTarget) {
+      var gap = Math.max(0, deptTarget - s2.assignedTarget);
+      stackedBar('dshCovBar', [
+        { k: 'Sudah ditugaskan ke Consultant', v: Math.min(s2.assignedTarget, deptTarget), color: 'var(--color-cerulean)' },
+        { k: 'Belum ada pemiliknya', v: gap, color: 'var(--bg-hover)' }
+      ], deptTarget);
+      subrows('dshCovSub', [
+        ['Target department', rpDsh(deptTarget)],
+        ['Ditugaskan ke Consultant', rpDsh(s2.assignedTarget) + ' · ' + pcDsh(s2.assignedTarget, deptTarget, 1)],
+        ['Belum ada pemiliknya', rpDsh(gap)]
+      ]);
+    } else {
+      document.getElementById('dshCovBar').innerHTML = '<p style="font-size:11.5px;color:var(--text-faint);">Target department belum ditetapkan.</p>';
+      subrows('dshCovSub', [['Jumlah target Consultant', rpDsh(s2.assignedTarget)]]);
+    }
+
+    var stageTotal = s2.stage.reduce(function (sum, s) { return sum + s.gdv; }, 0);
+    var stageColors = { Prospect: '#4ABBF3', Negotiation: 'var(--color-cerulean)', Won: '#005E8B', Loss: 'var(--bg-hover)' };
+    stackedBar('dshStageBar', s2.stage.map(function (s) {
+      return { k: s.stage, v: s.gdv, color: stageColors[s.stage] || 'var(--bg-hover)' };
+    }), stageTotal);
+    var won = s2.stage.filter(function (s) { return s.stage === 'Won'; })[0] || { count: 0, gdv: 0 };
+    var loss = s2.stage.filter(function (s) { return s.stage === 'Loss'; })[0] || { count: 0, gdv: 0 };
+    var open = s2.stage.filter(function (s) { return s.stage === 'Prospect' || s.stage === 'Negotiation'; })
+      .reduce(function (a, s) { return { count: a.count + s.count, gdv: a.gdv + s.gdv }; }, { count: 0, gdv: 0 });
+    subrows('dshStageSub', [
+      ['Open pipeline (Prospect + Negotiation)', rpDsh(open.gdv) + ' · ' + idDsh(open.count) + ' project'],
+      ['GDV Won diklaim', rpDsh(won.gdv) + ' · ' + idDsh(won.count) + ' project'],
+      ['Win rate per jumlah deal', pcDsh(won.count, won.count + loss.count) + ' (' + idDsh(won.count) + ' Won / ' + idDsh(loss.count) + ' Loss)'],
+      ['Win rate per nilai GDV', pcDsh(won.gdv, won.gdv + loss.gdv, 1)]
+    ]);
+
+    var macetBody = document.querySelector('#dshMacetTable tbody');
+    macetBody.innerHTML = s2.dealMandek.length
+      ? s2.dealMandek.map(function (m) {
+          var sev = m.days > 90 ? 'bad' : m.days > 60 ? 'warn' : 'neutral';
+          return '<tr><td>' + escDsh(m.projectName) + '</td><td>' + escDsh(m.stage) + '</td>' +
+            '<td><span class="pill ' + sev + '">' + idDsh(m.days) + ' hari</span></td>' +
+            '<td class="num">' + rpDsh(m.gdv) + '</td><td>' + escDsh(m.consultant) + '</td></tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="5">Tidak ada deal yang mandek &gt;45 hari.</td></tr>';
+
+    var retBody = document.querySelector('#dshRetainerTable tbody');
+    retBody.innerHTML = s2.retainer.length
+      ? s2.retainer.map(function (r) {
+          return '<tr><td>' + escDsh(r.projectName) + '</td><td>' + escDsh(r.consultant) + '</td>' +
+            '<td class="num">' + idDsh(r.terminCount) + '</td><td class="num">' + rpDsh(r.totalGdv) + '</td>' +
+            '<td>' + (r.lastEntryDate ? new Date(r.lastEntryDate).toLocaleDateString('id-ID') : '–') + '</td></tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="5">Belum ada project CSR Retainer dengan termin tercatat.</td></tr>';
+
+    var hygBody = document.querySelector('#dshHygieneTable tbody');
+    hygBody.innerHTML = s2.hygiene.length
+      ? s2.hygiene.map(function (h) {
+          return '<tr><td>' + escDsh(h.consultant) + '</td>' +
+            '<td class="num">' + (h.belumN ? (idDsh(h.belumN) + ' link · ' + rpDsh(h.belumRp)) : '–') + '</td>' +
+            '<td class="num">' + (h.lebihN ? (idDsh(h.lebihN) + ' link · ' + rpDsh(h.lebihRp)) : '–') + '</td></tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="3">Tidak ada klaim bermasalah.</td></tr>';
+  }
+</script>

@@ -15,6 +15,14 @@ var ROUTES = {
     title: 'Home',
     headerActions: ''
   },
+  'dashboard-sales': {
+    content: '50_Presentation/html/Dashboard/DashboardSalesContent',
+    title: 'Dashboard Sales 📊',
+    headerActions: '',
+    helpText: '<strong>GDV Actual</strong> berasal dari ekspor Tableau (kenyataan), bukan angka yang ' +
+      'diklaim consultant di Sales Pipeline — dua angka itu boleh beda, dan selisihnya justru yang ' +
+      'ditunjukkan kartu "Klaim Consultant vs Department Portion".'
+  },
   'employee': {
     content: '50_Presentation/html/Employee/EmployeeContent',
     title: 'Employee',

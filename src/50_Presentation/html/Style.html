@@ -2189,4 +2189,59 @@
   /* Client_ID di kolom tabel, supaya bisa dicocokkan dengan jejak Client_ID
      yang muncul di drawer Lead Capturing setelah Move. */
   .cell-id { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); letter-spacing: 0.03em; }
+
+  /* ══════════════════════════════════════════════════════
+     DASHBOARD SALES — prefix dsh-. Satu aturan warna di seluruh halaman:
+     cerulean (var(--color-cerulean)) = angka utama/di dalam tangga,
+     abu-abu (var(--border-soft)/var(--text-faint)) = di luar tangga atau
+     belum ada pemiliknya. Baik/awas/tertinggal SELALU var(--good)/
+     var(--warn)/var(--bad) berpasangan dengan teks, tidak pernah warna
+     tunggal — sama pola dengan .pill di atas.
+     ══════════════════════════════════════════════════════ */
+  .dsh-section { margin-bottom: 28px; }
+  .dsh-section-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); }
+  .dsh-section-n {
+    width: 22px; height: 22px; border-radius: 6px; background: var(--color-cerulean); color: #fff;
+    font-size: 11.5px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .dsh-section-t { font-size: 15px; font-weight: 800; }
+  .dsh-section-s { font-size: 11.5px; color: var(--text-muted); }
+  .dsh-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+  .dsh-card {
+    grid-column: span 12; background: var(--color-white); border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md); padding: 15px 16px 14px; box-shadow: var(--shadow-sm);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dsh-c5 { grid-column: span 5; } .dsh-c6 { grid-column: span 6; } .dsh-c7 { grid-column: span 7; } .dsh-c12 { grid-column: span 12; }
+  @media (max-width: 980px) { .dsh-c5, .dsh-c6, .dsh-c7 { grid-column: span 12; } }
+  .dsh-card-hd h4 { margin: 0; font-size: 13.5px; font-weight: 700; }
+  .dsh-card-sub { font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0; }
+  .dsh-card-ft { font-size: 10.5px; color: var(--text-faint); border-top: 1px solid var(--border-softer); padding-top: 8px; margin-top: auto; line-height: 1.5; }
+  .dsh-card-ft code { font-family: var(--font-mono); font-size: 9.5px; background: var(--bg-hover); padding: 1px 4px; border-radius: 3px; }
+  .dsh-hero { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-family: var(--font-mono); }
+  .dsh-subrows { display: flex; flex-direction: column; gap: 5px; }
+  .dsh-subrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text-muted); }
+  .dsh-subrow b { font-weight: 800; font-family: var(--font-mono); color: var(--color-mineshaft); }
+
+  /* stacked bar 100% */
+  .dsh-sbar { display: flex; gap: 2px; height: 20px; width: 100%; border-radius: 4px; overflow: hidden; }
+  .dsh-sbar > span { display: block; height: 100%; }
+  .dsh-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--text-muted); }
+  .dsh-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .dsh-legend-item i, .dsh-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .dsh-legend b { color: var(--color-mineshaft); font-weight: 800; font-family: var(--font-mono); }
+
+  /* bullet / bar rows (achievement, ads, retainer) */
+  .dsh-rows { display: flex; flex-direction: column; gap: 8px; }
+  .dsh-row { display: grid; grid-template-columns: minmax(90px, 26%) 1fr 108px; gap: 10px; align-items: center; }
+  .dsh-row-lbl { font-size: 12px; font-weight: 600; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dsh-bul { height: 18px; border-radius: 4px; background: var(--accent-tint); position: relative; overflow: hidden; }
+  .dsh-bul-fill { height: 100%; position: absolute; left: 0; top: 0; background: var(--color-cerulean); }
+  .dsh-bul-fill2 { height: 100%; position: absolute; left: 0; top: 0; background: #007CB1; }
+  .dsh-bul-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text-muted); opacity: 0.8; }
+  .dsh-bul-empty { height: 18px; border-radius: 4px; border: 1px dashed var(--border-soft); background: repeating-linear-gradient(135deg, var(--bg-hover) 0 5px, transparent 5px 10px); }
+  .dsh-row-r { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .dsh-row-val { font-size: 12px; font-weight: 700; font-family: var(--font-mono); white-space: nowrap; text-align: right; }
+  .dsh-bar-track { height: 16px; border-radius: 4px; background: var(--bg-hover); }
+  .dsh-bar-fill { height: 100%; border-radius: 4px; background: var(--color-cerulean); }
 </style>
