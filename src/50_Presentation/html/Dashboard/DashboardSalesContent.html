@@ -268,17 +268,6 @@
   }
   function pcDsh(part, whole, d) { return whole ? idDsh(part / whole * 100, d == null ? 0 : d) + '%' : '0%'; }
 
-  techfordOnReady(function () {
-    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('dashboard-sales')) {
-      document.getElementById('dashboardSalesRoot').innerHTML =
-        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
-        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2><p>Anda tidak punya akses ke halaman ini.</p></div>';
-      return;
-    }
-    fetchGdv();
-    fetchLeadsClient();
-  });
-
   /**
    * ============================================================
    * PEMUATAN DATA — pola in-flight + retry-hanya-kalau-gagal
@@ -608,4 +597,23 @@
       '</div>' +
       '<div class="dsh-subrows" style="margin-top:8px;"><div class="dsh-subrow"><span>Total client</span><b>' + idDsh(c.total) + '</b></div></div>';
   }
+
+  // WAJIB DI BAWAH SINI — setelah fetchGdv/fetchLeadsClient (var, lihat di
+  // atas) sudah ter-assign. techfordOnReady() memanggil fn() SEKETIKA
+  // (bukan ditunda) kalau document.readyState sudah 'complete' — dan saat
+  // halaman ini dibuka lewat navigasi SPA (bukan full page load), itu
+  // SELALU sudah true. Taruh panggilan ini di atas (sebelum var fetchGdv
+  // di-assign) membuat fn() jalan duluan sementara fetchGdv masih
+  // `undefined` -> "fetchGdv is not a function", persis bug yang membuat
+  // Section 1&2 tidak pernah termuat sama sekali lewat navigasi SPA.
+  techfordOnReady(function () {
+    if (typeof TechfordAccess !== 'undefined' && !TechfordAccess.canOpen('dashboard-sales')) {
+      document.getElementById('dashboardSalesRoot').innerHTML =
+        '<div style="max-width:520px;margin:60px auto;text-align:center;color:var(--text-muted);">' +
+        '<h2 style="margin-bottom:8px;">🔒 Akses ditolak</h2><p>Anda tidak punya akses ke halaman ini.</p></div>';
+      return;
+    }
+    fetchGdv();
+    fetchLeadsClient();
+  });
 </script>
