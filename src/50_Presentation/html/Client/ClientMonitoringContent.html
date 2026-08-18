@@ -605,12 +605,20 @@
     fetchConsultants();
     fetchClientTaxonomy();
   }
-
-  if (document.readyState === 'complete') {
-    bootstrapClients();
-  } else {
-    window.addEventListener('load', bootstrapClients);
-  }
+  // Pemanggilan bootstrapClients() SENGAJA dipindah ke PALING BAWAH skrip
+  // ini (lihat blok di akhir file) — BUKAN dijalankan di sini. BUG YANG
+  // DIPERBAIKI: fetchConsultants (baris ~843) & fetchClientTaxonomy (baris
+  // ~872) adalah `var` yang di-assign JAUH di bawah titik ini. Saat
+  // navigasi SPA, document.readyState SELALU 'complete', jadi cabang
+  // `if` di bawah dulu memanggil bootstrapClients() SAAT ITU JUGA —
+  // fetchConsultants masih `undefined` (belum ke-assign) -> "fetchConsultants
+  // is not a function" -> exception itu memotong SISA eksekusi skrip ini,
+  // termasuk `var PIC_AVATAR_COLORS = [...]` yang letaknya lebih ke bawah
+  // lagi -> PIC_AVATAR_COLORS tetap undefined sepanjang sesi -> kartu PIC
+  // meledak "Cannot read properties of undefined (reading 'length')" di
+  // picAvatarColor(). Persis kelas bug yang sama dengan "fetchGdv is not a
+  // function" yang sudah diperbaiki di Dashboard Sales — solusinya sama:
+  // panggil baru SETELAH semua `var fetch... = makeLoader(...)` ter-assign.
 
   function optionsForCategory(category) {
     return allMasterData.filter(function (row) { return row.Category === category; });
@@ -2467,5 +2475,14 @@
         alert('Gagal membuat draft project: ' + (err && err.message ? err.message : err));
       })
       .project_createDraft(clientSuccessPipelineTargetId, createdBy);
+  }
+
+  // WAJIB DI BAWAH SINI — setelah SEMUA `var fetch... = makeLoader(...)`
+  // (termasuk fetchConsultants & fetchClientTaxonomy) ter-assign. Lihat
+  // catatan panjang di dekat definisi bootstrapClients() di atas.
+  if (document.readyState === 'complete') {
+    bootstrapClients();
+  } else {
+    window.addEventListener('load', bootstrapClients);
   }
 </script>
