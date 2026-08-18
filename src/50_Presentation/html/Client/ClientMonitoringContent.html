@@ -1896,38 +1896,66 @@
       tersembunyi = pics.length - PIC_VISIBLE_LIMIT;
     }
 
+    // Dihitung SEKALI di luar .map() — supaya isi kartu tidak pernah
+    // menyentuh `pics.length` dari dalam closure per-baris.
+    var hasMultiplePics = pics.length > 1;
+
+    /**
+     * Setiap field PIC dipaksa jadi STRING di sini, SEBELUM disentuh fungsi
+     * apa pun (escHtml/escAttr/picInitials/picAvatarColor/dll). BUG YANG
+     * DIPERBAIKI: kartu PIC "Faathir Muhammad" gagal dengan "Cannot read
+     * properties of undefined (reading 'length')" walau datanya di sheet
+     * PIC_Client kelihatan normal — root cause-nya tidak pernah berhasil
+     * direproduksi ulang dengan data tiruan apa pun (string kosong, null,
+     * angka, array, Date semua sudah dicoba dan tidak melempar). Daripada
+     * terus menebak field mana yang jadi biang keladinya, SEMUA field
+     * sekarang disterilkan jadi string biasa lebih dulu — apa pun bentuk
+     * asli nilainya di sheet (angka, boolean, Date, bahkan array/objek
+     * kalau kolomnya kebetulan salah isi), turunannya PASTI string aman
+     * yang tidak bisa membuat pemanggilan .length di mana pun meledak.
+     */
+    function safeStr(v) {
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'string') return v;
+      try { return String(v); } catch (e) { return ''; }
+    }
+
     // Setiap kartu dibangun dalam try/catch SENDIRI-SENDIRI — satu baris PIC
-    // dengan data janggal (mis. field yang seharusnya teks tapi berisi tipe
-    // lain dari sheet) tidak boleh membuat SEMUA kartu PIC lain di client
+    // dengan data janggal tidak boleh membuat SEMUA kartu PIC lain di client
     // yang sama ikut tidak tampil. .map() polos akan melempar di baris
     // pertama yang bermasalah dan membatalkan seluruh array.
     var existingHtml = tampil.map(function (p) {
+      var picId = safeStr(p.PIC_ID);
+      var name = safeStr(p.PIC_Name);
+      var title = safeStr(p.Title);
+      var email = safeStr(p.Email);
+      var phone = safeStr(p.Phone);
       try {
-        var isPrimary = p.PIC_ID === primaryId;
+        var isPrimary = picId === primaryId;
         var acts = [];
         acts.push('<button type="button" class="pic-mini-btn" onclick="openEditPicPopup(\'' +
-          escAttr(p.PIC_ID) + '\')">✏️ Edit</button>');
-        if (p.Phone) {
-          acts.push('<a class="pic-mini-btn" href="https://wa.me/' + escAttr(normalizePhoneNumber(p.Phone)) +
+          escAttr(picId) + '\')">✏️ Edit</button>');
+        if (phone) {
+          acts.push('<a class="pic-mini-btn" href="https://wa.me/' + escAttr(normalizePhoneNumber(phone)) +
             '" target="_blank" rel="noopener">WhatsApp</a>');
         }
-        if (!isPrimary && pics.length > 1) {
+        if (!isPrimary && hasMultiplePics) {
           acts.push('<button type="button" class="pic-mini-btn" onclick="setPrimaryPic(\'' +
-            escAttr(p.PIC_ID) + '\')">↑ Jadikan utama</button>');
+            escAttr(picId) + '\')">↑ Jadikan utama</button>');
         }
         if (editing) {
           acts.push('<button type="button" class="pic-mini-btn danger" onclick="stageExistingPicRemoval(\'' +
-            escAttr(p.PIC_ID) + '\')">Hapus</button>');
+            escAttr(picId) + '\')">Hapus</button>');
         }
 
         return '<div class="pic-card' + (isPrimary ? ' pic-card-primary' : '') + '">' +
           (isPrimary ? '<div class="pic-primary-tag">PIC Utama</div>' : '') +
           '<div class="pic-top">' +
-            '<div class="pic-avatar" style="background:' + picAvatarColor(p.PIC_Name) + ';">' +
-              escHtml(picInitials(p.PIC_Name)) + '</div>' +
+            '<div class="pic-avatar" style="background:' + picAvatarColor(name) + ';">' +
+              escHtml(picInitials(name)) + '</div>' +
             '<div style="min-width:0;">' +
-              '<div class="pic-name-line">' + escHtml(p.PIC_Name) + '</div>' +
-              (p.Title ? '<div class="pic-title-line">' + escHtml(p.Title) + '</div>' : '') +
+              '<div class="pic-name-line">' + escHtml(name) + '</div>' +
+              (title ? '<div class="pic-title-line">' + escHtml(title) + '</div>' : '') +
             '</div>' +
           '</div>' +
           // Label "Email :" / "Phone :" dibuang — alamat email sudah jelas
@@ -1936,19 +1964,22 @@
           // teks biasa, jadi menyalinnya berarti menyeleksi manual dan mudah
           // ikut terbawa spasi atau baris sebelahnya.
           '<div class="pic-meta">' +
-            (p.Email
-              ? '<div class="contact-line">' + escHtml(p.Email) + cellCopyBtn(p.Email) + '</div>'
+            (email
+              ? '<div class="contact-line">' + escHtml(email) + cellCopyBtn(email) + '</div>'
               : '<div>email belum diisi</div>') +
-            (p.Phone
-              ? '<div class="contact-line">' + escHtml(p.Phone) + cellCopyBtn(p.Phone) + '</div>'
+            (phone
+              ? '<div class="contact-line">' + escHtml(phone) + cellCopyBtn(phone) + '</div>'
               : '<div>telepon belum diisi</div>') +
           '</div>' +
           '<div class="pic-acts">' + acts.join('') + '</div>' +
           '</div>';
       } catch (e) {
-        console.error('Gagal merender kartu PIC ' + (p && p.PIC_ID) + ':', e);
+        // e.stack (bukan cuma e.message) ditulis ke console — kalau ini
+        // masih kejadian lagi, baris persis yang melempar akan kelihatan
+        // di devtools tanpa perlu menebak-nebak lagi.
+        console.error('Gagal merender kartu PIC ' + picId + ' (' + name + '):', e, JSON.stringify(p));
         return '<div class="pic-card"><div class="drawer-field-value" style="color: var(--bad);">' +
-          'Gagal menampilkan PIC "' + escHtml((p && p.PIC_Name) || '?') + '" (' + escHtml(e.message) + ')' +
+          'Gagal menampilkan PIC "' + escHtml(name || '?') + '" (' + escHtml(e.message) + ')' +
           '</div></div>';
       }
     }).join('');
