@@ -2080,6 +2080,15 @@
     picEditingId = null;
   }
 
+  /**
+   * BUG YANG DIPERBAIKI: klik "Tambah" terasa diam — tidak ada toast/alert
+   * apa pun sesudahnya, cuma popup yang menutup dan kartu PIC yang
+   * (kalau sempat diperhatikan) bertambah di carousel. Kalau ada
+   * exception tak terduga di tengah jalan (mis. render carousel gagal),
+   * itu juga tertelan diam-diam — sama seperti bug drawer yang pernah
+   * diperbaiki di openClientDetail(), jadi ditangani dengan pola yang
+   * sama: apa pun hasilnya, admin HARUS melihat sesuatu terjadi.
+   */
   function submitAddPicPopup() {
     var name = document.getElementById('picName').value.trim();
     if (!name) { alert('Nama PIC wajib diisi.'); return; }
@@ -2091,24 +2100,37 @@
       title: document.getElementById('picTitle').value.toUpperCase()
     };
 
-    if (picPopupContext === 'new') {
-      pendingNewPics.push(picInput);
-      renderPendingPics();
-      closeAddPicPopup();
-      return;
-    }
+    try {
+      if (picPopupContext === 'new') {
+        pendingNewPics.push(picInput);
+        renderPendingPics();
+        closeAddPicPopup();
+        TechfordToast.show('PIC ditambahkan. Klik Save untuk menyimpan.');
+        return;
+      }
 
-    if (picPopupContext === 'detail') {
-      if (!currentClientDrawerId) { closeAddPicPopup(); return; }
-      // Hanya ditandai lokal dulu — baru dikirim ke server saat SAVE.
-      editModePendingNewPics.push(picInput);
-      renderPicCarousel('detailPicCarousel', currentClientDrawerId);
-      closeAddPicPopup();
-      return;
-    }
+      if (picPopupContext === 'detail') {
+        if (!currentClientDrawerId) {
+          closeAddPicPopup();
+          alert('Client ini tidak dikenali lagi — coba tutup dan buka ulang drawernya.');
+          return;
+        }
+        // Hanya ditandai lokal dulu — baru dikirim ke server saat SAVE.
+        editModePendingNewPics.push(picInput);
+        renderPicCarousel('detailPicCarousel', currentClientDrawerId);
+        closeAddPicPopup();
+        TechfordToast.show('PIC ditambahkan. Klik SAVE untuk menyimpan.');
+        return;
+      }
 
-    if (picPopupContext === 'edit') {
-      submitPicEdit(picEditingId, picInput);
+      if (picPopupContext === 'edit') {
+        submitPicEdit(picEditingId, picInput);
+      }
+    } catch (e) {
+      // Sebelumnya exception di sini hilang tanpa bekas — tombol Tambah
+      // terlihat seperti tidak bereaksi sama sekali padahal sebenarnya
+      // gagal di tengah jalan.
+      alert('Gagal menambahkan PIC: ' + (e && e.message ? e.message : e));
     }
   }
 
