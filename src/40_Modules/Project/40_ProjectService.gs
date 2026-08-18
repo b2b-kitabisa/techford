@@ -77,6 +77,40 @@ var ProjectService = (function (module) {
     return programCategory;
   }
 
+  /**
+   * Pasangan kolom Consultant yang SELALU ditulis bersamaan:
+   * - Consultant             : teks nama, tetap dipertahankan sebagai kolom
+   *                            TAMPILAN (Sales Pipeline, Document Pipeline,
+   *                            Client Monitoring semuanya membacanya).
+   * - Consultant_Employee_ID : kunci join sungguhan, dipakai Dashboard.
+   *
+   * Sengaja ADITIF, bukan mengganti: mengganti kolom nama dengan ID akan
+   * memaksa setiap halaman lain ikut berubah di saat yang sama, dan itu
+   * persis "error yang berdampak ke section lain" yang harus dihindari.
+   * Dengan pasangan ini, halaman lama terus bekerja apa adanya sementara
+   * join-nya sudah pindah ke ID.
+   *
+   * ID dibiarkan KOSONG kalau nama tidak cocok ke Employee mana pun (atau
+   * cocok ke lebih dari satu) — bukan ditebak. Baris begitu muncul di
+   * laporan Consultant_Employee_ID yang belum tercocokkan.
+   */
+  function consultantFields(name) {
+    ProjectRepository.ensureColumns(['Consultant_Employee_ID']);
+    var clean = String(name == null ? '' : name).trim();
+    return {
+      Consultant: clean,
+      Consultant_Employee_ID: EmployeeService.resolveConsultantId(clean) || ''
+    };
+  }
+
+  /** Tempelkan pasangan Consultant ke object row yang sedang dibangun. */
+  function withConsultant(row, name) {
+    var f = consultantFields(name);
+    row.Consultant = f.Consultant;
+    row.Consultant_Employee_ID = f.Consultant_Employee_ID;
+    return row;
+  }
+
   module.getAllProjects = function () {
     return ProjectRepository.findAll().map(decorate);
   };
@@ -191,7 +225,8 @@ var ProjectService = (function (module) {
       Project_ID: 'PRJ' + SequenceService.next('PROJECT', PROJECT_ID_DIGITS),
       Project_Name: input.projectName,
       Client_ID: input.clientId,
-      Consultant: input.consultant || '',
+      Consultant: '',                 /* diisi withConsultant() sebelum insert */
+      Consultant_Employee_ID: '',
       Services: encodeJson(input.services),
       Service_Categories: encodeJson(input.serviceCategories),
       Program_Type: input.programType,
@@ -212,6 +247,7 @@ var ProjectService = (function (module) {
       Last_Updated: now
     };
 
+    withConsultant(project, input.consultant);
     ProjectRepository.create(project);
     tryEnsureProjectFolder(project.Project_ID);
     Log.info('ProjectService', 'Project dibuat oleh ' + createdBy + ': ' + project.Project_ID);
@@ -251,7 +287,8 @@ var ProjectService = (function (module) {
       Project_ID: Utils.generateId('DRAFT'),
       Project_Name: '',
       Client_ID: clientId,
-      Consultant: String(consultant || '').trim(),
+      Consultant: '',                 /* diisi withConsultant() sebelum insert */
+      Consultant_Employee_ID: '',
       Services: encodeJson([]),
       Service_Categories: encodeJson({}),
       Program_Type: '',
@@ -272,6 +309,7 @@ var ProjectService = (function (module) {
       Last_Updated: now
     };
 
+    withConsultant(project, consultant);
     ProjectRepository.create(project);
     Log.info('ProjectService', 'Draft project dibuat untuk client ' + clientId + ' oleh ' + createdBy + ': ' + project.Project_ID);
     return decorate(project);
@@ -294,8 +332,10 @@ var ProjectService = (function (module) {
     if (!draft.Is_Draft) {
       throw new AppError('VALIDATION_ERROR', 'Project ini bukan draft — gunakan Edit Project biasa.');
     }
+    var cf = consultantFields(consultant);
     ProjectRepository.update(draftProjectId, {
-      Consultant: String(consultant || '').trim(),
+      Consultant: cf.Consultant,
+      Consultant_Employee_ID: cf.Consultant_Employee_ID,
       Last_Updated: new Date()
     });
     return findDecorated(draftProjectId);
@@ -323,11 +363,13 @@ var ProjectService = (function (module) {
 
     var programName = resolveProgramName(input.programType, input.programCategory, input.programName);
     var realProjectId = 'PRJ' + SequenceService.next('PROJECT', PROJECT_ID_DIGITS);
+    var completeCf = consultantFields(input.consultant);
 
     ProjectRepository.update(draftProjectId, {
       Project_ID: realProjectId,
       Project_Name: input.projectName,
-      Consultant: input.consultant || '',
+      Consultant: completeCf.Consultant,
+      Consultant_Employee_ID: completeCf.Consultant_Employee_ID,
       Services: encodeJson(input.services),
       Service_Categories: encodeJson(input.serviceCategories),
       Program_Type: input.programType,
@@ -394,7 +436,11 @@ var ProjectService = (function (module) {
 
     var safePatch = {};
     if (patch.hasOwnProperty('projectName')) safePatch.Project_Name = patch.projectName;
-    if (patch.hasOwnProperty('consultant')) safePatch.Consultant = patch.consultant;
+    if (patch.hasOwnProperty('consultant')) {
+      var pcf = consultantFields(patch.consultant);
+      safePatch.Consultant = pcf.Consultant;
+      safePatch.Consultant_Employee_ID = pcf.Consultant_Employee_ID;
+    }
     if (patch.hasOwnProperty('otherNotes')) safePatch.Other_Notes = patch.otherNotes;
     if (patch.hasOwnProperty('services')) safePatch.Services = encodeJson(patch.services);
     if (patch.hasOwnProperty('serviceCategories')) safePatch.Service_Categories = encodeJson(patch.serviceCategories);

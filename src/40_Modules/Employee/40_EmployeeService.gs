@@ -98,6 +98,52 @@ var EmployeeService = (function (module) {
     }));
   };
 
+  /**
+   * ============================================================
+   * RESOLVER NAMA CONSULTANT -> Employee ID
+   * ============================================================
+   * SATU-SATUNYA tempat pencocokan nama Consultant ke Employee dilakukan.
+   * Dipakai saat menulis Project/Achievement_Target (supaya kolom
+   * Consultant_Employee_ID ikut terisi) dan saat backfill data lama.
+   *
+   * Kenapa ada sama sekali: Project.Consultant & Achievement_Target
+   * .Consultant_Name menyimpan TEKS NAMA, dan join antar keduanya selama ini
+   * perbandingan string — satu Consultant yang berganti nama di Configure
+   * Account diam-diam kehilangan seluruh pencapaian & klaimnya, tanpa error.
+   * Kolom ID membuat join tidak lagi bergantung pada teks yang bisa berubah.
+   *
+   * Pencocokan sengaja TOLERAN (trim + case-insensitive) karena data lama
+   * memang ditulis manual, TAPI tidak pernah menebak: nama yang cocok ke
+   * LEBIH DARI SATU Employee dianggap TIDAK cocok (null) dan dilaporkan,
+   * bukan diambil salah satu. Memilih diam-diam berarti memindahkan
+   * pencapaian ke orang yang salah — kesalahan yang jauh lebih mahal
+   * daripada sekadar tidak tercocokkan.
+   *
+   * @param {string} name
+   * @returns {?string} Employee Id, atau null kalau tidak ada/ambigu.
+   */
+  module.resolveConsultantId = function (name) {
+    var key = String(name == null ? '' : name).trim().toLowerCase();
+    if (!key) return null;
+    var hits = EmployeeRepository.findAll().filter(function (e) {
+      return String(e.Name || '').trim().toLowerCase() === key;
+    });
+    if (hits.length !== 1) return null;
+    return hits[0].Id || null;
+  };
+
+  /**
+   * Peta Employee Id -> nama, dipakai UI/laporan untuk menampilkan nama
+   * terbaru dari ID (bukan nama yang dibekukan saat project dibuat).
+   */
+  module.getEmployeeNameById = function () {
+    var map = {};
+    EmployeeRepository.findAll().forEach(function (e) {
+      if (e.Id) map[e.Id] = e.Name || '';
+    });
+    return map;
+  };
+
   module.listAdmins = function () {
     return sanitizeAll(EmployeeRepository.findAll());
   };

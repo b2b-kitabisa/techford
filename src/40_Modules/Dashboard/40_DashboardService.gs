@@ -67,6 +67,26 @@ var DashboardService = (function (module) {
   function num(v) { return Number(v) || 0; }
 
   /**
+   * ============================================================
+   * KUNCI JOIN CONSULTANT
+   * ============================================================
+   * Employee ID kalau ada, kalau tidak jatuh ke nama yang dinormalkan.
+   * Fallback nama TETAP ADA dengan sengaja: baris lama yang belum di-backfill
+   * (lihat Migration/48_ConsultantIdBackfill) dan baris yang namanya tidak
+   * cocok ke Employee mana pun harus tetap muncul di Dashboard — hilang
+   * diam-diam jauh lebih berbahaya daripada tampil dengan kunci nama.
+   *
+   * Prefix 'id:' / 'nm:' mencegah sebuah Employee ID kebetulan sama dengan
+   * sebuah nama dan diam-diam menggabungkan dua orang berbeda.
+   */
+  function consultantKey(employeeId, name) {
+    var id = String(employeeId == null ? '' : employeeId).trim();
+    if (id) return 'id:' + id;
+    var nm = String(name == null ? '' : name).trim().toLowerCase();
+    return nm ? 'nm:' + nm : 'nm:(tanpa consultant)';
+  }
+
+  /**
    * Date -> ISO string, TIDAK PERNAH mengembalikan objek Date mentah ke
    * client — lihat catatan modul di atas soal serialisasi google.script.run.
    */
@@ -118,8 +138,8 @@ var DashboardService = (function (module) {
         // Consultant sesuai porsi klaimnya sendiri di link yang sama.
         var verifiedRatio = claimed > 0 ? within / claimed : 0;
         (row.claims || []).forEach(function (c) {
-          var name = c.Consultant || '(tanpa Consultant)';
-          verifiedByConsultant[name] = (verifiedByConsultant[name] || 0) + num(c.Amount) * verifiedRatio;
+          var key = consultantKey(c.Consultant_Employee_ID, c.Consultant);
+          verifiedByConsultant[key] = (verifiedByConsultant[key] || 0) + num(c.Amount) * verifiedRatio;
         });
       }
     });
@@ -145,11 +165,20 @@ var DashboardService = (function (module) {
    * satu link yang diklaim dua Consultant tidak menuduh Consultant yang
    * klaimnya sendiri sudah benar.
    */
-  function buildHygieneByConsultant(matchingRows) {
+  function buildHygieneByConsultant(matchingRows, nameById) {
     var byConsultant = {};
-    function bucket(name) {
-      if (!byConsultant[name]) byConsultant[name] = { consultant: name, belumN: 0, belumRp: 0, lebihN: 0, lebihRp: 0 };
-      return byConsultant[name];
+    /** Nama TAMPILAN diambil dari Employee (nama terbaru) kalau ID-nya
+     *  dikenal — bukan nama yang dibekukan di project saat klaim dicatat. */
+    function bucket(claim) {
+      var key = consultantKey(claim.Consultant_Employee_ID, claim.Consultant);
+      if (!byConsultant[key]) {
+        var id = String(claim.Consultant_Employee_ID || '').trim();
+        byConsultant[key] = {
+          consultant: (id && nameById[id]) || claim.Consultant || '(tanpa Consultant)',
+          belumN: 0, belumRp: 0, lebihN: 0, lebihRp: 0
+        };
+      }
+      return byConsultant[key];
     }
 
     matchingRows.forEach(function (row) {
@@ -158,7 +187,7 @@ var DashboardService = (function (module) {
 
       if (!row.hasRealized) {
         (row.claims || []).forEach(function (c) {
-          var b = bucket(c.Consultant || '(tanpa Consultant)');
+          var b = bucket(c);
           b.belumN++;
           b.belumRp += num(c.Amount);
         });
@@ -167,7 +196,7 @@ var DashboardService = (function (module) {
       if (claimed > realized) {
         var excess = claimed - realized;
         (row.claims || []).forEach(function (c) {
-          var b = bucket(c.Consultant || '(tanpa Consultant)');
+          var b = bucket(c);
           b.lebihN++;
           // Kelebihan dibagi rata sesuai porsi klaim Consultant itu di link
           // ini — bukan ditimpakan penuh ke satu orang saja.
@@ -238,7 +267,20 @@ var DashboardService = (function (module) {
    * ini per project retainer". Kalau nanti nilai kontrak penuh disimpan,
    * kartu ini baru bisa jadi bullet chart terhadap target.
    */
-  function buildRetainerRows(projects) {
+  /**
+   * Retainer — KEPUTUSAN PRODUK: tidak ada nilai kontrak yang tersimpan,
+   * jadi retainer TIDAK punya target dan kartunya TIDAK menampilkan
+   * persentase apa pun. Yang ditampilkan hanya: nama Client, nama Project,
+   * nama Owner (Consultant), GDV yang sudah terkumpul, plus total GDV
+   * seluruh project retainer.
+   *
+   * Baris termin (Revenue_Breakdown ber-Entry_Date) tetap jadi SUMBER
+   * angkanya — GDV terkumpul adalah jumlah seluruh termin yang sudah
+   * tercatat — tapi jumlah terminnya sendiri tidak lagi ditampilkan karena
+   * tanpa jumlah termin yang disepakati, "8 termin" tidak bisa dinilai
+   * banyak atau sedikit.
+   */
+  function buildRetainerRows(projects, clientNameById, nameById) {
     var projectById = {};
     projects.forEach(function (p) { projectById[p.Project_ID] = p; });
 
@@ -248,22 +290,25 @@ var DashboardService = (function (module) {
       var p = projectById[r.Project_ID];
       if (!p || !p.Is_Retainer) return;
       if (!byProject[r.Project_ID]) {
-        byProject[r.Project_ID] = { projectId: r.Project_ID, projectName: p.Project_Name || r.Project_ID,
-          consultant: p.Consultant || '', terminCount: 0, totalGdv: 0, lastEntryDate: null };
+        var empId = String(p.Consultant_Employee_ID || '').trim();
+        byProject[r.Project_ID] = {
+          projectId: r.Project_ID,
+          projectName: p.Project_Name || r.Project_ID,
+          clientName: clientNameById[p.Client_ID] || '(client tidak ditemukan)',
+          owner: (empId && nameById[empId]) || p.Consultant || '(tanpa Owner)',
+          totalGdv: 0
+        };
       }
-      var b = byProject[r.Project_ID];
-      b.terminCount++;
-      b.totalGdv += num(r.Amount);
-      var d = new Date(r.Entry_Date);
-      if (!isNaN(d.getTime()) && (!b._lastEntryDateObj || d > b._lastEntryDateObj)) b._lastEntryDateObj = d;
+      byProject[r.Project_ID].totalGdv += num(r.Amount);
     });
 
-    return Object.keys(byProject).map(function (k) {
-      var b = byProject[k];
-      b.lastEntryDate = isoOrNull(b._lastEntryDateObj);
-      delete b._lastEntryDateObj;
-      return b;
-    }).sort(function (a, b) { return b.totalGdv - a.totalGdv; });
+    var rows = Object.keys(byProject).map(function (k) { return byProject[k]; })
+      .sort(function (a, b) { return b.totalGdv - a.totalGdv; });
+
+    return {
+      rows: rows,
+      grandTotalGdv: rows.reduce(function (sum, r) { return sum + r.totalGdv; }, 0)
+    };
   }
 
   /**
@@ -290,20 +335,94 @@ var DashboardService = (function (module) {
   }
 
   /**
-   * Berapa banyak Project.Consultant yang TIDAK cocok dengan nama Employee
-   * ber-Role Consultant mana pun — join-nya lewat perbandingan nama teks
-   * (lihat AchievementTargetService), jadi typo/ganti nama diam-diam
-   * membuat project itu lepas dari target siapa pun. Ini penambalan murah
-   * (deteksi), bukan perbaikan (migrasi ke Employee ID adalah pekerjaan
-   * tersendiri).
+   * ============================================================
+   * IMPLEMENTATION FEE — SALSET Fee + Profit Margin
+   * ============================================================
+   * KEPUTUSAN PRODUK: Gross Up TIDAK dihitung. Itu sejalan dengan data yang
+   * ada — CorService.computeAndPersistCorResult() memang hanya menulis
+   * COR_Result untuk dokumen ber-metode GROSS_DOWN dan MENGOSONGKAN ledger
+   * untuk Gross Up, jadi tidak ada angka Gross Up untuk dijumlah sekalipun
+   * kita mau.
+   *
+   * Dua batas yang WAJIB ikut ditampilkan di kartunya, bukan disembunyikan:
+   * - Salset_NGO_Fee hanya terisi untuk project yang lewat SALSET; kalau
+   *   tidak, komponennya profit saja. Itu benar, bukan data hilang.
+   * - Penyebutnya adalah dokumen COR yang PUNYA ledger, bukan seluruh
+   *   project. Tanpa penyebut yang tertulis, angka ini akan dibandingkan
+   *   dengan GDV Actual di sebelahnya — dua angka dengan cakupan project
+   *   yang sama sekali berbeda.
+   *
+   * Satu dokumen Mix Fund menghasilkan DUA baris COR_Result (tab CLIENT &
+   * CAMPAIGN); keduanya memang harus dijumlah, jadi yang dihitung baris,
+   * sementara "cakupan" dihitung per Doc_ID unik.
+   */
+  function buildImplementationFee() {
+    var salsetFee = 0, profitMargin = 0;
+    var docIds = {};
+    CorResultRepository.findAll().forEach(function (r) {
+      salsetFee += num(r.Salset_NGO_Fee);
+      profitMargin += num(r.Profit_Estimate_Vendor);
+      if (r.Doc_ID) docIds[r.Doc_ID] = true;
+    });
+
+    // Penyebut: berapa dokumen COR yang ada sama sekali, supaya cakupannya
+    // bisa dinyatakan terbuka ("dari N dari M COR").
+    var totalCorDocs = 0;
+    DocumentPipelineRepository.findAll().forEach(function (d) {
+      if (d.Document_Type === 'COR') totalCorDocs++;
+    });
+
+    return {
+      salsetFee: salsetFee,
+      profitMargin: profitMargin,
+      total: salsetFee + profitMargin,
+      corWithLedger: Object.keys(docIds).length,
+      corTotal: totalCorDocs
+    };
+  }
+
+  /**
+   * GDV & Platform Fee dipecah jadi DUA kelompok sesuai permintaan:
+   * Web sendiri, Apps & 3rd Party digabung. Nilai Main_Source diambil apa
+   * adanya dari data (bukan daftar tetap) — apa pun yang BUKAN 'Web' masuk
+   * kelompok "Apps & 3rd Party", jadi nilai baru dari Tableau tidak pernah
+   * diam-diam hilang dari total.
+   */
+  function splitMainSource(mainSourceSummary) {
+    var out = { webGdv: 0, appsThirdGdv: 0, webFee: 0, appsThirdFee: 0, sources: [] };
+    (mainSourceSummary || []).forEach(function (m) {
+      var isWeb = String(m.mainSource || '').trim().toLowerCase() === 'web';
+      if (isWeb) {
+        out.webGdv += num(m.realizedNominal);
+        out.webFee += num(m.platformFee);
+      } else {
+        out.appsThirdGdv += num(m.realizedNominal);
+        out.appsThirdFee += num(m.platformFee);
+      }
+      out.sources.push({ k: m.mainSource, v: num(m.realizedNominal), fee: num(m.platformFee), web: isWeb });
+    });
+    return out;
+  }
+
+  /**
+   * Berapa banyak project non-draft yang Consultant-nya TIDAK punya
+   * Employee ID — entah karena belum di-backfill, atau karena namanya
+   * memang tidak cocok ke Employee mana pun (atau cocok ke lebih dari satu,
+   * yang sengaja diperlakukan sebagai tidak cocok — lihat
+   * EmployeeService.resolveConsultantId).
+   *
+   * Baris seperti ini TETAP muncul di Dashboard lewat fallback kunci nama,
+   * jadi angkanya tidak hilang — tapi join-nya rapuh, dan itulah yang
+   * dihitung di sini supaya bisa ditampilkan sebagai peringatan.
+   *
+   * Setelah Migration/48_ConsultantIdBackfill dijalankan, angka ini
+   * seharusnya tinggal sisa yang benar-benar bermasalah.
    */
   function countConsultantMismatch(projects) {
-    var consultantNames = {};
-    EmployeeService.getActiveEmployees().forEach(function (e) {
-      if (e.Role === Config.EMPLOYEE_ROLE.CONSULTANT) consultantNames[e.Name] = true;
-    });
     return projects.filter(function (p) {
-      return !p.Is_Draft && p.Consultant && !consultantNames[p.Consultant];
+      if (p.Is_Draft) return false;
+      if (!p.Consultant) return false;
+      return !String(p.Consultant_Employee_ID || '').trim();
     }).length;
   }
 
@@ -314,8 +433,8 @@ var DashboardService = (function (module) {
    * (GDV_Controller) — kalau ID-nya salah konfigurasi atau sheet-nya
    * bermasalah, seluruh Dashboard TIDAK BOLEH ikut kosong/macet cuma
    * karena bagian ini gagal. Degradasi ke struktur kosong + tandai
-   * gdvMatchingError supaya Section 1&2 tetap tampil (dengan angka GDV
-   * realisasi = 0, jelas terlihat salah, bukan diam-diam kosong semua).
+   * error supaya Section 1&2 tetap tampil (dengan angka GDV realisasi = 0,
+   * jelas terlihat salah, bukan diam-diam kosong semua).
    */
   function safeGetMatching() {
     try {
@@ -335,8 +454,17 @@ var DashboardService = (function (module) {
     var deptTarget = AchievementTargetService.getDepartmentTarget();
     var uploadLog = GdvControllerUploadLogRepository.findLatest();
 
+    var nameById = EmployeeService.getEmployeeNameById();
+    var clientNameById = {};
+    ClientRepository.findAll().forEach(function (c) { clientNameById[c.Client_ID] = c.Brand_Name || ''; });
+
     var targets = AchievementTargetService.getAllTargets();
+    // Won & forecast per Consultant dikunci Employee ID (jatuh ke nama untuk
+    // baris yang belum di-backfill) — SAMA persis dengan kunci yang dipakai
+    // splitClaims, supaya "verified" dan "won" tidak mungkin nyangkut di dua
+    // ember berbeda untuk orang yang sama.
     var wonByConsultant = {};
+    var forecastByConsultant = {};
     var stageAgg = {};
     Config.PIPELINE_STAGE_LIST.forEach(function (s) { stageAgg[s] = { stage: s, count: 0, gdv: 0 }; });
     nonDraftProjects.forEach(function (p) {
@@ -344,21 +472,30 @@ var DashboardService = (function (module) {
         stageAgg[p.Stage].count++;
         stageAgg[p.Stage].gdv += num(p.Total_GDV);
       }
-      if (p.Stage === 'Won' && p.Consultant) {
-        wonByConsultant[p.Consultant] = (wonByConsultant[p.Consultant] || 0) + num(p.Total_GDV);
+      if (!p.Consultant && !p.Consultant_Employee_ID) return;
+      var key = consultantKey(p.Consultant_Employee_ID, p.Consultant);
+      if (p.Stage === 'Won') {
+        wonByConsultant[key] = (wonByConsultant[key] || 0) + num(p.Total_GDV);
+      } else if (p.Stage === 'Prospect' || p.Stage === 'Negotiation') {
+        forecastByConsultant[key] = (forecastByConsultant[key] || 0) + num(p.Total_GDV);
       }
     });
 
     var consultants = targets.map(function (t) {
-      var name = t.Consultant_Name;
+      var key = consultantKey(t.Consultant_Employee_ID, t.Consultant_Name);
+      var empId = String(t.Consultant_Employee_ID || '').trim();
       return {
-        name: name,
+        // Nama TAMPILAN dari Employee (selalu terbaru) kalau ID-nya dikenal.
+        name: (empId && nameById[empId]) || t.Consultant_Name,
         target: num(t.Target_GDV),
-        won: wonByConsultant[name] || 0,
-        verified: split.verifiedByConsultant[name] || 0
+        won: wonByConsultant[key] || 0,
+        forecast: forecastByConsultant[key] || 0,
+        verified: split.verifiedByConsultant[key] || 0,
+        joinedById: !!empId
       };
     });
     var assignedTarget = consultants.reduce(function (sum, c) { return sum + c.target; }, 0);
+    var ms = splitMainSource(matching.mainSourceSummary);
 
     return {
       section1: {
@@ -379,6 +516,13 @@ var DashboardService = (function (module) {
         mainSource: (matching.mainSourceSummary || []).map(function (m) {
           return { k: m.mainSource, v: m.realizedNominal };
         }),
+        /* Kartu 1 & 2 — Web sendiri, Apps & 3rd Party digabung. */
+        gdvWeb: ms.webGdv,
+        gdvAppsThird: ms.appsThirdGdv,
+        feeWeb: ms.webFee,
+        feeAppsThird: ms.appsThirdFee,
+        /* Kartu 4 — Gross Down saja, sesuai keputusan produk. */
+        impl: buildImplementationFee(),
         ads: safeBuildAdsRows(projects),
         // "Data per" — GDV_Controller adalah snapshot yang ditimpa setiap
         // upload, BUKAN seri waktu (lihat catatan modul GdvMatchingService).
@@ -400,8 +544,8 @@ var DashboardService = (function (module) {
         assignedTarget: assignedTarget,
         stage: Config.PIPELINE_STAGE_LIST.map(function (s) { return stageAgg[s]; }),
         dealMandek: buildDealMandek(projects),
-        retainer: buildRetainerRows(nonDraftProjects),
-        hygiene: buildHygieneByConsultant(matching.rows),
+        retainer: buildRetainerRows(nonDraftProjects, clientNameById, nameById),
+        hygiene: buildHygieneByConsultant(matching.rows, nameById),
         consultantMismatchCount: countConsultantMismatch(projects)
       },
       generatedAt: isoOrNull(new Date())
@@ -531,6 +675,46 @@ var DashboardService = (function (module) {
   }
 
   /**
+   * Berapa client yang KOSONG di tiap field — bukan satu angka "% lengkap".
+   * "68% belum lengkap" tidak bisa ditindaklanjuti siapa pun; "112 client
+   * tanpa Head Office" bisa langsung dikerjakan, dan urutannya sekaligus
+   * memberi tahu mana yang harus diketik lebih dulu.
+   *
+   * Industry ikut walau BUKAN syarat kelengkapan (lihat COMPLETENESS_FIELDS)
+   * — ia field yang paling sering kosong dan dipakai kartu 14, jadi berguna
+   * dilihat berdampingan. Diberi label apa adanya, tidak diklaim sebagai
+   * syarat lengkap.
+   */
+  var MISSING_FIELD_LABELS = [
+    { key: 'Head_Office', label: 'Head Office' },
+    { key: 'Entity_Name', label: 'Entity Name' },
+    { key: 'Entity_Type', label: 'Entity Type' },
+    { key: 'Brand_Name', label: 'Brand Name' },
+    { key: 'Client_Source', label: 'Client Source' },
+    { key: 'Industry', label: 'Industry (bukan syarat lengkap)' }
+  ];
+
+  function buildMissingByField(clients, pics) {
+    var picCountByClient = {};
+    pics.forEach(function (p) { picCountByClient[p.Client_ID] = (picCountByClient[p.Client_ID] || 0) + 1; });
+
+    var rows = MISSING_FIELD_LABELS.map(function (f) {
+      return {
+        k: f.label,
+        v: clients.filter(function (c) { return !String(c[f.key] || '').trim(); }).length
+      };
+    });
+    rows.push({
+      k: 'PIC (min. 1)',
+      v: clients.filter(function (c) { return (picCountByClient[c.Client_ID] || 0) < 1; }).length
+    });
+
+    // Field yang tidak ada yang kosong tidak perlu jadi bar kosong.
+    return rows.filter(function (r) { return r.v > 0; })
+      .sort(function (a, b) { return b.v - a.v; });
+  }
+
+  /**
    * Corong Lead -> Won. HANYA client dengan Is_From_Lead=true yang boleh
    * masuk — client outbound tidak boleh ikut terhitung, kalau ikut angka
    * konversinya akan terlihat jauh lebih bagus dari kenyataan.
@@ -571,6 +755,7 @@ var DashboardService = (function (module) {
       industry: groupCount(clients, function (c) { return c.Industry; }, 'Belum diisi'),
       funnel: buildFunnel(leads, clients, projects),
       clientCleanliness: buildClientCleanliness(clients, pics, projects),
+      missingByField: buildMissingByField(clients, pics),
       totalClients: clients.length,
       generatedAt: isoOrNull(new Date())
     };

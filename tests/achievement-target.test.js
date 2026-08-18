@@ -44,7 +44,7 @@ function loadConfig() {
 const Config = loadConfig();
 
 function buildService(targets) {
-  const store = { targets: (targets || []).slice() };
+  const store = { targets: (targets || []).slice(), employees: [] };
   const ctx = { console, Log: { info() {}, warn() {}, error() {} } };
   ctx.global = ctx;
   vm.createContext(ctx);
@@ -59,10 +59,28 @@ function buildService(targets) {
   ctx.AchievementTargetRepository = {
     findAll: () => store.targets,
     create: (t) => { store.targets.push(t); },
+    // Kolom self-migrating (Scope, Consultant_Employee_ID) — no-op di tes,
+    // yang penting fungsinya ADA supaya service tidak meledak.
+    ensureColumns: () => {},
+    updateById: (id, patch) => {
+      const row = store.targets.find(t => t.Target_ID === id);
+      if (!row) return false;
+      Object.assign(row, patch);
+      return true;
+    },
     deleteById: (id) => {
       const before = store.targets.length;
       store.targets = store.targets.filter(t => t.Target_ID !== id);
       return before - store.targets.length > 0;
+    }
+  };
+  // Resolver nama -> Employee ID dipakai addTarget untuk mengisi
+  // Consultant_Employee_ID berdampingan dengan namanya.
+  ctx.EmployeeService = {
+    resolveConsultantId: (name) => {
+      const hit = (store.employees || []).filter(
+        e => String(e.Name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
+      return hit.length === 1 ? hit[0].Id : null;
     }
   };
 

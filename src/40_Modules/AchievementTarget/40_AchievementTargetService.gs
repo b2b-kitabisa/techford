@@ -113,15 +113,21 @@ var AchievementTargetService = (function (module) {
       throw new AppError('DUPLICATE_VALUE', 'Consultant ini sudah punya target — hapus dulu barisnya kalau mau mengganti nilainya.');
     }
 
+    // Consultant_Employee_ID ditulis berdampingan dengan namanya — kunci
+    // join sungguhan untuk Dashboard, sementara Consultant_Name tetap ada
+    // sebagai kolom tampilan (dipakai tabel Achievement Setting sendiri).
+    // Kosong kalau namanya tidak cocok ke Employee mana pun; TIDAK ditebak.
+    AchievementTargetRepository.ensureColumns(['Consultant_Employee_ID']);
     AchievementTargetRepository.create({
       Target_ID: Utils.generateId('ACH'),
       Consultant_Name: String(consultantName).trim(),
+      Consultant_Employee_ID: EmployeeService.resolveConsultantId(consultantName) || '',
       Target_GDV: gdv,
       Target_Service_Revenue: serviceRevenue,
       Created_By: createdBy || '',
       Created_Date: new Date()
     });
-    return AchievementTargetRepository.findAll();
+    return module.getAllTargets();
   };
 
   module.deleteTarget = function (targetId) {
@@ -129,7 +135,7 @@ var AchievementTargetService = (function (module) {
     if (!deleted) {
       throw new AppError('NOT_FOUND', 'Target tidak ditemukan.');
     }
-    return AchievementTargetRepository.findAll();
+    return module.getAllTargets();
   };
 
   return module;

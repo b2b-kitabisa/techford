@@ -2212,8 +2212,60 @@
     border-radius: var(--radius-md); padding: 15px 16px 14px; box-shadow: var(--shadow-sm);
     display: flex; flex-direction: column; gap: 10px;
   }
-  .dsh-c5 { grid-column: span 5; } .dsh-c6 { grid-column: span 6; } .dsh-c7 { grid-column: span 7; } .dsh-c12 { grid-column: span 12; }
+  .dsh-c3 { grid-column: span 3; } .dsh-c5 { grid-column: span 5; } .dsh-c6 { grid-column: span 6; }
+  .dsh-c7 { grid-column: span 7; } .dsh-c12 { grid-column: span 12; }
+  @media (max-width: 1180px) { .dsh-c3 { grid-column: span 6; } }
   @media (max-width: 980px) { .dsh-c5, .dsh-c6, .dsh-c7 { grid-column: span 12; } }
+  @media (max-width: 620px) { .dsh-c3 { grid-column: span 12; } }
+
+  /* ---- Dashboard Sales: KPI tile Section 1 ---- */
+  .dsh-kpi-lbl { font-size: 10px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); }
+  .dsh-kpi-val { font-family: var(--font-mono); font-size: 25px; font-weight: 700; letter-spacing: -0.02em; margin-top: 5px; }
+  .dsh-kpi-sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .dsh-kpi-cap { font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); margin-top: 13px; }
+  /* Celah 2px = warna permukaan, bukan garis — pemisah antar segmen. */
+  .dsh-split { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+  .dsh-split > span { display: block; height: 100%; }
+  .dsh-kpi-leg { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .dsh-kpi-leg-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); }
+  .dsh-kpi-leg-row i { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; display: inline-block; margin-right: 6px; }
+  .dsh-kpi-leg-row b { font-family: var(--font-mono); font-weight: 700; color: var(--color-mineshaft); }
+  .dsh-rate { display: inline-flex; font-size: 11.5px; font-weight: 800; padding: 3px 8px; border-radius: 6px;
+    background: var(--accent-tint-strong); color: var(--color-cerulean); margin-top: 9px; }
+
+  /* Kartu yang sengaja DITAHAN — tidak pernah dirender angka 0. */
+  .dsh-card.held { border-style: dashed; background: var(--bg-tint); }
+  .dsh-held-txt { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin-top: 8px; }
+
+  /* Tekstur = nilai yang BELUM jadi uang (forecast) atau belum ada data.
+     Dipakai untuk ARTI, bukan hiasan — lihat catatan di DashboardSalesContent. */
+  .dsh-hatch {
+    background-color: var(--accent-tint);
+    background-image: repeating-linear-gradient(45deg, var(--color-cerulean) 0 3px, transparent 3px 7px);
+  }
+  .dsh-kpi-leg-row i.dsh-hatch, .dsh-legend-item i.dsh-hatch {
+    background-image: repeating-linear-gradient(45deg, var(--color-cerulean) 0 1.5px, transparent 1.5px 3.5px);
+  }
+
+  /* Stacked bullet bar: segmen aktual bertumpuk + forecast + garis target. */
+  .dsh-sbb { position: relative; height: 28px; border-radius: 5px; background: var(--bg-hover); }
+  .dsh-sbb-track { position: absolute; inset: 0; display: flex; gap: 2px; border-radius: 5px; overflow: hidden; }
+  .dsh-sbb-track > span { display: block; height: 100%; }
+  .dsh-sbb-ref { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--color-mineshaft); }
+  .dsh-sbb-ref-lbl { position: absolute; top: -20px; transform: translateX(-50%); white-space: nowrap;
+    font-size: 10px; font-weight: 800; color: var(--color-mineshaft); }
+  .dsh-sbb-wrap { padding-top: 22px; }
+
+  /* Donut */
+  .dsh-donut-wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .dsh-donut-val { font-family: var(--font-mono); font-size: 18px; font-weight: 700; fill: var(--color-mineshaft); }
+  .dsh-donut-lbl { font-size: 8px; font-weight: 700; fill: var(--text-faint); letter-spacing: 0.08em; text-transform: uppercase; }
+  .dsh-donut-leg { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 0; }
+
+  /* Bar di dalam sel tabel */
+  .dsh-tb-bar { height: 7px; border-radius: 4px; background: var(--accent-tint); position: relative; min-width: 54px; margin-top: 4px; }
+  .dsh-tb-bar > i { display: block; height: 100%; border-radius: 4px; }
+  .dsh-tb-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-muted); }
   .dsh-card-hd h4 { margin: 0; font-size: 13.5px; font-weight: 700; }
   .dsh-card-sub { font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0; }
   .dsh-card-ft { font-size: 10.5px; color: var(--text-faint); border-top: 1px solid var(--border-softer); padding-top: 8px; margin-top: auto; line-height: 1.5; }

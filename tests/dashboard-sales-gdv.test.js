@@ -72,11 +72,20 @@ function buildService(opts) {
     getDepartmentTarget: () => opts.deptTarget || null
   };
   ctx.AdsProgressService = { getProgressForLinks: () => ({}) };
-  ctx.EmployeeService = { getActiveEmployees: () => opts.employees || [] };
+  ctx.EmployeeService = {
+    getActiveEmployees: () => opts.employees || [],
+    getEmployeeNameById: () => {
+      const map = {};
+      (opts.employees || []).forEach(e => { if (e.Id) map[e.Id] = e.Name; });
+      return map;
+    }
+  };
   ctx.GdvControllerUploadLogRepository = { findLatest: () => null };
   ctx.LeadRepository = { findAll: () => opts.leads || [] };
   ctx.ClientRepository = { findAll: () => opts.clients || [] };
   ctx.PicClientRepository = { findAll: () => opts.pics || [] };
+  ctx.CorResultRepository = { findAll: () => opts.corResults || [] };
+  ctx.DocumentPipelineRepository = { findAll: () => opts.documents || [] };
 
   vm.runInContext(fs.readFileSync(path.join(SRC, '40_Modules/Dashboard/40_DashboardService.gs'), 'utf8'), ctx);
   return ctx.DashboardService;
@@ -147,20 +156,37 @@ console.log('\n2) "Terkonfirmasi Tableau" per Consultant dibagi proporsional & t
     byName.Rina.verified + byName.Budi.verified === res.section1.claimedWithin,
     (byName.Rina.verified + byName.Budi.verified) + ' vs ' + res.section1.claimedWithin);
   ok('GDV Won per Consultant dihitung dari Project.Stage=Won', byName.Rina.won === 500 && byName.Budi.won === 400);
-  ok('Consultant mismatch = 0 (semua nama cocok Employee)', res.section2.consultantMismatchCount === 0);
+  ok('Consultant mismatch = 2 (project belum punya Consultant_Employee_ID)',
+    res.section2.consultantMismatchCount === 2, res.section2.consultantMismatchCount);
 }
 
-console.log('\n3) Consultant di Project tidak cocok Employee manapun -> terdeteksi, bukan diam-diam');
+console.log('\n3) Mismatch dihitung dari Consultant_Employee_ID yang KOSONG, bukan dari nama');
 {
   const matching = { rows: [], summary: { totalRealized: 0, totalPlatformFee: 0 }, aliasAmbiguous: [], mainSourceSummary: [] };
   const projects = [
-    { Project_ID: 'P1', Consultant: 'Nama Lama', Stage: 'Won', Total_GDV: 100, Is_Draft: false },
+    // sudah di-backfill -> TIDAK dihitung mismatch walau namanya aneh
+    { Project_ID: 'P1', Consultant: 'Nama Lama', Consultant_Employee_ID: 'EMP-1', Stage: 'Won', Total_GDV: 100, Is_Draft: false },
+    // belum punya ID -> dihitung mismatch
     { Project_ID: 'P2', Consultant: 'Rina', Stage: 'Won', Total_GDV: 100, Is_Draft: false },
-    { Project_ID: 'P3', Consultant: 'Draft Saja', Stage: 'Prospect', Total_GDV: 0, Is_Draft: true }
+    // draft -> dikecualikan
+    { Project_ID: 'P3', Consultant: 'Draft Saja', Stage: 'Prospect', Total_GDV: 0, Is_Draft: true },
+    // tanpa Consultant sama sekali -> bukan mismatch, memang belum ditugaskan
+    { Project_ID: 'P4', Consultant: '', Stage: 'Prospect', Total_GDV: 0, Is_Draft: false }
   ];
-  const svc = buildService({ matching, projects, employees: [{ Name: 'Rina', Role: 'Consultant' }] });
+  const svc = buildService({ matching, projects, employees: [{ Id: 'EMP-1', Name: 'Rina Baru', Role: 'Consultant' }] });
   const res = svc.getSalesGdv();
-  ok('draft dikecualikan dari pemeriksaan mismatch', res.section2.consultantMismatchCount === 1, res.section2.consultantMismatchCount);
+  ok('project yang sudah punya Employee ID tidak dihitung mismatch walau namanya usang',
+    res.section2.consultantMismatchCount === 1, res.section2.consultantMismatchCount);
+
+  // Won dikunci ID: P1 (EMP-1) terpisah dari P2 (fallback nama).
+  const targets = [{ Consultant_Name: 'Rina Lama', Consultant_Employee_ID: 'EMP-1', Target_GDV: 1000 }];
+  const svc2 = buildService({ matching, projects, targets, employees: [{ Id: 'EMP-1', Name: 'Rina Baru', Role: 'Consultant' }] });
+  const c = svc2.getSalesGdv().section2.consultants[0];
+  ok('join Won lewat Employee ID tetap nyambung walau nama di target & project BERBEDA',
+    c.won === 100, c.won);
+  ok('nama tampilan diambil dari Employee (terbaru), bukan dari Achievement_Target',
+    c.name === 'Rina Baru', c.name);
+  ok('joinedById ditandai true', c.joinedById === true);
 }
 
 console.log('\n4) Klaim bermasalah per Consultant menjumlah balik ke totalnya sendiri');
@@ -208,17 +234,33 @@ console.log('\n5) Retainer & Deal Mandek — hanya masuk kalau syaratnya benar-b
     // baris CSR TANPA Entry_Date (bukan termin retainer) tidak ikut dihitung
     { Project_ID: 'NONRET', Value_Type: 'GDV', Source_Service: 'CSR', Entry_Date: '', Amount: 999 }
   ];
-  const svc = buildService({ matching, projects, revenueBreakdown, targets: [], employees: [] });
+  const clients = [
+    { Client_ID: 'CL1', Brand_Name: 'Klien Retainer' },
+    { Client_ID: 'CL2', Brand_Name: 'Klien Biasa' }
+  ];
+  projects[0].Client_ID = 'CL1';
+  projects[0].Consultant_Employee_ID = 'EMP-1';
+  projects[1].Client_ID = 'CL2';
+  const svc = buildService({
+    matching, projects, revenueBreakdown, clients, targets: [],
+    employees: [{ Id: 'EMP-1', Name: 'Rina Baru', Role: 'Consultant' }]
+  });
   const res = svc.getSalesGdv();
+  const ret = res.section2.retainer;
 
-  ok('hanya project Is_Retainer=true yang muncul di kartu Retainer', res.section2.retainer.length === 1,
-    JSON.stringify(res.section2.retainer.map(r => r.projectId)));
-  ok('total termin Retainer benar (2 baris)', res.section2.retainer[0].terminCount === 2);
-  ok('total GDV Retainer benar (100+100)', res.section2.retainer[0].totalGdv === 200);
+  ok('hanya project Is_Retainer=true yang muncul di kartu Retainer', ret.rows.length === 1,
+    JSON.stringify(ret.rows.map(r => r.projectId)));
+  ok('total GDV Retainer benar (100+100)', ret.rows[0].totalGdv === 200);
+  ok('grandTotalGdv = jumlah seluruh project retainer', ret.grandTotalGdv === 200, ret.grandTotalGdv);
+  ok('Retainer membawa nama Client', ret.rows[0].clientName === 'Klien Retainer', ret.rows[0].clientName);
+  ok('Retainer membawa nama Project', ret.rows[0].projectName === 'Retainer Aktif', ret.rows[0].projectName);
+  // Owner diambil dari Employee lewat ID — BUKAN nama yang dibekukan di project.
+  ok('Owner memakai nama Employee terbaru lewat Employee ID (bukan nama beku di project)',
+    ret.rows[0].owner === 'Rina Baru', ret.rows[0].owner);
+  ok('Retainer TIDAK lagi membawa termin/target (keputusan 3)',
+    ret.rows[0].terminCount === undefined && ret.rows[0].lastEntryDate === undefined);
   ok('deal mandek hanya yang >45 hari (MANDEK1, bukan MASIHBARU)',
     res.section2.dealMandek.length === 1 && res.section2.dealMandek[0].projectId === 'MANDEK1');
-  ok('lastEntryDate dikirim sebagai string ISO, bukan objek Date',
-    typeof res.section2.retainer[0].lastEntryDate === 'string');
 }
 
 console.log('\n6) Tidak ada objek Date mentah di payload getSalesGdv() (google.script.run wajib string ISO)');
@@ -297,11 +339,13 @@ console.log('\n8b) GdvMatchingService gagal (spreadsheet eksternal bermasalah) -
   ctx.GdvMatchingService = { getMatching: () => { throw new ctx.AppError('SHEET_NOT_FOUND', 'Sheet GDV_Controller tidak ditemukan.'); } };
   ctx.AchievementTargetService = { getAllTargets: () => [{ Consultant_Name: 'Rina', Target_GDV: 1000 }], getDepartmentTarget: () => null };
   ctx.AdsProgressService = { getProgressForLinks: () => ({}) };
-  ctx.EmployeeService = { getActiveEmployees: () => [] };
+  ctx.EmployeeService = { getActiveEmployees: () => [], getEmployeeNameById: () => ({}) };
   ctx.GdvControllerUploadLogRepository = { findLatest: () => null };
   ctx.LeadRepository = { findAll: () => [] };
   ctx.ClientRepository = { findAll: () => [] };
   ctx.PicClientRepository = { findAll: () => [] };
+  ctx.CorResultRepository = { findAll: () => [] };
+  ctx.DocumentPipelineRepository = { findAll: () => [] };
   vm.runInContext(fs.readFileSync(path.join(SRC, '40_Modules/Dashboard/40_DashboardService.gs'), 'utf8'), ctx);
 
   let res;
@@ -370,6 +414,75 @@ console.log('\n8) Section 3 — Inbound Health, corong Lead→Won, dan kebersiha
   ok('Kebersihan Client: total = 3', res.clientCleanliness.total === 3);
 
   ok('generatedAt Section 3 berupa string ISO, bukan objek Date', typeof res.generatedAt === 'string', res.generatedAt);
+
+  // Kartu 15 — per FIELD yang kosong, bukan satu angka "% lengkap".
+  const mf = {};
+  res.missingByField.forEach(m => { mf[m.k] = m.v; });
+  ok('missingByField: Head Office kosong = 1 (C2)', mf['Head Office'] === 1, JSON.stringify(res.missingByField));
+  ok('missingByField: Industry kosong = 1 (C2)', mf['Industry (bukan syarat lengkap)'] === 1);
+  ok('missingByField: PIC kosong = 1 (C2 tidak punya PIC)', mf['PIC (min. 1)'] === 1);
+  ok('missingByField TIDAK memunculkan field yang tidak ada kosongnya',
+    res.missingByField.every(m => m.v > 0));
+  ok('missingByField diurutkan dari yang paling banyak kosong',
+    res.missingByField.every((m, i, a) => i === 0 || a[i - 1].v >= m.v));
+}
+
+console.log('\n9) Kartu 1/2/4 — split Web vs Apps&3rd, dan Implementation Fee (Gross Down saja)');
+{
+  const matching = {
+    rows: [], summary: { totalRealized: 300, totalPlatformFee: 15 },
+    aliasAmbiguous: [],
+    mainSourceSummary: [
+      { mainSource: 'Apps', realizedNominal: 180, platformFee: 9 },
+      { mainSource: 'Web', realizedNominal: 100, platformFee: 5 },
+      { mainSource: '3rd Party', realizedNominal: 20, platformFee: 1 }
+    ]
+  };
+  // Satu dokumen Mix Fund = DUA baris COR_Result (CLIENT + CAMPAIGN) -> harus
+  // dijumlah nominalnya, tapi cakupannya dihitung per Doc_ID unik.
+  const corResults = [
+    { Doc_ID: 'DOC-1', Cor_Tab: 'CLIENT',   Salset_NGO_Fee: 100, Profit_Estimate_Vendor: 40 },
+    { Doc_ID: 'DOC-1', Cor_Tab: 'CAMPAIGN', Salset_NGO_Fee: 0,   Profit_Estimate_Vendor: 25 },
+    { Doc_ID: 'DOC-2', Cor_Tab: 'CLIENT',   Salset_NGO_Fee: 50,  Profit_Estimate_Vendor: 30 }
+  ];
+  const documents = [
+    { Doc_ID: 'DOC-1', Document_Type: 'COR' },
+    { Doc_ID: 'DOC-2', Document_Type: 'COR' },
+    { Doc_ID: 'DOC-3', Document_Type: 'COR' },      // Gross Up -> tanpa ledger
+    { Doc_ID: 'DOC-4', Document_Type: 'QUOTATION' } // bukan COR -> tidak masuk penyebut
+  ];
+  const svc = buildService({ matching, projects: [], targets: [], employees: [], corResults, documents });
+  const s1 = svc.getSalesGdv().section1;
+
+  ok('GDV Web dipisah sendiri', s1.gdvWeb === 100, s1.gdvWeb);
+  ok('GDV Apps & 3rd Party digabung (180+20)', s1.gdvAppsThird === 200, s1.gdvAppsThird);
+  ok('Web + Apps&3rd === totalRealized', s1.gdvWeb + s1.gdvAppsThird === s1.realized);
+  ok('Platform fee ikut dipecah dengan aturan yang sama', s1.feeWeb === 5 && s1.feeAppsThird === 10,
+    s1.feeWeb + '/' + s1.feeAppsThird);
+  ok('Fee Web + Apps&3rd === totalPlatformFee', s1.feeWeb + s1.feeAppsThird === s1.platformFee);
+
+  ok('Implementation Fee = SALSET Fee + Profit Margin', s1.impl.total === 245, s1.impl.total);
+  ok('SALSET Fee dijumlah lintas tab (100+0+50)', s1.impl.salsetFee === 150, s1.impl.salsetFee);
+  ok('Profit Margin dijumlah lintas tab (40+25+30)', s1.impl.profitMargin === 95, s1.impl.profitMargin);
+  ok('cakupan dihitung per Doc_ID unik, bukan per baris', s1.impl.corWithLedger === 2, s1.impl.corWithLedger);
+  ok('penyebut hanya dokumen COR (QUOTATION tidak ikut)', s1.impl.corTotal === 3, s1.impl.corTotal);
+}
+
+console.log('\n10) Main_Source nilai BARU dari Tableau tidak boleh hilang dari total');
+{
+  const matching = {
+    rows: [], summary: { totalRealized: 150, totalPlatformFee: 0 },
+    aliasAmbiguous: [],
+    mainSourceSummary: [
+      { mainSource: 'Web', realizedNominal: 50, platformFee: 0 },
+      { mainSource: 'Kanal Baru Yang Belum Pernah Ada', realizedNominal: 100, platformFee: 0 }
+    ]
+  };
+  const svc = buildService({ matching, projects: [], targets: [], employees: [] });
+  const s1 = svc.getSalesGdv().section1;
+  ok('nilai Main_Source tak dikenal masuk ke Apps & 3rd Party, bukan hilang',
+    s1.gdvAppsThird === 100 && s1.gdvWeb + s1.gdvAppsThird === s1.realized,
+    s1.gdvWeb + '+' + s1.gdvAppsThird + ' vs ' + s1.realized);
 }
 
 console.log('\n=== ' + pass + ' LOLOS, ' + failures.length + ' GAGAL ===');

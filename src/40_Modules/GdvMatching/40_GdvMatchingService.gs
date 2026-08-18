@@ -56,12 +56,17 @@ var GdvMatchingService = (function (module) {
       index[p.Project_ID] = {
         Project_Name: p.Project_Name || '',
         Client_Name: client ? (client.Brand_Name || '') : '',
+        Client_ID: p.Client_ID || '',
         // Consultant ikut dibawa supaya rincian klaim bisa menyebut SIAPA
         // yang mencatatnya. Tanpa ini, satu-satunya cara mengetahui pemilik
         // klaim yang bermasalah adalah membuka project itu satu per satu di
         // Sales Pipeline — padahal halaman ini justru dipakai untuk
         // menelusuri klaim yang tidak cocok.
-        Consultant: p.Consultant || ''
+        Consultant: p.Consultant || '',
+        // Kunci join sungguhan (lihat ConsultantIdBackfill). Nama di atas
+        // tetap dibawa untuk tampilan; yang ini dipakai Dashboard supaya
+        // pencocokan tidak putus saat seorang Consultant ganti nama.
+        Consultant_Employee_ID: p.Consultant_Employee_ID || ''
       };
     });
     return index;
@@ -194,12 +199,13 @@ var GdvMatchingService = (function (module) {
         var resolved = resolveClaimLink(raw, tableau);
         if (!resolved.key) return;
         if (!claimsByLink[resolved.key]) claimsByLink[resolved.key] = [];
-        var proj = projectIndex[r.Project_ID] || { Project_Name: '', Client_Name: '', Consultant: '' };
+        var proj = projectIndex[r.Project_ID] || { Project_Name: '', Client_Name: '', Client_ID: '', Consultant: '', Consultant_Employee_ID: '' };
         claimsByLink[resolved.key].push({
           Project_ID: r.Project_ID,
           Project_Name: proj.Project_Name,
           Client_Name: proj.Client_Name,
           Consultant: proj.Consultant,
+          Consultant_Employee_ID: proj.Consultant_Employee_ID || '',
           Source_Service: r.Source_Service || '',
           Amount: Number(r.Amount) || 0,
           Notes: r.Notes || '',
