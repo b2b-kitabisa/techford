@@ -444,7 +444,7 @@
   var picsLoaded = false;
 
   function picCountFor(clientId) {
-    return allPics.filter(function (p) { return p.Client_ID === clientId; }).length;
+    return (Array.isArray(allPics) ? allPics : []).filter(function (p) { return p.Client_ID === clientId; }).length;
   }
 
   /**
@@ -699,7 +699,7 @@
    * tersimpan paling awal di sheet, bukan pilihan siapa pun.
    */
   function getPrimaryPic(clientId) {
-    var pics = allPics.filter(function (p) { return p.Client_ID === clientId; });
+    var pics = (Array.isArray(allPics) ? allPics : []).filter(function (p) { return p.Client_ID === clientId; });
     if (!pics.length) return null;
     return pics.filter(function (p) { return isTruthyFlag(p.Is_Primary); })[0] || pics[0];
   }
@@ -1803,7 +1803,21 @@
     // komentar di atas fungsi ini).
     try { renderCompletenessPanel(client); } catch (e) { console.error('renderCompletenessPanel gagal:', e); }
     try { renderClientMetrics(client); } catch (e) { console.error('renderClientMetrics gagal:', e); }
-    try { renderPicCarousel('detailPicCarousel', client.Client_ID); } catch (e) { console.error('renderPicCarousel gagal:', e); }
+    try {
+      renderPicCarousel('detailPicCarousel', client.Client_ID);
+    } catch (e) {
+      // JANGAN cuma console.error — itu sebabnya bug ini terlihat berulang:
+      // box "PIC Client" kosong tanpa jejak apa pun yang bisa dilihat admin
+      // (devtools console tidak pernah dibuka orang non-teknis). Tampilkan
+      // errornya LANGSUNG di tempat kartu PIC seharusnya muncul.
+      console.error('renderPicCarousel gagal:', e);
+      var picEl = document.getElementById('detailPicCarousel');
+      if (picEl) {
+        picEl.innerHTML = '<div class="drawer-field-value" style="color: var(--bad);">' +
+          'Gagal memuat PIC Client: ' + escHtml(e && e.message ? e.message : String(e)) +
+          '. Coba tutup lalu buka lagi drawer ini.</div>';
+      }
+    }
   }
 
   /**
@@ -1852,13 +1866,24 @@
    * urutan baris di sheet, jadi PIC utama bisa muncul di tengah-tengah.
    */
   function renderPicCarousel(elementId, clientId) {
-    var editing = document.getElementById('clientEditForm').classList.contains('open');
-    var pics = allPics.filter(function (p) {
-      return p.Client_ID === clientId && editModeRemovedPicIds.indexOf(p.PIC_ID) === -1;
-    });
     var el = document.getElementById(elementId);
+    // Guard eksplisit — kalau allPics BUKAN array saat fungsi ini dipanggil
+    // (mis. race dengan fetchPics yang belum selesai), .filter() di bawah
+    // akan melempar TypeError dan MEMOTONG seluruh fungsi SEBELUM baris
+    // el.innerHTML sempat dieksekusi. Box "PIC Client" jadi tampil BENAR-
+    // BENAR KOSONG (bukan "Belum ada PIC.") karena isi bawaannya di HTML
+    // memang string kosong — dan errornya cuma kelihatan di console
+    // devtools, tidak pernah terlihat oleh admin. Ini precis gejala yang
+    // dilaporkan berulang: tabel benar (baca allPics yang sama, tapi
+    // setelah dipastikan array), drawer kosong total tanpa pesan apa pun.
+    var sumber = Array.isArray(allPics) ? allPics : [];
+    var removedIds = Array.isArray(editModeRemovedPicIds) ? editModeRemovedPicIds : [];
+    var editing = document.getElementById('clientEditForm').classList.contains('open');
+    var pics = sumber.filter(function (p) {
+      return p.Client_ID === clientId && removedIds.indexOf(p.PIC_ID) === -1;
+    });
     var primary = getPrimaryPic(clientId);
-    var primaryId = primary && editModeRemovedPicIds.indexOf(primary.PIC_ID) === -1 ? primary.PIC_ID : null;
+    var primaryId = primary && removedIds.indexOf(primary.PIC_ID) === -1 ? primary.PIC_ID : null;
 
     pics.sort(function (a, b) {
       return (b.PIC_ID === primaryId ? 1 : 0) - (a.PIC_ID === primaryId ? 1 : 0);
@@ -1871,49 +1896,61 @@
       tersembunyi = pics.length - PIC_VISIBLE_LIMIT;
     }
 
+    // Setiap kartu dibangun dalam try/catch SENDIRI-SENDIRI — satu baris PIC
+    // dengan data janggal (mis. field yang seharusnya teks tapi berisi tipe
+    // lain dari sheet) tidak boleh membuat SEMUA kartu PIC lain di client
+    // yang sama ikut tidak tampil. .map() polos akan melempar di baris
+    // pertama yang bermasalah dan membatalkan seluruh array.
     var existingHtml = tampil.map(function (p) {
-      var isPrimary = p.PIC_ID === primaryId;
-      var acts = [];
-      acts.push('<button type="button" class="pic-mini-btn" onclick="openEditPicPopup(\'' +
-        escAttr(p.PIC_ID) + '\')">✏️ Edit</button>');
-      if (p.Phone) {
-        acts.push('<a class="pic-mini-btn" href="https://wa.me/' + escAttr(normalizePhoneNumber(p.Phone)) +
-          '" target="_blank" rel="noopener">WhatsApp</a>');
-      }
-      if (!isPrimary && pics.length > 1) {
-        acts.push('<button type="button" class="pic-mini-btn" onclick="setPrimaryPic(\'' +
-          escAttr(p.PIC_ID) + '\')">↑ Jadikan utama</button>');
-      }
-      if (editing) {
-        acts.push('<button type="button" class="pic-mini-btn danger" onclick="stageExistingPicRemoval(\'' +
-          escAttr(p.PIC_ID) + '\')">Hapus</button>');
-      }
+      try {
+        var isPrimary = p.PIC_ID === primaryId;
+        var acts = [];
+        acts.push('<button type="button" class="pic-mini-btn" onclick="openEditPicPopup(\'' +
+          escAttr(p.PIC_ID) + '\')">✏️ Edit</button>');
+        if (p.Phone) {
+          acts.push('<a class="pic-mini-btn" href="https://wa.me/' + escAttr(normalizePhoneNumber(p.Phone)) +
+            '" target="_blank" rel="noopener">WhatsApp</a>');
+        }
+        if (!isPrimary && pics.length > 1) {
+          acts.push('<button type="button" class="pic-mini-btn" onclick="setPrimaryPic(\'' +
+            escAttr(p.PIC_ID) + '\')">↑ Jadikan utama</button>');
+        }
+        if (editing) {
+          acts.push('<button type="button" class="pic-mini-btn danger" onclick="stageExistingPicRemoval(\'' +
+            escAttr(p.PIC_ID) + '\')">Hapus</button>');
+        }
 
-      return '<div class="pic-card' + (isPrimary ? ' pic-card-primary' : '') + '">' +
-        (isPrimary ? '<div class="pic-primary-tag">PIC Utama</div>' : '') +
-        '<div class="pic-top">' +
-          '<div class="pic-avatar" style="background:' + picAvatarColor(p.PIC_Name) + ';">' +
-            escHtml(picInitials(p.PIC_Name)) + '</div>' +
-          '<div style="min-width:0;">' +
-            '<div class="pic-name-line">' + escHtml(p.PIC_Name) + '</div>' +
-            (p.Title ? '<div class="pic-title-line">' + escHtml(p.Title) + '</div>' : '') +
+        return '<div class="pic-card' + (isPrimary ? ' pic-card-primary' : '') + '">' +
+          (isPrimary ? '<div class="pic-primary-tag">PIC Utama</div>' : '') +
+          '<div class="pic-top">' +
+            '<div class="pic-avatar" style="background:' + picAvatarColor(p.PIC_Name) + ';">' +
+              escHtml(picInitials(p.PIC_Name)) + '</div>' +
+            '<div style="min-width:0;">' +
+              '<div class="pic-name-line">' + escHtml(p.PIC_Name) + '</div>' +
+              (p.Title ? '<div class="pic-title-line">' + escHtml(p.Title) + '</div>' : '') +
+            '</div>' +
           '</div>' +
-        '</div>' +
-        // Label "Email :" / "Phone :" dibuang — alamat email sudah jelas
-        // terlihat sebagai email, dan labelnya hanya menambah keramaian.
-        // Email & telepon dapat tombol salin masing-masing — sebelumnya cuma
-        // teks biasa, jadi menyalinnya berarti menyeleksi manual dan mudah
-        // ikut terbawa spasi atau baris sebelahnya.
-        '<div class="pic-meta">' +
-          (p.Email
-            ? '<div class="contact-line">' + escHtml(p.Email) + cellCopyBtn(p.Email) + '</div>'
-            : '<div>email belum diisi</div>') +
-          (p.Phone
-            ? '<div class="contact-line">' + escHtml(p.Phone) + cellCopyBtn(p.Phone) + '</div>'
-            : '<div>telepon belum diisi</div>') +
-        '</div>' +
-        '<div class="pic-acts">' + acts.join('') + '</div>' +
-        '</div>';
+          // Label "Email :" / "Phone :" dibuang — alamat email sudah jelas
+          // terlihat sebagai email, dan labelnya hanya menambah keramaian.
+          // Email & telepon dapat tombol salin masing-masing — sebelumnya cuma
+          // teks biasa, jadi menyalinnya berarti menyeleksi manual dan mudah
+          // ikut terbawa spasi atau baris sebelahnya.
+          '<div class="pic-meta">' +
+            (p.Email
+              ? '<div class="contact-line">' + escHtml(p.Email) + cellCopyBtn(p.Email) + '</div>'
+              : '<div>email belum diisi</div>') +
+            (p.Phone
+              ? '<div class="contact-line">' + escHtml(p.Phone) + cellCopyBtn(p.Phone) + '</div>'
+              : '<div>telepon belum diisi</div>') +
+          '</div>' +
+          '<div class="pic-acts">' + acts.join('') + '</div>' +
+          '</div>';
+      } catch (e) {
+        console.error('Gagal merender kartu PIC ' + (p && p.PIC_ID) + ':', e);
+        return '<div class="pic-card"><div class="drawer-field-value" style="color: var(--bad);">' +
+          'Gagal menampilkan PIC "' + escHtml((p && p.PIC_Name) || '?') + '" (' + escHtml(e.message) + ')' +
+          '</div></div>';
+      }
     }).join('');
 
     var pendingHtml = editing ? editModePendingNewPics.map(function (p, idx) {
