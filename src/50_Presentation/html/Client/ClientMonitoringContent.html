@@ -1792,9 +1792,18 @@
     editModePendingNewPics = [];
     editModeRemovedPicIds = [];
 
-    renderCompletenessPanel(client);
-    renderClientMetrics(client);
-    renderPicCarousel('detailPicCarousel', client.Client_ID);
+    // Masing-masing dibungkus try/catch SENDIRI-SENDIRI — dulu satu error di
+    // renderCompletenessPanel/renderClientMetrics bisa memotong eksekusi di
+    // tengah jalan dan renderPicCarousel() di baris terakhir TIDAK PERNAH
+    // kepanggil. Efeknya: section "PIC Client" terlihat kosong/hilang total
+    // walau data PIC-nya sendiri sebenarnya ada — persis bug drawer yang
+    // dulu pernah diperbaiki di openClientDetail(), cuma di sini belum
+    // ketutup karena panggilan ini bukan yang PERTAMA (dipanggil ulang tiap
+    // kali client berubah: simpan info, tambah/hapus PIC, dll — lihat
+    // komentar di atas fungsi ini).
+    try { renderCompletenessPanel(client); } catch (e) { console.error('renderCompletenessPanel gagal:', e); }
+    try { renderClientMetrics(client); } catch (e) { console.error('renderClientMetrics gagal:', e); }
+    try { renderPicCarousel('detailPicCarousel', client.Client_ID); } catch (e) { console.error('renderPicCarousel gagal:', e); }
   }
 
   /**
