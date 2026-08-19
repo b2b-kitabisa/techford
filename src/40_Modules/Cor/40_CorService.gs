@@ -168,7 +168,7 @@ var CorService = (function (module) {
   }
 
   module.saveDraft = function (docId, input, createdBy) {
-    assertCorDocument(docId);
+    var doc = assertCorDocument(docId);
 
     if ([Config.COR_METHOD.GROSS_DOWN, Config.COR_METHOD.GROSS_UP].indexOf(input.corMethod) === -1) {
       throw new AppError('VALIDATION_ERROR', 'Metode COR harus Gross Down atau Gross Up.');
@@ -176,6 +176,7 @@ var CorService = (function (module) {
 
     var now = new Date();
     var existing = CorHeaderRepository.findByDocId(docId);
+    CorHeaderRepository.ensureColumns(['Manual_Project_Name']);
 
     CorHeaderRepository.upsert(docId, {
       Doc_ID: docId,
@@ -187,6 +188,11 @@ var CorService = (function (module) {
       Is_Mix_Fund: !!input.isMixFund,
       Single_Fund_Type: input.singleFundType || '',
       Link_Campaigns: JSON.stringify((input.linkCampaigns || []).filter(function (l) { return l && String(l).trim(); })),
+      // HANYA disimpan untuk COR tanpa project — dikosongkan (bukan
+      // menyimpan apa adanya) untuk COR ber-project, supaya tidak ada nama
+      // manual "hantu" yang tersimpan diam-diam kalau input ini kebetulan
+      // terisi (mis. sisa dari sebelum COR ini dikaitkan ke project).
+      Manual_Project_Name: Utils.isBlank(doc.Project_ID) ? String(input.manualProjectName || '').trim() : '',
       Output_File_Id_Client: existing ? existing.Output_File_Id_Client : '',
       Output_File_Id_Campaign: existing ? existing.Output_File_Id_Campaign : '',
       // upsert() mengganti SELURUH baris header (bukan patch sebagian
@@ -492,10 +498,12 @@ var CorService = (function (module) {
         docLabel: doc.Doc_ID,
         // "Tanpa Project" (bukan "-") supaya COR yang MEMANG sengaja tidak
         // dikaitkan ke project mana pun tidak terbaca sebagai data yang
-        // hilang/rusak oleh approver yang membaca PDF-nya.
+        // hilang/rusak oleh approver yang membaca PDF-nya. Nama manual
+        // (diisi dari Kalkulator COR) menggantikan label generik itu kalau
+        // admin sudah mengisinya.
         projectLabel: project.Project_ID
           ? (project.Project_ID + ' — ' + (project.Project_Name || '-'))
-          : Config.NO_PROJECT_LABEL,
+          : (header.Manual_Project_Name || Config.NO_PROJECT_LABEL),
         method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
         ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset, linkCampaigns: decodeJson(header.Link_Campaigns, []),
         marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks
@@ -760,10 +768,13 @@ var CorService = (function (module) {
 
       // COR tanpa project: subject-nya cukup Doc_ID + penanda eksplisit,
       // bukan rentetan "-" yang terbaca seperti data yang gagal dimuat.
+      // built.model.projectLabel sudah menghitung fallback "Tanpa Project"/
+      // nama manual — dipakai apa adanya di sini supaya subject email dan
+      // label di PDF tidak pernah menyimpang satu sama lain.
       var subject = project.Project_ID
         ? (project.Project_ID + ' — ' + (project.Project_Name || '-') + ' — ' +
            (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-'))
-        : (docId + ' — ' + Config.NO_PROJECT_LABEL);
+        : (docId + ' — ' + built.model.projectLabel);
 
       var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
       var rejectUrl = ScriptApp.getService().getUrl() + '?action=cor-reject&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);

@@ -370,8 +370,10 @@
     }
     document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
       // COR boleh sengaja tidak terkait project mana pun — dibedakan dari
-      // "-" supaya tidak terbaca sebagai data yang hilang.
-      var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : 'Tanpa Project';
+      // "-" supaya tidak terbaca sebagai data yang hilang. Kalau admin
+      // sudah mengisi nama manual (lihat Manual_Project_Name), tampilkan
+      // itu alih-alih label generik "Tanpa Project".
+      var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : (r.projectName || 'Tanpa Project');
       var saldoSalset = r.budgetSalset - r.realizedSalset;
       var saldoVendor = r.budgetVendor - r.realizedVendor;
       var marginDeltaPp = r.actualMarginPct - r.budgetedMarginPct;
@@ -495,7 +497,7 @@
 
     document.getElementById('cmDrawerProjectClient').innerText = d.projectId
       ? (d.projectId + ' — ' + d.projectName + ' · ' + d.clientName)
-      : 'Tanpa Project';
+      : (d.projectName || 'Tanpa Project');
 
     var m = d.corResult;
     var marginDelta = m.actualMarginPct - m.budgetedMarginPct;

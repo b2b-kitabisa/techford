@@ -151,7 +151,7 @@ function buildCorService() {
   const savedFundRows = [];
   ctx.Config = Config;
   ctx.DocumentPipelineRepository = { findById: () => ({ Doc_ID: 'DOC-1', Document_Type: 'COR', Project_ID: 'PRJ-1', Status: 'Drafting' }) };
-  ctx.CorHeaderRepository = { findByDocId: () => null, upsert: () => {}, patchApprovalFields: () => {} };
+  ctx.CorHeaderRepository = { findByDocId: () => null, upsert: () => {}, patchApprovalFields: () => {}, ensureColumns: () => {} };
   ctx.CorFundRepository = {
     findByDocId: () => savedFundRows,
     replaceForDoc: (docId, rows) => { rows.forEach(r => savedFundRows.push(r)); }

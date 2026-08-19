@@ -6,6 +6,13 @@
  * Output_File_Id_Client | Output_File_Id_Campaign | Created_By |
  * Created_Date | Last_Updated
  *
+ * Manual_Project_Name (self-migrating, lihat ensureColumns) — HANYA
+ * relevan untuk COR yang sengaja dibuat tanpa project (Document_Pipeline.
+ * Project_ID kosong, lihat Config.DOCUMENT_PROJECTLESS_TYPES). Diisi admin
+ * dari halaman Kalkulator COR, dipakai sebagai pengganti "Tanpa Project" di
+ * tabel Document Pipeline, PDF, dan Cost Monitoring. Kosong untuk COR yang
+ * memang menempel ke project asli.
+ *
  * Satu baris per dokumen COR (1:1 dengan Doc_ID di Document_Pipeline) —
  * menyimpan pengaturan level-dokumen dari kalkulator COR (lihat mockup
  * kalkulator): metode (Gross Down/Gross Up — admin pilih SALAH SATU, tidak
@@ -54,6 +61,28 @@ var CorHeaderRepository = (function (module) {
 
   module.invalidateCache = function () {
     CacheHelper.invalidate('corHeader:all');
+  };
+
+  /**
+   * Kolom yang belum ada di sheet ditambahkan otomatis (self-migrating) —
+   * WAJIB dipanggil sebelum upsert() mengirim row yang membawa field baru.
+   * upsert() lewat base.insert(), yang hanya menulis kolom yang SUDAH ADA
+   * di header row — field baru yang tidak di-ensure dulu akan diam-diam
+   * hilang, bukan error. Sama pola dengan CorFundRepository.ensureColumns.
+   */
+  module.ensureColumns = function (columnNames) {
+    return LockHelper.withLock(function () {
+      var sheet = base._getSheet();
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      columnNames.forEach(function (name) {
+        if (headers.indexOf(name) === -1) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(name);
+          headers.push(name);
+        }
+      });
+    });
   };
 
   /**

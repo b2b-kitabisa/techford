@@ -189,7 +189,9 @@ var CostMonitoringService = (function (module) {
       return {
         docId: doc.Doc_ID,
         projectId: project.Project_ID || '',
-        projectName: project.Project_Name || '',
+        // Nama manual (diisi dari Kalkulator COR) untuk COR yang sengaja
+        // tidak dikaitkan ke project mana pun — lihat COR_Header.Manual_Project_Name.
+        projectName: project.Project_Name || header.Manual_Project_Name || '',
         clientName: client ? (client.Brand_Name || client.Entity_Name || '-') : '-',
         budgetSalset: totals.budgetSalset,
         realizedSalset: totals.realizedSalset,
@@ -286,7 +288,7 @@ var CostMonitoringService = (function (module) {
     return {
       docId: docId,
       projectId: project.Project_ID || '',
-      projectName: project.Project_Name || '',
+      projectName: project.Project_Name || header.Manual_Project_Name || '',
       clientName: client ? (client.Brand_Name || client.Entity_Name || '-') : '-',
       closed: !!header.Cost_Monitoring_Closed,
       closedBy: header.Cost_Monitoring_Closed_By || '',

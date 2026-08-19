@@ -589,6 +589,11 @@
         if (!res || !res.ok) return;
         corHeadersLoaded = true;
         allCorHeaders = res.data;
+        // Kolom Project Info tabel untuk COR tanpa project baca
+        // Manual_Project_Name dari sini (lihat docProjectLabel) — tanpa
+        // render ulang, baris itu nyangkut di label generik "Tanpa Project"
+        // sampai ada trigger lain (klik filter, dst).
+        renderDocPipeline();
         // Kalau drawer detail sedang terbuka, seluruh drawer (bukan cuma
         // tombol Kerjakan/Lanjutkan COR) perlu ikut di-render ulang begitu
         // data ini datang — lihat refreshOpenDrawerIfNeeded.
@@ -709,7 +714,14 @@
    *   ketemu             -> tampilkan seperti biasa
    */
   function docProjectLabel(doc) {
-    if (!doc || !String(doc.Project_ID || '').trim()) return taxonomy.noProjectLabel || 'Tanpa Project';
+    if (!doc || !String(doc.Project_ID || '').trim()) {
+      // Nama manual (diisi admin dari Kalkulator COR — hanya ada untuk COR
+      // tanpa project, lihat COR_Header.Manual_Project_Name) menggantikan
+      // label generik kalau sudah diisi.
+      var header = (allCorHeaders || []).filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
+      var manual = header && String(header.Manual_Project_Name || '').trim();
+      return manual || taxonomy.noProjectLabel || 'Tanpa Project';
+    }
     var p = getProjectById(doc.Project_ID);
     return p ? (p.Project_ID + ' — ' + (p.Project_Name || '-')) : (doc.Project_ID + ' (tidak ditemukan)');
   }
@@ -867,7 +879,7 @@
         '<td><span class="badge ' + stageBadgeClass(d.Stage) + '">' + (d.Stage || '-').toUpperCase() + '</span>' +
         '<div class="entity-name" style="margin-top:4px;">' + typeLabel + '</div></td>' +
         (isDocTanpaProject(d)
-          ? '<td><div class="entity-name">' + escHtmlDoc(taxonomy.noProjectLabel || 'Tanpa Project') + '</div>' +
+          ? '<td><div class="entity-name">' + escHtmlDoc(docProjectLabel(d)) + '</div>' +
             '<div class="entity-pic">tidak terkait project</div></td>' +
             '<td><div class="entity-name">-</div><div class="entity-pic">-</div></td>'
           : '<td><div class="entity-name">' + (project.Project_ID || '-') + '</div>' +

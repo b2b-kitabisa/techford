@@ -138,6 +138,20 @@
     <div>
       <h2 id="corDocIdDisplay">COR Calculator</h2>
       <div class="sub" id="corDocSubDisplay">Memuat data dokumen...</div>
+      <!-- HANYA muncul untuk COR yang sengaja dibuat tanpa project (lihat
+           Config.DOCUMENT_PROJECTLESS_TYPES) — COR yang menempel ke project
+           asli sudah punya nama project sendiri, tidak butuh ini.
+           Disimpan bersama Simpan Draft (ke COR_Header.Manual_Project_Name),
+           BUKAN dikirim sendiri — konsisten dengan seluruh field kalkulator
+           lain yang baru benar-benar tersimpan saat "Simpan Draft" ditekan. -->
+      <div id="corManualProjectNameWrap" style="display:none; margin-top:8px; max-width:420px;">
+        <label style="font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:3px;">
+          Nama Project (manual — COR ini tidak terkait project di Sales Pipeline)
+        </label>
+        <input type="text" id="corManualProjectNameInput" placeholder="Contoh: Gebrakan Ramadan 1447H"
+          oninput="updateManualProjectName(this.value)" style="width:100%;">
+        <div class="cell-sub" style="margin-top:3px;">Muncul sebagai nama project di tabel Document Pipeline, PDF, dan Cost Monitoring. Tersimpan saat "Simpan Draft" ditekan.</div>
+      </div>
     </div>
     <div style="display:flex; gap:8px;">
       <button class="btn-outline" id="corGuArchiveBtn" onclick="openGrossUpArchive()" style="display:none;">📄 Lihat Estimasi Gross Up</button>
@@ -726,20 +740,36 @@
     }).withFailureHandler(function () {}).client_getAll();
   }
 
+  // Disalin ke variabel biasa (bukan cuma dibaca dari currentHeader) supaya
+  // ketikan langsung tersedia untuk buildDraftPayload() tanpa harus membaca
+  // ulang input di DOM saat Simpan Draft ditekan — pola sama dengan field
+  // kalkulator lain (vendorEntity, ngoRate, dst).
+  var manualProjectName = '';
+  function updateManualProjectName(value) {
+    manualProjectName = value;
+    // Judul & label PDF/preview ikut menyesuaikan LANGSUNG saat mengetik —
+    // bukan cuma setelah Simpan Draft — supaya "Download PDF"/"Lihat COR"
+    // yang dibuka sebelum sempat menyimpan tidak menampilkan nama lama.
+    if (currentDoc && !String(currentDoc.Project_ID || '').trim()) {
+      document.getElementById('corDocSubDisplay').innerText = value.trim() || 'Tanpa Project';
+    }
+  }
+
   function renderDocInfo() {
     if (!currentDoc) return;
     var project = allCorProjects.filter(function (p) { return p.Project_ID === currentDoc.Project_ID; })[0] || {};
     var client = allCorClients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] || {};
     document.getElementById('corDocIdDisplay').innerText = 'COR — ' + currentDoc.Doc_ID;
+    var tanpaProject = !String(currentDoc.Project_ID || '').trim();
     // COR boleh sengaja dibuat tanpa project (lihat Config.DOCUMENT_PROJECTLESS_TYPES).
     // Tanpa cabang ini barisnya terbaca "- (-) — -", yang terlihat seperti
     // data gagal dimuat padahal memang tidak ada project-nya. Nilai ini juga
     // dipakai sebagai projectLabel di preview PDF (lihat pemakaian
     // corDocSubDisplay di bawah), jadi harus sama dengan label server.
-    document.getElementById('corDocSubDisplay').innerText =
-      String(currentDoc.Project_ID || '').trim()
-        ? ((project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-'))
-        : 'Tanpa Project';
+    document.getElementById('corDocSubDisplay').innerText = tanpaProject
+      ? (manualProjectName.trim() || 'Tanpa Project')
+      : ((project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-'));
+    document.getElementById('corManualProjectNameWrap').style.display = tanpaProject ? '' : 'none';
     renderApprovalState();
   }
 
@@ -1140,6 +1170,8 @@
   function loadDraftIntoState(draft) {
     currentDoc = draft.doc;
     currentHeader = draft.header;
+    manualProjectName = (draft.header && draft.header.Manual_Project_Name) || '';
+    document.getElementById('corManualProjectNameInput').value = manualProjectName;
 
     if (draft.header) {
       currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';
@@ -2050,7 +2082,11 @@
       linkCampaigns: linkCampaigns,
       funds: currentMethod === 'GROSS_DOWN' ? funds_payload : [],
       costs: costs_payload,
-      margins: margins_payload
+      margins: margins_payload,
+      // Server sendiri yang menolak nilai ini untuk COR ber-project (lihat
+      // CorService.saveDraft) — dikirim apa adanya di sini, tidak perlu
+      // gerbang "tanpaProject" ganda di sisi klien.
+      manualProjectName: manualProjectName
     };
   }
 
