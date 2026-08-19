@@ -1018,6 +1018,20 @@
           zakatRows.map(function (f) { return '*' + esc(f.linkCampaign || '-') + ' campaign zakat.'; }).join('<br>') +
           '</p>';
       }
+      // KEMBARAN dari CorReportRenderer.campaignFundKindNoteHtml — label
+      // di-hardcode di sini juga (WAJIB sama dengan Config.COR_CAMPAIGN_FUND_KIND
+      // & kembarannya di server), karena file ini pun tidak boleh bergantung
+      // pada Config server-side.
+      var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud' };
+      function campaignFundKindNoteHtml(rows) {
+        var ditandai = (rows || []).filter(function (f) { return CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind]; });
+        if (!ditandai.length) return '';
+        return '<p class="pdf-zakat-note">' +
+          ditandai.map(function (f) {
+            return '*' + esc(f.linkCampaign || '-') + ' — sumber dana ' + CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind] + '.';
+          }).join('<br>') +
+          '</p>';
+      }
       // KEMBARAN dari CorReportRenderer.fundSubtotalFoot/fundTableHtml/
       // grandFundTotalHtml — tfoot SATU tabel yang sama supaya border-nya
       // sejajar dengan grid tabel di atasnya.
@@ -1031,7 +1045,7 @@
           tblHead(['Link Campaign', 'Nominal', 'Platform Fee', 'Tech Fee', 'Biaya Admin', 'Total Masuk'], FUND_COLS, FUND_NW) +
           '<tbody>' + fundRowsHtml(rows, biayaPencairan) + '</tbody>' +
           fundSubtotalFoot(subtotalLabel, subtotal) +
-          '</table>' + zakatNoteHtml(rows);
+          '</table>' + zakatNoteHtml(rows) + campaignFundKindNoteHtml(rows);
       }
       function grandFundTotalHtml(totalMasuk) {
         return '<table class="pdf-tbl">' + colgroup(FUND_COLS) + '<tbody><tr style="background:#f8f8f8;font-weight:700;">' +
@@ -1297,7 +1311,11 @@
         var activeEntity = isViaSalset ? salsetEnt : (vendorEnt || { Entity_Name: vendorEntity, Bank: '-', Is_PKP: false, Biaya_Pencairan: 0 });
 
         function toFund(f) {
-          return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat };
+          return {
+            fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '',
+            nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat,
+            campaignFundKind: f.Campaign_Fund_Kind || ''
+          };
         }
         // Empat field terakhir INILAH yang dulu hilang di dua salinan lama.
         // Dokumen lama simpan 'Operasional' (sebelum disingkat "Ops") —

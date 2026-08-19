@@ -78,6 +78,8 @@
 
   .cor-fund-row { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg-tint); }
   .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 130px 70px 28px; gap: 8px; align-items: center; }
+  /* Dana Campaign punya kolom tambahan (dropdown sumber dana: Campaign/DBT/Fraud). */
+  .cor-fund-cols-campaign { grid-template-columns: minmax(0,1fr) 130px 70px 90px 28px; }
   .cor-fund-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
 
   .cor-hi { border-radius: 8px; padding: 8px 10px; }
@@ -602,7 +604,20 @@
 
 <script>
   // ══════════════════════════ STATE ══════════════════════════
-  var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {} };
+  var corTaxonomy = { entities: [], marginGuide: [], marginComponents: [], method: {}, fundType: {}, tab: {}, costGroup: {}, campaignFundKinds: [], campaignFundKindDefault: '' };
+
+  // Dipakai SEBELUM corTaxonomy sempat termuat (render pertama, sebelum RPC
+  // getTaxonomy selesai) — nilainya WAJIB sama dengan Config.COR_CAMPAIGN_FUND_KIND
+  // di server. Begitu corTaxonomy datang, campaignFundKindOptions() beralih
+  // memakainya sebagai sumber utama.
+  var CAMPAIGN_FUND_KIND_FALLBACK = [
+    { key: 'CAMPAIGN', label: 'Campaign' }, { key: 'DBT', label: 'DBT' }, { key: 'FRAUD', label: 'Fraud' }
+  ];
+  var CAMPAIGN_FUND_KIND_DEFAULT = 'CAMPAIGN';
+  function campaignFundKindOptions() {
+    return (corTaxonomy.campaignFundKinds && corTaxonomy.campaignFundKinds.length)
+      ? corTaxonomy.campaignFundKinds : CAMPAIGN_FUND_KIND_FALLBACK;
+  }
   var currentDoc = null;
   var currentHeader = null;
   var allCorProjects = [];
@@ -1145,7 +1160,13 @@
     }
 
     funds = (draft.funds || []).map(function (f) {
-      return { idx: nextIdx(), type: f.Fund_Type, nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '' };
+      return {
+        idx: nextIdx(), type: f.Fund_Type, nominal: Number(f.GDV) || Number(f.Nominal) || 0,
+        isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '',
+        // Kosong/tidak dikenal jatuh balik ke default — dokumen lama (dibuat
+        // sebelum field ini ada) tidak punya kolom ini sama sekali.
+        campaignFundKind: f.Campaign_Fund_Kind || CAMPAIGN_FUND_KIND_DEFAULT
+      };
     });
 
     var gdCosts = (draft.costs || []);
@@ -1376,7 +1397,10 @@
 
   // ══════════════════════════ FUND ROWS ══════════════════════════
   function addFundRow(type) {
-    funds.push({ idx: nextIdx(), type: type, nominal: 0, isZakat: false, linkCampaign: '' });
+    funds.push({
+      idx: nextIdx(), type: type, nominal: 0, isZakat: false, linkCampaign: '',
+      campaignFundKind: CAMPAIGN_FUND_KIND_DEFAULT
+    });
     renderAll();
   }
   function removeFundRow(idx) {
@@ -1405,8 +1429,15 @@
     var adm = adminFee(Number(ent.Biaya_Pencairan) || 0, af);
     var tot = af - adm;
     var isClient = f.type === 'CLIENT';
+    // Sumber dana (Campaign/DBT/Fraud) HANYA relevan untuk Dana Campaign —
+    // tidak berpengaruh ke rumus apa pun, murni label pelacakan sumber dana.
+    var kindSelect = isClient ? '' :
+      '<select onchange="updateFund(' + f.idx + ',\'campaignFundKind\',this.value)" title="Sumber Dana Campaign" style="font-size:11px;">' +
+      campaignFundKindOptions().map(function (k) {
+        return '<option value="' + esc(k.key) + '" ' + (f.campaignFundKind === k.key ? 'selected' : '') + '>' + esc(k.label) + '</option>';
+      }).join('') + '</select>';
     return '<div class="cor-fund-row">' +
-      '<div class="cor-fund-cols">' +
+      '<div class="cor-fund-cols' + (isClient ? '' : ' cor-fund-cols-campaign') + '">' +
       '<input type="text" placeholder="Link campaign (opsional)" value="' + esc(f.linkCampaign) + '" oninput="updateFundText(' + f.idx + ',\'linkCampaign\',this.value)">' +
       // oninput cuma reformat tampilan (titik ribuan) TANPA render ulang —
       // supaya kursor/fokus tidak hilang tiap ketik. Model & kalkulasi baru
@@ -1415,6 +1446,7 @@
       (isClient
         ? '<label style="display:flex; align-items:center; gap:4px; justify-content:center; font-size:10px;"><input type="checkbox" ' + (f.isZakat ? 'checked' : '') + ' onchange="updateFund(' + f.idx + ',\'isZakat\',this.checked)" style="width:auto;"> Zakat</label>'
         : '<span style="font-size:10px; color:var(--text-faint); text-align:center;">N/A</span>') +
+      kindSelect +
       '<button class="cor-btn-del" onclick="removeFundRow(' + f.idx + ')">&times;</button>' +
       '</div>' +
       '<div class="cor-fund-foot">' +
@@ -1977,7 +2009,10 @@
   function buildDraftPayload() {
     var isMix = getEffectiveMixFund();
     var funds_payload = funds.map(function (f) {
-      return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
+      return {
+        fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat,
+        campaignFundKind: f.campaignFundKind || CAMPAIGN_FUND_KIND_DEFAULT
+      };
     });
 
     var costs_payload = [];
@@ -2073,7 +2108,7 @@
   // singkatan (type/ket/kat/h/q/p) untuk hemat, jadi wajib di-map dulu
   // sebelum dipakai buat preview/PDF, kalau tidak datanya kebaca kosong.
   function toPdfFund(f) {
-    return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat };
+    return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat, campaignFundKind: f.campaignFundKind || '' };
   }
   /**
    * Susun baris payload cost untuk satu tabel. Category_Order dihitung ulang

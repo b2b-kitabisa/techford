@@ -75,7 +75,9 @@ var CorService = (function (module) {
       method: Config.COR_METHOD,
       fundType: Config.COR_FUND_TYPE,
       tab: Config.COR_TAB,
-      costGroup: Config.COR_COST_GROUP
+      costGroup: Config.COR_COST_GROUP,
+      campaignFundKinds: Config.COR_CAMPAIGN_FUND_KIND,
+      campaignFundKindDefault: Config.COR_CAMPAIGN_FUND_KIND_DEFAULT
     };
   };
 
@@ -229,6 +231,15 @@ var CorService = (function (module) {
         Disbursement_Fee: calc.adm,
         Implementation_Fund: calc.total,
         Is_Zakat: !!f.isZakat,
+        // Hanya relevan untuk Fund_Type CAMPAIGN — baris Client dikosongkan,
+        // bukan diisi default, supaya tidak terbaca seolah punya klasifikasi
+        // sumber dana yang sebenarnya tidak berlaku untuknya. Nilai yang
+        // tidak dikenal (mis. dari klien versi lama) jatuh balik ke default
+        // CAMPAIGN, bukan ditolak — ini cuma label pelacakan, bukan validasi
+        // keras.
+        Campaign_Fund_Kind: f.fundType === Config.COR_FUND_TYPE.CAMPAIGN
+          ? (Config.isValidCampaignFundKind(f.campaignFundKind) ? f.campaignFundKind : Config.COR_CAMPAIGN_FUND_KIND_DEFAULT)
+          : '',
         Sort_Order: i
       };
     });
@@ -421,7 +432,13 @@ var CorService = (function (module) {
 
     // GDV (dulu bernama Nominal) — fallback ke Nominal utk baris lama yang
     // sheet-nya belum di-rename manual (lihat CorFundRepository).
-    function toFund(f) { return { fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '', nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat }; }
+    function toFund(f) {
+      return {
+        fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '',
+        nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat,
+        campaignFundKind: f.Campaign_Fund_Kind || ''
+      };
+    }
     // mode/category/categoryOrder/rowRole ikut dibawa ke model laporan —
     // dari sinilah PDF tahu harus me-rowspan baris per kategori dan
     // mengosongkan (bukan menolkan) sel angka baris rincian. Baris lama yang

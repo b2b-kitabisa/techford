@@ -585,6 +585,22 @@ var Config = (function (module) {
   module.COR_FUND_TYPE = { CLIENT: 'CLIENT', CAMPAIGN: 'CAMPAIGN' };
   module.COR_TAB = { CLIENT: 'CLIENT', CAMPAIGN: 'CAMPAIGN' };
 
+  /**
+   * Sub-klasifikasi baris Dana Campaign — HANYA relevan untuk baris
+   * ber-Fund_Type CAMPAIGN (kosong/tidak dipakai untuk baris Dana Client).
+   * Tidak memengaruhi rumus fee/adm apa pun — murni label pelacakan sumber
+   * dana. Default CAMPAIGN kalau admin tidak memilih apa-apa.
+   */
+  module.COR_CAMPAIGN_FUND_KIND = [
+    { key: 'CAMPAIGN', label: 'Campaign' },
+    { key: 'DBT', label: 'DBT' },
+    { key: 'FRAUD', label: 'Fraud' }
+  ];
+  module.COR_CAMPAIGN_FUND_KIND_DEFAULT = 'CAMPAIGN';
+  module.isValidCampaignFundKind = function (kind) {
+    return module.COR_CAMPAIGN_FUND_KIND.some(function (k) { return k.key === kind; });
+  };
+
   // 2 kelompok baris biaya (Cost SALSET vs Cost Vendor/entity terpilih) —
   // sama untuk method Gross Down maupun Gross Up.
   module.COR_COST_GROUP = { SAL: 'SAL', VENDOR: 'VENDOR' };

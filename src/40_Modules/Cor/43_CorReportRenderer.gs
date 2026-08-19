@@ -223,7 +223,7 @@ var CorReportRenderer = (function (module) {
       tblHead(['Link Campaign', 'Nominal', 'Platform Fee', 'Tech Fee', 'Biaya Admin', 'Total Masuk'], FUND_COLS, FUND_NW) +
       '<tbody>' + fundRowsHtml(rows, biayaPencairan) + '</tbody>' +
       fundSubtotalFoot(subtotalLabel, subtotal) +
-      '</table>' + zakatNoteHtml(rows);
+      '</table>' + zakatNoteHtml(rows) + campaignFundKindNoteHtml(rows);
   }
   /**
    * Total Dana Masuk (gabungan Client + Campaign) BUKAN tfoot salah satu
@@ -249,6 +249,28 @@ var CorReportRenderer = (function (module) {
     if (!zakatRows.length) return '';
     return '<p class="pdf-zakat-note">' +
       zakatRows.map(function (f) { return '*' + esc(f.linkCampaign || '-') + ' campaign zakat.'; }).join('<br>') +
+      '</p>';
+  }
+  /**
+   * Sub-klasifikasi Dana Campaign (Campaign/DBT/Fraud — lihat
+   * Config.COR_CAMPAIGN_FUND_KIND). File ini TIDAK boleh bergantung pada
+   * Config (lihat catatan file & tests/cor-cost-methods.test.js yang memuat
+   * file ini TANPA Config di context) — label di-hardcode di sini, dan
+   * WAJIB tetap sama dengan Config.COR_CAMPAIGN_FUND_KIND & kembarannya di
+   * CorCalc (Shell.html).
+   *
+   * Catatan additive di bawah tabel, BUKAN kolom baru — pola sama dengan
+   * zakatNoteHtml. Baris ber-kind default (CAMPAIGN) atau kosong (baris
+   * Dana Client) tidak menyisakan bekas apa pun.
+   */
+  var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud' };
+  function campaignFundKindNoteHtml(rows) {
+    var ditandai = (rows || []).filter(function (f) { return CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind]; });
+    if (!ditandai.length) return '';
+    return '<p class="pdf-zakat-note">' +
+      ditandai.map(function (f) {
+        return '*' + esc(f.linkCampaign || '-') + ' — sumber dana ' + CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind] + '.';
+      }).join('<br>') +
       '</p>';
   }
   /**
