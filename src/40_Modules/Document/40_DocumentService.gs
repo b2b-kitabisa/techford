@@ -193,6 +193,25 @@ var DocumentService = (function (module) {
     return module.getAllDocuments();
   };
 
+  /**
+   * Catatan bebas di drawer Document Pipeline — berlaku untuk SEMUA
+   * Document_Type (bukan cuma COR/Quotation), lepas dari status/stage
+   * dokumennya. Kolom self-migrating (pola sama dengan Document_Link).
+   *
+   * Mengembalikan HANYA dokumen ini, bukan seluruh daftar — payload besar
+   * adalah penyebab google.script.run kembali dengan res=null yang sudah
+   * berulang kali menggigit di modul lain (lihat createCorDocument).
+   */
+  module.updateNotes = function (docId, notes) {
+    var doc = DocumentPipelineRepository.findById(docId);
+    if (!doc) {
+      throw new AppError('DOCUMENT_NOT_FOUND', 'Dokumen tidak ditemukan.');
+    }
+    DocumentPipelineRepository.ensureColumns(['Notes']);
+    DocumentPipelineRepository.update(docId, { Notes: String(notes == null ? '' : notes).trim(), Last_Updated: new Date() });
+    return DocumentPipelineRepository.findById(docId);
+  };
+
   /* ============================================================
      RIWAYAT APPROVAL (Document_Activity)
      ============================================================

@@ -99,3 +99,8 @@ function document_uploadProjectFile(projectId, file, addedBy, displayName) {
 function document_updateLink(docId, link) {
   return DocumentController.updateLink(docId, link);
 }
+
+/** Catatan bebas di drawer Document Pipeline — berlaku untuk semua Document_Type. */
+function document_updateNotes(docId, notes) {
+  return DocumentController.updateNotes(docId, notes);
+}

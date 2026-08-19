@@ -203,6 +203,22 @@
       <div class="placeholder-note" id="docAttachmentNote"></div>
     </div>
 
+    <!-- Catatan bebas — berlaku untuk SEMUA Document_Type, lepas dari
+         status/stage dokumennya. Tidak seperti Riwayat Approval di bawah
+         (append-only, sistem), ini satu kolom teks bebas yang admin isi/edit
+         sendiri kapan saja — pola sama dengan Other Notes di Client
+         Monitoring, cuma disimpan lewat tombol Simpan-nya sendiri karena
+         drawer ini tidak punya mode "Edit Info" menyeluruh. -->
+    <div class="drawer-section">
+      <span class="taxonomy-label">Notes</span>
+      <textarea id="docNotesInput" placeholder="Catatan bebas untuk dokumen ini..." rows="3"
+        style="width:100%; margin-top:8px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border-soft); border-radius:6px; resize:vertical;"></textarea>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+        <button class="btn-save" id="docNotesSaveBtn" onclick="submitDocNotes()">Simpan Notes</button>
+        <span class="cell-sub" id="docNotesSavedNote"></span>
+      </div>
+    </div>
+
     <!-- Riwayat putaran approval — append-only, jadi alasan penolakan
          putaran ke-1 tetap terbaca walau sudah ada putaran ke-3. Kolom
          Rejection_Note di header cuma menyimpan yang terakhir; lihat
@@ -1065,6 +1081,55 @@
 
     renderDocAttachments(doc);
     renderDocActivity(doc);
+
+    document.getElementById('docNotesInput').value = doc.Notes || '';
+    document.getElementById('docNotesSavedNote').innerText = '';
+  }
+
+  /**
+   * Simpan Notes — berlaku untuk SEMUA Document_Type. Dikirim sebagai
+   * dokumen tunggal (bukan seluruh daftar) supaya konsisten dengan
+   * createCorDocument — lihat catatan di situ soal res=null pada payload
+   * besar. currentDocDrawerId disalin ke variabel lokal SEBELUM RPC
+   * berangkat: kalau user sudah pindah ke dokumen lain (stepper) sebelum
+   * respons datang, hasilnya tidak boleh nyasar menimpa dokumen yang
+   * sedang dilihat sekarang.
+   */
+  function submitDocNotes() {
+    if (!currentDocDrawerId) return;
+    var docId = currentDocDrawerId;
+    var notes = document.getElementById('docNotesInput').value;
+    var btn = document.getElementById('docNotesSaveBtn');
+    var savedNote = document.getElementById('docNotesSavedNote');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan...';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        btn.innerText = 'Simpan Notes';
+        if (res && res.ok === false) {
+          return alert('Gagal menyimpan Notes: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+        }
+        // res.data bisa saja null/undefined (google.script.run terbukti
+        // berkali-kali begitu walau operasi di server berhasil) — cache
+        // lokal diterapkan sendiri supaya tabel/drawer tidak basi kalau
+        // itu terjadi.
+        var updated = res && res.data;
+        var idx = -1;
+        for (var i = 0; i < allDocuments.length; i++) {
+          if (allDocuments[i].Doc_ID === docId) { idx = i; break; }
+        }
+        if (idx !== -1) allDocuments[idx].Notes = updated ? updated.Notes : notes.trim();
+        if (currentDocDrawerId === docId) {
+          savedNote.innerText = 'Tersimpan ' + formatDate(new Date());
+        }
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.innerText = 'Simpan Notes';
+        alert('Gagal menyimpan Notes: ' + (err && err.message ? err.message : err));
+      })
+      .document_updateNotes(docId, notes);
   }
 
   /* ============================================================

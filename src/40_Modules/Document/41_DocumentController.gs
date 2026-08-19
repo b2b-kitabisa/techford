@@ -102,5 +102,11 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.updateNotes = function (docId, notes) {
+    return ErrorHandler.handle('DocumentController.updateNotes', function () {
+      return DocumentService.updateNotes(docId, notes);
+    });
+  };
+
   return module;
 })(DocumentController || {});
