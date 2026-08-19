@@ -312,6 +312,45 @@ console.log('\n10) PDF (buildReportModel + renderDocumentHtml) — OFF menampilk
   ok('section "Profit Margin" (aktual) tetap muncul', html.indexOf('<h2>Profit Margin</h2>') !== -1);
 }
 
+console.log('\n11) Download PDF (preview print di Kalkulator, buildPdfModel) — TIDAK BOLEH diam-diam');
+console.log('    jatuh ke default (selalu tampil Default Margin) gara-gara lupa ikut kirim');
+console.log('    marginEnabled/marginMode/manualMarginPct dari state LIVE kalkulator, sama');
+console.log('    seperti bug yang baru diperbaiki (dulu buildPdfModel tidak mengirim field ini');
+console.log('    sama sekali, jadi Download PDF selalu menampilkan Default Margin walau toggle OFF,');
+console.log('    berbeda dari "Lihat COR" yang baca draft tersimpan lewat buildModelFromDraft).');
+{
+  const src = fs.readFileSync(path.join(SRC, '50_Presentation/html/Document/CorCalculatorContent.html'), 'utf8');
+  const fnMatch = /function buildPdfModel\(\) \{[\s\S]*?\n  \}/.exec(src);
+  ok('fungsi buildPdfModel ditemukan', !!fnMatch);
+  const fnBody = fnMatch ? fnMatch[0] : '';
+  ok('buildPdfModel mengirim marginEnabled ke model', /marginEnabled:\s*marginEnabled/.test(fnBody), fnBody.indexOf('marginEnabled'));
+  ok('buildPdfModel mengirim marginMode ke model', /marginMode:\s*marginMode/.test(fnBody));
+  ok('buildPdfModel mengirim manualMarginPct ke model', /manualMarginPct:\s*manualMarginPct/.test(fnBody));
+
+  // Jalankan sungguhan: rakit model persis seperti buildPdfModel akan
+  // lakukan (blocks minimal, GROSS_DOWN, tidak Mix Fund), lalu render lewat
+  // CorReportRenderer (rumus SAMA dengan CorCalc client) dan pastikan toggle
+  // OFF benar-benar menyembunyikan tabel Default Margin di HTML yang
+  // dihasilkan — bukan cuma memeriksa nama field di source.
+  const ctx3 = { console };
+  ctx3.global = ctx3;
+  vm.createContext(ctx3);
+  vm.runInContext('var CorReportRenderer;' + fs.readFileSync(path.join(SRC, '40_Modules/Cor/43_CorReportRenderer.gs'), 'utf8'), ctx3);
+  const liveModelOff = {
+    docLabel: 'DOC-1', projectLabel: 'Uji (belum disimpan)', method: 'GROSS_DOWN', isViaSalset: false,
+    vendorEntity: 'Vendor A', entity: { Entity_Name: 'Vendor A', Bank: 'BCA', Biaya_Pencairan: 0 }, pkp: false,
+    ngoRatePct: 10, guNgoRatePct: 10, biayaSalset: 0, linkCampaigns: [],
+    marginComponents: MARGIN_COMPONENTS,
+    blocks: [{ tabLabel: null, funds: [{ fundType: 'CLIENT', nominal: 100000000, isZakat: false }], salItems: [], baaItems: [priced()], margin: MARGIN }],
+    marginEnabled: false, marginMode: 'COMPONENT', manualMarginPct: 0
+  };
+  const htmlOff = ctx3.CorReportRenderer.renderDocumentHtml(liveModelOff);
+  ok('preview print (state live, belum Simpan Draft) dengan toggle OFF -> catatan skip muncul',
+    htmlOff.indexOf('Tidak ada margin diambil di muka') !== -1);
+  ok('preview print dengan toggle OFF -> dropdown komponen (Consultancy Service Fee) TIDAK muncul',
+    htmlOff.indexOf('Consultancy Service Fee') === -1);
+}
+
 console.log('\n' + (failures.length
   ? '=== ' + pass + ' LOLOS, ' + failures.length + ' GAGAL ===\n' + failures.map(f => '  - ' + f).join('\n')
   : '=== ' + pass + ' LOLOS, 0 GAGAL ==='));

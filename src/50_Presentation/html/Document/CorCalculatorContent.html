@@ -2323,7 +2323,15 @@
       biayaSalset: corState.CLIENT.biayaSalset,
       linkCampaigns: linkCampaigns,
       marginComponents: corTaxonomy.marginComponents || [],
-      blocks: blocks
+      blocks: blocks,
+      // Dulu tidak ikut dikirim sama sekali -> Download PDF (preview print)
+      // selalu jatuh ke default (Default Margin selalu tampil) walau toggle
+      // di Box 4 sudah dimatikan/diubah ke Manual. "Lihat COR" (Document
+      // Pipeline/Sales Pipeline, baca draft TERSIMPAN lewat
+      // CorCalc.buildModelFromDraft) sudah benar sejak awal — field ini
+      // menyamakan Download PDF dengan itu, dari STATE LIVE kalkulator
+      // (belum tentu sudah Simpan Draft).
+      marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct
     };
   }
 
