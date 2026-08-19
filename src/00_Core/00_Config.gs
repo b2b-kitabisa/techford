@@ -500,6 +500,52 @@ var Config = (function (module) {
   };
   module.DOCUMENT_NON_PIPELINE_TYPES = ['PKS', 'TRANSFER_REQUEST', 'BAST'];
 
+  /**
+   * Tipe dokumen yang boleh diminta BERKALI-KALI untuk satu project yang sama.
+   *
+   * COR: satu project bisa punya beberapa COR yang berdiri sendiri-sendiri dan
+   * TIDAK saling berkaitan (keputusan produk) — nilainya KUMULATIF, bukan
+   * revisi yang menggantikan COR sebelumnya. Karena itu TIDAK ada penomoran
+   * "tahap"/urutan: tiap COR dibedakan lewat Doc_ID & tanggal permintaannya.
+   * Tidak ada batas jumlah dan tidak perlu menunggu COR sebelumnya selesai.
+   *
+   * Tipe LAIN tetap sekali per project (Quotation "dua kali" sebenarnya dua
+   * baris berbeda — satu per Entity, lihat QUOTATION_ENTITIES — bukan tipe
+   * yang sama diminta ulang).
+   *
+   * Daftar ini dibaca UI (Sales Pipeline & Document Pipeline) lewat
+   * DocumentService.getTaxonomy, supaya tidak ada daftar kedua yang
+   * di-hardcode di HTML dan diam-diam tidak sinkron.
+   */
+  module.DOCUMENT_REPEATABLE_TYPES = ['COR'];
+
+  module.isRepeatableDocumentType = function (documentType) {
+    return module.DOCUMENT_REPEATABLE_TYPES.indexOf(String(documentType || '')) !== -1;
+  };
+
+  /**
+   * Tipe dokumen yang boleh dibuat TANPA dikaitkan ke project mana pun
+   * (Project_ID kosong).
+   *
+   * COR: ada COR yang memang tidak berhubungan dengan client/project mana pun
+   * (keputusan produk). COR seperti ini tetap lewat alur approval yang sama;
+   * yang berbeda hanya label project-nya ("Tanpa Project") dan folder
+   * penyimpanan PDF-nya (jatuh ke folder akar — lihat CorService.renderPdf).
+   *
+   * Tipe lain TETAP wajib punya project: Stage Sales Pipeline mereka
+   * digerakkan oleh dokumen (lihat DocumentService.checkAndAdvanceProjectStage),
+   * jadi dokumen tanpa project akan jadi baris yang tidak pernah bisa
+   * memengaruhi apa pun dan hanya membingungkan.
+   */
+  module.DOCUMENT_PROJECTLESS_TYPES = ['COR'];
+
+  module.allowsBlankProject = function (documentType) {
+    return module.DOCUMENT_PROJECTLESS_TYPES.indexOf(String(documentType || '')) !== -1;
+  };
+
+  /** Label seragam untuk dokumen yang tidak terkait project mana pun. */
+  module.NO_PROJECT_LABEL = 'Tanpa Project';
+
   // ---- Revenue Breakdown (sheet Revenue_Breakdown, terpisah dari Project) ----
   // Service 'CSR' ATAU 'Ads Sponsorship' menghasilkan baris GDV (Item_Name =
   // link campaign) — bukan cuma CSR lagi sejak GDV Tahap 2 (lihat diskusi

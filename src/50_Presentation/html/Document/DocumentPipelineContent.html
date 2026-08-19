@@ -55,6 +55,11 @@
 
   <button class="filter-reset" onclick="resetDocFilter()">↺ Reset Filter</button>
   <button class="filter-reset" id="docRefreshBtn" onclick="refreshAllDocumentData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
+  <!-- COR dikerjakan dari halaman ini, jadi pembuatannya juga bisa dimulai
+       dari sini — tidak harus lewat Request Document di Sales Pipeline. Dua
+       pintu ini SENGAJA (keputusan produk), dan keduanya memanggil backend
+       yang sama supaya tidak ada dua versi aturan. -->
+  <button class="btn-save" id="docAddCorBtn" style="margin-left:auto;" onclick="openAddCorModal()">🧮 Buat COR</button>
 </div>
 
 <div id="docTableError" class="error"></div>
@@ -315,6 +320,50 @@
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeRenameAttachment()">Batal</button>
       <button class="btn-save" onclick="submitRenameAttachment()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Buat COR: pilih project dulu =================
+     Langkah PERTAMA dari dua langkah. Setelah project dipilih (atau "Tanpa
+     Project"), baris Document_Pipeline dibuat lalu wizard metode COR di
+     bawah langsung terbuka untuk dokumen yang baru itu — jadi user tidak
+     perlu mencari dokumennya sendiri di tabel. -->
+<div class="confirm-overlay" id="addCorModal">
+  <div class="confirm-box" style="width:460px; text-align:left;">
+    <div class="modal-hd tone-info">
+      <div class="modal-hd-ic">🧮</div>
+      <div><h3 style="margin:0;">Buat COR Baru</h3></div>
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px;">
+      Pilih project yang COR-nya mau dikerjakan. Satu project boleh punya
+      lebih dari satu COR — COR baru TIDAK menggantikan COR yang sudah ada.
+    </p>
+
+    <label style="display:block; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:4px;">Project</label>
+    <div class="searchable-select" id="addCorProjectWrap">
+      <input id="addCorProject" placeholder="Ketik Project ID / nama project / brand..." autocomplete="off">
+      <div class="searchable-select-options" id="addCorProjectOptions"></div>
+    </div>
+    <div class="placeholder-note" id="addCorProjectNote" style="margin-top:6px;"></div>
+
+    <div style="display:flex; align-items:center; gap:10px; margin:14px 0 10px;">
+      <div style="flex:1; height:1px; background:var(--border-softer);"></div>
+      <span style="font-size:11px; color:var(--text-faint); font-weight:700;">ATAU</span>
+      <div style="flex:1; height:1px; background:var(--border-softer);"></div>
+    </div>
+    <!-- Opsi eksplisit, BUKAN sekadar membiarkan kolom project kosong —
+         supaya "tanpa project" terbaca sebagai pilihan yang disengaja, bukan
+         kolom yang lupa diisi. -->
+    <button type="button" class="cor-wizard-choice" id="addCorNoProjectBtn" onclick="submitAddCor('')">
+      Tanpa Project
+      <div class="cell-sub" style="margin-top:2px;">COR ini tidak terkait client atau project mana pun.</div>
+    </button>
+
+    <div id="addCorError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" id="addCorCancelBtn" onclick="closeAddCorModal()">Batal</button>
+      <button class="btn-save" id="addCorSubmitBtn" onclick="submitAddCorFromPicker()">Lanjut</button>
     </div>
   </div>
 </div>
@@ -633,6 +682,25 @@
     var t = (taxonomy.documentTypes || []).filter(function (d) { return d.key === key; })[0];
     return t ? t.label : key;
   }
+
+  /**
+   * Label kolom/baris Project untuk satu dokumen.
+   *
+   * Dibedakan bertingkat, karena tiga keadaan berikut TIDAK sama artinya dan
+   * dulu sama-sama tampil sebagai "-":
+   *   Project_ID kosong  -> memang sengaja tanpa project (COR lepas)
+   *   ada tapi tak ketemu-> project-nya belum termuat / sudah dihapus
+   *   ketemu             -> tampilkan seperti biasa
+   */
+  function docProjectLabel(doc) {
+    if (!doc || !String(doc.Project_ID || '').trim()) return taxonomy.noProjectLabel || 'Tanpa Project';
+    var p = getProjectById(doc.Project_ID);
+    return p ? (p.Project_ID + ' — ' + (p.Project_Name || '-')) : (doc.Project_ID + ' (tidak ditemukan)');
+  }
+
+  function isDocTanpaProject(doc) {
+    return !!doc && !String(doc.Project_ID || '').trim();
+  }
   // YKB menerbitkan dokumen QUOTATION-nya sebagai "Donation Commitment
   // Letter", KAI tetap "Quotation" — sama helper & alasan dengan
   // SalesPipelineContent.quotationDocWordFor.
@@ -782,10 +850,14 @@
       return '<tr class="row-clickable" onclick="techfordRowOpen(event, function () { openDocDetail(\'' + d.Doc_ID + '\') })">' +
         '<td><span class="badge ' + stageBadgeClass(d.Stage) + '">' + (d.Stage || '-').toUpperCase() + '</span>' +
         '<div class="entity-name" style="margin-top:4px;">' + typeLabel + '</div></td>' +
-        '<td><div class="entity-name">' + (project.Project_ID || '-') + '</div>' +
-        '<div class="entity-pic">' + (project.Project_Name || '-') + '</div></td>' +
-        '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
-        '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>' +
+        (isDocTanpaProject(d)
+          ? '<td><div class="entity-name">' + escHtmlDoc(taxonomy.noProjectLabel || 'Tanpa Project') + '</div>' +
+            '<div class="entity-pic">tidak terkait project</div></td>' +
+            '<td><div class="entity-name">-</div><div class="entity-pic">-</div></td>'
+          : '<td><div class="entity-name">' + (project.Project_ID || '-') + '</div>' +
+            '<div class="entity-pic">' + (project.Project_Name || '-') + '</div></td>' +
+            '<td><div class="entity-name">' + (client.Brand_Name || '-') + '</div>' +
+            '<div class="entity-pic">' + (client.Entity_Name || '-') + '</div></td>') +
         '<td>' + (d.Status || '-').toUpperCase() + '</td>' +
         '<td><button class="btn-outline row-action-reveal" onclick="openDocDetail(\'' + d.Doc_ID + '\')">🔘 DETAIL</button></td>' +
         '</tr>';
@@ -955,8 +1027,10 @@
 
     document.getElementById('docIdHeaderDisplay').innerText = doc.Doc_ID;
     document.getElementById('docTypeHeaderDisplay').innerText = getDocTypeLabel(doc.Document_Type);
-    document.getElementById('docProjectDisplay').innerText = project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-';
-    document.getElementById('docClientDisplay').innerText = client.Brand_Name ? (client.Brand_Name + ' — ' + (client.Entity_Name || '-')) : '-';
+    document.getElementById('docProjectDisplay').innerText = docProjectLabel(doc);
+    document.getElementById('docClientDisplay').innerText = isDocTanpaProject(doc)
+      ? '-'
+      : (client.Brand_Name ? (client.Brand_Name + ' — ' + (client.Entity_Name || '-')) : '-');
     document.getElementById('docRequestedDisplay').innerText = 'Diminta oleh ' + (doc.Requested_By || '-') + ' — ' + formatDate(doc.Requested_Date);
     document.getElementById('docStageDisplay').innerText = doc.Stage || '-';
     // Entitas cuma relevan untuk Quotation — sembunyikan seluruh field-nya
@@ -1586,9 +1660,9 @@
   }
 
   function corSummaryHtml(draft) {
-    var project = getProjectById(draft.doc.Project_ID) || {};
-    var projectLabel = project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-';
-    var model = CorCalc.buildModelFromDraft(draft, corTaxonomy, projectLabel);
+    // Sama sumbernya dengan label di tabel & drawer — termasuk "Tanpa
+    // Project" untuk COR yang memang tidak terkait project mana pun.
+    var model = CorCalc.buildModelFromDraft(draft, corTaxonomy, docProjectLabel(draft.doc));
     var rp = CorCalc.fmtRp;
     var biayaPencairan = Number(model.entity.Biaya_Pencairan) || 0;
 
@@ -1689,10 +1763,7 @@
   // fungsinya disalin di kedua halaman dan tertinggal saat metode input cost
   // ditambahkan, sehingga "Lihat COR" beda hasil dari Download PDF.
   function buildCorPreviewModel(draft) {
-    var project = getProjectById(draft.doc.Project_ID) || {};
-    var projectLabel = project.Project_ID
-      ? (project.Project_ID + ' \u2014 ' + (project.Project_Name || '-')) : '-';
-    return CorCalc.buildModelFromDraft(draft, corTaxonomy, projectLabel);
+    return CorCalc.buildModelFromDraft(draft, corTaxonomy, docProjectLabel(draft.doc));
   }
 
   // "Lihat COR" sering muncul "Gagal memuat" bukan karena datanya benar2
@@ -1970,6 +2041,117 @@
     btn.disabled = true;
     btn.innerText = '⏳ Membuka...';
     goToPage('quotation-composer', { docId: currentDocDrawerId });
+  }
+
+  /* ============================================================
+     BUAT COR DARI HALAMAN INI (tombol "🧮 Buat COR")
+     ============================================================
+     Dua langkah: pilih project -> wizard metode COR. Baris dokumennya dibuat
+     di antara keduanya, supaya wizard punya Doc_ID yang nyata untuk dipakai
+     saat membuka Kalkulator.
+
+     Project DRAFT sengaja TIDAK muncul di pilihan: draft belum punya nama
+     project maupun client yang pasti (lihat Is_Draft di Sales Pipeline), jadi
+     COR yang ditempelkan ke sana akan berlabel "-" di PDF & email approval.
+     COR yang memang tidak terkait project apa pun punya jalurnya sendiri
+     ("Tanpa Project"), bukan lewat menempel ke draft. */
+  var addCorProjectLabelToId = {};
+
+  function addCorProjectOptions() {
+    addCorProjectLabelToId = {};
+    var labels = [];
+    allProjects.filter(function (p) { return !p.Is_Draft; }).forEach(function (p) {
+      var client = getClientById(p.Client_ID) || {};
+      var label = p.Project_ID + ' — ' + (p.Project_Name || '-') +
+        (client.Brand_Name ? ' (' + client.Brand_Name + ')' : '');
+      // Label dipakai sebagai kunci balik ke Project_ID. Kalau dua project
+      // menghasilkan label yang sama persis, yang PERTAMA menang dan yang
+      // kedua tidak bisa dipilih — dibedakan dengan Project_ID yang memang
+      // sudah ada di depan label, jadi tabrakan tidak mungkin terjadi.
+      addCorProjectLabelToId[label] = p.Project_ID;
+      labels.push(label);
+    });
+    return labels;
+  }
+
+  function openAddCorModal() {
+    var opsi = addCorProjectOptions();
+    initSearchableSelect('addCorProject', opsi);
+    setSearchableSelectValue('addCorProject', '');
+    document.getElementById('addCorError').innerText = '';
+    document.getElementById('addCorProjectNote').innerText = opsi.length
+      ? opsi.length + ' project tersedia (project draft tidak ditampilkan).'
+      : 'Belum ada project non-draft di Sales Pipeline. Anda tetap bisa membuat COR Tanpa Project.';
+    setAddCorBusy(false);
+    document.getElementById('addCorModal').classList.add('open');
+  }
+
+  function closeAddCorModal() {
+    document.getElementById('addCorModal').classList.remove('open');
+  }
+
+  function setAddCorBusy(busy) {
+    document.getElementById('addCorSubmitBtn').disabled = busy;
+    document.getElementById('addCorNoProjectBtn').disabled = busy;
+    document.getElementById('addCorCancelBtn').disabled = busy;
+    document.getElementById('addCorSubmitBtn').innerText = busy ? '⏳ Membuat...' : 'Lanjut';
+  }
+
+  function submitAddCorFromPicker() {
+    var label = String(document.getElementById('addCorProject').value || '').trim();
+    var errEl = document.getElementById('addCorError');
+    if (!label) {
+      errEl.innerText = 'Pilih project dulu, atau klik "Tanpa Project" kalau COR ini memang tidak terkait project mana pun.';
+      return;
+    }
+    var projectId = addCorProjectLabelToId[label];
+    if (!projectId) {
+      // Input searchable-select bisa diketik bebas — teks yang tidak cocok
+      // dengan opsi mana pun HARUS ditolak di sini, bukan dikirim apa adanya
+      // ke server sebagai Project_ID palsu.
+      errEl.innerText = 'Project tidak dikenali. Pilih dari daftar yang muncul saat mengetik.';
+      return;
+    }
+    submitAddCor(projectId);
+  }
+
+  function submitAddCor(projectId) {
+    document.getElementById('addCorError').innerText = '';
+    setAddCorBusy(true);
+    TechfordLoading.show('Membuat dokumen COR...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        TechfordLoading.hide();
+        setAddCorBusy(false);
+        if (res && res.ok === false) {
+          document.getElementById('addCorError').innerText = (res.error && res.error.message) || 'Gagal membuat COR.';
+          return;
+        }
+        var docId = res && res.data && res.data.doc && res.data.doc.Doc_ID;
+        if (!docId) {
+          // google.script.run berkali-kali terbukti mengirim respons tanpa
+          // body yang bisa dibaca. Dokumennya BISA JADI sudah dibuat di
+          // server, jadi jangan bilang "gagal" — segarkan tabel & minta user
+          // melanjutkan dari baris dokumennya.
+          closeAddCorModal();
+          fetchDocuments();
+          alert('Dokumen COR sudah dibuat, tetapi halaman tidak menerima nomornya. ' +
+            'Klik 🔄 Refresh Data, lalu buka baris COR paling baru dan tekan "Kerjakan COR".');
+          return;
+        }
+        closeAddCorModal();
+        // Tabel disegarkan supaya baris COR barunya langsung ada begitu user
+        // kembali dari Kalkulator.
+        fetchDocuments();
+        openCorWizard(docId);
+      })
+      .withFailureHandler(function (err) {
+        TechfordLoading.hide();
+        setAddCorBusy(false);
+        document.getElementById('addCorError').innerText =
+          'Gagal membuat COR: ' + (err && err.message ? err.message : err);
+      })
+      .document_createCor(projectId || '', currentUserName());
   }
 
   var corWizardDocId = null;

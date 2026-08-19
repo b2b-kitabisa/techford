@@ -24,6 +24,12 @@ var DocumentController = (function (module) {
     });
   };
 
+  module.createCor = function (projectId, createdBy) {
+    return ErrorHandler.handle('DocumentController.createCor', function () {
+      return DocumentService.createCorDocument(projectId, createdBy);
+    });
+  };
+
   module.updateStatus = function (docId, newStatus) {
     return ErrorHandler.handle('DocumentController.updateStatus', function () {
       return DocumentService.updateStatus(docId, newStatus);

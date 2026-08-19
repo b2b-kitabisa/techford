@@ -69,22 +69,42 @@ var DocumentService = (function (module) {
       quotationEntities: Config.QUOTATION_ENTITIES,
       negotiationTypes: Config.DOCUMENT_NEGOTIATION_TYPES,
       dealType: Config.DOCUMENT_DEAL_TYPE,
-      nonPipelineTypes: Config.DOCUMENT_NON_PIPELINE_TYPES
+      nonPipelineTypes: Config.DOCUMENT_NON_PIPELINE_TYPES,
+      // Dipakai UI Sales Pipeline: tipe di daftar ini BOLEH diminta lagi
+      // walau project-nya sudah punya dokumen tipe yang sama (COR).
+      repeatableTypes: Config.DOCUMENT_REPEATABLE_TYPES,
+      // Dipakai UI Document Pipeline: tipe yang boleh dibuat tanpa project.
+      projectlessTypes: Config.DOCUMENT_PROJECTLESS_TYPES,
+      noProjectLabel: Config.NO_PROJECT_LABEL
     };
   };
 
   /**
-   * @param {Object} input - projectId, documentType, entity (wajib hanya
-   *   kalau documentType === 'QUOTATION')
+   * Satu-satunya tempat baris Document_Pipeline dibuat. Mengembalikan baris
+   * yang baru dibuat — pemanggil yang butuh daftar lengkap memanggil
+   * getAllDocuments() sendiri.
+   *
+   * Project boleh KOSONG hanya untuk tipe di Config.DOCUMENT_PROJECTLESS_TYPES
+   * (COR). Untuk tipe lain, project wajib ada DAN wajib benar-benar ada di
+   * sheet Project — validasi ini tidak boleh dilonggarkan cuma karena COR
+   * sekarang boleh tanpa project.
    */
-  module.createDocument = function (input, createdBy) {
-    if (Utils.isBlank(input.projectId) || !ProjectRepository.findById(input.projectId)) {
+  function buatDokumen(input, createdBy) {
+    var documentType = input.documentType;
+    var projectId = String(input.projectId == null ? '' : input.projectId).trim();
+
+    if (Utils.isBlank(projectId)) {
+      if (!Config.allowsBlankProject(documentType)) {
+        throw new AppError('VALIDATION_ERROR', 'Project wajib dipilih dari daftar Sales Pipeline.');
+      }
+    } else if (!ProjectRepository.findById(projectId)) {
       throw new AppError('VALIDATION_ERROR', 'Project wajib dipilih dari daftar Sales Pipeline.');
     }
-    var initialEntry = statusMapFor(input.documentType)[0];
+
+    var initialEntry = statusMapFor(documentType)[0];
 
     var entity = '';
-    if (input.documentType === 'QUOTATION') {
+    if (documentType === 'QUOTATION') {
       if (Config.QUOTATION_ENTITIES.indexOf(input.entity) === -1) {
         throw new AppError('VALIDATION_ERROR', 'Entitas penerbit Quotation wajib dipilih.');
       }
@@ -94,8 +114,8 @@ var DocumentService = (function (module) {
     var now = new Date();
     var doc = {
       Doc_ID: 'DOC' + SequenceService.next('DOCUMENT', DOC_ID_DIGITS),
-      Project_ID: input.projectId,
-      Document_Type: input.documentType,
+      Project_ID: projectId,
+      Document_Type: documentType,
       Entity: entity,
       Status: initialEntry.status,
       Stage: initialEntry.stage,
@@ -105,8 +125,40 @@ var DocumentService = (function (module) {
     };
 
     DocumentPipelineRepository.create(doc);
-    Log.info('DocumentService', 'Dokumen ' + doc.Document_Type + ' diminta untuk ' + doc.Project_ID + ': ' + doc.Doc_ID);
+    Log.info('DocumentService', 'Dokumen ' + doc.Document_Type + ' diminta untuk ' +
+      (projectId || '(tanpa project)') + ': ' + doc.Doc_ID);
+    return doc;
+  }
+
+  /**
+   * @param {Object} input - projectId, documentType, entity (wajib hanya
+   *   kalau documentType === 'QUOTATION')
+   */
+  module.createDocument = function (input, createdBy) {
+    buatDokumen(input, createdBy);
     return module.getAllDocuments();
+  };
+
+  /**
+   * Buat dokumen COR dari halaman Document Pipeline (tombol "+ Buat COR").
+   *
+   * Beda dari createDocument: mengembalikan HANYA baris yang baru dibuat,
+   * bukan seluruh daftar dokumen. Dua alasan:
+   *
+   * 1. Pemanggilnya BUTUH Doc_ID yang baru untuk langsung membuka wizard
+   *    metode COR — daftar lengkap tidak memberi tahu mana yang baru.
+   * 2. Payload besar adalah penyebab google.script.run kembali dengan
+   *    res=null yang sudah berulang kali menggigit di modul lain (lihat
+   *    ClientService.createManualClient & catatan di LeadService). UI
+   *    memanggil fetchDocuments() sendiri setelah ini untuk menyegarkan
+   *    tabelnya, jadi mengirim ulang seluruh array di sini cuma pemborosan
+   *    yang berbahaya.
+   *
+   * @param {string} projectId kosong = COR yang tidak terkait project mana pun.
+   */
+  module.createCorDocument = function (projectId, createdBy) {
+    var doc = buatDokumen({ projectId: projectId, documentType: 'COR' }, createdBy);
+    return { doc: doc };
   };
 
   module.updateStatus = function (docId, newStatus) {
@@ -492,6 +544,13 @@ var DocumentService = (function (module) {
   };
 
   function checkAndAdvanceProjectStage(projectId) {
+    // Dokumen tanpa project (COR lepas — lihat Config.DOCUMENT_PROJECTLESS_TYPES)
+    // tidak boleh sampai ke sini. Tanpa penjaga ini, findByProjectId('')
+    // mengumpulkan SEMUA dokumen tanpa project seolah-olah mereka satu
+    // project yang sama — COR lepas yang Done akan terbaca sebagai sinyal
+    // Negotiation untuk "project" berisi string kosong.
+    if (Utils.isBlank(projectId)) return;
+
     var docs = DocumentPipelineRepository.findByProjectId(projectId);
     if (!docs.length) return;
 

@@ -369,7 +369,9 @@
       return;
     }
     document.getElementById('cmTableBody').innerHTML = rows.map(function (r) {
-      var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : '-';
+      // COR boleh sengaja tidak terkait project mana pun — dibedakan dari
+      // "-" supaya tidak terbaca sebagai data yang hilang.
+      var projectLabel = r.projectId ? (r.projectId + ' — ' + r.projectName) : 'Tanpa Project';
       var saldoSalset = r.budgetSalset - r.realizedSalset;
       var saldoVendor = r.budgetVendor - r.realizedVendor;
       var marginDeltaPp = r.actualMarginPct - r.budgetedMarginPct;
@@ -491,8 +493,9 @@
     var d = currentCmDetail;
     if (!d) return;
 
-    document.getElementById('cmDrawerProjectClient').innerText =
-      (d.projectId ? (d.projectId + ' — ' + d.projectName) : '-') + ' · ' + d.clientName;
+    document.getElementById('cmDrawerProjectClient').innerText = d.projectId
+      ? (d.projectId + ' — ' + d.projectName + ' · ' + d.clientName)
+      : 'Tanpa Project';
 
     var m = d.corResult;
     var marginDelta = m.actualMarginPct - m.budgetedMarginPct;

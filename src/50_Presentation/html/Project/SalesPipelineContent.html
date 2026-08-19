@@ -2991,10 +2991,32 @@
     return rows;
   }
 
-  function isDocAlreadyRequested(projectId, row) {
-    return allDocuments.some(function (d) {
+  /**
+   * Tipe yang boleh diminta BERKALI-KALI untuk project yang sama (COR).
+   * Daftarnya datang dari server (Config.DOCUMENT_REPEATABLE_TYPES lewat
+   * docTaxonomy) — JANGAN di-hardcode di sini, supaya tidak ada daftar kedua
+   * yang diam-diam tidak sinkron dengan backend.
+   */
+  function isRepeatableDocType(documentType) {
+    return (docTaxonomy.repeatableTypes || []).indexOf(documentType) !== -1;
+  }
+
+  function countDocsRequested(projectId, row) {
+    return allDocuments.filter(function (d) {
       return d.Project_ID === projectId && d.Document_Type === row.documentType && (d.Entity || '') === row.entity;
-    });
+    }).length;
+  }
+
+  /**
+   * "Sudah pernah diminta" DAN karena itu tidak boleh diminta lagi.
+   *
+   * Untuk tipe berulang (COR) SELALU false: satu project boleh punya beberapa
+   * COR yang berdiri sendiri & tidak saling berkaitan, kapan saja, tanpa
+   * batas jumlah, dan tanpa perlu menunggu COR sebelumnya selesai.
+   */
+  function isDocAlreadyRequested(projectId, row) {
+    if (isRepeatableDocType(row.documentType)) return false;
+    return countDocsRequested(projectId, row) > 0;
   }
 
   function renderDocumentRequestRows(projectId) {
@@ -3003,7 +3025,15 @@
     container.innerHTML = getDocRequestRows().map(function (row) {
       var existing = isDocAlreadyRequested(projectId, row);
       var checked = existing || !!pendingDocRequestKeys[row.key];
-      return '<label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">' + row.label +
+      // Tipe berulang: toggle-nya TIDAK pernah terkunci & TIDAK ikut tercentang
+      // otomatis oleh dokumen lama — kalau ikut tercentang, sekali buka popup
+      // lalu Kirim akan membuat COR baru tanpa user pernah memintanya.
+      var jumlah = isRepeatableDocType(row.documentType) ? countDocsRequested(projectId, row) : 0;
+      var catatan = jumlah
+        ? '<div class="cell-sub">Sudah ada ' + jumlah + ' COR. Menyalakan ini menambah COR baru, bukan mengganti yang lama.</div>'
+        : '';
+      return '<label style="display:flex; align-items:center; justify-content:space-between; padding:6px 0;">' +
+        '<span>' + row.label + catatan + '</span>' +
         '<span class="switch"><input type="checkbox" ' + (checked ? 'checked' : '') + ' ' + (existing ? 'disabled' : '') +
         ' onchange="toggleDocRequestPending(\'' + row.key + '\', this.checked)"><span class="switch-slider"></span></span>' +
         '</label>';
@@ -3094,8 +3124,15 @@
   // ditambahkan, sehingga "Lihat COR" beda hasil dari Download PDF.
   function buildCorPreviewModel(draft) {
     var project = getProjectById(draft.doc.Project_ID) || {};
+    // "Tanpa Project" harus sama persis dengan label server (CorService.
+    // buildReportModel) & Document Pipeline \u2014 kalau berbeda, "Lihat COR" di
+    // sini akan beda isi dari PDF yang dikirim ke approver. Halaman ini cuma
+    // menampilkan dokumen milik project yang sedang dibuka, jadi cabang
+    // "tanpa project" praktis tidak terpakai di sini \u2014 tetap disamakan supaya
+    // tiga penyalin model ini tidak menyimpang lagi seperti dulu.
     var projectLabel = project.Project_ID
-      ? (project.Project_ID + ' \u2014 ' + (project.Project_Name || '-')) : '-';
+      ? (project.Project_ID + ' \u2014 ' + (project.Project_Name || '-'))
+      : (String(draft.doc && draft.doc.Project_ID || '').trim() ? '-' : 'Tanpa Project');
     return CorCalc.buildModelFromDraft(draft, corTaxonomy, projectLabel);
   }
 

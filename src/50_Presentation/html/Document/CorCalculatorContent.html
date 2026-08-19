@@ -716,8 +716,15 @@
     var project = allCorProjects.filter(function (p) { return p.Project_ID === currentDoc.Project_ID; })[0] || {};
     var client = allCorClients.filter(function (c) { return c.Client_ID === project.Client_ID; })[0] || {};
     document.getElementById('corDocIdDisplay').innerText = 'COR — ' + currentDoc.Doc_ID;
+    // COR boleh sengaja dibuat tanpa project (lihat Config.DOCUMENT_PROJECTLESS_TYPES).
+    // Tanpa cabang ini barisnya terbaca "- (-) — -", yang terlihat seperti
+    // data gagal dimuat padahal memang tidak ada project-nya. Nilai ini juga
+    // dipakai sebagai projectLabel di preview PDF (lihat pemakaian
+    // corDocSubDisplay di bawah), jadi harus sama dengan label server.
     document.getElementById('corDocSubDisplay').innerText =
-      (project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-');
+      String(currentDoc.Project_ID || '').trim()
+        ? ((project.Project_Name || '-') + ' (' + (project.Project_ID || '-') + ') — ' + (client.Brand_Name || '-'))
+        : 'Tanpa Project';
     renderApprovalState();
   }
 

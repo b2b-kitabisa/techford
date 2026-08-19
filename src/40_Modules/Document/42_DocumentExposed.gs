@@ -16,6 +16,15 @@ function document_create(input, createdBy) {
   return DocumentController.create(input, createdBy);
 }
 
+/**
+ * Buat dokumen COR dari halaman Document Pipeline. projectId kosong = COR
+ * yang tidak terkait project mana pun. Mengembalikan { doc } saja (bukan
+ * seluruh daftar) — lihat DocumentService.createCorDocument.
+ */
+function document_createCor(projectId, createdBy) {
+  return DocumentController.createCor(projectId, createdBy);
+}
+
 function document_updateStatus(docId, newStatus) {
   return DocumentController.updateStatus(docId, newStatus);
 }

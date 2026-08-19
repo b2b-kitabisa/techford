@@ -473,7 +473,12 @@ var CorService = (function (module) {
       project: project,
       model: {
         docLabel: doc.Doc_ID,
-        projectLabel: project.Project_ID ? (project.Project_ID + ' — ' + (project.Project_Name || '-')) : '-',
+        // "Tanpa Project" (bukan "-") supaya COR yang MEMANG sengaja tidak
+        // dikaitkan ke project mana pun tidak terbaca sebagai data yang
+        // hilang/rusak oleh approver yang membaca PDF-nya.
+        projectLabel: project.Project_ID
+          ? (project.Project_ID + ' — ' + (project.Project_Name || '-'))
+          : Config.NO_PROJECT_LABEL,
         method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
         ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset, linkCampaigns: decodeJson(header.Link_Campaigns, []),
         marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks
@@ -736,8 +741,12 @@ var CorService = (function (module) {
         Pdf_File_Url: pdf.url
       });
 
-      var subject = (project.Project_ID || docId) + ' — ' + (project.Project_Name || '-') + ' — ' +
-        (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-');
+      // COR tanpa project: subject-nya cukup Doc_ID + penanda eksplisit,
+      // bukan rentetan "-" yang terbaca seperti data yang gagal dimuat.
+      var subject = project.Project_ID
+        ? (project.Project_ID + ' — ' + (project.Project_Name || '-') + ' — ' +
+           (client ? (client.Brand_Name || '-') : '-') + ' — ' + (client ? (client.Entity_Name || '-') : '-'))
+        : (docId + ' — ' + Config.NO_PROJECT_LABEL);
 
       var approveUrl = ScriptApp.getService().getUrl() + '?action=cor-approve&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
       var rejectUrl = ScriptApp.getService().getUrl() + '?action=cor-reject&docId=' + encodeURIComponent(docId) + '&token=' + encodeURIComponent(token);
