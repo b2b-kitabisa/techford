@@ -75,7 +75,21 @@ var CorReportRenderer = (function (module) {
     var ppnGd = opts.pkp ? ri(cashGross / 1.11) : cashGross;
     var pph23 = opts.pphOn ? ri(ppnGd * 0.02) : 0;
     var cashNet = ppnGd - pph23;
-    var totalMgnFrac = totalMarginPct(opts.margin, opts.marginComponents);
+    // Default Margin bisa dimatikan (marginEnabled=false -> tidak ada profit
+    // diambil di muka, availCost jadi = cashNet, persis "Cash In Vendor"
+    // langsung jadi acuan Cost Vendor) atau diisi manual (marginMode
+    // 'MANUAL' -> satu angka Total Margin %, dropdown komponen diabaikan).
+    // opts.marginEnabled/marginMode sengaja opsional (undefined) supaya
+    // pemanggil lama (computeGU, tes) tetap dapat perilaku SEBELUM toggle
+    // ini ada: pakai komponen, seperti biasa.
+    var totalMgnFrac;
+    if (opts.marginEnabled === false) {
+      totalMgnFrac = 0;
+    } else if (opts.marginMode === 'MANUAL') {
+      totalMgnFrac = (Number(opts.manualMarginPct) || 0) / 100;
+    } else {
+      totalMgnFrac = totalMarginPct(opts.margin, opts.marginComponents);
+    }
     var profit = ri(cashNet * totalMgnFrac);
     var availCost = cashNet - profit;
 
@@ -407,6 +421,7 @@ var CorReportRenderer = (function (module) {
         var gd = computeGD({
           funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
           margin: block.margin, marginComponents: model.marginComponents,
+          marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
           isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
           pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
         });
@@ -435,13 +450,20 @@ var CorReportRenderer = (function (module) {
           pdfRow('Cash In ' + model.vendorEntity + ' (Net)', fmtRp(gd.cashNet)) +
           '</tbody></table>' +
 
-          '<h2>Default Margin</h2><table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal'], MARGIN_COLS) +
-          '<tbody>' + marginTableHtml(block.margin, model.marginComponents, gd.cashNet, true) + '</tbody></table>' +
-          '<table class="pdf-meta"><tbody>' +
-          pdfRow('Total Margin', (gd.totalMgnFrac * 100).toFixed(0) + '%') +
-          pdfRow('Profit', fmtRp(gd.profit)) +
-          pdfRow('Available Cost ' + model.vendorEntity, fmtRp(gd.availCost)) +
-          '</tbody></table>';
+          (model.marginEnabled === false
+            ? '<h2>Default Margin</h2><p style="font-style:italic; color:#555;">' +
+              'Tidak ada margin diambil di muka — profit dihitung dari Cash In dikurangi Cost ' + model.vendorEntity + ' aktual (lihat Profit Margin).' +
+              '</p>'
+            : '<h2>Default Margin</h2>' +
+              (model.marginMode === 'MANUAL'
+                ? '<table class="pdf-meta"><tbody>' + pdfRow('Total Margin (manual)', (gd.totalMgnFrac * 100).toFixed(0) + '%') + '</tbody></table>'
+                : '<table class="pdf-tbl">' + tblHead(['Komponen', 'Kategori', '%', 'Nominal'], MARGIN_COLS) +
+                  '<tbody>' + marginTableHtml(block.margin, model.marginComponents, gd.cashNet, true) + '</tbody></table>') +
+              '<table class="pdf-meta"><tbody>' +
+              pdfRow('Total Margin', (gd.totalMgnFrac * 100).toFixed(0) + '%') +
+              pdfRow('Profit', fmtRp(gd.profit)) +
+              pdfRow('Available Cost ' + model.vendorEntity, fmtRp(gd.availCost)) +
+              '</tbody></table>');
 
         if (model.isViaSalset) {
           html += costTableHtml('Biaya Pengeluaran SALSET', block.salItems, gd.totalSal);

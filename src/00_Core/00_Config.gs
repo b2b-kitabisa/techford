@@ -601,6 +601,23 @@ var Config = (function (module) {
     return module.COR_CAMPAIGN_FUND_KIND.some(function (k) { return k.key === kind; });
   };
 
+  /**
+   * Box "Default Margin" (Gross Down) — bisa DIMATIKAN sama sekali (tidak
+   * ada profit yang diambil di muka, Cash In Vendor langsung jadi acuan
+   * Cost Vendor; margin/profit AKTUAL tetap kelihatan di box "Margin &
+   * Profit Margin" karena rumusnya independen dari toggle ini), atau kalau
+   * dinyalakan admin pilih salah satu cara menentukan Total Margin:
+   * COMPONENT (4 dropdown per komponen, seperti sebelumnya) atau MANUAL
+   * (satu angka Total Margin % diketik langsung, dropdown komponen tidak
+   * ikut dihitung). Default COMPONENT+enabled — SAMA PERSIS perilaku
+   * sebelum toggle ini ada, supaya dokumen lama tidak berubah angkanya.
+   */
+  module.COR_MARGIN_MODE = { COMPONENT: 'COMPONENT', MANUAL: 'MANUAL' };
+  module.COR_MARGIN_MODE_DEFAULT = 'COMPONENT';
+  module.isValidMarginMode = function (mode) {
+    return Object.keys(module.COR_MARGIN_MODE).indexOf(mode) !== -1;
+  };
+
   // 2 kelompok baris biaya (Cost SALSET vs Cost Vendor/entity terpilih) —
   // sama untuk method Gross Down maupun Gross Up.
   module.COR_COST_GROUP = { SAL: 'SAL', VENDOR: 'VENDOR' };

@@ -106,6 +106,19 @@ var CorService = (function (module) {
         Doc_ID: header.Doc_ID,
         Cor_Method: header.Cor_Method,
         Is_Via_Salset: !!header.Is_Via_Salset,
+        // BUG lama yang ikut diperbaiki di sini: field-field ini SUDAH dibaca
+        // oleh kalkulator (loadDraftIntoState) sejak fitur COR tanpa project/
+        // SALSET Saja ditambahkan, tapi tidak pernah ikut di-whitelist di
+        // sini — draft yang dibuka ulang diam-diam kembali ke default
+        // (manualProjectName kosong, isSalsetOnly false) walau tersimpan benar
+        // di sheet.
+        Is_Salset_Only: !!header.Is_Salset_Only,
+        Manual_Project_Name: header.Manual_Project_Name || '',
+        // undefined (dokumen lama, kolom belum ada) HARUS jatuh ke true —
+        // perilaku sebelum toggle Default Margin ada.
+        Margin_Enabled: header.Margin_Enabled === undefined || header.Margin_Enabled === '' ? true : !!header.Margin_Enabled,
+        Margin_Mode: Config.isValidMarginMode(header.Margin_Mode) ? header.Margin_Mode : Config.COR_MARGIN_MODE_DEFAULT,
+        Manual_Margin_Pct: Number(header.Manual_Margin_Pct) || 0,
         Vendor_Entity: header.Vendor_Entity,
         Ngo_Rate: Number(header.Ngo_Rate) || 10,
         Biaya_Salset: Number(header.Biaya_Salset) || 0,
@@ -176,7 +189,7 @@ var CorService = (function (module) {
 
     var now = new Date();
     var existing = CorHeaderRepository.findByDocId(docId);
-    CorHeaderRepository.ensureColumns(['Manual_Project_Name', 'Is_Salset_Only']);
+    CorHeaderRepository.ensureColumns(['Manual_Project_Name', 'Is_Salset_Only', 'Margin_Enabled', 'Margin_Mode', 'Manual_Margin_Pct']);
 
     // SALSET Saja MENYIRATKAN Via SALSET — dipaksa di sini juga (bukan
     // cuma dipercaya dari klien), supaya tidak mungkin ada baris
@@ -185,11 +198,22 @@ var CorService = (function (module) {
     var isSalsetOnly = !!input.salsetOnly;
     var isViaSalset = isSalsetOnly || !!input.isViaSalset;
 
+    // Default Margin: kalau klien tidak mengirim marginEnabled sama sekali
+    // (undefined, bukan false) dianggap enabled — jatuh balik ke perilaku
+    // sebelum toggle ini ada. marginMode tidak dipercaya mentah dari klien
+    // (nilai aneh jatuh ke default COMPONENT), sama seperti pola validasi
+    // enum lain di service ini (lihat Campaign_Fund_Kind).
+    var marginEnabled = input.marginEnabled === undefined ? true : !!input.marginEnabled;
+    var marginMode = Config.isValidMarginMode(input.marginMode) ? input.marginMode : Config.COR_MARGIN_MODE_DEFAULT;
+
     CorHeaderRepository.upsert(docId, {
       Doc_ID: docId,
       Cor_Method: input.corMethod,
       Is_Via_Salset: isViaSalset,
       Is_Salset_Only: isSalsetOnly,
+      Margin_Enabled: marginEnabled,
+      Margin_Mode: marginMode,
+      Manual_Margin_Pct: Number(input.manualMarginPct) || 0,
       Vendor_Entity: input.vendorEntity || '',
       Ngo_Rate: Number(input.ngoRate) || 10,
       Biaya_Salset: Number(input.biayaSalset) || 0,
@@ -439,6 +463,12 @@ var CorService = (function (module) {
     var isMixFund = !!header.Is_Mix_Fund;
     var ngoRate = Number(header.Ngo_Rate) || 10;
     var biayaSalset = Number(header.Biaya_Salset) || 0;
+    // Dokumen lama belum punya kolom ini (undefined) -> HARUS jatuh ke
+    // enabled+COMPONENT, perilaku sebelum toggle Default Margin ada, supaya
+    // COR yang sudah Approved tidak berubah angkanya gara-gara migrasi.
+    var marginEnabled = header.Margin_Enabled === undefined || header.Margin_Enabled === '' ? true : !!header.Margin_Enabled;
+    var marginMode = Config.isValidMarginMode(header.Margin_Mode) ? header.Margin_Mode : Config.COR_MARGIN_MODE_DEFAULT;
+    var manualMarginPct = Number(header.Manual_Margin_Pct) || 0;
 
     var activeInfo = resolveActiveEntity(vendorEntity, isViaSalset);
     var pkp = activeInfo.pkp;
@@ -514,7 +544,8 @@ var CorService = (function (module) {
           : (header.Manual_Project_Name || Config.NO_PROJECT_LABEL),
         method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
         ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset, linkCampaigns: decodeJson(header.Link_Campaigns, []),
-        marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks
+        marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks,
+        marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct
       }
     };
   }
@@ -548,6 +579,7 @@ var CorService = (function (module) {
       var gd = CorReportRenderer.computeGD({
         funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
         margin: block.margin, marginComponents: model.marginComponents,
+        marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
         isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
         pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
       });
@@ -667,6 +699,7 @@ var CorService = (function (module) {
       var gd = CorReportRenderer.computeGD({
         funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
         margin: block.margin, marginComponents: model.marginComponents,
+        marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
         isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
         pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
       });

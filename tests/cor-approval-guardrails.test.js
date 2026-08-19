@@ -173,6 +173,9 @@ function buildCorService(opsi) {
     DOCUMENT_ACTIVITY_TYPE: ACTIVITY_TYPE,
     APPROVAL_TOKEN_VALID_DAYS: 14,
     ROOT_FOLDER_ID: 'ROOT',
+    COR_MARGIN_MODE: { COMPONENT: 'COMPONENT', MANUAL: 'MANUAL' },
+    COR_MARGIN_MODE_DEFAULT: 'COMPONENT',
+    isValidMarginMode: (mode) => mode === 'COMPONENT' || mode === 'MANUAL',
     MARGIN_COMPONENTS: [
       { key: 'CONS', label: 'Consultancy Service Fee' },
       { key: 'CRE', label: 'Creative Development' },

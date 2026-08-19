@@ -223,8 +223,12 @@
          tetap terbaca sebagai dua komponen, bukan satu daftar campur. -->
     <div class="cor-rbox" id="corRbMargin">
       <div class="cor-rbox-hd">Margin &amp; Profit Margin</div>
-      <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
-      <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
+      <!-- Cuma relevan kalau Default Margin (Box 4) ON — kalau OFF, tidak
+           ada "planned margin" untuk ditampilkan (lihat corMarginEnabled). -->
+      <div id="corRrMgPlannedWrap">
+        <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
+        <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
+      </div>
       <div class="cor-rrow"><span>Available cost</span><span class="v" id="corRrAvail">Rp0</span></div>
       <div class="cor-rbox-divider"></div>
       <div class="cor-rrow"><span>Revenue after tax</span><span class="v" id="corRrPmRev">Rp0</span></div>
@@ -366,24 +370,53 @@
         </div>
 
         <div class="cor-box cor-box-input" id="corBoxDefaultMargin">
-          <div class="cor-box-hd">4. Default Margin</div>
-          <div class="cor-margin-hd">
-            <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
+          <div class="cor-box-hd" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <span>4. Default Margin</span>
+            <label class="switch-wrap" style="font-size:11px; font-weight:400;">Aktif
+              <span class="switch"><input type="checkbox" id="corMarginEnabled" checked onchange="onMarginEnabledChange()"><span class="switch-slider"></span></span>
+            </label>
           </div>
-          <div id="corGdMarginRows"></div>
-          <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-            <span style="font-size:12px; color:var(--text-muted);">Total margin</span>
-            <strong id="corGdTotalMarginPct">0%</strong>
+
+          <!-- OFF: tidak ada profit diambil di muka — Cash In Vendor langsung
+               jadi acuan Cost Vendor. Margin & profit AKTUAL tetap kelihatan
+               di box "Margin & Profit Margin" (rumusnya independen dari
+               toggle ini), jadi TIDAK diulang di sini. -->
+          <div id="corMarginOffNote" class="placeholder-note" style="display:none;">
+            Margin dilewati — Cash In <span id="corVl3off">Vendor</span> langsung jadi acuan Cost <span id="corVl3off2">Vendor</span>.
           </div>
-          <div class="form-grid-2col">
-            <div class="cor-hi" style="background:var(--accent-tint-strong);">
-              <div class="cor-hi-label">Profit (margin)</div>
-              <div class="cor-hi-value" id="corProfitFd" style="color:var(--color-cerulean);">Rp0</div>
+
+          <div id="corMarginOnWrap">
+            <div class="cor-mtabs" style="margin-bottom:10px;">
+              <button type="button" class="cor-mtab on" id="corMarginModeComponentBtn" onclick="setMarginMode('COMPONENT')">Per Komponen</button>
+              <button type="button" class="cor-mtab" id="corMarginModeManualBtn" onclick="setMarginMode('MANUAL')">Manual</button>
             </div>
-            <div class="cor-hi" style="background:#fdf3e0;">
-              <div class="cor-hi-label">Available cost <span id="corVl3">vendor</span></div>
-              <div class="cor-hi-value" id="corAvailCost" style="color:#7a4a00;">Rp0</div>
+
+            <div id="corMarginComponentWrap">
+              <div class="cor-margin-hd">
+                <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
+              </div>
+              <div id="corGdMarginRows"></div>
+            </div>
+
+            <div id="corMarginManualWrap" style="display:none; margin-bottom:8px;">
+              <div class="drawer-field-label">Total Margin (%) — diketik manual, tidak mengikuti dropdown komponen</div>
+              <input type="number" id="corManualMarginPctInput" min="0" max="100" step="0.5" value="0" oninput="onManualMarginPctChange()" style="width:120px;">
+            </div>
+
+            <div style="height:1px; background:var(--border-softer); margin:8px 0;"></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+              <span style="font-size:12px; color:var(--text-muted);">Total margin</span>
+              <strong id="corGdTotalMarginPct">0%</strong>
+            </div>
+            <div class="form-grid-2col">
+              <div class="cor-hi" style="background:var(--accent-tint-strong);">
+                <div class="cor-hi-label">Profit (margin)</div>
+                <div class="cor-hi-value" id="corProfitFd" style="color:var(--color-cerulean);">Rp0</div>
+              </div>
+              <div class="cor-hi" style="background:#fdf3e0;">
+                <div class="cor-hi-label">Available cost <span id="corVl3">vendor</span></div>
+                <div class="cor-hi-value" id="corAvailCost" style="color:#7a4a00;">Rp0</div>
+              </div>
             </div>
           </div>
         </div>
@@ -652,6 +685,11 @@
   // Implikasi Is_Salset_Only=true -> Is_Via_Salset=true SELALU dijaga di
   // sini juga (bukan cuma di server) — lihat loadDraftIntoState().
   var isSalsetOnly = false;
+  // Default Margin (Box 4) — ON+COMPONENT adalah default, SAMA PERSIS
+  // perilaku sebelum toggle ini ada, supaya dokumen lama tidak berubah.
+  var marginEnabled = true;
+  var marginMode = 'COMPONENT';
+  var manualMarginPct = 0;
   // isMixFund SEKARANG keputusan eksplisit (dari wizard "Kerjakan COR" atau
   // draft tersimpan) — BUKAN lagi dideteksi otomatis dari isi baris dana,
   // supaya alur 4 CARA (lihat wizard di Document Pipeline) konsisten &
@@ -1196,6 +1234,11 @@
       else ngoRate = Number(draft.header.Ngo_Rate) || 10;
       corState.CLIENT.biayaSalset = Number(draft.header.Biaya_Salset) || 0;
       linkCampaigns = draft.header.Link_Campaigns && draft.header.Link_Campaigns.length ? draft.header.Link_Campaigns : [''];
+      // undefined (dokumen lama, kolom belum ada) HARUS jatuh ke true —
+      // perilaku sebelum toggle ini ada.
+      marginEnabled = draft.header.Margin_Enabled === undefined ? true : !!draft.header.Margin_Enabled;
+      marginMode = draft.header.Margin_Mode === 'MANUAL' ? 'MANUAL' : 'COMPONENT';
+      manualMarginPct = Number(draft.header.Manual_Margin_Pct) || 0;
     } else {
       // Belum pernah disimpan — pakai hasil wizard "Kerjakan COR".
       if (WIZARD_METHOD) currentMethod = WIZARD_METHOD;
@@ -1288,9 +1331,41 @@
     document.getElementById('corNgoRate').value = ngoRate;
     document.getElementById('corGuNgoRate').value = guNgoRate;
     document.getElementById('corBiayaSalset').value = formatThousands(corState.CLIENT.biayaSalset);
+    document.getElementById('corMarginEnabled').checked = marginEnabled;
+    document.getElementById('corManualMarginPctInput').value = manualMarginPct;
+    renderMarginOnOff();
+    setMarginMode(marginMode, true);
     populateVendorSelect();
     setCorMethod(currentMethod, true);
     applyFundLock();
+  }
+
+  // ══════════════════════════ DEFAULT MARGIN — ON/OFF & mode ══════════════
+  function renderMarginOnOff() {
+    document.getElementById('corMarginOffNote').style.display = marginEnabled ? 'none' : '';
+    document.getElementById('corMarginOnWrap').style.display = marginEnabled ? '' : 'none';
+  }
+  function onMarginEnabledChange() {
+    marginEnabled = document.getElementById('corMarginEnabled').checked;
+    renderMarginOnOff();
+    calcAll();
+  }
+  function setMarginMode(mode, silent) {
+    marginMode = mode === 'MANUAL' ? 'MANUAL' : 'COMPONENT';
+    document.getElementById('corMarginModeComponentBtn').className = 'cor-mtab' + (marginMode === 'COMPONENT' ? ' on' : '');
+    document.getElementById('corMarginModeManualBtn').className = 'cor-mtab' + (marginMode === 'MANUAL' ? ' on' : '');
+    document.getElementById('corMarginComponentWrap').style.display = marginMode === 'COMPONENT' ? '' : 'none';
+    document.getElementById('corMarginManualWrap').style.display = marginMode === 'MANUAL' ? '' : 'none';
+    if (!silent) calcAll();
+  }
+  function onManualMarginPctChange() {
+    manualMarginPct = Number(document.getElementById('corManualMarginPctInput').value) || 0;
+    calcAll();
+  }
+  function getEffectiveTotalMarginPct(tabMarginState) {
+    if (!marginEnabled) return 0;
+    if (marginMode === 'MANUAL') return manualMarginPct / 100;
+    return getTotalMarginPct(tabMarginState);
   }
 
   // Item 5 & 7 — Metode/Via SALSET/jenis dana sudah diputuskan lewat wizard
@@ -1843,7 +1918,7 @@
     // cuma perantara rekening, bukan Vendor, jadi label box "Biaya
     // Pengeluaran ..." tidak boleh ikut jadi "Salam Setara" walau Via
     // SALSET aktif.
-    ['corVl1', 'corVl2', 'corVl3', 'corVl4', 'corVl5', 'corVlGu1', 'corVlGu2', 'corVlGu3', 'corRrVl', 'corRrVl2'].forEach(function (id) {
+    ['corVl1', 'corVl2', 'corVl3', 'corVl3off', 'corVl3off2', 'corVl4', 'corVl5', 'corVlGu1', 'corVlGu2', 'corVlGu3', 'corRrVl', 'corRrVl2'].forEach(function (id) {
       document.getElementById(id).innerText = vendorEntity || '-';
     });
 
@@ -1905,7 +1980,7 @@
     var pph23 = pphOn ? ri(ppnGd * 0.02) : 0;
     var cashNet = ppnGd - pph23;
     var budSal = isViaSalset ? ri(cor.biayaSalset || 0) : 0;
-    var totalMgnFrac = getTotalMarginPct(cor.margin);
+    var totalMgnFrac = getEffectiveTotalMarginPct(cor.margin);
     var profit = ri(cashNet * totalMgnFrac);
     var availCost = cashNet - profit;
 
@@ -1947,6 +2022,7 @@
     document.getElementById('corRrCashGross').innerText = fmtRp(cashGross);
     document.getElementById('corRrPph23').innerText = fmtRp(pph23);
     document.getElementById('corRrCashNet').innerText = fmtRp(cashNet);
+    document.getElementById('corRrMgPlannedWrap').style.display = marginEnabled ? '' : 'none';
     document.getElementById('corRrMgPct').innerText = (totalMgnFrac * 100).toFixed(0) + '%';
     document.getElementById('corRrMgNom').innerText = fmtRp(profit);
     document.getElementById('corRrAvail').innerText = fmtRp(availCost);
@@ -2128,7 +2204,10 @@
       // Server sendiri yang menolak nilai ini untuk COR ber-project (lihat
       // CorService.saveDraft) — dikirim apa adanya di sini, tidak perlu
       // gerbang "tanpaProject" ganda di sisi klien.
-      manualProjectName: manualProjectName
+      manualProjectName: manualProjectName,
+      marginEnabled: marginEnabled,
+      marginMode: marginMode,
+      manualMarginPct: manualMarginPct
     };
   }
 
