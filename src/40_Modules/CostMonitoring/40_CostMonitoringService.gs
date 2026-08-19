@@ -166,7 +166,9 @@ var CostMonitoringService = (function (module) {
 
     var rows = docs.map(function (doc) {
       var header = headers.filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
-      if (!header || header.Cor_Method !== Config.COR_METHOD.GROSS_DOWN) return null;
+      // COR "SALSET Saja" tidak mencatat Cost apa pun (salset maupun vendor)
+      // -> tidak boleh muncul di Cost Monitoring sama sekali.
+      if (!header || header.Cor_Method !== Config.COR_METHOD.GROSS_DOWN || header.Is_Salset_Only) return null;
 
       var items = allItems.filter(function (b) { return b.Doc_ID === doc.Doc_ID; });
       var disb = allDisb.filter(function (d) { return d.Doc_ID === doc.Doc_ID; });
@@ -256,6 +258,9 @@ var CostMonitoringService = (function (module) {
     var header = CorHeaderRepository.findByDocId(docId);
     if (!header) {
       throw new AppError('VALIDATION_ERROR', 'COR ini belum punya draft.');
+    }
+    if (header.Is_Salset_Only) {
+      throw new AppError('VALIDATION_ERROR', 'COR "SALSET Saja" tidak punya Cost Monitoring.');
     }
 
     var items = CorBudgetItemRepository.findByDocId(docId).sort(function (a, b) {

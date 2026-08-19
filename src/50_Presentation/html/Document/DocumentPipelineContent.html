@@ -155,6 +155,8 @@
       <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
         <span class="drawer-field-label" style="margin:0;">Status:</span>
         <span id="docCorStatusBadge" class="cor-status-badge">-</span>
+        <span id="docCorSalsetOnlyTag" class="doc-tag-salset-only" style="display:none;">🧾 SALSET Saja</span>
+        <span id="docCorNoProjectTag" class="doc-tag-no-project" style="display:none;">🚫 Tanpa Project</span>
       </div>
       <div class="placeholder-note" id="docCorApprovalNote" style="display:none;"></div>
       <div style="margin-top:10px; display:flex; gap:8px;">
@@ -240,6 +242,16 @@
   .cor-status-badge {
     display: inline-block; padding: 3px 10px; border-radius: 999px;
     font-size: 11px; font-weight: 700; background: #9aa0a622; color: #6b7075;
+  }
+  /* Pembeda visual COR "SALSET Saja" (tanpa Vendor) & COR "Tanpa Project" —
+     dipakai di tabel Document Pipeline & drawer. */
+  .doc-tag-salset-only {
+    display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; background: #fdf3e0; color: #7a4a00;
+  }
+  .doc-tag-no-project {
+    display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; background: #e6ecff; color: #2b4bb8;
   }
 
   /* Ringkasan COR di drawer — 4 box yang sama dengan header Kalkulator COR.
@@ -401,6 +413,12 @@
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Apakah dana project ini lewat SALSET?</p>
       <button class="cor-wizard-choice" onclick="corWizardChooseSalset(true)">Ya, Via SALSET</button>
       <button class="cor-wizard-choice" onclick="corWizardChooseSalset(false)">Tidak</button>
+    </div>
+
+    <div id="corWizardStep2b" style="display:none;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Butuh Vendor juga, atau SALSET saja?</p>
+      <button class="cor-wizard-choice" onclick="corWizardChooseSalsetOnly(false)">Butuh Vendor Juga</button>
+      <button class="cor-wizard-choice" onclick="corWizardChooseSalsetOnly(true)">SALSET Saja — Tanpa Vendor</button>
     </div>
 
     <div id="corWizardStep3" style="display:none;">
@@ -729,6 +747,14 @@
   function isDocTanpaProject(doc) {
     return !!doc && !String(doc.Project_ID || '').trim();
   }
+
+  // COR "SALSET Saja" — tidak melalui Vendor sama sekali, jadi tidak
+  // tercatat di Cost Monitoring dan komponennya cuma sampai Salset Fee.
+  // Lihat COR_Header.Is_Salset_Only.
+  function isDocSalsetOnly(doc) {
+    var header = (allCorHeaders || []).filter(function (h) { return h.Doc_ID === doc.Doc_ID; })[0];
+    return !!(header && header.Is_Salset_Only);
+  }
   // YKB menerbitkan dokumen QUOTATION-nya sebagai "Donation Commitment
   // Letter", KAI tetap "Quotation" — sama helper & alasan dengan
   // SalesPipelineContent.quotationDocWordFor.
@@ -875,12 +901,14 @@
       // Seluruh baris bisa diklik; tombol DETAIL tetap ada sebagai penanda
       // bahwa baris ini punya drawer. techfordRowOpen mencegah klik pada
       // tombol itu (dan seleksi teks) menjalankannya dua kali.
+      var salsetOnlyTag = isDocSalsetOnly(d) ? '<div><span class="doc-tag-salset-only">🧾 SALSET Saja</span></div>' : '';
       return '<tr class="row-clickable" onclick="techfordRowOpen(event, function () { openDocDetail(\'' + d.Doc_ID + '\') })">' +
         '<td><span class="badge ' + stageBadgeClass(d.Stage) + '">' + (d.Stage || '-').toUpperCase() + '</span>' +
-        '<div class="entity-name" style="margin-top:4px;">' + typeLabel + '</div></td>' +
+        '<div class="entity-name" style="margin-top:4px;">' + typeLabel + '</div>' + salsetOnlyTag + '</td>' +
         (isDocTanpaProject(d)
           ? '<td><div class="entity-name">' + escHtmlDoc(docProjectLabel(d)) + '</div>' +
-            '<div class="entity-pic">tidak terkait project</div></td>' +
+            '<div class="entity-pic">tidak terkait project</div>' +
+            '<div><span class="doc-tag-no-project">🚫 Tanpa Project</span></div></td>' +
             '<td><div class="entity-name">-</div><div class="entity-pic">-</div></td>'
           : '<td><div class="entity-name">' + (project.Project_ID || '-') + '</div>' +
             '<div class="entity-pic">' + (project.Project_Name || '-') + '</div></td>' +
@@ -1680,6 +1708,9 @@
     badge.style.background = color + '22';
     badge.style.color = color;
 
+    document.getElementById('docCorSalsetOnlyTag').style.display = (header && header.Is_Salset_Only) ? '' : 'none';
+    document.getElementById('docCorNoProjectTag').style.display = isDocTanpaProject(doc) ? '' : 'none';
+
     var approvalNote = document.getElementById('docCorApprovalNote');
     if (doc.Status === 'Waiting Approval' && header) {
       approvalNote.innerText = '⏳ Menunggu approval dari ' + (header.Approval_Requested_Name || header.Approval_Requested_To || 'approver') + '.';
@@ -2245,8 +2276,8 @@
     corWizardDocId = null;
   }
   function showCorWizardStep(n) {
-    [1, 2, 3, 4].forEach(function (i) {
-      document.getElementById('corWizardStep' + i).style.display = i === n ? '' : 'none';
+    ['1', '2', '2b', '3', '4'].forEach(function (i) {
+      document.getElementById('corWizardStep' + i).style.display = (String(n) === i) ? '' : 'none';
     });
     document.getElementById('corWizardLoading').style.display = 'none';
   }
@@ -2261,10 +2292,14 @@
   function corWizardChooseSalset(viaSalset) {
     corWizardAnswers.viaSalset = viaSalset;
     if (viaSalset) {
-      navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: true, mixFund: false });
+      showCorWizardStep('2b');
       return;
     }
     showCorWizardStep(3);
+  }
+  function corWizardChooseSalsetOnly(salsetOnly) {
+    corWizardAnswers.salsetOnly = salsetOnly;
+    navigateToCorCalculator({ method: 'GROSS_DOWN', viaSalset: true, mixFund: false, salsetOnly: salsetOnly });
   }
   function corWizardChooseMixFund(mixFund) {
     corWizardAnswers.mixFund = mixFund;
@@ -2280,7 +2315,7 @@
   function navigateToCorCalculator(opts) {
     // Tampilkan loading & kunci tombol Batal supaya user tidak klik
     // berkali-kali sambil menunggu halaman kalkulator terbuka.
-    [1, 2, 3, 4].forEach(function (i) { document.getElementById('corWizardStep' + i).style.display = 'none'; });
+    ['1', '2', '2b', '3', '4'].forEach(function (i) { document.getElementById('corWizardStep' + i).style.display = 'none'; });
     document.getElementById('corWizardLoading').style.display = '';
     document.getElementById('corWizardCancelBtn').disabled = true;
 
@@ -2289,7 +2324,8 @@
       method: opts.method,
       viaSalset: opts.viaSalset ? '1' : '0',
       mixFund: opts.mixFund ? '1' : '0',
-      fundType: opts.fundType || ''
+      fundType: opts.fundType || '',
+      salsetOnly: opts.salsetOnly ? '1' : '0'
     });
   }
 

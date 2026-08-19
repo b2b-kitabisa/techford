@@ -176,12 +176,20 @@ var CorService = (function (module) {
 
     var now = new Date();
     var existing = CorHeaderRepository.findByDocId(docId);
-    CorHeaderRepository.ensureColumns(['Manual_Project_Name']);
+    CorHeaderRepository.ensureColumns(['Manual_Project_Name', 'Is_Salset_Only']);
+
+    // SALSET Saja MENYIRATKAN Via SALSET — dipaksa di sini juga (bukan
+    // cuma dipercaya dari klien), supaya tidak mungkin ada baris
+    // Is_Salset_Only=true & Is_Via_Salset=false yang membingungkan
+    // pembaca lain (Cost Monitoring exclude, resolveActiveEntity, dst).
+    var isSalsetOnly = !!input.salsetOnly;
+    var isViaSalset = isSalsetOnly || !!input.isViaSalset;
 
     CorHeaderRepository.upsert(docId, {
       Doc_ID: docId,
       Cor_Method: input.corMethod,
-      Is_Via_Salset: !!input.isViaSalset,
+      Is_Via_Salset: isViaSalset,
+      Is_Salset_Only: isSalsetOnly,
       Vendor_Entity: input.vendorEntity || '',
       Ngo_Rate: Number(input.ngoRate) || 10,
       Biaya_Salset: Number(input.biayaSalset) || 0,
@@ -221,7 +229,7 @@ var CorService = (function (module) {
     // Implementation_Fund) dihitung di sini pakai rumus yang SAMA dengan
     // PDF (CorReportRenderer.fundCalc) — bukan cuma menyimpan GDV mentah —
     // supaya jadi acuan dashboard tanpa perlu hitung ulang.
-    var activeInfoForFund = resolveActiveEntity(input.vendorEntity || '', !!input.isViaSalset);
+    var activeInfoForFund = resolveActiveEntity(input.vendorEntity || '', isViaSalset);
     var fundRows = (input.funds || []).map(function (f, i) {
       var gdv = Number(f.nominal) || 0;
       var calc = CorReportRenderer.fundCalc({ fundType: f.fundType, nominal: gdv, isZakat: !!f.isZakat }, activeInfoForFund.biayaPencairan);

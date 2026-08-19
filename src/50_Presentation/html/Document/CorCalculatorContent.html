@@ -8,6 +8,10 @@
   var WIZARD_VIA_SALSET = '<?= queryParams.viaSalset || "" ?>' === '1';
   var WIZARD_MIX_FUND = '<?= queryParams.mixFund || "" ?>' === '1';
   var WIZARD_FUND_TYPE = '<?= queryParams.fundType || "" ?>'; // 'CLIENT'/'CAMPAIGN', hanya untuk CARA 3 (satu sumber dana)
+  // COR yang hanya lewat SALSET, TANPA vendor sama sekali — hanya bisa
+  // dipilih lewat wizard "Kerjakan COR" (follow-up dari "Via SALSET? Ya"),
+  // BUKAN toggle bebas di kalkulator (lihat corSalsetOnlyBadge).
+  var WIZARD_SALSET_ONLY = '<?= queryParams.salsetOnly || "" ?>' === '1';
 </script>
 
 <style>
@@ -178,11 +182,16 @@
       <span class="switch"><input type="checkbox" id="corViaSalset" onchange="onRouteChange()"><span class="switch-slider"></span></span>
     </label>
     <span class="cor-route-locked-note" id="corViaSalsetLockedNote">🔒 sesuai pilihan wizard</span>
-    <span style="color:var(--text-faint);">&rarr;</span>
-    <div>
+    <span style="color:var(--text-faint);" id="corRouteArrow">&rarr;</span>
+    <div id="corVendorRouteWrap">
       <span style="font-size:11px; color:var(--text-muted); margin-right:6px;">Via Vendor</span>
       <select id="corVendorSelect" onchange="onRouteChange()"></select>
     </div>
+    <!-- Pembeda utama COR "SALSET Saja" — keputusan wizard ("Kerjakan COR"),
+         BUKAN toggle bebas di sini: kalau bisa diubah lepas dari wizard,
+         status Cost Monitoring-exclude/box yang disembunyikan bisa berubah
+         diam-diam setelah draft lama pernah diisi cost/margin. -->
+    <span class="cor-badge" id="corSalsetOnlyBadge" style="display:none; background:#fdf3e0; color:#7a4a00;">🧾 SALSET Saja — Tanpa Vendor</span>
     <div style="margin-left:auto; font-size:12px; color:var(--text-muted);">
       Bank aktif: <strong id="corActiveBankChip">-</strong>
     </div>
@@ -212,7 +221,7 @@
          "seberapa untung", cuma beda basis (margin dari panduan vs profit
          aktual setelah cost sungguhan terisi). Divider memisahkan supaya
          tetap terbaca sebagai dua komponen, bukan satu daftar campur. -->
-    <div class="cor-rbox">
+    <div class="cor-rbox" id="corRbMargin">
       <div class="cor-rbox-hd">Margin &amp; Profit Margin</div>
       <div class="cor-rrow"><span>Total margin %</span><span class="v" id="corRrMgPct">0%</span></div>
       <div class="cor-rrow"><span>Profit (margin)</span><span class="v" id="corRrMgNom">Rp0</span></div>
@@ -223,7 +232,7 @@
       <div class="cor-rrow"><span>Profit</span><span class="v" id="corRrPmProfit">Rp0</span></div>
       <div class="cor-rrow"><span>Persentase</span><span class="v" id="corRrPmPct">0%</span></div>
     </div>
-    <div class="cor-rbox">
+    <div class="cor-rbox" id="corRbSpp">
       <div class="cor-rbox-hd">SPP Amount</div>
       <div class="cor-rrow"><span>DPP</span><span class="v" id="corRrSppDpp">Rp0</span></div>
       <div class="cor-rrow"><span>PPN (11%)</span><span class="v" id="corRrSppPpn">Rp0</span></div>
@@ -330,7 +339,7 @@
           </div>
         </div>
 
-        <div class="cor-box cor-box-input">
+        <div class="cor-box cor-box-input" id="corBoxFundDetail">
           <div class="cor-box-hd">3. Fund Detail</div>
           <div id="corBiayaSalsetWrap" style="display:none; margin-bottom:10px;">
             <div class="drawer-field-label">Biaya pengeluaran SALSET <span style="font-weight:400; color:#188038;">(input manual)</span></div>
@@ -356,7 +365,7 @@
           <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">PPh 23 (2%): <strong id="corPph23" style="color:#c5221f;">Rp0</strong></div>
         </div>
 
-        <div class="cor-box cor-box-input">
+        <div class="cor-box cor-box-input" id="corBoxDefaultMargin">
           <div class="cor-box-hd">4. Default Margin</div>
           <div class="cor-margin-hd">
             <div>Komponen</div><div>Kategori</div><div style="text-align:right;">%</div><div style="text-align:right;">Nominal</div>
@@ -397,7 +406,7 @@
           <div id="corGdSalSaldo"></div>
         </div>
 
-        <div class="cor-box cor-box-input">
+        <div class="cor-box cor-box-input" id="corBoxVendorCost">
           <div class="cor-box-hd"><span id="corGdVendorBoxNum">5</span>. Biaya Pengeluaran <span id="corVl4">Vendor</span> <span class="sub">Budget: <strong id="corBudVendor">Rp0</strong></span></div>
           <div class="cor-ct-wrap">
             <table class="cor-ct-tbl">
@@ -640,6 +649,9 @@
 
   var currentMethod = 'GROSS_DOWN';
   var isViaSalset = false;
+  // Implikasi Is_Salset_Only=true -> Is_Via_Salset=true SELALU dijaga di
+  // sini juga (bukan cuma di server) — lihat loadDraftIntoState().
+  var isSalsetOnly = false;
   // isMixFund SEKARANG keputusan eksplisit (dari wizard "Kerjakan COR" atau
   // draft tersimpan) — BUKAN lagi dideteksi otomatis dari isi baris dana,
   // supaya alur 4 CARA (lihat wizard di Document Pipeline) konsisten &
@@ -1176,6 +1188,7 @@
     if (draft.header) {
       currentMethod = draft.header.Cor_Method || 'GROSS_DOWN';
       isViaSalset = !!draft.header.Is_Via_Salset;
+      isSalsetOnly = !!draft.header.Is_Salset_Only;
       isMixFund = !!draft.header.Is_Mix_Fund;
       singleFundType = draft.header.Single_Fund_Type || null;
       vendorEntity = draft.header.Vendor_Entity || '';
@@ -1187,6 +1200,11 @@
       // Belum pernah disimpan — pakai hasil wizard "Kerjakan COR".
       if (WIZARD_METHOD) currentMethod = WIZARD_METHOD;
       isViaSalset = WIZARD_VIA_SALSET;
+      // SALSET Saja MENYIRATKAN Via SALSET — dijaga di sini juga, bukan
+      // cuma dipercaya dari param wizard, kalau-kalau salsetOnly=1 lolos
+      // tanpa viaSalset=1 (mis. URL diketik manual).
+      isSalsetOnly = WIZARD_SALSET_ONLY;
+      if (isSalsetOnly) isViaSalset = true;
       isMixFund = WIZARD_MIX_FUND;
       singleFundType = WIZARD_FUND_TYPE || null;
     }
@@ -1836,6 +1854,24 @@
       document.getElementById(id).style.display = isViaSalset ? '' : 'none';
     });
 
+    // COR "SALSET Saja" (COR_Header.Is_Salset_Only) — tanpa Vendor sama
+    // sekali. Komponennya cuma sampai Box 2 (Implementation Fund via
+    // SALSET): Fund Detail, Default Margin, Biaya Pengeluaran SALSET/Vendor,
+    // dan box ringkasan yang murni tentang cost/margin vendor SEMUANYA
+    // disembunyikan — bukan cuma dikosongkan, supaya tidak menampilkan
+    // angka Rp0 yang terlihat seperti data yang hilang. Method (GD/GU)
+    // tetap bisa dipilih bebas dari wizard — lihat corWizardChooseSalsetOnly
+    // di DocumentPipelineContent.html (tab GD/GU sendiri terkunci begitu
+    // wizard selesai, jadi kombinasi salsetOnly+GROSS_UP tidak pernah
+    // benar-benar tercapai lewat UI ini).
+    document.getElementById('corSalsetOnlyBadge').style.display = isSalsetOnly ? '' : 'none';
+    document.getElementById('corVendorRouteWrap').style.display = isSalsetOnly ? 'none' : '';
+    document.getElementById('corRouteArrow').style.display = isSalsetOnly ? 'none' : '';
+    ['corBoxFundDetail', 'corBoxDefaultMargin', 'corBoxVendorCost', 'corRbMargin', 'corRbSpp'].forEach(function (id) {
+      if (isSalsetOnly) document.getElementById(id).style.display = 'none';
+      else if (currentMethod === 'GROSS_DOWN') document.getElementById(id).style.display = '';
+    });
+
     // ---- Subtotals per fund type ----
     function calcFundTotal(f) {
       var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
@@ -2081,8 +2117,14 @@
       singleFundType: singleFundType,
       linkCampaigns: linkCampaigns,
       funds: currentMethod === 'GROSS_DOWN' ? funds_payload : [],
-      costs: costs_payload,
-      margins: margins_payload,
+      // COR "SALSET Saja" tidak punya UI untuk mengisi cost/margin sama
+      // sekali (Box 3-6 disembunyikan) — dikirim kosong secara EKSPLISIT di
+      // sini, bukan berharap costs_payload/margins_payload kebetulan kosong
+      // (Default Margin punya nilai bawaan yang terisi otomatis walau
+      // box-nya tidak pernah disentuh user).
+      costs: isSalsetOnly ? [] : costs_payload,
+      margins: isSalsetOnly ? [] : margins_payload,
+      salsetOnly: isSalsetOnly,
       // Server sendiri yang menolak nilai ini untuk COR ber-project (lihat
       // CorService.saveDraft) — dikirim apa adanya di sini, tidak perlu
       // gerbang "tanpaProject" ganda di sisi klien.
