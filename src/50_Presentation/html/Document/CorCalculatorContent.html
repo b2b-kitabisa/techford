@@ -43,7 +43,7 @@
   .cor-wizard-loading { text-align: center; padding: 20px 0; font-size: 13px; color: var(--text-muted); }
   .cor-back { font-size: 12px; color: var(--text-muted); text-decoration: none; display: inline-block; margin-bottom: 8px; }
   .cor-back:hover { color: var(--color-cerulean); }
-  .cor-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .cor-docinfo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
   .cor-docinfo h2 { margin: 0 0 2px; font-size: 18px; }
   .cor-docinfo .sub { font-size: 12px; color: var(--text-muted); }
 
@@ -56,7 +56,7 @@
   .cor-status-banner:not(.cor-status-banner-wait) { background: #fce8e6; border: 1px solid #f6aea9; color: #7a1a12; }
   #corEditableWrap.cor-locked { pointer-events: none; opacity: 0.55; user-select: none; }
 
-  .cor-mtabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
+  .cor-mtabs { display: inline-flex; background: var(--bg-hover); border-radius: 8px; padding: 3px; margin-bottom: 8px; }
   .cor-mtab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
   .cor-mtab.on { background: var(--color-cerulean); color: var(--color-white); }
   .cor-mtab.locked { cursor: not-allowed; pointer-events: none; }
@@ -77,10 +77,10 @@
   .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
   .cor-box-hd .sub { font-weight: 400; color: var(--text-faint); font-size: 11px; margin-left: 4px; }
 
-  .cor-route-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--bg-tint); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .cor-route-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--bg-tint); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
   .cor-route-bar select { max-width: 220px; }
 
-  .cor-type-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cor-type-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
   .cor-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: var(--accent-tint); color: var(--color-cerulean); }
   .cor-pph-pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
   .cor-pph-on { background: #fce8e6; color: #c5221f; }
@@ -158,7 +158,7 @@
            Disimpan bersama Simpan Draft (ke COR_Header.Manual_Project_Name),
            BUKAN dikirim sendiri — konsisten dengan seluruh field kalkulator
            lain yang baru benar-benar tersimpan saat "Simpan Draft" ditekan. -->
-      <div id="corManualProjectNameWrap" style="display:none; margin-top:8px; max-width:420px;">
+      <div id="corManualProjectNameWrap" style="display:none; margin-top:6px; max-width:420px;">
         <label style="font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:3px;">
           Nama Project (manual — COR ini tidak terkait project di Sales Pipeline)
         </label>
@@ -690,7 +690,8 @@
   // di server. Begitu corTaxonomy datang, campaignFundKindOptions() beralih
   // memakainya sebagai sumber utama.
   var CAMPAIGN_FUND_KIND_FALLBACK = [
-    { key: 'CAMPAIGN', label: 'Campaign' }, { key: 'DBT', label: 'DBT' }, { key: 'FRAUD', label: 'Fraud' }
+    { key: 'CAMPAIGN', label: 'Campaign' }, { key: 'DBT', label: 'DBT' }, { key: 'FRAUD', label: 'Fraud' },
+    { key: 'CLIENT', label: 'Client' }
   ];
   var CAMPAIGN_FUND_KIND_DEFAULT = 'CAMPAIGN';
   function campaignFundKindOptions() {

@@ -282,7 +282,7 @@ var CorReportRenderer = (function (module) {
    * zakatNoteHtml. Baris ber-kind default (CAMPAIGN) atau kosong (baris
    * Dana Client) tidak menyisakan bekas apa pun.
    */
-  var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud' };
+  var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud', CLIENT: 'Client' };
   function campaignFundKindNoteHtml(rows) {
     var ditandai = (rows || []).filter(function (f) { return CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind]; });
     if (!ditandai.length) return '';

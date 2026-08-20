@@ -811,9 +811,15 @@
       var project = getProjectById(d.Project_ID) || {};
       var client = getClientById(project.Client_ID) || {};
 
+      // docProjectLabel(d) menutupi COR "Tanpa Project" (Manual_Project_Name,
+      // atau fallback "Tanpa Project" itu sendiri) — tanpa ini, dokumen yang
+      // sengaja tidak dikaitkan ke project mana pun TIDAK PERNAH bisa
+      // ditemukan lewat search box sama sekali (project.Project_Name selalu
+      // kosong untuk baris seperti ini).
       var matchesSearch = !search ||
         String(project.Project_ID || '').toLowerCase().indexOf(search) !== -1 ||
         String(project.Project_Name || '').toLowerCase().indexOf(search) !== -1 ||
+        String(docProjectLabel(d) || '').toLowerCase().indexOf(search) !== -1 ||
         String(client.Brand_Name || '').toLowerCase().indexOf(search) !== -1 ||
         String(client.Entity_Name || '').toLowerCase().indexOf(search) !== -1;
 

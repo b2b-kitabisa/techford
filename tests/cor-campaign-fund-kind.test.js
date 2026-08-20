@@ -81,12 +81,12 @@ function baseModel(funds) {
   };
 }
 
-console.log('\n0) Config — daftar & default sesuai permintaan (Campaign/DBT/Fraud, default Campaign)');
+console.log('\n0) Config — daftar & default sesuai permintaan (Campaign/DBT/Fraud/Client, default Campaign)');
 {
   const keys = Config.COR_CAMPAIGN_FUND_KIND.map(k => k.key);
-  ok('3 pilihan persis: CAMPAIGN, DBT, FRAUD', JSON.stringify(keys) === JSON.stringify(['CAMPAIGN', 'DBT', 'FRAUD']), keys.join(','));
+  ok('4 pilihan persis: CAMPAIGN, DBT, FRAUD, CLIENT', JSON.stringify(keys) === JSON.stringify(['CAMPAIGN', 'DBT', 'FRAUD', 'CLIENT']), keys.join(','));
   ok('default CAMPAIGN', Config.COR_CAMPAIGN_FUND_KIND_DEFAULT === 'CAMPAIGN');
-  ok('isValidCampaignFundKind menerima ketiganya', ['CAMPAIGN', 'DBT', 'FRAUD'].every(k => Config.isValidCampaignFundKind(k)));
+  ok('isValidCampaignFundKind menerima keempatnya', ['CAMPAIGN', 'DBT', 'FRAUD', 'CLIENT'].every(k => Config.isValidCampaignFundKind(k)));
   ok('isValidCampaignFundKind menolak nilai asing', !Config.isValidCampaignFundKind('LAINNYA'));
 }
 
@@ -112,6 +112,13 @@ console.log('\n2) PDF — hanya DBT/Fraud yang menyisakan catatan, default CAMPA
   ok('catatan Fraud muncul dengan link yang benar', /kitabisa\.com\/c[\s\S]*?Fraud/.test(html), 'cek');
   ok('link ber-kind CAMPAIGN (default) TIDAK menyisakan catatan',
     !new RegExp('kitabisa\\.com/a[\\s\\S]{0,40}sumber dana').test(html), 'cek');
+}
+
+console.log('\n2b) PDF — kind baru "Client" juga menyisakan catatan, sama seperti DBT/Fraud');
+{
+  const funds = [{ fundType: 'CAMPAIGN', linkCampaign: 'https://kitabisa.com/d', nominal: 4000000, isZakat: false, campaignFundKind: 'CLIENT' }];
+  const html = R.renderDocumentHtml(baseModel(funds));
+  ok('catatan Client muncul dengan link yang benar', /kitabisa\.com\/d[\s\S]*?Client/.test(html), 'cek');
 }
 
 console.log('\n3) Baris Dana Client (kind kosong) tidak pernah kena catatan');

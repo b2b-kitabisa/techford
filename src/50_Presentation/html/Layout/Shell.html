@@ -1064,7 +1064,7 @@
       // di-hardcode di sini juga (WAJIB sama dengan Config.COR_CAMPAIGN_FUND_KIND
       // & kembarannya di server), karena file ini pun tidak boleh bergantung
       // pada Config server-side.
-      var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud' };
+      var CAMPAIGN_FUND_KIND_LABEL = { DBT: 'DBT', FRAUD: 'Fraud', CLIENT: 'Client' };
       function campaignFundKindNoteHtml(rows) {
         var ditandai = (rows || []).filter(function (f) { return CAMPAIGN_FUND_KIND_LABEL[f.campaignFundKind]; });
         if (!ditandai.length) return '';

@@ -594,7 +594,8 @@ var Config = (function (module) {
   module.COR_CAMPAIGN_FUND_KIND = [
     { key: 'CAMPAIGN', label: 'Campaign' },
     { key: 'DBT', label: 'DBT' },
-    { key: 'FRAUD', label: 'Fraud' }
+    { key: 'FRAUD', label: 'Fraud' },
+    { key: 'CLIENT', label: 'Client' }
   ];
   module.COR_CAMPAIGN_FUND_KIND_DEFAULT = 'CAMPAIGN';
   module.isValidCampaignFundKind = function (kind) {
