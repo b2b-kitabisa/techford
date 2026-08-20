@@ -48,8 +48,13 @@ var CorReportRenderer = (function (module) {
     return Math.ceil(afterFee / 200000000) * (bankRate || 0);
   }
   function fundCalc(f, biayaPencairan) {
+    // Platform Fee nol saat Zakat/Bencana — Tech Fee TETAP terhitung (1%
+    // dari nominal) baik Zakat/Bencana atau bukan, kecuali admin mengetik
+    // nominalnya sendiri (Tech_Fee_Manual, lihat CorService.saveDraft).
     var pf = f.fundType === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
-    var tf = f.fundType === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+    var tf = f.fundType === 'CLIENT'
+      ? (f.techFeeManual ? ri(Number(f.manualTechFee) || 0) : ri(f.nominal * 0.01))
+      : 0;
     var af = f.nominal - pf - tf;
     var adm = adminFee(biayaPencairan, af);
     return { pf: pf, tf: tf, af: af, adm: adm, total: af - adm };
@@ -262,7 +267,7 @@ var CorReportRenderer = (function (module) {
     var zakatRows = (rows || []).filter(function (f) { return f.isZakat; });
     if (!zakatRows.length) return '';
     return '<p class="pdf-zakat-note">' +
-      zakatRows.map(function (f) { return '*' + esc(f.linkCampaign || '-') + ' campaign zakat.'; }).join('<br>') +
+      zakatRows.map(function (f) { return '*' + esc(f.linkCampaign || '-') + ' campaign zakat/bencana.'; }).join('<br>') +
       '</p>';
   }
   /**

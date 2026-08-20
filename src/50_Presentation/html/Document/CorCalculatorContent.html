@@ -84,7 +84,8 @@
   .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 130px 70px 28px; gap: 8px; align-items: center; }
   /* Dana Campaign punya kolom tambahan (dropdown sumber dana: Campaign/DBT/Fraud). */
   .cor-fund-cols-campaign { grid-template-columns: minmax(0,1fr) 130px 70px 90px 28px; }
-  .cor-fund-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
+  .cor-fund-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
+  .cor-fund-foot input[type="text"] { font-size: 11px; padding: 2px 4px; height: auto; }
 
   .cor-hi { border-radius: 8px; padding: 8px 10px; }
   .cor-hi-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; }
@@ -1258,7 +1259,13 @@
         isZakat: !!f.Is_Zakat, linkCampaign: f.Link_Campaign || '',
         // Kosong/tidak dikenal jatuh balik ke default — dokumen lama (dibuat
         // sebelum field ini ada) tidak punya kolom ini sama sekali.
-        campaignFundKind: f.Campaign_Fund_Kind || CAMPAIGN_FUND_KIND_DEFAULT
+        campaignFundKind: f.Campaign_Fund_Kind || CAMPAIGN_FUND_KIND_DEFAULT,
+        // Kolom Tech_Fee tersimpan SUDAH JADI nilai manual saat
+        // Tech_Fee_Manual true (lihat CorService.saveDraft) — bukan
+        // dihitung ulang di sini, supaya nilai yang diketik admin persis
+        // sama waktu draft dibuka lagi.
+        techFeeManual: !!f.Tech_Fee_Manual,
+        manualTechFee: Number(f.Tech_Fee) || 0
       };
     });
 
@@ -1524,7 +1531,7 @@
   function addFundRow(type) {
     funds.push({
       idx: nextIdx(), type: type, nominal: 0, isZakat: false, linkCampaign: '',
-      campaignFundKind: CAMPAIGN_FUND_KIND_DEFAULT
+      campaignFundKind: CAMPAIGN_FUND_KIND_DEFAULT, techFeeManual: false, manualTechFee: 0
     });
     renderAll();
   }
@@ -1546,10 +1553,32 @@
     var f = funds.filter(function (x) { return x.idx === idx; })[0];
     if (f) f[field] = value;
   }
+  // Tech Fee (Dana Client) — default 1% dari nominal, TIDAK ikut nol saat
+  // Zakat/Bencana dicentang (cuma Platform Fee yang nol). Bisa diedit
+  // manual lewat pensil: klik dulu untuk masuk mode manual (nilai awal =
+  // hasil hitungan 1% saat itu, bukan nol, supaya tidak terasa seperti
+  // kehilangan data), lalu ada tombol terpisah untuk balik ke otomatis.
+  function startEditTechFee(idx) {
+    var f = funds.filter(function (x) { return x.idx === idx; })[0];
+    if (!f) return;
+    f.manualTechFee = effectiveTechFee(f);
+    f.techFeeManual = true;
+    renderAll();
+  }
+  function resetTechFeeAuto(idx) {
+    var f = funds.filter(function (x) { return x.idx === idx; })[0];
+    if (!f) return;
+    f.techFeeManual = false;
+    renderAll();
+  }
+  function effectiveTechFee(f) {
+    if (f.type !== 'CLIENT') return 0;
+    return f.techFeeManual ? ri(Number(f.manualTechFee) || 0) : ri(f.nominal * 0.01);
+  }
 
   function buildFundRowHtml(f, ent) {
     var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
-    var tf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+    var tf = effectiveTechFee(f);
     var af = f.nominal - pf - tf;
     var adm = adminFee(Number(ent.Biaya_Pencairan) || 0, af);
     var tot = af - adm;
@@ -1561,6 +1590,12 @@
       campaignFundKindOptions().map(function (k) {
         return '<option value="' + esc(k.key) + '" ' + (f.campaignFundKind === k.key ? 'selected' : '') + '>' + esc(k.label) + '</option>';
       }).join('') + '</select>';
+    // Tech Fee: baris nilai (otomatis) atau input+tombol reset (manual).
+    var techFeeHtml = !isClient ? '' : (f.techFeeManual
+      ? '<span>Tech Fee: <input type="text" inputmode="numeric" value="' + formatThousands(f.manualTechFee) +
+        '" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateFund(' + f.idx + ',\'manualTechFee\',parseThousands(this))" style="width:100px; display:inline-block;">' +
+        ' <button type="button" class="icon-btn-sm" onclick="resetTechFeeAuto(' + f.idx + ')" title="Kembali ke otomatis (1% dari nominal)">↺</button></span>'
+      : '<span>Tech Fee: <strong>' + fmtRp(tf) + '</strong> <button type="button" class="icon-btn-sm" onclick="startEditTechFee(' + f.idx + ')" title="Edit manual">✏️</button></span>');
     return '<div class="cor-fund-row">' +
       '<div class="cor-fund-cols' + (isClient ? '' : ' cor-fund-cols-campaign') + '">' +
       '<input type="text" placeholder="Link campaign (opsional)" value="' + esc(f.linkCampaign) + '" oninput="updateFundText(' + f.idx + ',\'linkCampaign\',this.value)">' +
@@ -1569,13 +1604,14 @@
       // di-commit saat blur (onchange), sama seperti sebelumnya.
       '<input type="text" inputmode="numeric" value="' + formatThousands(f.nominal) + '" oninput="this.value=formatThousands(parseThousands(this))" onchange="updateFund(' + f.idx + ',\'nominal\',parseThousands(this))">' +
       (isClient
-        ? '<label style="display:flex; align-items:center; gap:4px; justify-content:center; font-size:10px;"><input type="checkbox" ' + (f.isZakat ? 'checked' : '') + ' onchange="updateFund(' + f.idx + ',\'isZakat\',this.checked)" style="width:auto;"> Zakat</label>'
+        ? '<label style="display:flex; align-items:center; gap:4px; justify-content:center; font-size:10px;"><input type="checkbox" ' + (f.isZakat ? 'checked' : '') + ' onchange="updateFund(' + f.idx + ',\'isZakat\',this.checked)" style="width:auto;"> Zakat/Bencana</label>'
         : '<span style="font-size:10px; color:var(--text-faint); text-align:center;">N/A</span>') +
       kindSelect +
       '<button class="cor-btn-del" onclick="removeFundRow(' + f.idx + ')">&times;</button>' +
       '</div>' +
       '<div class="cor-fund-foot">' +
       '<span>Bank: <strong>' + ent.Bank + '</strong></span>' +
+      (isClient ? '<span>Platform Fee: <strong>' + fmtRp(pf) + '</strong></span>' + techFeeHtml : '') +
       '<span>Biaya adm: <strong style="color:#c5221f;">-' + fmtRp(adm) + '</strong></span>' +
       '<span>Total masuk: <strong style="color:' + (isClient ? 'var(--color-cerulean)' : '#188038') + ';">' + fmtRp(tot) + '</strong></span>' +
       '</div></div>';
@@ -1950,7 +1986,7 @@
     // ---- Subtotals per fund type ----
     function calcFundTotal(f) {
       var pf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.05) : 0;
-      var tf = f.type === 'CLIENT' && !f.isZakat ? ri(f.nominal * 0.01) : 0;
+      var tf = effectiveTechFee(f);
       var af = f.nominal - pf - tf;
       return af - adminFee(Number(ent.Biaya_Pencairan) || 0, af);
     }
@@ -2155,7 +2191,8 @@
     var funds_payload = funds.map(function (f) {
       return {
         fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat,
-        campaignFundKind: f.campaignFundKind || CAMPAIGN_FUND_KIND_DEFAULT
+        campaignFundKind: f.campaignFundKind || CAMPAIGN_FUND_KIND_DEFAULT,
+        techFeeManual: !!f.techFeeManual, manualTechFee: Number(f.manualTechFee) || 0
       };
     });
 
@@ -2265,7 +2302,10 @@
   // singkatan (type/ket/kat/h/q/p) untuk hemat, jadi wajib di-map dulu
   // sebelum dipakai buat preview/PDF, kalau tidak datanya kebaca kosong.
   function toPdfFund(f) {
-    return { fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat, campaignFundKind: f.campaignFundKind || '' };
+    return {
+      fundType: f.type, linkCampaign: f.linkCampaign, nominal: f.nominal, isZakat: f.isZakat, campaignFundKind: f.campaignFundKind || '',
+      techFeeManual: !!f.techFeeManual, manualTechFee: Number(f.manualTechFee) || 0
+    };
   }
   /**
    * Susun baris payload cost untuk satu tabel. Category_Order dihitung ulang

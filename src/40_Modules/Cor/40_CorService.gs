@@ -256,7 +256,14 @@ var CorService = (function (module) {
     var activeInfoForFund = resolveActiveEntity(input.vendorEntity || '', isViaSalset);
     var fundRows = (input.funds || []).map(function (f, i) {
       var gdv = Number(f.nominal) || 0;
-      var calc = CorReportRenderer.fundCalc({ fundType: f.fundType, nominal: gdv, isZakat: !!f.isZakat }, activeInfoForFund.biayaPencairan);
+      // techFeeManual/manualTechFee HANYA relevan untuk Fund_Type CLIENT —
+      // fundCalc sendiri sudah mengabaikannya untuk baris Campaign, jadi
+      // aman dikirim apa adanya di sini tanpa gerbang tambahan.
+      var techFeeManual = !!f.techFeeManual;
+      var calc = CorReportRenderer.fundCalc({
+        fundType: f.fundType, nominal: gdv, isZakat: !!f.isZakat,
+        techFeeManual: techFeeManual, manualTechFee: Number(f.manualTechFee) || 0
+      }, activeInfoForFund.biayaPencairan);
       return {
         Fund_ID: Utils.generateId('FUND'),
         Doc_ID: docId,
@@ -264,7 +271,13 @@ var CorService = (function (module) {
         Link_Campaign: String(f.linkCampaign || '').trim(),
         GDV: gdv,
         Platform_Fee: calc.pf,
+        // Tech_Fee tersimpan SUDAH JADI nilai final (manual ATAU otomatis,
+        // lihat fundCalc) — dibaca ulang persis begitu oleh toFund saat
+        // draft ini dibuka lagi, jadi Tech_Fee_Manual WAJIB ikut tersimpan
+        // supaya "baca ulang" tahu apakah nilai ini hasil ketikan admin
+        // atau sekadar cache dari rumus 1%.
         Tech_Fee: calc.tf,
+        Tech_Fee_Manual: techFeeManual,
         NDV: calc.af,
         Disbursement_Fee: calc.adm,
         Implementation_Fund: calc.total,
@@ -480,7 +493,11 @@ var CorService = (function (module) {
       return {
         fundType: f.Fund_Type, linkCampaign: f.Link_Campaign || '',
         nominal: Number(f.GDV) || Number(f.Nominal) || 0, isZakat: !!f.Is_Zakat,
-        campaignFundKind: f.Campaign_Fund_Kind || ''
+        campaignFundKind: f.Campaign_Fund_Kind || '',
+        // Tech_Fee tersimpan SUDAH JADI nilai manual saat Tech_Fee_Manual
+        // true (diisi persis begitu oleh saveDraft) — bukan dihitung ulang
+        // di sini, fundCalc yang membaca techFeeManual/manualTechFee ini.
+        techFeeManual: !!f.Tech_Fee_Manual, manualTechFee: Number(f.Tech_Fee) || 0
       };
     }
     // mode/category/categoryOrder/rowRole ikut dibawa ke model laporan —

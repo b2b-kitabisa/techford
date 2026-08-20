@@ -284,7 +284,7 @@ console.log('\n7b) Source of Fund — kolom Zakat diganti Biaya Admin, catatan i
   ok('header Biaya Admin ADA', /<th[^>]*>Biaya Admin<\/th>/.test(html));
   ok('catatan zakat muncul, italic, menyebut link campaign-nya',
     html.indexOf('class="pdf-zakat-note"') !== -1 &&
-    html.indexOf('*https://kitabisa.com/linkajasupportteach4hope campaign zakat.') !== -1);
+    html.indexOf('*https://kitabisa.com/linkajasupportteach4hope campaign zakat/bencana.') !== -1);
   ok('dana yang BUKAN zakat tidak ikut disebut di catatan',
     !new RegExp('pdf-zakat-note"[^<]*bantuumkm').test(html));
 }
