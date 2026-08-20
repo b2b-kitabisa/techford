@@ -264,12 +264,15 @@
   }
 
   function refreshCmData() {
-    var btn = document.getElementById('cmRefreshBtn');
-    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
-    fetchCmList();
-    setTimeout(function () {
-      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh'; }
-    }, 1200);
+    // Lewat techfordRefreshData (Shell.html): cache server dibuang DULU, baru
+    // fetch — Cost Monitoring membaca 6 repository yang semuanya di-cache 60
+    // detik, jadi tanpa ini jawabannya identik dan tombolnya seolah mati.
+    techfordRefreshData('cmRefreshBtn', function () {
+      // Skeleton ditampilkan lagi supaya jelas datanya sedang diambil ulang,
+      // bukan angka lama yang membeku tanpa penjelasan.
+      renderCmSkeleton();
+      fetchCmList();
+    });
   }
 
   function showCmTableError(message, soft) {

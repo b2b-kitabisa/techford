@@ -181,6 +181,71 @@
         }
 
         /**
+         * Placeholder berdenyut untuk score card selama datanya BELUM lengkap.
+         *
+         * KENAPA: score card dulu langsung dirender dengan angka sungguhan
+         * dari dataset yang masih separuh jalan. Di Lead Capturing yang memuat
+         * bertahap 400 baris sekali jalan, itu berarti angkanya terlihat
+         * "menghitung sendiri" (0 -> 400 -> 800 -> 1200) beserta seluruh
+         * persentasenya — tanpa satu pun penanda bahwa data masih dimuat.
+         * User yang membaca angka di detik pertama membaca angka yang SALAH
+         * dan tidak punya cara tahu itu belum final.
+         *
+         * Dipakai kelas .skel/.skel-tile yang sudah ada di Style.html.
+         */
+        function techfordSkelTiles(count) {
+          var out = '';
+          for (var i = 0; i < (count || 4); i++) out += '<div class="skel skel-tile"></div>';
+          return out;
+        }
+
+        /**
+         * Tombol "Refresh" di SEMUA halaman WAJIB lewat sini.
+         *
+         * KENAPA: sebelum ini tombol Refresh terasa "tidak bekerja". Bukan
+         * karena fetch-nya tidak jalan — semuanya jalan — tapi karena server
+         * menjawab dari CacheService yang masih hangat (TTL 60-300 detik,
+         * lihat CacheHelper) sehingga jawabannya IDENTIK dengan sebelumnya.
+         * Tidak ada satu pun jalur BACA yang pernah membuang cache; hanya
+         * jalur tulis. Jadi perubahan dari user lain / dari spreadsheet
+         * langsung baru muncul setelah TTL habis sendiri, bukan saat
+         * tombolnya ditekan.
+         *
+         * Urutannya penting: cache dibuang DULU di server, baru halaman
+         * memuat ulang — kalau dibalik, fetch-nya masih kebagian cache lama.
+         *
+         * Tombolnya juga dikunci sampai pembuangan cache selesai (bukan
+         * timer buta 1200ms seperti sebelumnya, yang mengembalikan tombol ke
+         * keadaan normal padahal datanya belum datang — persis yang membuat
+         * user menyimpulkan tombolnya rusak).
+         */
+        function techfordRefreshData(btnId, reloadFn) {
+          var btn = btnId ? document.getElementById(btnId) : null;
+          var labelAwal = btn ? btn.innerHTML : '';
+          if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memuat...'; }
+          function selesai() {
+            if (btn) { btn.disabled = false; btn.innerHTML = labelAwal; }
+          }
+          gsRunWithRetry('app_invalidateCaches', [], function () {
+            selesai();
+            // Kegagalan di dalam reloadFn tidak boleh menyisakan tombol
+            // terkunci — loader punya penanganan error sendiri.
+            try { reloadFn(); } catch (e) {
+              if (window.TechfordToast) TechfordToast.show('Gagal memuat ulang: ' + e.message);
+            }
+          }, function (err) {
+            selesai();
+            // Cache gagal dibuang: TETAP muat ulang. Data mungkin masih
+            // basi, tapi diam saja jauh lebih buruk daripada mencoba.
+            try { reloadFn(); } catch (e) { /* sudah ditangani loader */ }
+            if (window.TechfordToast) {
+              TechfordToast.show('Gagal membersihkan cache server (' +
+                (err && err.message ? err.message : err) + ') — data mungkin belum yang terbaru.');
+            }
+          });
+        }
+
+        /**
          * Baris tabel yang bisa diklik untuk membuka drawer.
          *
          * Ditaruh di sini (satu implementasi untuk semua halaman) karena
@@ -949,6 +1014,13 @@
         var neto = dpp - pphSpp;
         var pmProfit = cashNet - totalBaa;
         var pmPct = cashNet > 0 ? pmProfit / cashNet : 0;
+        // COR "SALSET Saja" tidak melalui Vendor sama sekali — box Biaya
+        // Pengeluaran SALSET/Vendor memang TIDAK ADA untuk jenis ini, jadi
+        // totalBaa selalu 0 dan "cashNet - totalBaa" akan salah membaca SELURUH
+        // sisa dana sebagai profit. Yang benar-benar diambil untuk COR seperti
+        // ini HANYA SALSET fee, jadi Profit Program dipaksa nol — akibatnya
+        // Total Implementation Fee = salFee dan Implementation Fee % = NGO rate.
+        if (opts.salsetOnly) { pmProfit = 0; pmPct = 0; }
 
         return {
           totalMasuk: totalMasuk, cashGross: cashGross, salFee: salFee, sisaDana: sisaDana,
@@ -1015,6 +1087,23 @@
 
       function pdfRow(label, value) {
         return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
+      }
+      /**
+       * KEMBARAN dari CorReportRenderer.implementationFeeSectionHtml.
+       * Section "Implementation Fee" — SATU-SATUNYA angka hasil untuk COR
+       * "SALSET Saja" (tanpa Vendor). Profit Program SELALU nol untuk jenis
+       * ini (dipaksa di computeGD), jadi Total = SALSET fee dan
+       * persentasenya = NGO fee rate.
+       */
+      function implementationFeeSectionHtml(gd) {
+        var total = gd.salFee + gd.pmProfit;
+        var pct = gd.totalMasuk > 0 ? (total / gd.totalMasuk) * 100 : 0;
+        return '<h2>Implementation Fee</h2><table class="pdf-meta"><tbody>' +
+          pdfRow('Implementation Fund', fmtRp(gd.totalMasuk)) +
+          pdfRow('Salset Fee', fmtRp(gd.salFee)) +
+          pdfRow('Total Implementation Fee', fmtRp(total)) +
+          pdfRow('Implementation Fee %', pct.toFixed(2) + '%') +
+          '</tbody></table>';
       }
       // Lebar kolom DITENTUKAN tetap (persis seperti resize manual kolom di
       // spreadsheet) supaya garis antar baris/tabel rapi konsisten — bukan
@@ -1208,6 +1297,7 @@
               funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
               margin: block.margin, marginComponents: model.marginComponents,
               marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
+              salsetOnly: model.isSalsetOnly,
               isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
               pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
             });
@@ -1226,6 +1316,16 @@
                 pdfRow('SALSET Fee', fmtRp(gd.salFee)) +
                 pdfRow('Sisa Dana', fmtRp(gd.sisaDana)) +
                 '</tbody></table>';
+            }
+
+            // COR "SALSET Saja" tidak melalui Vendor sama sekali — SELURUH
+            // section sisanya bicara soal vendor (Fund Detail, Default Margin,
+            // kedua tabel Biaya Pengeluaran, SPP Amount, Profit Margin) dan
+            // memang tidak punya isi untuk jenis ini. Diganti satu section
+            // Implementation Fee, PERSIS dua box yang ditampilkan kalkulator.
+            if (model.isSalsetOnly) {
+              html += implementationFeeSectionHtml(gd);
+              return;
             }
 
             html += '<h2>Fund Detail</h2><table class="pdf-meta"><tbody>' +
@@ -1358,6 +1458,7 @@
           ? true : !!header.Margin_Enabled;
         var marginMode = header && header.Margin_Mode === 'MANUAL' ? 'MANUAL' : 'COMPONENT';
         var manualMarginPct = header ? (Number(header.Manual_Margin_Pct) || 0) : 0;
+        var isSalsetOnly = !!(header && header.Is_Salset_Only);
 
         var entities = (taxonomy && taxonomy.entities) || [];
         var vendorEnt = entities.filter(function (e) { return e.Entity_Name === vendorEntity; })[0];
@@ -1427,7 +1528,8 @@
           // di Download PDF.
           linkCampaigns: header ? (header.Link_Campaigns || []) : [],
           marginComponents: (taxonomy && taxonomy.marginComponents) || [], blocks: blocks,
-          marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct
+          marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct,
+          isSalsetOnly: isSalsetOnly
         };
       }
 

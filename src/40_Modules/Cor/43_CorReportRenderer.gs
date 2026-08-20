@@ -111,6 +111,13 @@ var CorReportRenderer = (function (module) {
     var neto = dpp - pphSpp;
     var pmProfit = cashNet - totalBaa;
     var pmPct = cashNet > 0 ? pmProfit / cashNet : 0;
+    // COR "SALSET Saja" tidak melalui Vendor sama sekali — box Biaya
+    // Pengeluaran SALSET/Vendor memang TIDAK ADA untuk jenis ini, jadi
+    // totalBaa selalu 0 dan "cashNet - totalBaa" akan salah membaca SELURUH
+    // sisa dana sebagai profit. Yang benar-benar diambil untuk COR seperti
+    // ini HANYA SALSET fee, jadi Profit Program dipaksa nol — akibatnya
+    // Total Implementation Fee = salFee dan Implementation Fee % = NGO rate.
+    if (opts.salsetOnly) { pmProfit = 0; pmPct = 0; }
 
     return {
       totalMasuk: totalMasuk, cashGross: cashGross, salFee: salFee, sisaDana: sisaDana,
@@ -177,6 +184,24 @@ var CorReportRenderer = (function (module) {
 
   function pdfRow(label, value) {
     return '<tr><td class="pdf-label">' + label + '</td><td class="pdf-value">' + value + '</td></tr>';
+  }
+  /**
+   * Section "Implementation Fee" — SATU-SATUNYA angka hasil untuk COR
+   * "SALSET Saja" (tanpa Vendor). Rumusnya sama dengan box Implementation
+   * Fee di kalkulator & kolom COR_Result (Total_Implementation_Fund /
+   * Salset_NGO_Fee / Profit_Estimate_Vendor): Profit Program SELALU nol
+   * untuk jenis ini (dipaksa di computeGD), jadi Total = SALSET fee dan
+   * persentasenya = NGO fee rate.
+   */
+  function implementationFeeSectionHtml(gd) {
+    var total = gd.salFee + gd.pmProfit;
+    var pct = gd.totalMasuk > 0 ? (total / gd.totalMasuk) * 100 : 0;
+    return '<h2>Implementation Fee</h2><table class="pdf-meta"><tbody>' +
+      pdfRow('Implementation Fund', fmtRp(gd.totalMasuk)) +
+      pdfRow('Salset Fee', fmtRp(gd.salFee)) +
+      pdfRow('Total Implementation Fee', fmtRp(total)) +
+      pdfRow('Implementation Fee %', pct.toFixed(2) + '%') +
+      '</tbody></table>';
   }
   // Kolom Zakat DIHAPUS dari tabel (jadi catatan italic di bawahnya, lihat
   // zakatNoteHtml) — diganti Biaya Admin, yang sebelumnya cuma memengaruhi
@@ -427,6 +452,7 @@ var CorReportRenderer = (function (module) {
           funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
           margin: block.margin, marginComponents: model.marginComponents,
           marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
+          salsetOnly: model.isSalsetOnly,
           isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
           pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
         });
@@ -445,6 +471,18 @@ var CorReportRenderer = (function (module) {
             pdfRow('SALSET Fee', fmtRp(gd.salFee)) +
             pdfRow('Sisa Dana', fmtRp(gd.sisaDana)) +
             '</tbody></table>';
+        }
+
+        // COR "SALSET Saja" tidak melalui Vendor sama sekali — SELURUH section
+        // sisanya bicara soal vendor (Fund Detail, Default Margin, kedua tabel
+        // Biaya Pengeluaran, SPP Amount, Profit Margin) dan memang tidak punya
+        // isi untuk jenis ini. Diganti satu section Implementation Fee, PERSIS
+        // dua box yang ditampilkan kalkulator (lihat calcAll di
+        // CorCalculatorContent.html) supaya dokumen approval tidak
+        // menampilkan deretan Rp0 yang terbaca seperti data hilang.
+        if (model.isSalsetOnly) {
+          html += implementationFeeSectionHtml(gd);
+          return;
         }
 
         html += '<h2>Fund Detail</h2><table class="pdf-meta"><tbody>' +

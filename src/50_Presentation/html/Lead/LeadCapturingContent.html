@@ -35,7 +35,7 @@
   </div>
 
   <button class="filter-reset" id="leadResetBtn" onclick="resetFilter()">↺ Reset Filter</button>
-  <button class="filter-reset" onclick="fetchLeads()" title="Ambil ulang data dari server">🔄 Refresh</button>
+  <button class="filter-reset" id="leadRefreshBtn" onclick="refreshLeadData()" title="Ambil ulang data dari server">🔄 Refresh</button>
 </div>
 
 <div class="filter-chips" id="leadFilterChips" style="display:none;"></div>
@@ -361,6 +361,25 @@
    * @param {Function=} onLoaded dipanggil dengan (leadsSebelum) setelah SEMUA
    *   halaman masuk — dipakai sync untuk melaporkan hasil.
    */
+  /**
+   * Tombol 🔄 Refresh. Dulu tombolnya memanggil fetchLeads() langsung dan
+   * terasa mati karena DUA hal sekaligus: (1) server menjawab dari cache
+   * 'lead:all' yang masih hangat sehingga barisnya identik, dan (2) gerbang
+   * leadFetchInFlight di fetchLeads MENELAN klik tanpa jejak selama pemuatan
+   * bertahap masih jalan (bisa beberapa detik untuk sheet besar) — tanpa
+   * pesan, tanpa tombol yang berubah, tanpa apa pun.
+   *
+   * Sekarang: cache dibuang dulu di server (techfordRefreshData), gerbang
+   * in-flight dilepas supaya klik user selalu berarti, dan tombolnya
+   * mengunci diri sampai pembuangan cache selesai.
+   */
+  function refreshLeadData() {
+    techfordRefreshData('leadRefreshBtn', function () {
+      leadFetchInFlight = false;
+      fetchLeads();
+    });
+  }
+
   function fetchLeads(onLoaded) {
     if (leadFetchInFlight) return;   // satu pemuatan pada satu waktu
     leadFetchInFlight = true;
@@ -664,6 +683,16 @@
    * tabelnya — yang jadi pekerjaan sebenarnya — terdorong ke bawah layar.
    */
   function renderStats(stats) {
+    // Selama data belum lengkap, tampilkan placeholder — BUKAN angka dari
+    // dataset separuh jalan. Halaman ini memuat bertahap 400 baris sekali
+    // jalan dan me-render setiap potongan, jadi angka sungguhan di sini akan
+    // terlihat "menghitung sendiri" dan terbaca sebagai nilai final padahal
+    // bukan. leadFetchInFlight menutupi pemuatan pertama, leadLoadingRest
+    // menutupi potongan-potongan berikutnya.
+    if (leadFetchInFlight || leadLoadingRest) {
+      document.getElementById('leadStats').innerHTML = techfordSkelTiles(4);
+      return;
+    }
     var selected = getSelectedStatuses();
     var TONE = {
       'New Leads': 'tone-new', 'Contacted': 'tone-contacted', 'Moved': 'tone-moved',

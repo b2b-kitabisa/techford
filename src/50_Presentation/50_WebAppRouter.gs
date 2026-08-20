@@ -195,6 +195,22 @@ function doGet(e) {
 }
 
 /**
+ * Buang seluruh cache data di server — dipanggil PALING AWAL oleh tombol
+ * "Refresh" di setiap halaman, sebelum halaman itu memuat ulang datanya.
+ *
+ * Tanpa ini tombol Refresh terlihat "tidak bekerja": semua fetch-nya memang
+ * berjalan, tapi server menjawab dari CacheService yang masih hangat (TTL
+ * 60-300 detik, lihat CacheHelper) sehingga jawabannya identik dengan
+ * sebelumnya. Perubahan dari user lain atau dari spreadsheet langsung baru
+ * muncul setelah TTL habis sendiri — bukan saat tombolnya ditekan.
+ */
+function app_invalidateCaches() {
+  return ErrorHandler.handle('WebAppRouter.invalidateCaches', function () {
+    return { cleared: CacheHelper.invalidateAllData() };
+  });
+}
+
+/**
  * SPA fragment endpoint — dipanggil client (router di Shell.html) lewat
  * google.script.run setiap kali pindah menu sidebar, MENGGANTIKAN full page
  * reload doGet biasa. Merender ULANG persis logika yang sama dengan doGet

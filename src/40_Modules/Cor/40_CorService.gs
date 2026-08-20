@@ -482,6 +482,7 @@ var CorService = (function (module) {
     var marginEnabled = header.Margin_Enabled === undefined || header.Margin_Enabled === '' ? true : !!header.Margin_Enabled;
     var marginMode = Config.isValidMarginMode(header.Margin_Mode) ? header.Margin_Mode : Config.COR_MARGIN_MODE_DEFAULT;
     var manualMarginPct = Number(header.Manual_Margin_Pct) || 0;
+    var isSalsetOnly = !!header.Is_Salset_Only;
 
     var activeInfo = resolveActiveEntity(vendorEntity, isViaSalset);
     var pkp = activeInfo.pkp;
@@ -562,7 +563,8 @@ var CorService = (function (module) {
         method: method, isViaSalset: isViaSalset, vendorEntity: vendorEntity, entity: activeEntity, pkp: pkp,
         ngoRatePct: ngoRate, guNgoRatePct: ngoRate, biayaSalset: biayaSalset, linkCampaigns: decodeJson(header.Link_Campaigns, []),
         marginComponents: Config.MARGIN_COMPONENTS, blocks: blocks,
-        marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct
+        marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct,
+        isSalsetOnly: isSalsetOnly
       }
     };
   }
@@ -597,6 +599,7 @@ var CorService = (function (module) {
         funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
         margin: block.margin, marginComponents: model.marginComponents,
         marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
+        salsetOnly: model.isSalsetOnly,
         isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
         pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
       });
@@ -708,6 +711,15 @@ var CorService = (function (module) {
     if (header.Cor_Method !== Config.COR_METHOD.GROSS_DOWN) {
       return { below: false, applicable: false, blocks: [] };
     }
+    // COR "SALSET Saja" tidak punya cost/margin vendor untuk dibandingkan
+    // dengan panduan — Profit Program-nya memang SELALU nol by design (lihat
+    // computeGD), jadi pagar margin akan SELALU menyatakan "di bawah panduan"
+    // dan memaksa alasan pengecualian di setiap approval. Itu bukan pagar,
+    // itu gangguan: yang diambil untuk COR jenis ini cuma SALSET fee, dan
+    // panduan margin tidak pernah dimaksudkan mengaturnya.
+    if (header.Is_Salset_Only) {
+      return { below: false, applicable: false, blocks: [] };
+    }
 
     var model = buildReportModel(docId).model;
     var biayaPencairan = Number(model.entity.Biaya_Pencairan) || 0;
@@ -717,6 +729,7 @@ var CorService = (function (module) {
         funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
         margin: block.margin, marginComponents: model.marginComponents,
         marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
+        salsetOnly: model.isSalsetOnly,
         isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
         pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
       });

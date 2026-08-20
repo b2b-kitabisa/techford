@@ -121,5 +121,45 @@ var CacheHelper = (function (module) {
     cache.removeAll(keys);
   };
 
+  /**
+   * SELURUH key data yang di-cache modul mana pun.
+   *
+   * KENAPA DAFTARNYA DITULIS MANUAL DI SINI: Apps Script tidak menyimpan
+   * state antar eksekusi, jadi tidak ada cara "menanyakan" key apa saja
+   * yang pernah dipakai — CacheService juga tidak punya API list/flush.
+   * Kalau nanti ada repository baru yang memakai getOrSet dengan key baru,
+   * key itu WAJIB ditambahkan di sini juga, kalau tidak tombol Refresh
+   * akan diam-diam tetap mengembalikan data basi untuk dataset itu.
+   *
+   * quotationLogo:<entity> SENGAJA tidak masuk daftar — itu cache gambar
+   * logo dari Drive (TTL 6 jam), bukan data operasional yang perlu ikut
+   * segar saat admin menekan Refresh, dan entity code-nya tidak terbatas.
+   */
+  var DATA_KEYS = [
+    'achievementTarget:all', 'adsProgress:all', 'client:all',
+    'corBudgetItem:all', 'corCost:all', 'corDisbursement:all', 'corEntity:all',
+    'corFund:all', 'corHeader:all', 'corMargin:all', 'corResult:all',
+    'documentActivity:all', 'documentAttachment:all', 'documentPipeline:all',
+    'employee:all', 'lead:all', 'marginGuide:all', 'masterData:all',
+    'nav:badgeCounts', 'picClient:all', 'project:all',
+    'quotationHeader:all', 'quotationItem:all', 'revenueBreakdown:all'
+  ];
+
+  /**
+   * Buang SEMUA cache data — dipakai tombol "Refresh" di setiap halaman.
+   *
+   * KENAPA INI ADA: sebelum ini tidak ada satu pun jalur BACA yang pernah
+   * memanggil invalidate() (hanya jalur tulis yang melakukannya). Akibatnya
+   * tombol Refresh membaca ulang cache yang MASIH HANGAT dan mengembalikan
+   * data yang sama persis — untuk user tombolnya terlihat "tidak bekerja",
+   * padahal setiap fetch memang berjalan. Perubahan yang dibuat orang lain
+   * (atau langsung di spreadsheet) baru muncul setelah TTL 60-300 detik
+   * habis dengan sendirinya.
+   */
+  module.invalidateAllData = function () {
+    DATA_KEYS.forEach(function (key) { module.invalidate(key); });
+    return DATA_KEYS.length;
+  };
+
   return module;
 })(CacheHelper || {});

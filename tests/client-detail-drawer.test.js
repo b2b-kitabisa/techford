@@ -85,6 +85,10 @@ function loadClientMonitoring(overrides) {
     techfordRowOpen: (event, fn) => { fn(); },
     techfordDrawerStep: () => null,
     techfordBindDrawerArrows: () => {},
+    // Helper skeleton bersama dari Shell.html — dipakai renderClientStats
+    // selama daftar client belum sampai.
+    techfordSkelTiles: (n) => new Array(n || 4).fill('<div class="skel skel-tile"></div>').join(''),
+    techfordRefreshData: (btnId, reloadFn) => { reloadFn(); },
     TechfordAccess: { canOpen: () => true, isViewOnly: () => false },
     TechfordAuth: { getCurrentUser: () => ({ Name: 'Tester', Role: 'Master Admin' }) },
     TechfordLoading: { show() {}, hide() {} },

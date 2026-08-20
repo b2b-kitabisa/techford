@@ -3,7 +3,17 @@
     <span>Ringkasan Pipeline</span>
     <span id="pipelineScorePanelSub"></span>
   </div>
-  <div class="pipeline-score-row">
+  <!-- Placeholder selama project belum sampai (lihat renderPipelineScoreCards)
+       — supaya kartu Deal Value/Forecast/Achievement tidak sempat terbaca
+       sebagai Rp0 yang final. Disembunyikan/ditampilkan, BUKAN ditimpa
+       innerHTML: elemen angkanya harus tetap ada di DOM. -->
+  <div class="pipeline-score-row" id="pipelineScoreSkeleton">
+    <div class="skel skel-tile" style="flex:1;"></div>
+    <div class="skel skel-tile" style="flex:1;"></div>
+    <div class="skel skel-tile" style="flex:1;"></div>
+    <div class="skel skel-tile" style="flex:1;"></div>
+  </div>
+  <div class="pipeline-score-row" id="pipelineScoreRow" style="display:none;">
   <div class="pipeline-score-card pipeline-score-achieved">
     <div class="pipeline-score-title">🏆 Deal Value</div>
     <div class="pipeline-score-desc">Deal Value dari project status Won</div>
@@ -1324,19 +1334,19 @@
   // baru dari tempat lain, tombol ini menembak ulang SEMUA fetch tanpa
   // perlu reload browser.
   function refreshAllPipelineData() {
-    var btn = document.getElementById('pipelineRefreshBtn');
-    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
-    fetchProjects();
-    fetchClients();
-    fetchEmployees();
-    fetchTaxonomy();
-    fetchDocuments();
-    fetchAttachments();
-    fetchDocumentTaxonomy();
-    fetchRevenueBreakdown();
-    setTimeout(function () {
-      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh Data'; }
-    }, 1200);
+    // Lewat techfordRefreshData (Shell.html): cache server dibuang DULU,
+    // baru fetch — kalau tidak, semua fetch di bawah cuma dijawab dari cache
+    // 60-300 detik yang masih hangat dan tombolnya terlihat tidak bekerja.
+    techfordRefreshData('pipelineRefreshBtn', function () {
+      fetchProjects();
+      fetchClients();
+      fetchEmployees();
+      fetchTaxonomy();
+      fetchDocuments();
+      fetchAttachments();
+      fetchDocumentTaxonomy();
+      fetchRevenueBreakdown();
+    });
   }
 
   function showPipelineTableError(message, soft) {
@@ -1395,6 +1405,11 @@
 
   // ---- Render: score cards (selalu dari SELURUH data, bukan hasil filter) ----
   function renderPipelineScoreCards() {
+    // Placeholder sampai project benar-benar sampai — lihat catatan di HTML.
+    document.getElementById('pipelineScoreSkeleton').style.display = pProjectsLoaded ? 'none' : '';
+    document.getElementById('pipelineScoreRow').style.display = pProjectsLoaded ? '' : 'none';
+    if (!pProjectsLoaded) return;
+
     var achievedGdv = 0, achievedRev = 0, forecastGdv = 0, forecastRev = 0;
     // Card "Achievement" — SATU-SATUNYA yang di-scope ke filter. Kartu lain
     // di sebelahnya sengaja tetap dari SELURUH data (itu angka perusahaan,

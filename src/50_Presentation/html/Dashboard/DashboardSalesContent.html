@@ -1,4 +1,10 @@
-<div class="container" style="max-width: 1220px;" id="dashboardSalesRoot">
+<!-- TANPA .container: kelas itu memberi max-width 720px + margin auto (lihat
+     Style.html) yang bikin dashboard terkurung di tengah. Halaman full-width
+     lain (Sales Pipeline, Document Pipeline, Client Monitoring) juga tidak
+     memakai wrapper apa pun — padding-nya sudah dari .content-area di Shell.
+     .container TIDAK diubah di Style.html karena masih dipakai 6 halaman
+     lain (Settings, Employee, Home) yang memang sengaja sempit. -->
+<div id="dashboardSalesRoot">
   <p style="color: var(--text-muted); font-size:13px; margin-bottom:18px;">
     Empat section: uang &rarr; orang &rarr; proses &rarr; bagian atas corong. Dua kartu
     <strong>Service Revenue</strong> sengaja ditahan sampai pencocokan invoice-nya ada —

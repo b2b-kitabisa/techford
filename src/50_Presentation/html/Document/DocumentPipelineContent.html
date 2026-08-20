@@ -1,12 +1,10 @@
-<div class="doc-page-toolbar">
-  <!-- COR dikerjakan dari halaman ini, jadi pembuatannya juga bisa dimulai
-       dari sini — tidak harus lewat Request Document di Sales Pipeline. Dua
-       pintu ini SENGAJA (keputusan produk), dan keduanya memanggil backend
-       yang sama supaya tidak ada dua versi aturan. -->
-  <button class="btn-save" id="docAddCorBtn" onclick="openAddCorModal()">🧮 Buat COR</button>
+<!-- Placeholder selama dokumen belum sampai (lihat renderDocScoreCards) —
+     supaya score card tidak sempat terbaca sebagai "0 dokumen". -->
+<div class="pipeline-score-row" id="docScoreSkeleton">
+  <div class="skel skel-tile" style="flex:2;"></div>
+  <div class="skel skel-tile" style="flex:1;"></div>
 </div>
-
-<div class="pipeline-score-row">
+<div class="pipeline-score-row" id="docScoreRow" style="display:none;">
   <div class="pipeline-bucket-card">
     <div class="pipeline-bucket-item pipeline-bucket-pros">
       <div class="pipeline-bucket-label">NEW REQUEST</div>
@@ -62,6 +60,13 @@
   </select>
 
   <button class="filter-reset" onclick="resetDocFilter()">↺ Reset Filter</button>
+  <!-- COR dikerjakan dari halaman ini, jadi pembuatannya juga bisa dimulai
+       dari sini — tidak harus lewat Request Document di Sales Pipeline. Dua
+       pintu ini SENGAJA (keputusan produk), dan keduanya memanggil backend
+       yang sama supaya tidak ada dua versi aturan. Ditaruh di baris filter
+       (bukan toolbar sendiri di atas score card) supaya header halaman tidak
+       makan tinggi ekstra. -->
+  <button class="btn-save" id="docAddCorBtn" onclick="openAddCorModal()">🧮 Buat COR</button>
   <button class="filter-reset" id="docRefreshBtn" style="margin-left:auto;" onclick="refreshAllDocumentData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
 </div>
 
@@ -209,19 +214,15 @@
     </div>
 
     <!-- Catatan bebas — berlaku untuk SEMUA Document_Type, lepas dari
-         status/stage dokumennya. Tidak seperti Riwayat Approval di bawah
-         (append-only, sistem), ini satu kolom teks bebas yang admin isi/edit
-         sendiri kapan saja — pola sama dengan Other Notes di Client
-         Monitoring, cuma disimpan lewat tombol Simpan-nya sendiri karena
-         drawer ini tidak punya mode "Edit Info" menyeluruh. -->
+         status/stage dokumennya. Di drawer HANYA DIBACA (pola drawer di
+         platform ini: drawer = tampilan, perubahan lewat popup) — tombolnya
+         membuka #docNotesModal untuk tulis/edit lalu Simpan. -->
     <div class="drawer-section">
-      <span class="taxonomy-label">Notes</span>
-      <textarea id="docNotesInput" placeholder="Catatan bebas untuk dokumen ini..." rows="3"
-        style="width:100%; margin-top:8px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border-soft); border-radius:6px; resize:vertical;"></textarea>
-      <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
-        <button class="btn-save" id="docNotesSaveBtn" onclick="submitDocNotes()">Simpan Notes</button>
-        <span class="cell-sub" id="docNotesSavedNote"></span>
+      <div class="section-title-row">
+        <span class="taxonomy-label">Notes</span>
+        <button type="button" class="att-add" id="docNotesEditBtn" onclick="openDocNotesModal()">✏️ Tulis Notes</button>
       </div>
+      <div class="drawer-field-value" id="docNotesDisplay" style="margin-top:8px;">-</div>
     </div>
 
     <!-- Riwayat putaran approval — append-only, jadi alasan penolakan
@@ -280,11 +281,6 @@
   .doc-cor-srow .v { font-family: monospace; font-weight: 700; white-space: nowrap; }
   .doc-cor-sdiv { height: 1px; background: var(--border-softer); margin: 6px 0; }
 
-  /* Toolbar atas halaman (di atas score card) — cuma tombol "Buat COR" saja
-     untuk sekarang, ditaruh sejajar kanan supaya terasa "di atas", tanpa
-     perlu masuk ke topbar global (lonceng dst. ada di luar konten halaman
-     ini, lihat Shell.html). */
-  .doc-page-toolbar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
   /* Jarak score card <-> filter bar SEBELUMNYA cuma andalan margin-bottom
      .filter-bar sendiri (yang berlaku DI BAWAHNYA, bukan di atasnya) —
      tidak ada gap eksplisit ANTARA dua baris ini. */
@@ -361,6 +357,31 @@
     <div class="confirm-actions" style="margin-top:14px;">
       <button class="btn-outline" onclick="closeRenameAttachment()">Batal</button>
       <button class="btn-save" onclick="submitRenameAttachment()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Notes: tulis/edit lewat popup =================
+     Drawer-nya read-only (lihat #docNotesDisplay) — sama seperti field lain
+     di drawer ini. Popup dipakai untuk MENULIS maupun MENGEDIT: isinya
+     di-prefill dengan notes yang sudah ada, jadi tidak butuh dua popup
+     terpisah. Notes boleh dikosongkan (mengosongkan = menghapus catatan),
+     karena itu TIDAK ada validasi "wajib diisi" di sini. -->
+<div class="confirm-overlay" id="docNotesModal">
+  <div class="confirm-box" style="width:520px; text-align:left;">
+    <div class="modal-hd tone-info">
+      <div class="modal-hd-ic">📝</div>
+      <div><h3 style="margin:0;" id="docNotesModalTitle">Tulis Notes</h3></div>
+    </div>
+    <p style="margin:0 0 10px; font-size:12px; color:var(--text-muted);">
+      Catatan bebas untuk dokumen ini. Kosongkan lalu Simpan kalau ingin menghapus catatan.
+    </p>
+    <textarea id="docNotesInput" placeholder="Catatan bebas untuk dokumen ini..." rows="6"
+      style="width:100%; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border-soft); border-radius:6px; resize:vertical;"></textarea>
+    <div id="docNotesError" class="error"></div>
+    <div class="confirm-actions" style="margin-top:14px;">
+      <button class="btn-outline" id="docNotesCancelBtn" onclick="closeDocNotesModal()">Batal</button>
+      <button class="btn-save" id="docNotesSaveBtn" onclick="submitDocNotes()">Simpan</button>
     </div>
   </div>
 </div>
@@ -785,6 +806,17 @@
 
   // ---- Score cards (selalu dari SELURUH data, bukan hasil filter) ----
   function renderDocScoreCards() {
+    // Selama dokumen belum sampai, tampilkan placeholder — bukan deretan 0
+    // yang terbaca sebagai "memang tidak ada dokumen". docsLoaded sudah
+    // dipakai fetchDocuments untuk membedakan gagal-pertama vs gagal-refresh.
+    //
+    // Baris aslinya DISEMBUNYIKAN, bukan ditimpa innerHTML — kalau ditimpa,
+    // elemen angkanya (docStageNewRequest dst.) hilang dari DOM dan render
+    // berikutnya akan meledak saat mencarinya lagi.
+    document.getElementById('docScoreSkeleton').style.display = docsLoaded ? 'none' : '';
+    document.getElementById('docScoreRow').style.display = docsLoaded ? '' : 'none';
+    if (!docsLoaded) return;
+
     var stageCounts = { 'New Request': 0, 'In Progress': 0, 'Client Review': 0, 'Done': 0 };
     allDocuments.forEach(function (d) {
       if (stageCounts.hasOwnProperty(d.Stage)) stageCounts[d.Stage]++;
@@ -861,26 +893,26 @@
   // tanpa perlu reload browser (filter/scroll/drawer yang sedang terbuka
   // tidak ikut ke-reset).
   function refreshAllDocumentData() {
-    var btn = document.getElementById('docRefreshBtn');
-    if (btn) { btn.disabled = true; btn.innerText = '⏳ Memuat...'; }
-    // Draft COR di-cache per Doc_ID supaya membuka drawer berulang kali tidak
-    // menembak server terus. Refresh manual adalah satu-satunya titik di mana
-    // user menyatakan "ambil yang terbaru" — kalkulator ada di halaman lain,
-    // jadi perubahan draft di sana tidak terpantau dari sini.
-    docCorDraftCache = {};
-    fetchDocuments();
-    fetchAttachments();
-    fetchActivity();
-    fetchProjects();
-    fetchClients();
-    fetchTaxonomy();
-    fetchCorHeaders();
-    fetchCorTaxonomy();
-    fetchQuotationHeaders();
-    fetchQuotationTaxonomy();
-    setTimeout(function () {
-      if (btn) { btn.disabled = false; btn.innerText = '🔄 Refresh Data'; }
-    }, 1200);
+    // Lewat techfordRefreshData (Shell.html): cache server dibuang DULU,
+    // baru fetch — kalau tidak, semua fetch di bawah cuma dijawab dari cache
+    // 60-300 detik yang masih hangat dan tombolnya terlihat tidak bekerja.
+    techfordRefreshData('docRefreshBtn', function () {
+      // Draft COR di-cache per Doc_ID supaya membuka drawer berulang kali tidak
+      // menembak server terus. Refresh manual adalah satu-satunya titik di mana
+      // user menyatakan "ambil yang terbaru" — kalkulator ada di halaman lain,
+      // jadi perubahan draft di sana tidak terpantau dari sini.
+      docCorDraftCache = {};
+      fetchDocuments();
+      fetchAttachments();
+      fetchActivity();
+      fetchProjects();
+      fetchClients();
+      fetchTaxonomy();
+      fetchCorHeaders();
+      fetchCorTaxonomy();
+      fetchQuotationHeaders();
+      fetchQuotationTaxonomy();
+    });
   }
 
   function paginateDocuments(list) {
@@ -1141,8 +1173,37 @@
     renderDocAttachments(doc);
     renderDocActivity(doc);
 
-    document.getElementById('docNotesInput').value = doc.Notes || '';
-    document.getElementById('docNotesSavedNote').innerText = '';
+    renderDocNotes(doc);
+  }
+
+  /* ---- Notes: drawer read-only, tulis/edit lewat popup ---- */
+
+  // Drawer = TAMPILAN. Notes yang kosong tampil "-" seperti field read-only
+  // lain di drawer ini (bukan area kosong yang terbaca seperti rusak), dan
+  // label tombolnya ikut berubah supaya jelas ini menulis baru vs mengedit.
+  function renderDocNotes(doc) {
+    var notes = String((doc && doc.Notes) || '').trim();
+    document.getElementById('docNotesDisplay').innerText = notes || '-';
+    document.getElementById('docNotesEditBtn').innerText = notes ? '✏️ Edit Notes' : '✏️ Tulis Notes';
+  }
+
+  function openDocNotesModal() {
+    if (!currentDocDrawerId) return;
+    var doc = currentDocOrNull();
+    var notes = String((doc && doc.Notes) || '');
+    document.getElementById('docNotesModalTitle').innerText = notes.trim() ? 'Edit Notes' : 'Tulis Notes';
+    document.getElementById('docNotesInput').value = notes;
+    document.getElementById('docNotesError').innerText = '';
+    setDocNotesBusy(false);
+    document.getElementById('docNotesModal').classList.add('open');
+  }
+  function closeDocNotesModal() {
+    document.getElementById('docNotesModal').classList.remove('open');
+  }
+  function setDocNotesBusy(busy) {
+    document.getElementById('docNotesSaveBtn').disabled = busy;
+    document.getElementById('docNotesCancelBtn').disabled = busy;
+    document.getElementById('docNotesSaveBtn').innerText = busy ? '⏳ Menyimpan...' : 'Simpan';
   }
 
   /**
@@ -1158,16 +1219,17 @@
     if (!currentDocDrawerId) return;
     var docId = currentDocDrawerId;
     var notes = document.getElementById('docNotesInput').value;
-    var btn = document.getElementById('docNotesSaveBtn');
-    var savedNote = document.getElementById('docNotesSavedNote');
-    btn.disabled = true;
-    btn.innerText = 'Menyimpan...';
+    var errEl = document.getElementById('docNotesError');
+    errEl.innerText = '';
+    setDocNotesBusy(true);
+    TechfordLoading.show('Menyimpan Notes...');
     google.script.run
       .withSuccessHandler(function (res) {
-        btn.disabled = false;
-        btn.innerText = 'Simpan Notes';
+        TechfordLoading.hide();
+        setDocNotesBusy(false);
         if (res && res.ok === false) {
-          return alert('Gagal menyimpan Notes: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.'));
+          errEl.innerText = 'Gagal menyimpan Notes: ' + ((res.error && res.error.message) || 'Terjadi kesalahan.');
+          return;
         }
         // res.data bisa saja null/undefined (google.script.run terbukti
         // berkali-kali begitu walau operasi di server berhasil) — cache
@@ -1179,14 +1241,20 @@
           if (allDocuments[i].Doc_ID === docId) { idx = i; break; }
         }
         if (idx !== -1) allDocuments[idx].Notes = updated ? updated.Notes : notes.trim();
+        closeDocNotesModal();
+        // Hanya render ulang kalau drawer masih menampilkan dokumen YANG SAMA
+        // — kalau user sudah menggeser stepper, tampilan dokumen lain tidak
+        // boleh ikut ditimpa notes milik dokumen ini.
         if (currentDocDrawerId === docId) {
-          savedNote.innerText = 'Tersimpan ' + formatDate(new Date());
+          var doc = currentDocOrNull();
+          if (doc) renderDocNotes(doc);
         }
+        TechfordToast.show('Notes disimpan.');
       })
       .withFailureHandler(function (err) {
-        btn.disabled = false;
-        btn.innerText = 'Simpan Notes';
-        alert('Gagal menyimpan Notes: ' + (err && err.message ? err.message : err));
+        TechfordLoading.hide();
+        setDocNotesBusy(false);
+        errEl.innerText = 'Gagal menyimpan Notes: ' + (err && err.message ? err.message : err);
       })
       .document_updateNotes(docId, notes);
   }
@@ -1828,12 +1896,33 @@
       var gd = CorCalc.computeGD({
         funds: block.funds, salItems: block.salItems, baaItems: block.baaItems,
         margin: block.margin, marginComponents: model.marginComponents,
+        marginEnabled: model.marginEnabled, marginMode: model.marginMode, manualMarginPct: model.manualMarginPct,
+        salsetOnly: model.isSalsetOnly,
         isViaSalset: model.isViaSalset, ngoRatePct: model.ngoRatePct, biayaSalset: model.biayaSalset,
         pkp: model.pkp, pphOn: pphOn, biayaPencairan: biayaPencairan
       });
       var totalImpFee = gd.salFee + gd.pmProfit;
       var impPct = gd.totalMasuk > 0 ? (totalImpFee / gd.totalMasuk) : 0;
       var vl = model.vendorEntity || 'vendor';
+
+      // COR "SALSET Saja" tidak melalui Vendor sama sekali — drawer ikut
+      // meringkas jadi DUA box (Alur Dana + Implementation Fee) persis seperti
+      // header Kalkulator COR & PDF-nya, bukan menampilkan deretan Rp0.
+      if (model.isSalsetOnly) {
+        return judul +
+          sboxHtml('Alur Dana', [
+            ['Total masuk', rp(gd.totalMasuk)],
+            ['SALSET cash in', rp(gd.totalMasuk)],
+            ['SALSET fee (NGO)', rp(gd.salFee)]
+          ]) +
+          sboxHtml('Implementation Fee', [
+            ['Implementation Fund', rp(gd.totalMasuk)],
+            ['Salset Fee', rp(gd.salFee)],
+            '-',
+            ['Total Implementation Fee', rp(totalImpFee), true],
+            ['Implementation Fee %', (impPct * 100).toFixed(2) + '%']
+          ]);
+      }
 
       var alurRows = [['Total masuk', rp(gd.totalMasuk)]];
       if (model.isViaSalset) {
@@ -1847,7 +1936,7 @@
 
       return judul +
         sboxHtml('Alur Dana', alurRows) +
-        sboxHtml('Margin & Profit Margin', [
+        sboxHtml('Profit Margin Estimated & Actual', [
           ['Total margin %', (gd.totalMgnFrac * 100).toFixed(0) + '%'],
           ['Profit (margin)', rp(gd.profit)],
           ['Available cost', rp(gd.availCost)],

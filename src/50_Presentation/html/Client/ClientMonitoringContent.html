@@ -35,7 +35,7 @@
     </div>
   </div>
   <button class="filter-reset" id="clientResetBtn" onclick="resetClientFilter()">↺ Reset Filter</button>
-  <button class="filter-reset" onclick="fetchClients()" title="Ambil ulang data dari server">🔄 Refresh</button>
+  <button class="filter-reset" id="clientRefreshBtn" onclick="refreshClientData()" title="Ambil ulang data dari server">🔄 Refresh</button>
 </div>
 
 <div class="filter-chips" id="clientFilterChips" style="display:none;"></div>
@@ -442,6 +442,9 @@
   // setiap client sesaat dinilai "kurang PIC" — tabel berkedip menampilkan
   // INCOMPLETE dan kartu "Incomplete Client" menunjukkan angka yang salah.
   var picsLoaded = false;
+  // Dipakai renderClientStats: score card menampilkan placeholder sampai
+  // daftar client benar-benar sampai, bukan angka 0 dari array kosong.
+  var clientsLoaded = false;
 
   function picCountFor(clientId) {
     return (Array.isArray(allPics) ? allPics : []).filter(function (p) { return p.Client_ID === clientId; }).length;
@@ -543,6 +546,7 @@
 
   var fetchClients = makeLoader('client_getAll', function (data) {
     allClients = data || [];
+    clientsLoaded = true;
     document.getElementById('clientTableError').innerText = '';
     renderClients();
     fetchPics();
@@ -604,6 +608,22 @@
     fetchProjects();
     fetchConsultants();
     fetchClientTaxonomy();
+  }
+
+  /**
+   * Tombol 🔄 Refresh. Dulu onclick-nya langsung fetchClients(), yang HANYA
+   * memuat ulang daftar client + PIC — sementara halaman ini juga menampilkan
+   * kolom Project, Total Project/GDV/Service Revenue (dari fetchProjects),
+   * badge Client_Source (fetchMasterData), dan daftar consultant. Jadi user
+   * yang baru membuat project di tempat lain menekan Refresh di sini dan
+   * kolom Project-nya TIDAK PERNAH berubah — persis seperti tombol rusak.
+   *
+   * Sekarang memuat ulang SELURUH dataset halaman (bootstrapClients) setelah
+   * cache server dibuang. Gerbang in-flight di makeLoader tetap dihormati
+   * karena setiap loader punya penjaganya sendiri.
+   */
+  function refreshClientData() {
+    techfordRefreshData('clientRefreshBtn', bootstrapClients);
   }
   // Pemanggilan bootstrapClients() SENGAJA dipindah ke PALING BAWAH skrip
   // ini (lihat blok di akhir file) — BUKAN dijalankan di sini. BUG YANG
@@ -1041,9 +1061,13 @@
     var host = document.getElementById('clientStats');
     var sources = optionsForCategory('Client_Source');
 
-    if (!allClients.length && !sources.length) {
-      host.innerHTML = '<div class="stat-card"><div class="stat-label">' +
-        '<span class="inline-spinner"></span>Memuat ringkasan...</div></div>';
+    // Placeholder selama daftar client belum sampai. Gerbang lama hanya
+    // menyala kalau allClients DAN sources dua-duanya kosong — begitu
+    // masterdata datang lebih dulu (kejadian biasa, dua fetch paralel),
+    // kartunya langsung dirender dengan total 0 dan seluruh persentase 0%,
+    // yang terbaca sebagai angka final padahal datanya belum ada.
+    if (!clientsLoaded) {
+      host.innerHTML = techfordSkelTiles(4);
       return;
     }
 

@@ -152,11 +152,21 @@ console.log('\n2) saveDraft — costs/margins kosong TIDAK meledak, Salset Fee t
   ok('Salset_NGO_Fee (Salset Fee) terhitung > 0', rows[0].Salset_NGO_Fee > 0, rows[0].Salset_NGO_Fee);
   ok('Total_Implementation_Fund terhitung > 0', rows[0].Total_Implementation_Fund > 0, rows[0].Total_Implementation_Fund);
   ok('Cost_Estimate_Vendor nol (tidak ada cost vendor)', rows[0].Cost_Estimate_Vendor === 0, rows[0].Cost_Estimate_Vendor);
-  // Profit_Estimate_Vendor/Margin_Estimate_Vendor TIDAK dipaksa nol — rumusnya
-  // tetap "Net - Cost", dan Cost=0 secara matematis membuatnya "100% profit".
-  // Ini bukan bug: field ini TIDAK PERNAH ditampilkan untuk COR SALSET Saja
-  // (disembunyikan di Kalkulator, dan dokumennya dikeluarkan total dari Cost
-  // Monitoring — lihat tes bagian 4 & 5) jadi nilainya tidak pernah dibaca.
+  // Profit Program (Profit_Estimate_Vendor) WAJIB nol untuk COR SALSET Saja.
+  // Rumus umumnya "cashNet - totalBaa"; karena jenis ini TIDAK PUNYA box
+  // pengeluaran vendor/SALSET sama sekali, totalBaa selalu 0 dan rumus itu
+  // akan salah membaca SELURUH sisa dana sebagai profit — angka yang lalu
+  // ikut terbaca dashboard (Implementation Fee) & box Implementation Fee di
+  // kalkulator. Yang benar-benar diambil hanya SALSET fee.
+  ok('Profit_Estimate_Vendor DIPAKSA nol (bukan seluruh sisa dana)', rows[0].Profit_Estimate_Vendor === 0, rows[0].Profit_Estimate_Vendor);
+  ok('Margin_Estimate_Vendor DIPAKSA nol', rows[0].Margin_Estimate_Vendor === 0, rows[0].Margin_Estimate_Vendor);
+  // Konsekuensi yang dijanjikan ke user: Total Implementation Fee = SALSET fee,
+  // jadi Implementation Fee % otomatis sama dengan NGO fee rate (10%).
+  var totalImpFee = rows[0].Salset_NGO_Fee + rows[0].Profit_Estimate_Vendor;
+  ok('Total Implementation Fee = SALSET fee', totalImpFee === rows[0].Salset_NGO_Fee, totalImpFee);
+  ok('Implementation Fee % = NGO rate (10%)',
+    Math.abs((totalImpFee / rows[0].Total_Implementation_Fund) * 100 - 10) < 0.001,
+    ((totalImpFee / rows[0].Total_Implementation_Fund) * 100).toFixed(4) + '%');
 }
 
 console.log('\n3) saveDraft — salsetOnly:false (COR normal via Vendor) TIDAK terpengaruh — Is_Salset_Only tetap false');
@@ -226,6 +236,101 @@ console.log('\n5) getDetail — diakses langsung untuk COR SALSET Saja tetap dit
   let err = null;
   try { svc.getDetail('DOC-SALSET'); } catch (e) { err = e; }
   ok('getDetail menolak COR SALSET Saja', !!err, err && err.message);
+}
+
+console.log('\n6) Pagar margin TIDAK berlaku untuk COR SALSET Saja');
+{
+  // Profit Program-nya memang SELALU nol by design, jadi pagar margin akan
+  // selalu bilang "di bawah panduan" dan memaksa alasan pengecualian di
+  // SETIAP approval — gangguan, bukan pagar.
+  const { svc } = buildCorService({ header: { Is_Salset_Only: true, Cor_Method: 'GROSS_DOWN' } });
+  const guard = svc.evaluateMarginGuard('DOC-1');
+  ok('applicable=false & below=false', guard.applicable === false && guard.below === false, JSON.stringify(guard));
+
+  const normal = buildCorService({ header: { Is_Salset_Only: false, Cor_Method: 'GROSS_DOWN' } });
+  ok('COR normal TETAP dievaluasi pagar margin (tidak ikut dimatikan)',
+    normal.svc.evaluateMarginGuard('DOC-1').applicable === true);
+}
+
+console.log('\n7) PDF — COR SALSET Saja hanya mencetak Source of Fund, Implementation Fund (via SALSET) & Implementation Fee');
+{
+  const ctx = { console };
+  ctx.global = ctx;
+  vm.createContext(ctx);
+  vm.runInContext('var CorReportRenderer;' + fs.readFileSync(path.join(SRC, '40_Modules/Cor/43_CorReportRenderer.gs'), 'utf8'), ctx);
+
+  function model(isSalsetOnly) {
+    return {
+      docLabel: 'DOC-1', projectLabel: 'Uji', method: 'GROSS_DOWN', isViaSalset: true,
+      vendorEntity: 'Vendor A', entity: { Entity_Name: 'Salam Setara', Bank: 'BSI', Biaya_Pencairan: 0 }, pkp: false,
+      ngoRatePct: 10, guNgoRatePct: 10, biayaSalset: 0, linkCampaigns: [],
+      marginComponents: [{ key: 'CONS', label: 'Consultancy Service Fee' }],
+      blocks: [{
+        tabLabel: null, funds: [{ fundType: 'CLIENT', nominal: 100000000, isZakat: false }],
+        salItems: [], baaItems: [], margin: { CONS: { subCategory: 'General', percentage: 10 } }
+      }],
+      marginEnabled: true, marginMode: 'COMPONENT', manualMarginPct: 0, isSalsetOnly: isSalsetOnly
+    };
+  }
+
+  const html = ctx.CorReportRenderer.renderDocumentHtml(model(true));
+  ok('section Source of Fund tetap ada', html.indexOf('<h2>Source of Fund</h2>') !== -1);
+  ok('section Implementation Fund (via SALSET) tetap ada', html.indexOf('Implementation Fund (via SALSET)') !== -1);
+  ok('section Implementation Fee ditambahkan', html.indexOf('<h2>Implementation Fee</h2>') !== -1);
+  ok('section Fund Detail TIDAK dicetak', html.indexOf('<h2>Fund Detail</h2>') === -1);
+  ok('section Default Margin TIDAK dicetak', html.indexOf('<h2>Default Margin</h2>') === -1);
+  ok('section SPP Amount TIDAK dicetak', html.indexOf('<h2>SPP Amount</h2>') === -1);
+  ok('section Profit Margin TIDAK dicetak', html.indexOf('<h2>Profit Margin</h2>') === -1);
+  ok('tabel Biaya Pengeluaran Vendor TIDAK dicetak', html.indexOf('Biaya Pengeluaran Vendor A') === -1);
+  ok('Implementation Fee % = 10% (sama dengan NGO rate)', html.indexOf('10.00%') !== -1);
+
+  // COR normal (bukan SALSET Saja) TIDAK boleh ikut kehilangan section apa pun.
+  const htmlNormal = ctx.CorReportRenderer.renderDocumentHtml(model(false));
+  ['<h2>Fund Detail</h2>', '<h2>Default Margin</h2>', '<h2>SPP Amount</h2>', '<h2>Profit Margin</h2>'].forEach(function (sec) {
+    ok('COR normal tetap mencetak ' + sec, htmlNormal.indexOf(sec) !== -1);
+  });
+  ok('COR normal TIDAK dapat section Implementation Fee', htmlNormal.indexOf('<h2>Implementation Fee</h2>') === -1);
+}
+
+console.log('\n8) Parity server vs client (CorCalc di Shell.html) untuk PDF SALSET Saja');
+{
+  const lines = fs.readFileSync(path.join(SRC, '50_Presentation/html/Layout/Shell.html'), 'utf8').split('\n');
+  let start = lines.findIndex(l => l.indexOf('var CorCalc = (function ()') !== -1);
+  let depth = 0, end = -1;
+  for (let i = start; i < lines.length; i++) {
+    depth += (lines[i].split('{').length - 1) - (lines[i].split('}').length - 1);
+    if (i > start && depth <= 0) { end = i; break; }
+  }
+  const cctx = { console };
+  cctx.global = cctx;
+  vm.createContext(cctx);
+  vm.runInContext(lines.slice(start, end + 1).join('\n'), cctx);
+
+  const sctx = { console };
+  sctx.global = sctx;
+  vm.createContext(sctx);
+  vm.runInContext('var CorReportRenderer;' + fs.readFileSync(path.join(SRC, '40_Modules/Cor/43_CorReportRenderer.gs'), 'utf8'), sctx);
+
+  const m = {
+    docLabel: 'DOC-1', projectLabel: 'Uji', method: 'GROSS_DOWN', isViaSalset: true,
+    vendorEntity: 'Vendor A', entity: { Entity_Name: 'Salam Setara', Bank: 'BSI', Biaya_Pencairan: 0 }, pkp: false,
+    ngoRatePct: 10, guNgoRatePct: 10, biayaSalset: 0, linkCampaigns: [],
+    marginComponents: [{ key: 'CONS', label: 'Consultancy Service Fee' }],
+    blocks: [{
+      tabLabel: null, funds: [{ fundType: 'CLIENT', nominal: 100000000, isZakat: false }],
+      salItems: [], baaItems: [], margin: { CONS: { subCategory: 'General', percentage: 10 } }
+    }],
+    marginEnabled: true, marginMode: 'COMPONENT', manualMarginPct: 0, isSalsetOnly: true
+  };
+  const server = sctx.CorReportRenderer.renderDocumentHtml(m);
+  const client = cctx.CorCalc.renderDocumentHtml(m);
+  ok('fragmen client muncul utuh di dalam keluaran PDF server',
+    server.indexOf(client) !== -1, 'server ' + server.length + ' / client ' + client.length);
+
+  const gdS = sctx.CorReportRenderer.computeGD({ funds: m.blocks[0].funds, salItems: [], baaItems: [], margin: m.blocks[0].margin, marginComponents: m.marginComponents, isViaSalset: true, ngoRatePct: 10, biayaSalset: 0, pkp: false, pphOn: true, biayaPencairan: 0, salsetOnly: true });
+  const gdC = cctx.CorCalc.computeGD({ funds: m.blocks[0].funds, salItems: [], baaItems: [], margin: m.blocks[0].margin, marginComponents: m.marginComponents, isViaSalset: true, ngoRatePct: 10, biayaSalset: 0, pkp: false, pphOn: true, biayaPencairan: 0, salsetOnly: true });
+  ok('computeGD identik server vs client (salsetOnly)', JSON.stringify(gdS) === JSON.stringify(gdC));
+  ok('pmProfit nol di kedua sisi', gdS.pmProfit === 0 && gdC.pmProfit === 0);
 }
 
 console.log('\n' + (failures.length

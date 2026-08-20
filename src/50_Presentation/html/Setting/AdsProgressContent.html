@@ -18,7 +18,7 @@
     <option value="unlinked">Belum tersambung</option>
   </select>
   <button class="filter-reset" onclick="resetAdsMonFilter()">↺ Reset Filter</button>
-  <button class="filter-reset" id="adsMonRefreshBtn" onclick="fetchAdsMonitoring()" title="Muat ulang data">🔄 Refresh</button>
+  <button class="filter-reset" id="adsMonRefreshBtn" onclick="refreshAdsMonitoringData()" title="Muat ulang data">🔄 Refresh</button>
 </div>
 
 <div class="table-scroll">
@@ -79,6 +79,13 @@
     return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID');
   }
   function fmtAmPlain(n) { return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+
+  // Tombol Refresh: buang cache server DULU (adsProgress/client/project/
+  // revenue semuanya di-cache 60 detik) — bootstrap TIDAK lewat sini, supaya
+  // membuka halaman tidak ikut mengosongkan cache tiap kali.
+  function refreshAdsMonitoringData() {
+    techfordRefreshData(null, function () { fetchAdsMonitoring(); });
+  }
 
   function fetchAdsMonitoring() {
     document.getElementById('adsMonError').innerText = '';

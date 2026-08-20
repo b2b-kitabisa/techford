@@ -50,7 +50,7 @@
   </div>
 
   <button class="filter-reset" id="gdvMatchResetBtn" onclick="resetGdvMatchFilter()">↺ Reset Filter</button>
-  <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="fetchGdvMatching()" title="Muat ulang data">🔄 Refresh</button>
+  <button class="filter-reset" id="gdvMatchRefreshBtn" onclick="refreshGdvMatchingData()" title="Muat ulang data">🔄 Refresh</button>
 </div>
 
 <div class="filter-chips" id="gdvMatchFilterChips" style="display:none;"></div>
@@ -124,6 +124,13 @@
 
   function esc(str) { return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function fmtRp(n) { return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+
+  // Tombol Refresh: buang cache server DULU (client/project/revenue di
+  // halaman ini semuanya di-cache 60 detik) — bootstrap TIDAK lewat sini,
+  // supaya membuka halaman tidak ikut mengosongkan cache tiap kali.
+  function refreshGdvMatchingData() {
+    techfordRefreshData(null, function () { fetchGdvMatching(); });
+  }
 
   function fetchGdvMatching(onDone) {
     document.getElementById('gdvMatchError').innerText = '';

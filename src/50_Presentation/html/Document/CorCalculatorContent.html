@@ -67,12 +67,12 @@
   .cor-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
   /* Box 2 (Implementation Fund), 3 (Fund Detail) & 4 (Default Margin)
      bersebelahan kalau layar cukup lebar — lihat komentar di HTML.
-     align-items:start supaya box yang lebih pendek tidak ikut ditarik
-     setinggi box tetangganya yang lebih tinggi (mis. Default Margin, yang
-     isinya tabel komponen margin, biasanya lebih tinggi dari Implementation
-     Fund/Fund Detail). Box di dalam wrapper ini margin-bottom-nya 0 —
-     jaraknya sudah diatur oleh grid gap. */
-  .cor-box-row-234 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; align-items: start; margin-bottom: 18px; }
+     TINGGINYA DISERAGAMKAN (align-items:stretch, default grid) supaya
+     ketiganya rata bawah, bukan bergerigi mengikuti isi masing-masing —
+     Default Margin (tabel komponen) selalu lebih tinggi dari dua box
+     lainnya. Box di dalam wrapper ini margin-bottom-nya 0: jaraknya sudah
+     diatur oleh grid gap. */
+  .cor-box-row-234 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-bottom: 18px; }
   .cor-box-row-234 .cor-box { margin-bottom: 0; }
   .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
   .cor-box-hd .sub { font-weight: 400; color: var(--text-faint); font-size: 11px; margin-left: 4px; }
@@ -90,9 +90,13 @@
   .cor-mix-tab.on { background: var(--color-cerulean); color: var(--color-white); }
 
   .cor-fund-row { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; background: var(--bg-tint); }
-  .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 140px 90px 32px; gap: 12px; align-items: center; }
-  /* Dana Campaign punya kolom tambahan (dropdown sumber dana: Campaign/DBT/Fraud). */
-  .cor-fund-cols-campaign { grid-template-columns: minmax(0,1fr) 140px 90px 100px 32px; }
+  /* SATU template kolom untuk Dana Client DAN Dana Campaign.
+     Dulu baris Client cuma 4 kolom sementara Campaign 5 (ada dropdown sumber
+     dana), jadi kolom link campaign yang 1fr melebar berbeda di antara
+     keduanya — akibatnya kotak nominal Dana Client dan Dana Campaign TIDAK
+     pernah sejajar walau ada di kotak yang sama. Sekarang baris Client
+     mengisi slot ke-4 dengan spacer kosong (lihat buildFundRowHtml). */
+  .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 140px 110px 100px 32px; gap: 12px; align-items: center; }
   .cor-fund-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
   .cor-fund-foot input[type="text"] { font-size: 11px; padding: 2px 4px; height: auto; }
 
@@ -223,16 +227,19 @@
       <div class="cor-rrow" id="corRrSalRow" style="display:none;"><span>SALSET cash in</span><span class="v" id="corRrSalsetGross">Rp0</span></div>
       <div class="cor-rrow" id="corRrSalFeeRow" style="display:none;"><span>SALSET fee (NGO)</span><span class="v" id="corRrSalsetFee">Rp0</span></div>
       <div class="cor-rrow" id="corRrBsalRow" style="display:none;"><span>Biaya pengeluaran SAL</span><span class="v" id="corRrBiayaSal">Rp0</span></div>
-      <div class="cor-rrow"><span>Cash in <span id="corRrVl">vendor</span> (gross)</span><span class="v" id="corRrCashGross">Rp0</span></div>
-      <div class="cor-rrow"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
-      <div class="cor-rrow"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
+      <!-- Tiga baris terakhir SELURUHNYA tentang uang yang mengalir ke Vendor
+           — disembunyikan untuk COR "SALSET Saja" (tidak ada Vendor sama
+           sekali, jadi angkanya bukan cuma nol tapi memang tidak berlaku). -->
+      <div class="cor-rrow cor-rrow-vendor"><span>Cash in <span id="corRrVl">vendor</span> (gross)</span><span class="v" id="corRrCashGross">Rp0</span></div>
+      <div class="cor-rrow cor-rrow-vendor"><span>PPh 23 (2%)</span><span class="v" id="corRrPph23">Rp0</span></div>
+      <div class="cor-rrow cor-rrow-vendor"><span>Cash in <span id="corRrVl2">vendor</span> (net)</span><span class="v" id="corRrCashNet">Rp0</span></div>
     </div>
     <!-- Margin & Profit Margin digabung satu box — dua-duanya sama-sama
          "seberapa untung", cuma beda basis (margin dari panduan vs profit
          aktual setelah cost sungguhan terisi). Divider memisahkan supaya
          tetap terbaca sebagai dua komponen, bukan satu daftar campur. -->
     <div class="cor-rbox" id="corRbMargin">
-      <div class="cor-rbox-hd">Margin &amp; Profit Margin</div>
+      <div class="cor-rbox-hd">Profit Margin Estimated &amp; Actual</div>
       <!-- Cuma relevan kalau Default Margin (Box 4) ON — kalau OFF, tidak
            ada "planned margin" untuk ditampilkan (lihat corMarginEnabled). -->
       <div id="corRrMgPlannedWrap">
@@ -264,7 +271,10 @@
       <div class="cor-rbox-hd">Implementation Fee</div>
       <div class="cor-rrow"><span>Implementation Fund</span><span class="v" id="corRrImpFund">Rp0</span></div>
       <div class="cor-rrow"><span>Salset Fee</span><span class="v" id="corRrImpSalsetFee">Rp0</span></div>
-      <div class="cor-rrow"><span>Profit Program</span><span class="v" id="corRrImpProfit">Rp0</span></div>
+      <!-- Profit Program SELALU nol untuk COR "SALSET Saja" (tidak lewat
+           Vendor, dan tidak ada box pengeluaran SALSET untuk jenis ini) —
+           barisnya disembunyikan, bukan ditampilkan Rp0. -->
+      <div class="cor-rrow" id="corRrImpProfitRow"><span>Profit Program</span><span class="v" id="corRrImpProfit">Rp0</span></div>
       <div class="cor-rbox-divider"></div>
       <div class="cor-rrow" style="font-weight:700;"><span>Total Implementation Fee</span><span class="v" id="corRrImpTotal">Rp0</span></div>
       <div class="cor-rrow"><span>Implementation Fee %</span><span class="v" id="corRrImpPct">0%</span></div>
@@ -1608,7 +1618,10 @@
     var isClient = f.type === 'CLIENT';
     // Sumber dana (Campaign/DBT/Fraud) HANYA relevan untuk Dana Campaign —
     // tidak berpengaruh ke rumus apa pun, murni label pelacakan sumber dana.
-    var kindSelect = isClient ? '' :
+    // Baris Client mengisi slot kolom ini dengan spacer kosong (BUKAN string
+    // kosong yang menghilangkan kolomnya) — supaya grid-nya tetap 5 kolom
+    // dan nominal Dana Client sejajar dengan nominal Dana Campaign.
+    var kindSelect = isClient ? '<span></span>' :
       '<select onchange="updateFund(' + f.idx + ',\'campaignFundKind\',this.value)" title="Sumber Dana Campaign" style="font-size:11px;">' +
       campaignFundKindOptions().map(function (k) {
         return '<option value="' + esc(k.key) + '" ' + (f.campaignFundKind === k.key ? 'selected' : '') + '>' + esc(k.label) + '</option>';
@@ -1620,7 +1633,7 @@
         ' <button type="button" class="icon-btn-sm" onclick="resetTechFeeAuto(' + f.idx + ')" title="Kembali ke otomatis (1% dari nominal)">↺</button></span>'
       : '<span>Tech Fee: <strong>' + fmtRp(tf) + '</strong> <button type="button" class="icon-btn-sm" onclick="startEditTechFee(' + f.idx + ')" title="Edit manual">✏️</button></span>');
     return '<div class="cor-fund-row">' +
-      '<div class="cor-fund-cols' + (isClient ? '' : ' cor-fund-cols-campaign') + '">' +
+      '<div class="cor-fund-cols">' +
       '<input type="text" placeholder="Link campaign (opsional)" value="' + esc(f.linkCampaign) + '" oninput="updateFundText(' + f.idx + ',\'linkCampaign\',this.value)">' +
       // oninput cuma reformat tampilan (titik ribuan) TANPA render ulang —
       // supaya kursor/fokus tidak hilang tiap ketik. Model & kalkulasi baru
@@ -2005,6 +2018,15 @@
       if (isSalsetOnly) document.getElementById(id).style.display = 'none';
       else if (currentMethod === 'GROSS_DOWN') document.getElementById(id).style.display = '';
     });
+    // Sisa header untuk COR "SALSET Saja" tinggal DUA box: Alur Dana &
+    // Implementation Fee. Di dalamnya pun baris yang bicara soal Vendor
+    // dibuang — Alur Dana berhenti di SALSET fee (NGO), dan Implementation
+    // Fee tidak menampilkan Profit Program (pasti nol, lihat computeGD).
+    var vendorRows = document.querySelectorAll('#corRpGd .cor-rrow-vendor');
+    for (var vr = 0; vr < vendorRows.length; vr++) {
+      vendorRows[vr].style.display = isSalsetOnly ? 'none' : '';
+    }
+    document.getElementById('corRrImpProfitRow').style.display = isSalsetOnly ? 'none' : '';
 
     // ---- Subtotals per fund type ----
     function calcFundTotal(f) {
@@ -2052,6 +2074,11 @@
 
     var pmProfit = cashNet - totalBaa;
     var pmPct = cashNet > 0 ? pmProfit / cashNet : 0;
+    // KEMBARAN dari gerbang yang sama di CorCalc.computeGD (Shell.html) &
+    // CorReportRenderer.computeGD — COR "SALSET Saja" tidak punya cost vendor
+    // untuk dikurangkan, jadi "cashNet - totalBaa" akan salah membaca seluruh
+    // sisa dana sebagai profit. Yang diambil hanya SALSET fee.
+    if (isSalsetOnly) { pmProfit = 0; pmPct = 0; }
 
     // ---- SPP Amount (GD) — sama seperti di Template COR ----
     var dpp = ppnGd;
@@ -2394,7 +2421,11 @@
       // CorCalc.buildModelFromDraft) sudah benar sejak awal — field ini
       // menyamakan Download PDF dengan itu, dari STATE LIVE kalkulator
       // (belum tentu sudah Simpan Draft).
-      marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct
+      marginEnabled: marginEnabled, marginMode: marginMode, manualMarginPct: manualMarginPct,
+      // Tanpa ini PDF untuk COR "SALSET Saja" tetap mencetak seluruh section
+      // vendor (Fund Detail/Default Margin/Biaya Vendor/SPP/Profit Margin)
+      // walau layarnya sudah meringkas jadi dua box saja.
+      isSalsetOnly: isSalsetOnly
     };
   }
 
