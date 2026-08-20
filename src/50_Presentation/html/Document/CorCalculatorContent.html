@@ -20,7 +20,7 @@
   /* Ringkasan (Alur Dana/Margin/SPP Amount/Profit Margin — dulu sidebar
      320px di kanan) sekarang jadi baris horizontal di ATAS konten utama,
      dan konten utama melebar penuh mengisi ruang yang dulu dipakai sidebar. */
-  .cor-summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .cor-summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 20px; }
   .cor-summary-row .cor-rbox { margin-bottom: 0; position: static; }
 
   /* Penanda warna: kotak yang bisa DIISI admin (ada input/select/textarea di
@@ -64,14 +64,23 @@
   .cor-route-locked-note { font-size: 10px; color: var(--text-faint); margin-left: 4px; }
   .cor-fund-locked-note { font-size: 11px; color: var(--text-faint); font-style: italic; padding: 8px 0; text-align: center; }
 
-  .cor-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
+  .cor-box { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+  /* Box 2 (Implementation Fund), 3 (Fund Detail) & 4 (Default Margin)
+     bersebelahan kalau layar cukup lebar — lihat komentar di HTML.
+     align-items:start supaya box yang lebih pendek tidak ikut ditarik
+     setinggi box tetangganya yang lebih tinggi (mis. Default Margin, yang
+     isinya tabel komponen margin, biasanya lebih tinggi dari Implementation
+     Fund/Fund Detail). Box di dalam wrapper ini margin-bottom-nya 0 —
+     jaraknya sudah diatur oleh grid gap. */
+  .cor-box-row-234 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; align-items: start; margin-bottom: 18px; }
+  .cor-box-row-234 .cor-box { margin-bottom: 0; }
+  .cor-box-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-softer); font-weight: 700; font-size: 13px; }
   .cor-box-hd .sub { font-weight: 400; color: var(--text-faint); font-size: 11px; margin-left: 4px; }
 
-  .cor-route-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--bg-tint); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+  .cor-route-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--bg-tint); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
   .cor-route-bar select { max-width: 220px; }
 
-  .cor-type-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .cor-type-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
   .cor-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: var(--accent-tint); color: var(--color-cerulean); }
   .cor-pph-pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
   .cor-pph-on { background: #fce8e6; color: #c5221f; }
@@ -80,14 +89,14 @@
   .cor-mix-tab { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--text-muted); font-family: inherit; }
   .cor-mix-tab.on { background: var(--color-cerulean); color: var(--color-white); }
 
-  .cor-fund-row { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg-tint); }
-  .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 130px 70px 28px; gap: 8px; align-items: center; }
+  .cor-fund-row { border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; background: var(--bg-tint); }
+  .cor-fund-cols { display: grid; grid-template-columns: minmax(0,1fr) 140px 90px 32px; gap: 12px; align-items: center; }
   /* Dana Campaign punya kolom tambahan (dropdown sumber dana: Campaign/DBT/Fraud). */
-  .cor-fund-cols-campaign { grid-template-columns: minmax(0,1fr) 130px 70px 90px 28px; }
-  .cor-fund-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
+  .cor-fund-cols-campaign { grid-template-columns: minmax(0,1fr) 140px 90px 100px 32px; }
+  .cor-fund-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-softer); font-size: 11px; color: var(--text-muted); }
   .cor-fund-foot input[type="text"] { font-size: 11px; padding: 2px 4px; height: auto; }
 
-  .cor-hi { border-radius: 8px; padding: 8px 10px; }
+  .cor-hi { border-radius: 8px; padding: 10px 12px; }
   .cor-hi-label { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; }
   .cor-hi-value { font-family: monospace; font-size: 14px; font-weight: 700; }
 
@@ -108,8 +117,8 @@
   .cor-cv.pph { background: #fdf3e0; color: #7a4a00; }
   .cor-ct-total td { background: var(--bg-tint); border-top: 1px solid var(--border-soft); font-weight: 700; }
 
-  .cor-margin-row { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; }
-  .cor-margin-hd { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 8px; margin-bottom: 4px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
+  .cor-margin-row { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 12px; }
+  .cor-margin-hd { display: grid; grid-template-columns: minmax(0,1.4fr) 120px 45px 110px; gap: 10px; margin-bottom: 6px; font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; }
   /* Gross Up cuma menentukan %, TIDAK perlu nominal Rp (beda dari Gross
      Down yang butuh nominal karena ada Dana Client sungguhan) — 3 kolom
      tanpa "Nominal". */
@@ -123,13 +132,13 @@
   .cor-step.result { background: #e6f4ea; font-weight: 700; }
   .cor-step-val { font-family: monospace; font-weight: 700; }
 
-  .cor-rbox { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: sticky; top: 8px; }
-  .cor-rbox-hd { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-softer); }
+  .cor-rbox { background: var(--color-white); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; position: sticky; top: 8px; }
+  .cor-rbox-hd { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-softer); }
   /* Pemisah antar komponen di dalam satu cor-rbox yang digabung (Margin +
      Profit Margin, Implementation Fee) — beda dari cor-rbox-hd (judul box),
      ini murni jarak antar kelompok baris di DALAM satu box yang sama. */
-  .cor-rbox-divider { height: 1px; background: var(--border-softer); margin: 8px 0; }
-  .cor-rrow { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border-softer); }
+  .cor-rbox-divider { height: 1px; background: var(--border-softer); margin: 10px 0; }
+  .cor-rrow { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border-softer); }
   .cor-rrow:last-child { border-bottom: none; }
   .cor-rrow .v { font-family: monospace; font-weight: 700; }
 
@@ -322,9 +331,20 @@
           </div>
         </div>
 
+        <!-- Box 2, 3, 4 bersebelahan secara horizontal kalau layar cukup
+             lebar (auto-fit min 340px per kolom — turun ke 2 lalu 1 kolom
+             sendiri di layar lebih sempit, dan box yang disembunyikan
+             (mis. Box 2 saat bukan Via SALSET, atau semuanya saat SALSET
+             Saja) otomatis tidak makan slot grid, jadi sisanya tetap rapi
+             tanpa logika kondisional tambahan di sini). Box 4 (Default
+             Margin) berisi tabel 4 kolom yang bisa terasa sempit kalau
+             dipaksa selalu 1/3 lebar — auto-fit membiarkannya turun ke
+             lebar penuh sendiri begitu tidak ada ruang 340px lagi. -->
+        <div class="cor-box-row-234">
+
         <div class="cor-box cor-box-input" id="corBoxImpl" style="display:none;">
           <div class="cor-box-hd">2. Implementation Fund <span class="sub">(via SALSET)</span></div>
-          <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div class="form-grid-2col" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 20px;">
             <div>
               <div class="drawer-field-label">SALSET cash in (gross)</div>
               <div class="cor-hi" style="background:var(--accent-tint);"><span class="cor-hi-value" id="corSalsetGross">Rp0</span></div>
@@ -353,7 +373,7 @@
               <input type="text" inputmode="numeric" id="corBiayaSalset" value="0" oninput="this.value=formatThousands(parseThousands(this))" onchange="onBiayaSalsetChange()" style="max-width:200px;">
             </div>
           </div>
-          <div class="form-grid-2col" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div class="form-grid-2col" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 20px;">
             <div>
               <div class="drawer-field-label">Cash in <span id="corVl1">vendor</span> (gross)</div>
               <div class="cor-hi" style="background:var(--accent-tint);"><span class="cor-hi-value" id="corCashGross">Rp0</span></div>
@@ -421,6 +441,8 @@
             </div>
           </div>
         </div>
+
+        </div><!-- end cor-box-row-234 -->
 
         <div class="cor-box cor-box-input" id="corBoxCostSal" style="display:none;">
           <div class="cor-box-hd">5. Biaya Pengeluaran SALSET <span class="sub">Budget: <strong id="corBudSal">Rp0</strong></span></div>

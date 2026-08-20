@@ -248,15 +248,38 @@
          * arti panah yang jauh lebih diharapkan, dan drawer ini penuh dengan
          * form yang bisa diedit.
          */
+        // Setiap navigasi SPA menjalankan ULANG <script> halaman (lihat
+        // execScripts) — kalau techfordBindDrawerArrows memasang
+        // document.addEventListener sendiri tiap dipanggil, listener-nya
+        // MENUMPUK setiap kali halaman yang sama dibuka lagi (document tidak
+        // pernah diganti, cuma innerHTML #mainContent). Dua listener yang
+        // menumpuk berarti satu tekan panah memanggil onPrev/onNext DUA
+        // KALI -> drawer melompat 2 langkah, padahal tombol ‹ › (onclick di
+        // elemen yang selalu dibuat baru) tetap benar. Jadi: LISTENER
+        // sungguhan dipasang SEKALI SEUMUR HIDUP halaman (window flag),
+        // panggilan berikutnya cuma mengganti target isOpen/onPrev/onNext
+        // yang "sedang aktif".
+        var __techfordDrawerArrowBinding = null;
         function techfordBindDrawerArrows(isOpen, onPrev, onNext) {
+          __techfordDrawerArrowBinding = { isOpen: isOpen, onPrev: onPrev, onNext: onNext };
+          if (window.__techfordDrawerArrowListenerBound) return;
+          window.__techfordDrawerArrowListenerBound = true;
           document.addEventListener('keydown', function (e) {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if (!isOpen()) return;
+            var b = __techfordDrawerArrowBinding;
+            if (!b) return;
+            try {
+              // Binding bisa jadi sisa halaman SEBELUMNYA yang sudah diganti
+              // (elemen yang dicek isOpen() sudah tidak ada di DOM) — jangan
+              // sampai error di sini malah mematikan listener global untuk
+              // seluruh halaman berikutnya.
+              if (!b.isOpen()) return;
+            } catch (err) { return; }
             var a = document.activeElement;
             if (a && (a.isContentEditable || { INPUT: 1, TEXTAREA: 1, SELECT: 1 }[a.tagName])) return;
             e.preventDefault();
-            if (e.key === 'ArrowLeft') onPrev(); else onNext();
+            if (e.key === 'ArrowLeft') b.onPrev(); else b.onNext();
           });
         }
 

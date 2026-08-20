@@ -1,3 +1,11 @@
+<div class="doc-page-toolbar">
+  <!-- COR dikerjakan dari halaman ini, jadi pembuatannya juga bisa dimulai
+       dari sini — tidak harus lewat Request Document di Sales Pipeline. Dua
+       pintu ini SENGAJA (keputusan produk), dan keduanya memanggil backend
+       yang sama supaya tidak ada dua versi aturan. -->
+  <button class="btn-save" id="docAddCorBtn" onclick="openAddCorModal()">🧮 Buat COR</button>
+</div>
+
 <div class="pipeline-score-row">
   <div class="pipeline-bucket-card">
     <div class="pipeline-bucket-item pipeline-bucket-pros">
@@ -54,12 +62,7 @@
   </select>
 
   <button class="filter-reset" onclick="resetDocFilter()">↺ Reset Filter</button>
-  <button class="filter-reset" id="docRefreshBtn" onclick="refreshAllDocumentData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
-  <!-- COR dikerjakan dari halaman ini, jadi pembuatannya juga bisa dimulai
-       dari sini — tidak harus lewat Request Document di Sales Pipeline. Dua
-       pintu ini SENGAJA (keputusan produk), dan keduanya memanggil backend
-       yang sama supaya tidak ada dua versi aturan. -->
-  <button class="btn-save" id="docAddCorBtn" style="margin-left:auto;" onclick="openAddCorModal()">🧮 Buat COR</button>
+  <button class="filter-reset" id="docRefreshBtn" style="margin-left:auto;" onclick="refreshAllDocumentData()" title="Halaman ini memuat data sekali saat dibuka dan tidak auto-sync — klik ini kalau ada Project/Client/Dokumen baru dari tempat lain yang belum muncul, tanpa perlu reload halaman.">🔄 Refresh Data</button>
 </div>
 
 <div id="docTableError" class="error"></div>
@@ -276,6 +279,16 @@
   .doc-cor-srow:last-child { border-bottom: none; }
   .doc-cor-srow .v { font-family: monospace; font-weight: 700; white-space: nowrap; }
   .doc-cor-sdiv { height: 1px; background: var(--border-softer); margin: 6px 0; }
+
+  /* Toolbar atas halaman (di atas score card) — cuma tombol "Buat COR" saja
+     untuk sekarang, ditaruh sejajar kanan supaya terasa "di atas", tanpa
+     perlu masuk ke topbar global (lonceng dst. ada di luar konten halaman
+     ini, lihat Shell.html). */
+  .doc-page-toolbar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  /* Jarak score card <-> filter bar SEBELUMNYA cuma andalan margin-bottom
+     .filter-bar sendiri (yang berlaku DI BAWAHNYA, bukan di atasnya) —
+     tidak ada gap eksplisit ANTARA dua baris ini. */
+  .pipeline-score-row { margin-bottom: 18px; }
 </style>
 <!-- ================= Tambah Dokumen: pilih metode, lalu upload / input link =================
      Tiga popup terpisah, bukan satu popup bercabang. Alasannya: langkah
