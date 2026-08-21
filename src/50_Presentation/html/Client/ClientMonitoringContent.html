@@ -623,7 +623,12 @@
    * karena setiap loader punya penjaganya sendiri.
    */
   function refreshClientData() {
-    techfordRefreshData('clientRefreshBtn', bootstrapClients);
+    // Hanya key yang halaman ini tampilkan — lihat catatan di
+    // techfordRefreshData: membuang seluruh cache membuat halaman LAIN ikut
+    // dingin dan bootstrap-nya menyerbu server dengan cache kosong.
+    techfordRefreshData('clientRefreshBtn', bootstrapClients, [
+      'client:all', 'picClient:all', 'project:all', 'masterData:all', 'employee:all'
+    ]);
   }
   // Pemanggilan bootstrapClients() SENGAJA dipindah ke PALING BAWAH skrip
   // ini (lihat blok di akhir file) — BUKAN dijalankan di sini. BUG YANG

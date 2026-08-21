@@ -225,6 +225,145 @@
         });
 
         /**
+         * PEMBATAS KONKURENSI + WATCHDOG untuk google.script.run.
+         *
+         * KENAPA INI ADA (insiden "hampir setiap halaman gagal memuat, tanpa
+         * respons", Executions log bersih):
+         *
+         * Setiap halaman menembakkan 8-10 google.script.run SEKALIGUS saat
+         * bootstrap (lihat bootstrapDocuments/bootstrapPipeline/dst). Apps
+         * Script membatasi jumlah eksekusi bersamaan per user; kalau semuanya
+         * lambat, panggilan di belakang antrian tidak pernah kembali sebelum
+         * client menyerah. Lapisan retry di atasnya (makeLoader 5x,
+         * gsRunWithRetry 3x) lalu MENGGANDAKAN beban jadi ~50 eksekusi untuk
+         * satu user — slot habis, antrian makin panjang, dan keadaannya
+         * bertahan sendiri karena setiap reload memicu ulang serbuan yang
+         * sama. Tidak ada satu pun yang melempar exception, jadi Executions
+         * log cuma memperlihatkan running/completed dan masalahnya kelihatan
+         * seperti hantu.
+         *
+         * Selama cache server hangat, tiap panggilan cukup cepat sehingga
+         * serbuan itu tidak pernah terlihat. Begitu cache dingin (lihat
+         * CacheHelper.invalidateAllData), semuanya kolaps sekaligus. Jadi
+         * jumlah panggilan paralelnya memang SUDAH terlalu banyak sejak lama —
+         * cache hangat hanya menyembunyikannya.
+         *
+         * Dua hal yang dikerjakan di sini:
+         *
+         * 1. Antrian FIFO dengan maksimum MAX_INFLIGHT panggilan berjalan.
+         *    Sisanya menunggu slot. Total pekerjaan sama, tapi server tidak
+         *    pernah kebanjiran, jadi setiap panggilan benar-benar selesai.
+         *
+         * 2. WATCHDOG per panggilan. Ini bagian terpentingnya: kalau transport
+         *    google.script.run menghilangkan sebuah respons, TIDAK ADA handler
+         *    yang pernah dipanggil — success maupun failure. Sebelum ini
+         *    halamannya menggantung di "Memuat..." selamanya dan slotnya bocor
+         *    permanen sehingga antrian ikut mati. Sekarang panggilan yang lewat
+         *    batas waktu dipaksa masuk failure handler, sehingga jalur retry &
+         *    pesan error yang sudah ada di setiap halaman benar-benar jalan.
+         *
+         * DIPASANG DENGAN MEMBUNGKUS google.script.run supaya SELURUH ~80
+         * pemanggil yang sudah ada (baik lewat gsRunWithRetry maupun
+         * google.script.run langsung) ikut terlindungi tanpa perlu disentuh
+         * satu per satu. Kalau pembungkusan gagal (properti tidak bisa
+         * ditulis), aplikasi tetap jalan memakai transport aslinya.
+         */
+        (function () {
+          var MAX_INFLIGHT = 3;
+          var TIMEOUT_MS = 90000;   // cache dingin + dataset besar bisa puluhan detik
+
+          if (!window.google || !google.script || !google.script.run) return;
+          var asli = google.script.run;
+
+          var antrian = [];
+          var berjalan = 0;
+
+          function pompa() {
+            while (berjalan < MAX_INFLIGHT && antrian.length) {
+              jalankan(antrian.shift());
+            }
+          }
+
+          function jalankan(tugas) {
+            berjalan++;
+            var sudahSelesai = false;
+            var timer = null;
+
+            // Slot dibebaskan DULU, baru handler user dipanggil — supaya
+            // handler yang menembakkan RPC lanjutan langsung dapat slot, dan
+            // exception di dalam handler tidak pernah membocorkan slot.
+            function selesai(jenis, arg) {
+              if (sudahSelesai) return;
+              sudahSelesai = true;
+              if (timer) clearTimeout(timer);
+              berjalan--;
+              pompa();
+              var handler = jenis === 'ok' ? tugas.onSuccess : tugas.onFailure;
+              if (handler) handler(arg, tugas.userObject);
+            }
+
+            timer = setTimeout(function () {
+              selesai('gagal', new Error(
+                'Server tidak menjawab dalam ' + Math.round(TIMEOUT_MS / 1000) +
+                ' detik (' + tugas.fnName + ').'));
+            }, TIMEOUT_MS);
+
+            var runner = asli
+              .withSuccessHandler(function (res) { selesai('ok', res); })
+              .withFailureHandler(function (err) { selesai('gagal', err); });
+            if (tugas.userObject !== undefined) runner = runner.withUserObject(tugas.userObject);
+
+            try {
+              runner[tugas.fnName].apply(runner, tugas.args);
+            } catch (e) {
+              selesai('gagal', e);
+            }
+          }
+
+          // Peniru google.script.run: withSuccessHandler/withFailureHandler/
+          // withUserObject mengembalikan builder baru (rantainya immutable,
+          // sama seperti aslinya), nama lain apa pun dianggap nama fungsi
+          // server dan MASUK ANTRIAN alih-alih langsung ditembakkan.
+          function buatBuilder(cfg) {
+            var target = {
+              withSuccessHandler: function (fn) { return buatBuilder({ onSuccess: fn, onFailure: cfg.onFailure, userObject: cfg.userObject }); },
+              withFailureHandler: function (fn) { return buatBuilder({ onSuccess: cfg.onSuccess, onFailure: fn, userObject: cfg.userObject }); },
+              withUserObject: function (o) { return buatBuilder({ onSuccess: cfg.onSuccess, onFailure: cfg.onFailure, userObject: o }); }
+            };
+            return new Proxy(target, {
+              get: function (obj, nama) {
+                if (nama in obj) return obj[nama];
+                if (typeof nama !== 'string') return undefined;
+                return function () {
+                  antrian.push({
+                    fnName: nama,
+                    args: Array.prototype.slice.call(arguments),
+                    onSuccess: cfg.onSuccess,
+                    onFailure: cfg.onFailure,
+                    userObject: cfg.userObject
+                  });
+                  pompa();
+                };
+              }
+            });
+          }
+
+          try {
+            google.script.run = buatBuilder({});
+            // Kalau propertinya ternyata read-only, penugasan di atas gagal
+            // diam-diam (bukan melempar) — jadi hasilnya diperiksa, dan kalau
+            // tidak berubah aplikasi tetap memakai transport asli.
+            if (google.script.run === asli) {
+              window.__techfordRpcQueueAktif = false;
+              return;
+            }
+            window.__techfordRpcQueueAktif = true;
+          } catch (e) {
+            window.__techfordRpcQueueAktif = false;
+          }
+        })();
+
+        /**
          * Placeholder berdenyut untuk score card selama datanya BELUM lengkap.
          *
          * KENAPA: score card dulu langsung dirender dengan angka sungguhan
@@ -262,15 +401,23 @@
          * timer buta 1200ms seperti sebelumnya, yang mengembalikan tombol ke
          * keadaan normal padahal datanya belum datang — persis yang membuat
          * user menyimpulkan tombolnya rusak).
+         *
+         * ARGUMEN keys WAJIB DIISI dengan key cache yang benar-benar dipakai
+         * halaman ini. Kalau dikosongkan, SELURUH cache data dibuang — dan
+         * itu membuat setiap halaman lain ikut dingin sekaligus, sehingga
+         * navigasi berikutnya menembakkan 8-10 RPC bootstrap ke atas cache
+         * kosong. Kombinasi itulah yang pernah membuat seluruh aplikasi
+         * kolaps jadi "tidak ada respons dari server" hanya karena tombol
+         * Refresh ditekan sekali.
          */
-        function techfordRefreshData(btnId, reloadFn) {
+        function techfordRefreshData(btnId, reloadFn, keys) {
           var btn = btnId ? document.getElementById(btnId) : null;
           var labelAwal = btn ? btn.innerHTML : '';
           if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memuat...'; }
           function selesai() {
             if (btn) { btn.disabled = false; btn.innerHTML = labelAwal; }
           }
-          gsRunWithRetry('app_invalidateCaches', [], function () {
+          gsRunWithRetry('app_invalidateCaches', [keys || []], function () {
             selesai();
             // Kegagalan di dalam reloadFn tidak boleh menyisakan tombol
             // terkunci — loader punya penanganan error sendiri.

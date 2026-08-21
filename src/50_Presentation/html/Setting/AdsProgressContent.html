@@ -84,7 +84,7 @@
   // revenue semuanya di-cache 60 detik) — bootstrap TIDAK lewat sini, supaya
   // membuka halaman tidak ikut mengosongkan cache tiap kali.
   function refreshAdsMonitoringData() {
-    techfordRefreshData(null, function () { fetchAdsMonitoring(); });
+    techfordRefreshData(null, function () { fetchAdsMonitoring(); }, ['adsProgress:all']);
   }
 
   function fetchAdsMonitoring() {

@@ -912,7 +912,14 @@
       fetchCorTaxonomy();
       fetchQuotationHeaders();
       fetchQuotationTaxonomy();
-    });
+    }, [
+      // Hanya key yang halaman ini tampilkan — lihat catatan di
+      // techfordRefreshData.
+      'documentPipeline:all', 'documentAttachment:all', 'documentActivity:all',
+      'project:all', 'client:all', 'picClient:all', 'masterData:all',
+      'corHeader:all', 'corEntity:all', 'corMargin:all', 'marginGuide:all',
+      'quotationHeader:all', 'quotationItem:all'
+    ]);
   }
 
   function paginateDocuments(list) {

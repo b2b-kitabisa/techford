@@ -129,7 +129,9 @@
   // halaman ini semuanya di-cache 60 detik) — bootstrap TIDAK lewat sini,
   // supaya membuka halaman tidak ikut mengosongkan cache tiap kali.
   function refreshGdvMatchingData() {
-    techfordRefreshData(null, function () { fetchGdvMatching(); });
+    // GDV Matching membaca langsung (tidak lewat CacheHelper), jadi hanya
+    // dataset pendukungnya yang perlu dibuang — bukan seluruh cache.
+    techfordRefreshData(null, function () { fetchGdvMatching(); }, ['project:all', 'client:all']);
   }
 
   function fetchGdvMatching(onDone) {

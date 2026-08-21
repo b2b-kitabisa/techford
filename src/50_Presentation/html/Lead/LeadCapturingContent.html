@@ -377,7 +377,7 @@
     techfordRefreshData('leadRefreshBtn', function () {
       leadFetchInFlight = false;
       fetchLeads();
-    });
+    }, ['lead:all']);
   }
 
   function fetchLeads(onLoaded) {

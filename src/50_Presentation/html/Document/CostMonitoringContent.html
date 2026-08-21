@@ -272,7 +272,13 @@
       // bukan angka lama yang membeku tanpa penjelasan.
       renderCmSkeleton();
       fetchCmList();
-    });
+    }, [
+      // Hanya key yang halaman ini tampilkan — lihat catatan di
+      // techfordRefreshData.
+      'documentPipeline:all', 'corHeader:all', 'corBudgetItem:all',
+      'corDisbursement:all', 'corCost:all', 'corResult:all',
+      'project:all', 'client:all'
+    ]);
   }
 
   function showCmTableError(message, soft) {

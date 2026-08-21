@@ -134,6 +134,22 @@ var CacheHelper = (function (module) {
    * quotationLogo:<entity> SENGAJA tidak masuk daftar — itu cache gambar
    * logo dari Drive (TTL 6 jam), bukan data operasional yang perlu ikut
    * segar saat admin menekan Refresh, dan entity code-nya tidak terbatas.
+   *
+   * 'nav:badgeCounts' JUGA SENGAJA TIDAK MASUK DAFTAR — dan ini WAJIB tetap
+   * begitu. Key itu membungkus perhitungan badge sidebar, yang di dalamnya
+   * ada CostMonitoringService.countOverBudget(): operasi PALING MAHAL di
+   * aplikasi ini (menarik DocumentPipeline, CorHeader, CorBudgetItem,
+   * CorDisbursement, Project, Client, plus COR_Result per dokumen). Bedanya
+   * dengan key lain: badge dihitung di buildMenuWithBadges(), yang jalan di
+   * SETIAP doGet DAN setiap navigasi SPA — jadi ia ada di jalur kritis
+   * seluruh halaman, termasuk halaman yang tidak butuh data itu sama sekali.
+   *
+   * Waktu key ini ikut dibuang, satu klik Refresh membuat SETIAP perpindahan
+   * section sesudahnya membayar penuh biaya itu di atas cache yang juga baru
+   * dikosongkan, bersamaan dengan 8-10 RPC bootstrap halaman. Hasilnya
+   * seluruh aplikasi kolaps jadi "gagal memuat, tidak ada respons" tanpa satu
+   * pun error di Executions log. TTL-nya cuma 60 detik dan ia menyegarkan
+   * dirinya sendiri, jadi tidak ada gunanya dipaksa dibuang.
    */
   var DATA_KEYS = [
     'achievementTarget:all', 'adsProgress:all', 'client:all',
@@ -141,9 +157,33 @@ var CacheHelper = (function (module) {
     'corFund:all', 'corHeader:all', 'corMargin:all', 'corResult:all',
     'documentActivity:all', 'documentAttachment:all', 'documentPipeline:all',
     'employee:all', 'lead:all', 'marginGuide:all', 'masterData:all',
-    'nav:badgeCounts', 'picClient:all', 'project:all',
+    'picClient:all', 'project:all',
     'quotationHeader:all', 'quotationItem:all', 'revenueBreakdown:all'
   ];
+
+  /**
+   * Key yang TIDAK BOLEH dibuang lewat jalur Refresh, beserta alasannya —
+   * dipakai invalidateKeys() untuk menolak permintaan dari client. Tanpa
+   * pagar ini, satu halaman yang mengirim daftar key sendiri bisa
+   * menghidupkan kembali insiden di atas tanpa sengaja.
+   */
+  var KEY_TERLARANG = { 'nav:badgeCounts': true };
+
+  /**
+   * Buang cache HANYA untuk key yang disebut — dipakai tombol Refresh
+   * per halaman supaya cache dataset yang tidak ditampilkan halaman itu
+   * tetap hangat (setiap key yang dibuang harus dihitung ulang dari
+   * Spreadsheet oleh permintaan berikutnya, jadi membuang lebih banyak dari
+   * yang dipakai membuat halaman berikutnya ikut melambat tanpa manfaat).
+   */
+  module.invalidateKeys = function (keys) {
+    if (!keys || !keys.length) return module.invalidateAllData();
+    var dipakai = keys.filter(function (k) {
+      return DATA_KEYS.indexOf(k) !== -1 && !KEY_TERLARANG[k];
+    });
+    dipakai.forEach(function (key) { module.invalidate(key); });
+    return dipakai.length;
+  };
 
   /**
    * Buang SEMUA cache data — dipakai tombol "Refresh" di setiap halaman.

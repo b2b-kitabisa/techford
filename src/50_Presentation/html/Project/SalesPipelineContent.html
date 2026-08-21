@@ -1346,7 +1346,12 @@
       fetchAttachments();
       fetchDocumentTaxonomy();
       fetchRevenueBreakdown();
-    });
+    }, [
+      // Hanya key yang halaman ini tampilkan — lihat catatan di
+      // techfordRefreshData.
+      'project:all', 'client:all', 'picClient:all', 'employee:all', 'masterData:all',
+      'documentPipeline:all', 'documentAttachment:all', 'revenueBreakdown:all'
+    ]);
   }
 
   function showPipelineTableError(message, soft) {

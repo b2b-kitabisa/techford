@@ -92,23 +92,47 @@ console.log('\n1) CacheHelper.invalidateAllData membuang SEMUA key data (tidak a
   const jumlah = ctx.CacheHelper.invalidateAllData();
   ok('mengembalikan jumlah key yang dibuang', jumlah > 0, jumlah);
 
-  // Setiap key yang dipakai getOrSet HARUS ikut dibuang. quotationLogo:<entity>
-  // dikecualikan dengan sengaja (cache gambar logo Drive, TTL 6 jam, bukan
-  // data operasional — dan entity code-nya tidak terbatas).
-  const dipakai = [...keyYangDipakai()].filter(k => k.indexOf('quotationLogo:') === -1);
+  // Setiap key yang dipakai getOrSet HARUS ikut dibuang, KECUALI dua ini:
+  //
+  // - quotationLogo:<entity> — cache gambar logo Drive (TTL 6 jam), bukan
+  //   data operasional, dan entity code-nya tidak terbatas.
+  //
+  // - nav:badgeCounts — DIKECUALIKAN SETELAH INSIDEN PRODUKSI. Key ini
+  //   membungkus CostMonitoringService.countOverBudget(), operasi paling
+  //   mahal di aplikasi, dan buildMenuWithBadges() memanggilnya di SETIAP
+  //   doGet DAN setiap navigasi SPA — jadi ia ada di jalur kritis SELURUH
+  //   halaman. Waktu ia ikut dibuang, satu klik Refresh membuat setiap
+  //   perpindahan section sesudahnya membayar penuh biaya itu di atas cache
+  //   yang juga baru dikosongkan, bersamaan dengan 8-10 RPC bootstrap
+  //   halaman — seluruh aplikasi kolaps jadi "gagal memuat, tidak ada
+  //   respons" tanpa satu pun error di Executions log. TTL-nya 60 detik dan
+  //   ia menyegarkan dirinya sendiri, jadi memaksanya dibuang tidak ada
+  //   gunanya. Dijaga lebih rinci di tests/cache-invalidate-scope.test.js.
+  const DIKECUALIKAN = ['nav:badgeCounts'];
+  const dipakai = [...keyYangDipakai()]
+    .filter(k => k.indexOf('quotationLogo:') === -1)
+    .filter(k => DIKECUALIKAN.indexOf(k) === -1);
   ok('ada key yang terdeteksi dipakai getOrSet', dipakai.length > 0, dipakai.length + ' key');
 
   const ketinggalan = dipakai.filter(k => dibuang.indexOf(k + '::n') === -1);
   ok('TIDAK ada key getOrSet yang ketinggalan dari DATA_KEYS',
     ketinggalan.length === 0, ketinggalan.length ? ketinggalan.join(', ') : 'lengkap');
+
+  DIKECUALIKAN.forEach(function (k) {
+    ok('key mahal "' + k + '" TIDAK ikut dibuang', dibuang.indexOf(k + '::n') === -1);
+  });
 }
 
-console.log('\n2) Endpoint app_invalidateCaches ada & memanggil CacheHelper.invalidateAllData');
+console.log('\n2) Endpoint app_invalidateCaches ada & membuang cache BERLINGKUP');
 {
   const router = fs.readFileSync(path.join(SRC, '50_Presentation/50_WebAppRouter.gs'), 'utf8');
   const fn = ambilFungsi(router, 'app_invalidateCaches');
   ok('app_invalidateCaches terdefinisi sebagai global', !!fn);
-  ok('memanggil CacheHelper.invalidateAllData', !!fn && /CacheHelper\.invalidateAllData\(\)/.test(fn));
+  // Dulu ini memanggil invalidateAllData() tanpa argumen — sekali klik
+  // Refresh mendinginkan cache SELURUH aplikasi, bukan cuma halaman yang
+  // ditekan. Sekarang halaman menyebutkan key-nya sendiri.
+  ok('membuang lewat invalidateKeys(keys), bukan menghabiskan seluruh cache',
+    !!fn && /CacheHelper\.invalidateKeys\(keys\)/.test(fn));
   ok('dibungkus ErrorHandler.handle (pola sama dengan endpoint lain)', !!fn && /ErrorHandler\.handle/.test(fn));
 }
 

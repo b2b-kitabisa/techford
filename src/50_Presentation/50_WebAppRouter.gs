@@ -203,10 +203,18 @@ function doGet(e) {
  * 60-300 detik, lihat CacheHelper) sehingga jawabannya identik dengan
  * sebelumnya. Perubahan dari user lain atau dari spreadsheet langsung baru
  * muncul setelah TTL habis sendiri — bukan saat tombolnya ditekan.
+ *
+ * Halaman MENYEBUTKAN key yang dipakainya (argumen keys) supaya cache
+ * dataset yang tidak ia tampilkan tetap hangat. Ini bukan optimasi kosmetik:
+ * setiap key yang dibuang harus dihitung ulang dari Spreadsheet oleh
+ * permintaan berikutnya, jadi membuang seluruh cache membuat SEMUA halaman
+ * lain ikut dingin sekaligus — bersamaan dengan 8-10 RPC bootstrap yang
+ * ditembakkan halaman berikutnya. Itu yang bikin aplikasi kolaps jadi "tidak
+ * ada respons dari server" setelah tombol Refresh sekali ditekan.
  */
-function app_invalidateCaches() {
+function app_invalidateCaches(keys) {
   return ErrorHandler.handle('WebAppRouter.invalidateCaches', function () {
-    return { cleared: CacheHelper.invalidateAllData() };
+    return { cleared: CacheHelper.invalidateKeys(keys) };
   });
 }
 
