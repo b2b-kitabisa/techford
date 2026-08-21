@@ -159,26 +159,133 @@
          * totalnya sekitar 18 detik alih-alih 1.4 detik sebelum benar-benar
          * menyerah.
          */
+        /**
+         * ANTRIAN KONKURENSI + WATCHDOG — DILETAKKAN LANGSUNG DI DALAM
+         * gsRunWithRetry, BUKAN dengan menimpa google.script.run.
+         *
+         * Versi sebelumnya membungkus google.script.run dengan cara
+         * `google.script.run = pembungkusBaru`. Itu TIDAK BISA DIPERCAYA:
+         * kalau properti itu di browser tertentu cuma punya getter (tanpa
+         * setter) dan skrip ini tidak jalan di 'use strict', penugasan itu
+         * GAGAL DIAM-DIAM — tidak melempar apa pun, cuma tidak berefek. Kode
+         * itu sudah punya pemeriksaan untuk kasus itu (window.__techford
+         * RpcQueueAktif), tapi kalau memang gagal, pembatasnya tidak pernah
+         * aktif SAMA SEKALI dan 8-10 RPC bootstrap tetap menembak bersamaan
+         * seperti semula — persis skenario yang membuat perbaikan sebelumnya
+         * terlihat tidak berefek di lapangan.
+         *
+         * Sekarang antriannya hidup di variabel tertutup di sini, dan
+         * gsRunWithRetry (satu-satunya pintu masuk yang dipakai ~80 lokasi
+         * fetch di seluruh app) WAJIB lewat sini untuk mengirim panggilan
+         * sungguhan. Tidak ada penugasan ke properti bawaan Apps Script sama
+         * sekali, jadi tidak ada jalur untuk gagal diam-diam seperti di atas.
+         */
+        var GS_MAX_INFLIGHT = 3;
+        var GS_TIMEOUT_MS = 90000;   // cache dingin + dataset besar bisa puluhan detik
+        var gsAntrian = [];
+        var gsBerjalan = 0;
+
+        function gsPompa() {
+          while (gsBerjalan < GS_MAX_INFLIGHT && gsAntrian.length) {
+            gsJalankan(gsAntrian.shift());
+          }
+        }
+
+        function gsJalankan(tugas) {
+          gsBerjalan++;
+          var sudahSelesai = false;
+          var timer = setTimeout(function () {
+            selesai(null, new Error('Server tidak menjawab dalam ' + Math.round(GS_TIMEOUT_MS / 1000) + ' detik (' + tugas.fnName + ').'));
+          }, GS_TIMEOUT_MS);
+
+          // Slot dibebaskan DULU, baru onDone dipanggil — supaya exception di
+          // dalam onDone (termasuk retry yang menembakkan panggilan baru)
+          // tidak pernah membocorkan slot ini secara permanen.
+          function selesai(res, err) {
+            if (sudahSelesai) return;
+            sudahSelesai = true;
+            clearTimeout(timer);
+            gsBerjalan--;
+            gsPompa();
+            tugas.onDone(res, err);
+          }
+
+          var runner = google.script.run
+            .withSuccessHandler(function (res) { selesai(res, null); })
+            .withFailureHandler(function (err) { selesai(null, err); });
+          try {
+            runner[tugas.fnName].apply(runner, tugas.args);
+          } catch (e) {
+            selesai(null, e);
+          }
+        }
+
         function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, attemptKe) {
           if (retriesLeft == null) retriesLeft = 5;
           if (attemptKe == null) attemptKe = 0;
           var delayMs = Math.min(700 * Math.pow(2, attemptKe), 8000);
-          var runner = google.script.run
-            .withSuccessHandler(function (res) {
+
+          gsAntrian.push({
+            fnName: fnName,
+            args: args || [],
+            onDone: function (res, err) {
+              if (err) {
+                if (retriesLeft > 0) {
+                  setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, attemptKe + 1); }, delayMs);
+                  return;
+                }
+                techfordCatatRpcMenyerah(fnName, attemptKe + 1, (err && err.message) || String(err));
+                onFailure(err);
+                return;
+              }
               if (!res && retriesLeft > 0) {
                 setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, attemptKe + 1); }, delayMs);
                 return;
               }
+              // Sudah retry 6x (700ms..8s) dan MASIH kosong — ini bukan lagi
+              // glitch sesaat, ini kegagalan yang konsisten untuk fungsi ini.
+              // Catat SIAPA yang gagal supaya kejadian berikutnya tidak perlu
+              // ditebak dari Network tab lagi (yang cuma menunjukkan
+              // transport-nya 200, bukan payload apa yang sungguh diterima).
+              if (!res) techfordCatatRpcMenyerah(fnName, attemptKe + 1, 'respons kosong (' + (res === null ? 'null' : res === undefined ? 'undefined' : typeof res) + ')');
               onSuccess(res);
-            })
-            .withFailureHandler(function (err) {
-              if (retriesLeft > 0) {
-                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, attemptKe + 1); }, delayMs);
-                return;
-              }
-              onFailure(err);
-            });
-          runner[fnName].apply(runner, args || []);
+            }
+          });
+          gsPompa();
+        }
+
+        /**
+         * Panel diagnosa kecil di pojok kanan bawah (BUKAN banner merah besar
+         * punya techfordShowFatalBanner — ini bukan exception, jadi tidak
+         * boleh disamakan) yang mendaftar SETIAP kali gsRunWithRetry benar2
+         * menyerah pada satu fungsi, lengkap dengan nama fungsi & alasannya.
+         *
+         * KENAPA: DevTools Network tab menunjukkan transport-nya 200 (server
+         * benar-benar menjawab), tapi itu TIDAK membuktikan payload yang
+         * sungguh diterima callback client-side. Tanpa ini, satu-satunya
+         * jejak yang terlihat user cuma pesan generik "Tidak ada respons dari
+         * server" — tidak bisa dibedakan RPC mana yang bermasalah. Panel ini
+         * MENUMPUK (bukan menimpa) supaya kalau beberapa fungsi menyerah
+         * sekaligus, semuanya kelihatan, bukan cuma yang terakhir.
+         */
+        function techfordCatatRpcMenyerah(fnName, totalPercobaan, alasan) {
+          try {
+            console.error('[gsRunWithRetry] "' + fnName + '" menyerah setelah ' + totalPercobaan + ' percobaan: ' + alasan);
+            var id = 'techfordRpcDiagPanel';
+            var panel = document.getElementById(id);
+            if (!panel) {
+              panel = document.createElement('div');
+              panel.id = id;
+              panel.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:99998;' +
+                'max-width:420px;background:#78350f;color:#fff;padding:10px 12px;' +
+                'font:12px/1.5 monospace;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);';
+              var appendTarget = document.body || document.documentElement;
+              if (appendTarget) appendTarget.appendChild(panel);
+            }
+            var baris = document.createElement('div');
+            baris.innerText = '⚠️ ' + fnName + ' — gagal setelah ' + totalPercobaan + 'x: ' + alasan;
+            panel.appendChild(baris);
+          } catch (diagErr) { /* jangan sampai diagnosa sendiri ikut merusak halaman */ }
         }
 
         /**
@@ -245,144 +352,12 @@
           techfordShowFatalBanner((reason && reason.message) || String(reason));
         });
 
-        /**
-         * PEMBATAS KONKURENSI + WATCHDOG untuk google.script.run.
-         *
-         * KENAPA INI ADA (insiden "hampir setiap halaman gagal memuat, tanpa
-         * respons", Executions log bersih):
-         *
-         * Setiap halaman menembakkan 8-10 google.script.run SEKALIGUS saat
-         * bootstrap (lihat bootstrapDocuments/bootstrapPipeline/dst). Apps
-         * Script membatasi jumlah eksekusi bersamaan per user; kalau semuanya
-         * lambat, panggilan di belakang antrian tidak pernah kembali sebelum
-         * client menyerah. Lapisan retry di atasnya (makeLoader 5x,
-         * gsRunWithRetry 3x) lalu MENGGANDAKAN beban jadi ~50 eksekusi untuk
-         * satu user — slot habis, antrian makin panjang, dan keadaannya
-         * bertahan sendiri karena setiap reload memicu ulang serbuan yang
-         * sama. Tidak ada satu pun yang melempar exception, jadi Executions
-         * log cuma memperlihatkan running/completed dan masalahnya kelihatan
-         * seperti hantu.
-         *
-         * Selama cache server hangat, tiap panggilan cukup cepat sehingga
-         * serbuan itu tidak pernah terlihat. Begitu cache dingin (lihat
-         * CacheHelper.invalidateAllData), semuanya kolaps sekaligus. Jadi
-         * jumlah panggilan paralelnya memang SUDAH terlalu banyak sejak lama —
-         * cache hangat hanya menyembunyikannya.
-         *
-         * Dua hal yang dikerjakan di sini:
-         *
-         * 1. Antrian FIFO dengan maksimum MAX_INFLIGHT panggilan berjalan.
-         *    Sisanya menunggu slot. Total pekerjaan sama, tapi server tidak
-         *    pernah kebanjiran, jadi setiap panggilan benar-benar selesai.
-         *
-         * 2. WATCHDOG per panggilan. Ini bagian terpentingnya: kalau transport
-         *    google.script.run menghilangkan sebuah respons, TIDAK ADA handler
-         *    yang pernah dipanggil — success maupun failure. Sebelum ini
-         *    halamannya menggantung di "Memuat..." selamanya dan slotnya bocor
-         *    permanen sehingga antrian ikut mati. Sekarang panggilan yang lewat
-         *    batas waktu dipaksa masuk failure handler, sehingga jalur retry &
-         *    pesan error yang sudah ada di setiap halaman benar-benar jalan.
-         *
-         * DIPASANG DENGAN MEMBUNGKUS google.script.run supaya SELURUH ~80
-         * pemanggil yang sudah ada (baik lewat gsRunWithRetry maupun
-         * google.script.run langsung) ikut terlindungi tanpa perlu disentuh
-         * satu per satu. Kalau pembungkusan gagal (properti tidak bisa
-         * ditulis), aplikasi tetap jalan memakai transport aslinya.
-         */
-        (function () {
-          var MAX_INFLIGHT = 3;
-          var TIMEOUT_MS = 90000;   // cache dingin + dataset besar bisa puluhan detik
-
-          if (!window.google || !google.script || !google.script.run) return;
-          var asli = google.script.run;
-
-          var antrian = [];
-          var berjalan = 0;
-
-          function pompa() {
-            while (berjalan < MAX_INFLIGHT && antrian.length) {
-              jalankan(antrian.shift());
-            }
-          }
-
-          function jalankan(tugas) {
-            berjalan++;
-            var sudahSelesai = false;
-            var timer = null;
-
-            // Slot dibebaskan DULU, baru handler user dipanggil — supaya
-            // handler yang menembakkan RPC lanjutan langsung dapat slot, dan
-            // exception di dalam handler tidak pernah membocorkan slot.
-            function selesai(jenis, arg) {
-              if (sudahSelesai) return;
-              sudahSelesai = true;
-              if (timer) clearTimeout(timer);
-              berjalan--;
-              pompa();
-              var handler = jenis === 'ok' ? tugas.onSuccess : tugas.onFailure;
-              if (handler) handler(arg, tugas.userObject);
-            }
-
-            timer = setTimeout(function () {
-              selesai('gagal', new Error(
-                'Server tidak menjawab dalam ' + Math.round(TIMEOUT_MS / 1000) +
-                ' detik (' + tugas.fnName + ').'));
-            }, TIMEOUT_MS);
-
-            var runner = asli
-              .withSuccessHandler(function (res) { selesai('ok', res); })
-              .withFailureHandler(function (err) { selesai('gagal', err); });
-            if (tugas.userObject !== undefined) runner = runner.withUserObject(tugas.userObject);
-
-            try {
-              runner[tugas.fnName].apply(runner, tugas.args);
-            } catch (e) {
-              selesai('gagal', e);
-            }
-          }
-
-          // Peniru google.script.run: withSuccessHandler/withFailureHandler/
-          // withUserObject mengembalikan builder baru (rantainya immutable,
-          // sama seperti aslinya), nama lain apa pun dianggap nama fungsi
-          // server dan MASUK ANTRIAN alih-alih langsung ditembakkan.
-          function buatBuilder(cfg) {
-            var target = {
-              withSuccessHandler: function (fn) { return buatBuilder({ onSuccess: fn, onFailure: cfg.onFailure, userObject: cfg.userObject }); },
-              withFailureHandler: function (fn) { return buatBuilder({ onSuccess: cfg.onSuccess, onFailure: fn, userObject: cfg.userObject }); },
-              withUserObject: function (o) { return buatBuilder({ onSuccess: cfg.onSuccess, onFailure: cfg.onFailure, userObject: o }); }
-            };
-            return new Proxy(target, {
-              get: function (obj, nama) {
-                if (nama in obj) return obj[nama];
-                if (typeof nama !== 'string') return undefined;
-                return function () {
-                  antrian.push({
-                    fnName: nama,
-                    args: Array.prototype.slice.call(arguments),
-                    onSuccess: cfg.onSuccess,
-                    onFailure: cfg.onFailure,
-                    userObject: cfg.userObject
-                  });
-                  pompa();
-                };
-              }
-            });
-          }
-
-          try {
-            google.script.run = buatBuilder({});
-            // Kalau propertinya ternyata read-only, penugasan di atas gagal
-            // diam-diam (bukan melempar) — jadi hasilnya diperiksa, dan kalau
-            // tidak berubah aplikasi tetap memakai transport asli.
-            if (google.script.run === asli) {
-              window.__techfordRpcQueueAktif = false;
-              return;
-            }
-            window.__techfordRpcQueueAktif = true;
-          } catch (e) {
-            window.__techfordRpcQueueAktif = false;
-          }
-        })();
+        // Antrian konkurensi + watchdog untuk google.script.run sekarang
+        // hidup DI DALAM gsRunWithRetry sendiri (lihat definisinya di atas),
+        // bukan dengan menimpa properti google.script.run — cara lama itu
+        // bisa gagal diam-diam kalau propertinya tidak bisa ditimpa di
+        // browser tertentu. Baca komentar di atas gsRunWithRetry untuk
+        // alasan lengkapnya.
 
         /**
          * Placeholder berdenyut untuk score card selama datanya BELUM lengkap.

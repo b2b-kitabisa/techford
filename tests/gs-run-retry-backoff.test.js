@@ -48,49 +48,66 @@ function ok(label, cond, detail) {
   else { failures.push(label + (detail !== undefined ? ' (dapat: ' + detail + ')' : '')); console.log('  GAGAL ' + label + (detail !== undefined ? ' -> ' + detail : '')); }
 }
 
-function ambilFungsi(src, nama) {
-  const tanda = 'function ' + nama + '(';
-  const mulai = src.indexOf(tanda);
-  if (mulai === -1) return null;
-  let i = src.indexOf('{', mulai), depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === '{') depth++;
-    else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(mulai, j + 1); }
-  }
-  return null;
+/**
+ * gsRunWithRetry sekarang HIDUP DI DALAM blok antrian (gsAntrian/gsPompa/
+ * gsJalankan) — bukan fungsi berdiri sendiri lagi — jadi harus diambil
+ * SATU BLOK UTUH beserta closure-nya, sama seperti tests/rpc-queue.test.js.
+ */
+function ambilBlokAntrian() {
+  const html = fs.readFileSync(SHELL, 'utf8');
+  const mulai = html.indexOf('var GS_MAX_INFLIGHT');
+  const akhir = html.indexOf('function techfordCatatRpcMenyerah');
+  if (mulai === -1 || akhir === -1) throw new Error('blok antrian tidak ditemukan di Shell.html');
+  return html.slice(mulai, akhir);
 }
 
-/** Muat gsRunWithRetry sungguhan dengan google.script.run tiruan yang
- * mengeluarkan respons persis sesuai skenario yang tes-nya minta. */
+/**
+ * Muat blok antrian sungguhan dengan google.script.run tiruan yang
+ * mengeluarkan respons persis sesuai skenario yang tes-nya minta, dan
+ * setTimeout yang jalan LANGSUNG (sinkron) — cukup untuk tes-tes di file ini
+ * karena GS_MAX_INFLIGHT (3) selalu lebih besar dari 1 panggilan yang diuji
+ * sekaligus di sini (jadi tidak pernah mengantri menunggu slot). Untuk tes
+ * konkurensi/watchdog yang sungguhan, lihat tests/rpc-queue.test.js.
+ */
 function pasang(urutanRespons) {
-  const html = fs.readFileSync(SHELL, 'utf8');
-  const fn = ambilFungsi(html, 'gsRunWithRetry');
-  if (!fn) throw new Error('gsRunWithRetry tidak ditemukan di Shell.html');
+  const kode = ambilBlokAntrian();
 
   const delays = [];
   let ke = 0;
-  const runner = {
-    withSuccessHandler(cb) { this._ok = cb; return this; },
-    withFailureHandler(cb) { this._gagal = cb; return this; },
-    tarikData() {
-      const langkah = urutanRespons[Math.min(ke, urutanRespons.length - 1)];
-      ke++;
-      if (langkah.jenis === 'ok') this._ok(langkah.nilai);
-      else this._gagal(langkah.nilai);
-    }
-  };
+  function buatRunner() {
+    const cb = {};
+    const runner = {
+      withSuccessHandler(fn) { cb.ok = fn; return runner; },
+      withFailureHandler(fn) { cb.gagal = fn; return runner; },
+      tarikData() {
+        const langkah = urutanRespons[Math.min(ke, urutanRespons.length - 1)];
+        ke++;
+        if (langkah.jenis === 'ok') cb.ok(langkah.nilai);
+        else cb.gagal(langkah.nilai);
+      }
+    };
+    return runner;
+  }
   const ctx = {
     console,
-    google: { script: { run: Object.assign({}, runner, {
-      withSuccessHandler(cb) { runner._ok = cb; return runner; },
-      withFailureHandler(cb) { runner._gagal = cb; return runner; }
-    }) } },
-    setTimeout(cb, ms) { delays.push(ms); cb(); },   // jalankan langsung, catat delay-nya
+    google: { script: { run: { withSuccessHandler(fn) { return buatRunner().withSuccessHandler(fn); } } } },
+    // Watchdog (GS_TIMEOUT_MS, 90 detik) TIDAK dijalankan otomatis di sini —
+    // kalau ikut sinkron, ia akan langsung memicu "timeout" SEBELUM
+    // google.script.run tiruan sempat menjawab sama sekali, mendahului hasil
+    // sungguhannya. Delay backoff RETRY (selalu <=8 detik) tetap sinkron
+    // supaya tes ini bisa fokus murni ke perilaku backoff-nya. Watchdog
+    // sungguhan diuji terpisah di tests/rpc-queue.test.js.
+    setTimeout(cb, ms) { if (ms >= 90000) return { dibiarkan: true }; delays.push(ms); cb(); },
+    clearTimeout() {},
+    // techfordCatatRpcMenyerah didefinisikan SETELAH blok yang diambil di
+    // sini (lihat ambilBlokAntrian) — cukup stub, perilakunya sendiri
+    // diverifikasi lewat pemanggilannya di gsRunWithRetry (tes 3 di bawah).
+    techfordCatatRpcMenyerah() {},
     Math
   };
-  ctx.global = ctx;
+  ctx.window = ctx;
   vm.createContext(ctx);
-  vm.runInContext(fn, ctx);
+  vm.runInContext(kode, ctx);
   return { gsRunWithRetry: ctx.gsRunWithRetry, delays, jumlahPercobaan: () => ke };
 }
 

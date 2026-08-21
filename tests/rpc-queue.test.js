@@ -1,29 +1,33 @@
 /**
- * ANTRIAN + WATCHDOG google.script.run — insiden "hampir setiap halaman
- * gagal memuat, tidak ada respons, Executions log bersih".
+ * ANTRIAN KONKURENSI + WATCHDOG + RETRY BACKOFF — semuanya sekarang
+ * hidup DI DALAM gsRunWithRetry sendiri, bukan dengan menimpa
+ * google.script.run.
  *
- * KENAPA TES INI ADA
- * ------------------
- * Setiap halaman menembakkan 8-10 google.script.run SEKALIGUS saat bootstrap.
- * Apps Script membatasi eksekusi bersamaan per user; kalau semuanya lambat,
- * panggilan di belakang antrian tidak kembali sebelum client menyerah, lalu
- * lapisan retry (makeLoader 5x, gsRunWithRetry 3x) MENGGANDAKAN beban jadi
- * ~50 eksekusi untuk satu user. Slot habis, antrian tidak pernah pulih, dan
- * karena tidak ada yang melempar exception, Executions log cuma
- * memperlihatkan running/completed — masalahnya kelihatan seperti hantu.
+ * KENAPA ARSITEKTURNYA DIUBAH (bukan cuma pindah kode)
+ * -----------------------------------------------------
+ * Versi pertama pembatas ini (masih tercatat di riwayat git) membungkus
+ * google.script.run dengan cara `google.script.run = pembungkusBaru`. Itu
+ * TIDAK BISA DIPERCAYA: kalau propertinya di browser tertentu cuma punya
+ * getter (tanpa setter) dan skrip tidak jalan di 'use strict', penugasan itu
+ * GAGAL DIAM-DIAM — tidak melempar apa pun, cuma tidak berefek sama sekali.
+ * Ada pemeriksaan untuk kasus itu (window.__techfordRpcQueueAktif), tapi
+ * kalau memang gagal, pembatasnya tidak pernah aktif dan user tetap
+ * mengalami "hampir setiap halaman gagal memuat, tidak ada respons" persis
+ * seperti sebelum "diperbaiki" — yang justru terjadi di lapangan.
  *
- * Cache server yang hangat menyembunyikan ini bertahun-tahun; begitu cache
- * dingin (satu klik Refresh yang membuang semua key) semuanya kolaps.
+ * Sekarang antriannya hidup di variabel tertutup DI DALAM blok script yang
+ * sama dengan gsRunWithRetry, satu-satunya pintu masuk yang dipakai ~80
+ * lokasi fetch di seluruh app. Tidak ada penugasan ke properti bawaan Apps
+ * Script sama sekali, jadi tidak ada jalur untuk gagal diam-diam.
  *
- * Yang dijaga:
- * 1. Tidak pernah ada lebih dari MAX_INFLIGHT panggilan berjalan bersamaan,
- *    berapa pun banyaknya yang ditembakkan sekaligus.
+ * Yang dijaga (menggabungkan tes konkurensi lama + retry backoff):
+ * 1. Tidak pernah lebih dari GS_MAX_INFLIGHT panggilan berjalan bersamaan.
  * 2. SEMUA panggilan akhirnya benar-benar dijalankan (antrian tidak menelan).
- * 3. Respons yang HILANG (handler tidak pernah dipanggil — kegagalan asli
- *    yang bikin halaman menggantung selamanya) dipaksa masuk failure handler
- *    oleh watchdog, DAN slotnya dibebaskan supaya antrian tetap jalan.
- * 4. Exception di dalam success handler tidak membocorkan slot.
- * 5. Rantai builder-nya immutable seperti google.script.run asli.
+ * 3. Respons kosong di-retry dengan backoff eksponensial sebelum menyerah.
+ * 4. Watchdog memaksa panggilan yang lewat batas waktu masuk failure/retry,
+ *    dan SLOTNYA dibebaskan (tidak bocor).
+ * 5. Panggilan baru yang ditembakkan dari dalam callback (retry maupun
+ *    fetch lanjutan) tidak pernah membocorkan slot walau ada exception.
  *
  * Jalankan: node tests/rpc-queue.test.js
  */
@@ -41,228 +45,186 @@ function ok(label, cond, detail) {
   else { failures.push(label + (detail !== undefined ? ' (dapat: ' + detail + ')' : '')); console.log('  GAGAL ' + label + (detail !== undefined ? ' -> ' + detail : '')); }
 }
 
-/** Ambil IIFE pemasang antrian dari blok <script> ATAS Shell.html. */
-function ambilPemasangAntrian() {
+/** Ambil gsRunWithRetry BESERTA gsPompa/gsJalankan/gsAntrian/gsBerjalan yang
+ * satu closure dengannya — semuanya di blok <script> ATAS Shell.html. */
+function ambilBlokAntrian() {
   const html = fs.readFileSync(SHELL, 'utf8');
-  const penanda = 'var MAX_INFLIGHT';
-  const idx = html.indexOf(penanda);
-  if (idx === -1) return null;
-  // Mundur ke '(function () {' pembukanya, lalu maju sampai kurung tutupnya.
-  const mulai = html.lastIndexOf('(function', idx);
-  let depth = 0, i = html.indexOf('{', mulai);
-  for (let j = i; j < html.length; j++) {
-    if (html[j] === '{') depth++;
-    else if (html[j] === '}') {
-      depth--;
-      // Potong sampai '()' PEMANGGILnya juga ikut — kalau berhenti di '})'
-      // yang terambil cuma ekspresi fungsi yang tidak pernah dijalankan.
-      if (depth === 0) return html.slice(mulai, html.indexOf('();', j) + 3);
-    }
-  }
-  return null;
+  const mulaiPenanda = html.indexOf('var GS_MAX_INFLIGHT');
+  const akhirPenanda = html.indexOf('function techfordCatatRpcMenyerah');
+  if (mulaiPenanda === -1 || akhirPenanda === -1) throw new Error('blok antrian tidak ditemukan di Shell.html');
+  return html.slice(mulaiPenanda, akhirPenanda);
 }
 
-/**
- * Bangun lingkungan tiruan: google.script.run yang mencatat panggilan dan
- * TIDAK menjawab sampai tes memerintahkannya — persis kondisi produksi saat
- * server lambat.
- */
-function pasang(opts) {
-  const kode = ambilPemasangAntrian();
-  if (!kode) throw new Error('IIFE pemasang antrian tidak ditemukan di Shell.html');
-
+function pasang() {
+  const kode = ambilBlokAntrian();
   const berjalan = [];        // panggilan yang sudah sampai ke transport asli
   let puncakBersamaan = 0;
-  let aktif = 0;
+  let aktifTransport = 0;
+  const delays = [];
   const timers = [];
 
-  function buatRunnerAsli(cfg) {
-    return {
-      withSuccessHandler(fn) { return buatRunnerAsli(Object.assign({}, cfg, { ok: fn })); },
-      withFailureHandler(fn) { return buatRunnerAsli(Object.assign({}, cfg, { gagal: fn })); },
-      withUserObject(o) { return buatRunnerAsli(Object.assign({}, cfg, { userObject: o })); },
-      // Nama fungsi server yang dipakai tes
-      tarikData(...args) {
-        aktif++;
-        puncakBersamaan = Math.max(puncakBersamaan, aktif);
+  // google.script.run.withSuccessHandler(...).withFailureHandler(...) selalu
+  // dipanggil sebagai rantai BARU untuk setiap panggilan (persis API asli) —
+  // jadi cukup sediakan factory yang mengembalikan runner baru setiap kali.
+  function buatRunner() {
+    const cb = {};
+    const runner = {
+      withSuccessHandler(fn) { cb.ok = fn; return runner; },
+      withFailureHandler(fn) { cb.gagal = fn; return runner; },
+      tarikData() {
+        aktifTransport++;
+        puncakBersamaan = Math.max(puncakBersamaan, aktifTransport);
         berjalan.push({
-          args,
-          selesaiOk(res) { aktif--; cfg.ok(res); },
-          selesaiGagal(err) { aktif--; cfg.gagal(err); },
-          // "respons hilang": sengaja TIDAK memanggil handler apa pun.
-          hilang() { aktif--; }
+          selesaiOk(res) { aktifTransport--; cb.ok(res); },
+          selesaiGagal(err) { aktifTransport--; cb.gagal(err); },
+          hilang() { aktifTransport--; }   // respons hilang total: tidak ada handler dipanggil
         });
-      },
-      meledak() { throw new Error('transport meledak'); }
+      }
     };
+    return runner;
   }
 
+  const dicatatMenyerah = [];
   const ctx = {
     console,
-    setTimeout(fn, ms) { const t = { fn, ms, dibatalkan: false }; timers.push(t); return t; },
+    setTimeout(fn, ms) { delays.push(ms); const t = { fn, dibatalkan: false }; timers.push(t); return t; },
     clearTimeout(t) { if (t) t.dibatalkan = true; },
-    Proxy, Array, Error, Math, String
+    Math, Array, Error, String,
+    // techfordCatatRpcMenyerah didefinisikan setelah blok ini (lihat
+    // ambilBlokAntrian) — stub yang MENCATAT, supaya bisa diverifikasi
+    // dipanggil saat retry benar-benar habis.
+    techfordCatatRpcMenyerah(fnName, totalPercobaan, alasan) { dicatatMenyerah.push({ fnName, totalPercobaan, alasan }); }
   };
   ctx.window = ctx;
-  ctx.google = { script: { run: buatRunnerAsli({}) } };
-  Object.assign(ctx, opts || {});
+  ctx.google = { script: { run: { withSuccessHandler(fn) { return buatRunner().withSuccessHandler(fn); } } } };
   vm.createContext(ctx);
   vm.runInContext(kode, ctx);
 
   return {
     ctx,
     berjalan,
-    timers,
+    delays,
+    dicatatMenyerah,
     puncak: () => puncakBersamaan,
-    /** Jalankan watchdog yang belum dibatalkan (meniru waktu berjalan). */
-    majukanWaktu() {
-      timers.filter(t => !t.dibatalkan).forEach(t => { t.dibatalkan = true; t.fn(); });
-    }
+    majukanWaktu() { timers.filter(t => !t.dibatalkan).forEach(t => { t.dibatalkan = true; t.fn(); }); }
   };
 }
 
-console.log('\n1) Antrian terpasang menggantikan google.script.run');
-{
-  const h = pasang();
-  ok('penanda __techfordRpcQueueAktif menyala', h.ctx.window.__techfordRpcQueueAktif === true);
-  ok('google.script.run sudah DIGANTI (bukan transport asli lagi)',
-    typeof h.ctx.google.script.run.withSuccessHandler === 'function' &&
-    h.ctx.google.script.run.tarikData !== undefined);
-}
-
-console.log('\n2) BUG UTAMA: 10 panggilan serentak tidak pernah lebih dari 3 berjalan bersamaan');
+console.log('\n1) BUG UTAMA: 10 panggilan serentak tidak pernah lebih dari GS_MAX_INFLIGHT berjalan bersamaan');
 {
   const h = pasang();
   const hasil = [];
   for (let i = 0; i < 10; i++) {
-    h.ctx.google.script.run
-      .withSuccessHandler(function (res) { hasil.push(res); })
-      .withFailureHandler(function () { hasil.push('gagal'); })
-      .tarikData(i);
+    h.ctx.gsRunWithRetry('tarikData', [i], (res) => hasil.push(res), () => hasil.push('gagal'));
   }
 
   ok('hanya 3 yang langsung berangkat (sisanya menunggu slot)', h.berjalan.length === 3, h.berjalan.length);
   ok('puncak panggilan bersamaan = 3, BUKAN 10', h.puncak() === 3, h.puncak());
 
-  // Selesaikan satu per satu; setiap kali selesai, satu dari antrian masuk.
   let pengaman = 0;
   while (h.berjalan.length && pengaman++ < 50) {
-    h.berjalan.shift().selesaiOk('ok');
+    h.berjalan.shift().selesaiOk({ ok: true, data: [1] });
   }
   ok('SEMUA 10 panggilan akhirnya dijalankan (tidak ada yang ditelan antrian)', hasil.length === 10, hasil.length);
   ok('puncak tetap 3 sepanjang seluruh proses', h.puncak() === 3, h.puncak());
 }
 
-console.log('\n3) Respons HILANG dipaksa jadi kegagalan oleh watchdog (bukan menggantung selamanya)');
+console.log('\n2) Respons HILANG dipaksa jadi kegagalan oleh watchdog, slot dibebaskan, DAN retry berikutnya jalan');
 {
   const h = pasang();
-  let pesanGagal = null;
-  h.ctx.google.script.run
-    .withSuccessHandler(function () { pesanGagal = 'SUKSES DIPANGGIL, seharusnya gagal'; })
-    .withFailureHandler(function (err) { pesanGagal = err.message; })
-    .tarikData(1);
+  let hasilAkhir = 'BELUM';
+  h.ctx.gsRunWithRetry('tarikData', [], (res) => { hasilAkhir = res; }, (err) => { hasilAkhir = err; });
+  const tugasPertama = h.berjalan.shift();   // konsumsi entry ini, jangan disisakan
+  tugasPertama.hilang();
+  ok('sebelum watchdog jalan, belum ada apa pun terjadi', hasilAkhir === 'BELUM');
 
-  ok('watchdog dipasang untuk panggilan ini', h.timers.filter(t => !t.dibatalkan).length === 1);
-  h.berjalan[0].hilang();   // transport menelan respons: handler tidak pernah dipanggil
-  ok('sebelum watchdog jalan, belum ada handler yang terpanggil', pesanGagal === null);
-
+  // Timer #1 (watchdog) fire -> memicu retry lewat setTimeout (backoff),
+  // yang di harness ini TIDAK auto-jalan (beda dari watchdog) — jadi perlu
+  // majukanWaktu() SEKALI LAGI untuk benar-benar mengirim retry-nya.
   h.majukanWaktu();
-  ok('watchdog memanggil failure handler', typeof pesanGagal === 'string' && /tidak menjawab/.test(pesanGagal), pesanGagal);
-  ok('pesannya menyebut nama fungsi supaya bisa didiagnosa', /tarikData/.test(pesanGagal || ''), pesanGagal);
+  ok('belum ada tugas baru terkirim (masih menunggu delay backoff)', h.berjalan.length === 0, h.berjalan.length);
+
+  h.majukanWaktu();   // timer #2: delay backoff selesai -> gsRunWithRetry dipanggil ulang
+  ok('retry benar-benar terkirim ulang setelah delay backoff', h.berjalan.length === 1, h.berjalan.length);
+
+  h.berjalan.shift().selesaiOk({ ok: true });
+  ok('retry berikutnya sukses -> hasil akhirnya data, bukan gagal',
+    hasilAkhir && hasilAkhir.ok === true, JSON.stringify(hasilAkhir));
 }
 
-console.log('\n4) Slot TIDAK bocor saat respons hilang — antrian tetap jalan');
+console.log('\n3) Slot TIDAK bocor walau berkali-kali respons hilang berturutan — antrian tetap mengalir');
 {
-  // Ini bagian yang paling mematikan kalau salah: satu respons hilang dulu
-  // membuat slotnya terpakai SELAMANYA. Tiga kali kejadian dan seluruh
-  // aplikasi berhenti menerima data sampai tab ditutup.
   const h = pasang();
   const selesai = [];
   for (let i = 0; i < 6; i++) {
-    h.ctx.google.script.run
-      .withSuccessHandler(function () { selesai.push('ok'); })
-      .withFailureHandler(function () { selesai.push('gagal'); })
-      .tarikData(i);
+    h.ctx.gsRunWithRetry('tarikData', [], () => selesai.push('ok'), () => selesai.push('gagal'));
   }
-  ok('3 berangkat lebih dulu', h.berjalan.length === 3, h.berjalan.length);
+  ok('3 berangkat lebih dulu, 3 sisanya menunggu slot', h.berjalan.length === 3, h.berjalan.length);
 
-  // KETIGA panggilan pertama respons-nya hilang semua.
   h.berjalan.splice(0, 3).forEach(p => p.hilang());
-  ok('belum ada yang selesai (semua respons hilang)', selesai.length === 0);
+  ok('belum ada yang tuntas', selesai.length === 0);
 
-  h.majukanWaktu();
-  ok('watchdog membebaskan slot -> 3 sisanya berangkat', h.berjalan.length === 3, h.berjalan.length);
-  ok('3 yang hilang dilaporkan gagal', selesai.filter(x => x === 'gagal').length === 3, JSON.stringify(selesai));
+  h.majukanWaktu();   // timer #1: watchdog dari 3 yang hilang -> slot dibebaskan
+  ok('slot yang dibebaskan langsung dipakai 3 tugas yang tadinya menunggu',
+    h.berjalan.length === 3, h.berjalan.length);
+  // 3 yang hilang tadi masing-masing punya retry MENUNGGU delay backoff
+  // (belum terkirim) — belum masuk h.berjalan sampai timer #2 di-maju.
 
-  while (h.berjalan.length) h.berjalan.shift().selesaiOk('ok');
-  ok('total 6 panggilan tuntas semua', selesai.length === 6, selesai.length);
+  while (h.berjalan.length) h.berjalan.shift().selesaiOk({ ok: true });
+  ok('3 tugas yang tadinya menunggu kini tuntas semua', selesai.length === 3, selesai.length);
+
+  h.majukanWaktu();   // timer #2: delay backoff dari 3 retry tadi selesai
+  ok('3 retry dari respons yang hilang akhirnya terkirim juga (tidak ditelan)',
+    h.berjalan.length === 3, h.berjalan.length);
+  while (h.berjalan.length) h.berjalan.shift().selesaiOk({ ok: true });
+  ok('total 6 tugas awal tuntas semua (3 langsung + 3 lewat retry)', selesai.length === 6, selesai.length);
 }
 
-console.log('\n5) Exception di dalam success handler tidak membocorkan slot');
+console.log('\n4) Kegagalan yang menyerah tercatat presisi (nama fungsi + alasan) — DIAGNOSA untuk kejadian nyata');
 {
+  // Ini langsung menjawab insiden nyata: DevTools Network tab menunjukkan
+  // transport 200 (sukses), tapi halaman tetap menampilkan "Tidak ada
+  // respons dari server". Tanpa pencatatan ini, mustahil tahu RPC mana yang
+  // sebenarnya bermasalah. Simulasikan tepat skenario itu: sebuah RPC yang
+  // TERUS-MENERUS membalas kosong (bukan glitch sesaat yang hilang sendiri
+  // setelah beberapa retry), sampai retry benar-benar habis.
   const h = pasang();
-  let kedua = false;
-  h.ctx.google.script.run
-    .withSuccessHandler(function () { throw new Error('handler halaman meledak'); })
-    .withFailureHandler(function () {})
-    .tarikData(1);
-  h.ctx.google.script.run
-    .withSuccessHandler(function () { kedua = true; })
-    .withFailureHandler(function () {})
-    .tarikData(2);
-
-  let meledak = null;
-  try { h.berjalan[0].selesaiOk('ok'); } catch (e) { meledak = e; }
-  ok('exception handler tetap terlihat (tidak ditelan diam-diam)', !!meledak, meledak && meledak.message);
-
-  // Slot sudah dibebaskan SEBELUM handler dipanggil, jadi panggilan kedua
-  // tetap bisa jalan walau handler pertama meledak.
-  h.berjalan.find(p => p.args[0] === 2).selesaiOk('ok');
-  ok('panggilan berikutnya tetap jalan (slot tidak bocor)', kedua === true);
+  h.ctx.gsRunWithRetry('tarikData', [], () => {}, () => {});
+  var percobaan = 0, pengaman = 0;
+  while (percobaan < 6 && pengaman++ < 30) {
+    if (h.berjalan.length) { percobaan++; h.berjalan.shift().selesaiOk(null); }   // selalu balas kosong
+    else h.majukanWaktu();   // dorong retry berikutnya yang masih menunggu backoff
+  }
+  ok('tercatat TEPAT SATU KALI (bukan di setiap percobaan gagal, cuma di akhir)',
+    h.dicatatMenyerah.length === 1, h.dicatatMenyerah.length);
+  ok('nama fungsi yang gagal tercatat dengan benar', h.dicatatMenyerah[0] && h.dicatatMenyerah[0].fnName === 'tarikData',
+    h.dicatatMenyerah[0]);
+  ok('total percobaan yang tercatat >= 6', h.dicatatMenyerah[0] && h.dicatatMenyerah[0].totalPercobaan >= 6,
+    h.dicatatMenyerah[0] && h.dicatatMenyerah[0].totalPercobaan);
+  ok('alasannya menyebut "kosong" (bisa dibedakan dari kegagalan transport asli)',
+    h.dicatatMenyerah[0] && /kosong/.test(h.dicatatMenyerah[0].alasan), h.dicatatMenyerah[0] && h.dicatatMenyerah[0].alasan);
 }
 
-console.log('\n6) Rantai builder immutable seperti google.script.run asli');
-{
-  const h = pasang();
-  const dasar = h.ctx.google.script.run;
-  const a = dasar.withSuccessHandler(function () {});
-  ok('withSuccessHandler mengembalikan objek BARU', a !== dasar);
-  const b = a.withFailureHandler(function () {});
-  ok('withFailureHandler mengembalikan objek BARU', b !== a);
-  ok('userObject diteruskan ke handler', (function () {
-    let terima = null;
-    h.ctx.google.script.run
-      .withSuccessHandler(function (res, uo) { terima = uo; })
-      .withFailureHandler(function () {})
-      .withUserObject({ tanda: 7 })
-      .tarikData();
-    h.berjalan[h.berjalan.length - 1].selesaiOk('ok');
-    return terima && terima.tanda === 7;
-  })());
-}
-
-console.log('\n7) Batasnya masuk akal (bukan angka asal)');
+console.log('\n5) Batasnya masuk akal (bukan angka asal)');
 {
   const html = fs.readFileSync(SHELL, 'utf8');
-  const maxIn = Number((html.match(/var MAX_INFLIGHT = (\d+)/) || [])[1]);
-  const timeout = Number((html.match(/var TIMEOUT_MS = (\d+)/) || [])[1]);
-  ok('MAX_INFLIGHT antara 2-5 (cukup paralel, jauh di bawah batas GAS)', maxIn >= 2 && maxIn <= 5, maxIn);
-  ok('TIMEOUT_MS >= 60 detik (cache dingin + dataset besar butuh puluhan detik)',
-    timeout >= 60000, timeout);
-  ok('TIMEOUT_MS <= 180 detik (user tidak menunggu tanpa batas)', timeout <= 180000, timeout);
+  const maxIn = Number((html.match(/var GS_MAX_INFLIGHT = (\d+)/) || [])[1]);
+  const timeout = Number((html.match(/var GS_TIMEOUT_MS = (\d+)/) || [])[1]);
+  ok('GS_MAX_INFLIGHT antara 2-5 (cukup paralel, jauh di bawah batas GAS)', maxIn >= 2 && maxIn <= 5, maxIn);
+  ok('GS_TIMEOUT_MS >= 60 detik', timeout >= 60000, timeout);
+  ok('GS_TIMEOUT_MS <= 180 detik', timeout <= 180000, timeout);
 }
 
-console.log('\n8) Antrian dipasang di blok <script> ATAS, sebelum <main>');
+console.log('\n6) Antrian ada di blok <script> ATAS, sebelum <main> — dan TIDAK ADA LAGI penimpaan google.script.run');
 {
-  // Kalau dipasang di blok bawah, script fragment halaman (yang dieksekusi
-  // saat parsing, di posisi tepat di atas <main>) sudah menembakkan
-  // RPC-nya lewat transport ASLI sebelum antriannya ada — jadi justru
-  // bootstrap-nya, satu-satunya titik yang paling butuh dibatasi, yang lolos.
   const html = fs.readFileSync(SHELL, 'utf8');
-  const posAntrian = html.indexOf('var MAX_INFLIGHT');
+  const posAntrian = html.indexOf('var GS_MAX_INFLIGHT');
   const posMain = html.indexOf('<main class="content-area"');
-  ok('pemasang antrian ada sebelum <main>', posAntrian !== -1 && posMain !== -1 && posAntrian < posMain,
+  ok('gsAntrian/gsPompa ada sebelum <main>', posAntrian !== -1 && posMain !== -1 && posAntrian < posMain,
     posAntrian + ' < ' + posMain);
+  const tanpaKomentar = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*\*?[\s\S]*?\*\//g, '');
+  ok('TIDAK ada lagi kode yang menimpa google.script.run (penimpaan yang bisa gagal diam-diam)',
+    !/google\.script\.run\s*=[^=]/.test(tanpaKomentar));
 }
 
 console.log('\n' + (failures.length
