@@ -13,6 +13,7 @@ Dokumen ini **bukan** dokumentasi cara kerja Apps Script. Ini spesifikasi **prod
 
 | Bagian | Isi | Untuk siapa |
 |---|---|---|
+| **🗺️** | **Peta visual — 22 diagram alur seluruh mekanisme. Mulai dari sini.** | **Semua** |
 | 1 | Apa itu Techford & kenapa harus pindah stack | Semua, termasuk non-teknis |
 | 2 | Arsitektur lama & bagian mana yang bisa dipakai ulang | Arsitek |
 | 3 | **Data model lengkap** (calon schema SQL) | Backend/DBA |
@@ -28,6 +29,842 @@ Dokumen ini **bukan** dokumentasi cara kerja Apps Script. Ini spesifikasi **prod
 | 13 | Pelajaran mahal yang jangan diulang | Semua engineer |
 
 **Konvensi:** setiap klaim penting diberi rujukan `file:line` ke kode lama, supaya bisa diverifikasi langsung. Kode lama tetap ada di branch `claude/gapps-enterprise-modular-arch-6v3ark`.
+
+---
+
+---
+
+## 🗺️ PETA VISUAL PLATFORM — baca ini dulu
+
+> Bagian ini dibuat supaya orang bisa memahami **seluruh mekanisme Techford** tanpa membaca 1.600 baris di bawahnya. Tiap diagram menggambarkan satu mekanisme nyata, bukan sekadar nama kotak. Nomor bagian di caption menunjuk ke penjelasan detailnya.
+
+### V1. Bagaimana satu klik user berjalan sampai ke data
+
+```mermaid
+flowchart LR
+  U["👤 User<br/>browser"]
+  subgraph CLIENT["Client — di dalam iframe sandbox GAS"]
+    SH["Shell.html<br/>SPA shell + router"]
+    PG["Halaman Content<br/>16 file HTML"]
+    CALC["CorCalc / QoCalc<br/>SALINAN rumus"]
+  end
+  subgraph SERVER["Server — Apps Script runtime"]
+    EXP["42_*Exposed.gs<br/>89 fungsi global<br/>delegasi 1 baris"]
+    CTL["41_*Controller.gs<br/>ErrorHandler.handle"]
+    SVC["40_*Service.gs<br/>ATURAN BISNIS"]
+    REP["20_Repository<br/>SATU-SATUNYA yang<br/>menyentuh SpreadsheetApp"]
+    INF["Infrastructure<br/>Cache · Lock · Sequence"]
+  end
+  DB[("Google Sheets<br/>2 spreadsheet<br/>29 sheet")]
+  DRV[("Google Drive<br/>Shared Drive B2B")]
+  ML["✉️ MailApp"]
+
+  U --> SH
+  SH -->|"app_getPageFragment"| EXP
+  SH --> PG
+  PG -->|"google.script.run<br/>8-10 panggilan PARALEL"| EXP
+  PG --> CALC
+  EXP --> CTL
+  CTL -->|"bungkus jadi<br/>{ok,data} / {ok,error}"| SVC
+  SVC --> REP
+  SVC --> INF
+  SVC -->|"generate PDF"| DRV
+  SVC -->|"approval"| ML
+  REP <-->|"getDataRange<br/>SELURUH sheet"| DB
+  INF -.->|"cache 60-300s"| DB
+```
+
+**Klaim diagram ini:** setiap permintaan menembus 5 lapis, dan **`20_Repository` adalah satu-satunya pintu ke Sheets** — itulah sebabnya migrasi ke database sungguhan tidak perlu menyentuh Service Layer. Perhatikan juga dua hal yang jadi sumber masalah: **8-10 panggilan paralel per halaman** (§10.2) dan **`CorCalc` sebagai salinan rumus di client** (§9.7). → detail §2.1
+
+---
+
+### V2. Peta 17 modul & siapa memanggil siapa
+
+```mermaid
+flowchart TB
+  subgraph SALES["🟦 Sales Module"]
+    LEAD["Lead<br/>lead_*"]
+    CLIENT["Client<br/>client_*"]
+    PROJ["Project<br/>project_*"]
+  end
+  subgraph OPS["🟧 Operation Module"]
+    DOC["Document<br/>document_*"]
+    COR["Cor<br/>cor_*"]
+    QUO["Quotation<br/>quotation_*"]
+    CM["CostMonitoring<br/>costMonitoring_*"]
+  end
+  subgraph ANALYTICS["🟩 Analytics & Rekonsiliasi"]
+    DASH["Dashboard<br/>dashboard_*"]
+    GDVM["GdvMatching<br/>gdvMatching_*"]
+    GDVC["GdvController<br/>gdvController_*"]
+    ADS["AdsProgress<br/>adsProgress_*"]
+    ACH["AchievementTarget<br/>achievement_*"]
+  end
+  subgraph MASTER["⬜ Master & Setting"]
+    EMP["Employee<br/>employee_*"]
+    MD["MasterData<br/>masterdata_*"]
+    CE["CorEntity<br/>corentity_*"]
+    MG["MarginGuide<br/>marginguide_*"]
+    MIG["Migration<br/>sekali pakai"]
+  end
+
+  LEAD -->|"moveToClient →<br/>createFromLead"| CLIENT
+  CLIENT --> PROJ
+  PROJ --> DOC
+  DOC --> COR
+  DOC --> QUO
+  COR -->|"updateStatus<br/>recordActivity"| DOC
+  QUO -->|"updateStatus<br/>recordActivity"| DOC
+  DOC -->|"checkAndAdvance<br/>ProjectStage"| PROJ
+  COR -->|"approve →<br/>snapshotBudgetItems"| CM
+  CE -.->|"Biaya_Pencairan<br/>Is_PKP"| COR
+  MG -.->|"persentase margin"| COR
+  MD -.->|"opsi dropdown"| CLIENT
+  EMP -.->|"approver<br/>Head of B2B"| COR
+  EMP -.->|"approver"| QUO
+  GDVC -->|"upload CSV Tableau"| GDVM
+  PROJ -.->|"Revenue_Breakdown<br/>klaim GDV"| GDVM
+  GDVM --> DASH
+  ACH -.->|"target"| DASH
+  ADS -.->|"realisasi Ads"| DASH
+  COR -.->|"COR_Result"| DASH
+  PROJ -.->|"Total_GDV · Stage"| DASH
+```
+
+**Garis penuh = pemanggilan langsung antar Service** (pengecualian arsitektur yang disengaja & didokumentasikan). **Garis putus-putus = ketergantungan data**, bukan pemanggilan kode. Modul umumnya tidak boleh saling panggil; yang ada di sini adalah transaksi yang secara alami melibatkan 2 entitas. → detail §2.1
+
+---
+
+### V3. Alur bisnis end-to-end — dari form publik sampai rekonsiliasi biaya
+
+```mermaid
+flowchart TB
+  TF["📝 Typeform<br/>form inbound publik"]
+  IR[("Inbound_Raw<br/>READ-ONLY<br/>IMPORTRANGE")]
+  LD["Lead Capturing"]
+  CL["Client Monitoring"]
+  PJ["Sales Pipeline<br/>Project"]
+  DP["Document Pipeline<br/>8 tipe dokumen"]
+  CORC["COR Calculator"]
+  QC["Quotation Composer"]
+  AP{"Approval<br/>Head of B2B<br/>via magic link"}
+  CMON["Cost Monitoring<br/>anggaran vs realisasi"]
+  DSH["Dashboard Sales"]
+
+  TF -->|"otomatis"| IR
+  IR -->|"⚠️ tombol SYNC MANUAL<br/>dedup by Token"| LD
+  LD -->|"Move to Client<br/>SATU ARAH, tanpa undo"| CL
+  CL -->|"buat project<br/>+ folder Drive"| PJ
+  PJ -->|"minta dokumen"| DP
+  DP -->|"tipe COR"| CORC
+  DP -->|"tipe QUOTATION"| QC
+  CORC -->|"Gross Down saja"| AP
+  QC -->|"wajib tanda tangan"| AP
+  AP -->|"✅ Approved →<br/>Stage dokumen Done"| DP
+  AP -->|"❌ Rejected →<br/>Revision"| CORC
+  DP -->|"auto-advance Stage<br/>lihat V6"| PJ
+  AP -->|"COR Approved →<br/>snapshot anggaran BEKU"| CMON
+  PJ --> DSH
+  CMON --> DSH
+
+  GDVC["GDV Controller<br/>upload CSV Tableau"] -->|"realisasi GDV"| GDVM["GDV Matching<br/>rekonsiliasi klaim"]
+  PJ -->|"klaim link campaign"| GDVM
+  GDVM --> DSH
+  ADS["Ads Sponsorship<br/>Progress"] --> DSH
+```
+
+**Klaim:** hanya ada **satu titik masuk otomatis** (Typeform → Inbound_Raw), sisanya digerakkan aksi manusia. **Tidak ada satu pun time-driven trigger** di seluruh platform. Perhatikan dua jalur yang tidak bisa dibatalkan: Move to Client, dan snapshot anggaran saat approval. → detail §4.1
+
+---
+
+### V4. State machine Lead — `Moved` adalah pintu satu arah
+
+```mermaid
+stateDiagram-v2
+  state "New Leads" as NewLeads
+  state "Contacted" as Contacted
+  state "Other" as Other
+  state "Spam" as Spam
+  state "Moved 🔒" as Moved
+
+  [*] --> NewLeads : "sync dari Inbound_Raw"
+
+  NewLeads --> Contacted
+  NewLeads --> Other
+  NewLeads --> Spam
+  Contacted --> NewLeads
+  Contacted --> Other
+  Contacted --> Spam
+  Other --> NewLeads
+  Other --> Contacted
+  Spam --> NewLeads
+
+  NewLeads --> Moved : "moveToClient()"
+  Contacted --> Moved : "moveToClient()"
+  Other --> Moved : "moveToClient()"
+  Spam --> Moved : "moveToClient()"
+
+  Moved --> [*] : "TERKUNCI TOTAL<br/>LEAD_LOCKED"
+```
+
+**Dua aturan yang ditegakkan server:** (1) transisi antar status non-`Moved` **bebas tanpa urutan** — `New Leads` → `Spam` langsung sah; (2) `Moved` **hanya** bisa dicapai lewat `moveToClient()`, dan begitu tercapai **seluruh baris terkunci** (`updateLead` melempar `LEAD_LOCKED`). → detail §4.3
+
+---
+
+### V5. State machine Project.Stage — tiga jalur dengan aturan berbeda
+
+```mermaid
+flowchart TB
+  subgraph AUTO["JALUR A — Otomatis dari dokumen"]
+    A1["Dokumen mencapai<br/>Stage 'Done'"]
+    A2{"targetRank ><br/>currentRank?"}
+    A3{"bucket saat ini<br/>= LOSS?"}
+    A4["Stage MAJU"]
+    A5["diabaikan"]
+    A1 --> A3
+    A3 -->|"ya"| A5
+    A3 -->|"tidak"| A2
+    A2 -->|"ya"| A4
+    A2 -->|"tidak"| A5
+  end
+  subgraph MANUAL["JALUR B — Dropdown manual"]
+    B1["Admin pilih Stage"]
+    B2{"Allow_Manual_Deal<br/>= true?"}
+    B3["bebas ke stage mana pun<br/>TERMASUK MUNDUR"]
+    B4["❌ MANUAL_DEAL_BLOCKED<br/>SELURUH dropdown terkunci"]
+    B1 --> B2
+    B2 -->|"ya"| B3
+    B2 -->|"tidak"| B4
+  end
+  subgraph LOSS["JALUR C — Loss manual"]
+    C1["markLoss()"]
+    C2{"sudah Won<br/>atau Loss?"}
+    C3["simpan Pre_Loss_Stage<br/>→ Stage = Loss"]
+    C4["❌ ditolak"]
+    C5["undoLoss() →<br/>restore Pre_Loss_Stage"]
+    C1 --> C2
+    C2 -->|"ya"| C4
+    C2 -->|"tidak"| C3
+    C3 --> C5
+  end
+
+  RANK["Peringkat bucket:<br/>PROS 1 &lt; NEGO 2 &lt; WON 3<br/>LOSS = di luar peringkat"]
+  WONLOCK["⚠️ Stage = Won →<br/>PROJECT TERKUNCI<br/>hanya Other_Notes &<br/>Other_Document_Links<br/>yang masih bisa diubah"]
+
+  A4 --> WONLOCK
+  B3 --> WONLOCK
+  RANK -.-> A2
+  LOSS -.->|"SENGAJA lepas dari<br/>Allow_Manual_Deal"| MANUAL
+```
+
+**Klaim:** jalur otomatis **hanya bisa maju dan tidak pernah menyentuh project yang sudah `Loss`**; jalur manual terkunci total kecuali toggle dinyalakan; jalur Loss sengaja dibuat lepas dari toggle itu. `Won` mengunci hampir seluruh field project. → detail §4.3
+
+---
+
+### V6. Algoritma auto-advance Stage project dari dokumen
+
+```mermaid
+flowchart TB
+  S["Status dokumen berubah →<br/>Stage baru = 'Done'"]
+  P{"Project_ID kosong?"}
+  Q["ambil semua dokumen project ini"]
+  R{"ada dokumen QUOTATION<br/>ber-Status ≠ 'LOSS'?"}
+  T{"SEMUA quotation itu<br/>Stage = 'Done'?"}
+  U["target = 'Won'"]
+  V{"ada dokumen tipe<br/>DECK / COR / RAB / PRODCOST<br/>Stage = 'Done'?"}
+  W["target = 'Negotiation'"]
+  X["tidak ada perubahan"]
+  Y["autoAdvanceStageFromDocument<br/>lihat V5 jalur A"]
+
+  S --> P
+  P -->|"ya — COR lepas"| X
+  P -->|"tidak"| Q
+  Q --> R
+  R -->|"ya"| T
+  T -->|"ya"| U
+  T -->|"tidak"| V
+  R -->|"tidak"| V
+  V -->|"ya"| W
+  V -->|"tidak"| X
+  U --> Y
+  W --> Y
+
+  NOTE["⚠️ PKS · TRANSFER_REQUEST · BAST<br/>= dokumen pasca-deal,<br/>TIDAK PERNAH memengaruhi Stage"]
+  NOTE -.-> V
+```
+
+**Konsekuensi bisnis yang penting:** project yang **tidak pernah minta Quotation tidak bisa `Won` otomatis** — harus lewat toggle `Allow_Manual_Deal`. Dan COR tanpa project (`Project_ID` kosong) tidak pernah memengaruhi Stage siapa pun. → detail §4.3
+
+---
+
+### V7. State machine dokumen COR & Quotation — putaran approval
+
+```mermaid
+stateDiagram-v2
+  state "Not Started<br/>Stage: New Request" as NS
+  state "Drafting<br/>Stage: In Progress" as DR
+  state "Waiting Approval<br/>Stage: In Progress<br/>🔒 kalkulator terkunci" as WA
+  state "Revision<br/>Stage: In Progress<br/>🔓 ter-unlock" as RV
+  state "Approved<br/>Stage: DONE" as AP
+  state "Signed<br/>Stage: Done" as SG
+  state "LOSS<br/>Stage: Done" as LS
+
+  [*] --> NS : "dokumen diminta"
+  NS --> DR : "simpan draft pertama"
+  DR --> WA : "requestApproval<br/>token 14 hari + email"
+  WA --> AP : "✅ magic link approve"
+  WA --> RV : "❌ magic link reject<br/>wajib isi alasan"
+  RV --> WA : "requestApproval lagi<br/>token lama MATI"
+  AP --> SG : "hanya QUOTATION<br/>tombol Tandai Signed"
+  AP --> RV : "hanya QUOTATION<br/>client minta revisi"
+  SG --> RV : "hanya QUOTATION"
+  DR --> LS : "hanya QUOTATION<br/>manual"
+  AP --> LS : "hanya QUOTATION"
+
+  note right of AP
+    COR: Approved memicu
+    snapshot anggaran
+    Cost Monitoring
+  end note
+  note right of DR
+    Status tidak pernah MUNDUR
+    ke Not Started
+  end note
+```
+
+**Yang membedakan COR dan Quotation:** COR berhenti di `Approved`; Quotation punya 3 transisi manual sesudahnya karena **proses tanda tangan client dilakukan di luar sistem**. `Approved` untuk Quotation = approval **internal Head of B2B**, bukan "client sudah tanda tangan". → detail §4.3
+
+---
+
+### V8. Status 6 tipe dokumen lainnya — semuanya linear
+
+```mermaid
+flowchart LR
+  subgraph DECK["DECK"]
+    D1["Not Started"] --> D2["Drafting"] --> D3["Sent ✅Done"]
+  end
+  subgraph RAB["RAB · PRODCOST · PKS"]
+    R1["Not Started"] --> R2["Drafting"] --> R3["Sent<br/>Client Review"] --> R4["Signed ✅Done"]
+  end
+  subgraph TR["TRANSFER_REQUEST"]
+    T1["Not Started"] --> T2["Request"] --> T3["Sent ✅Done"]
+  end
+  subgraph BAST["BAST"]
+    B1["Not Started"] --> B2["Request"] --> B3["Sent<br/>Client Review"] --> B4["Signed ✅Done"]
+  end
+```
+
+Keenam tipe ini **tidak punya approval internal** — statusnya diubah manual lewat dropdown. Semua Stage universal: `New Request` → `In Progress` → `Client Review` → `Done`. → detail §4.3
+
+---
+
+### V9. ⚠️ Di mana otorisasi ditegakkan — dan di mana tidak
+
+```mermaid
+flowchart TB
+  U["👤 User login<br/>role apa pun"]
+  LS["localStorage<br/>objek Employee<br/>bisa diedit user"]
+  UI["UI Shell.html<br/>TechfordAccess"]
+  MENU["Sidebar disembunyikan<br/>tombol dikunci"]
+  RPC["89 endpoint RPC<br/>42_*Exposed.gs"]
+  SVC["40_*Service.gs<br/>validasi INPUT saja"]
+  DATA[("Google Sheets")]
+  CONSOLE["🔴 Console browser<br/>google.script.run<br/>.employee_setRole(...)"]
+
+  U --> LS
+  LS --> UI
+  UI -->|"Config.ROLE_PAGE_ACCESS<br/>full / view / none"| MENU
+  MENU -->|"jalur normal"| RPC
+  CONSOLE ==>|"MELEWATI SELURUH<br/>PEMERIKSAAN UI"| RPC
+  RPC --> SVC
+  SVC -->|"TIDAK ADA cek role<br/>TIDAK ADA cek sesi"| DATA
+
+  GATE["❌ Tidak ada gerbang otorisasi<br/>di layer server sama sekali.<br/>Config.getAccessLevel hanya<br/>dipakai merender menu."]
+  GATE -.-> SVC
+```
+
+**Ini temuan keamanan utama.** Seorang Consultant bisa memanggil `employee_setRole(myId,'Master Admin')`, `client_delete(...)`, atau `document_updateStatus(docId,'Approved')` langsung dari console — UI menyembunyikan tombolnya, **server tidak menolaknya**. Digabung dengan V10, artinya **integritas data bergantung pada UI**. → detail §7.4
+
+---
+
+### V10. ⚠️ State machine dokumen tidak ditegakkan di server
+
+```mermaid
+flowchart LR
+  A["document_updateStatus<br/>(docId, 'Approved')"]
+  B{"status ada di daftar<br/>DOCUMENT_STATUS_MAP<br/>untuk tipe ini?"}
+  C["✅ TULIS<br/>tanpa cek transisi"]
+  D["❌ tolak"]
+  E["Stage → 'Done'"]
+  F["checkAndAdvance<br/>ProjectStage"]
+  G["🔴 Project bisa jadi 'Won'<br/>tanpa approval yang<br/>pernah benar-benar terjadi"]
+
+  A --> B
+  B -->|"ya"| C
+  B -->|"tidak"| D
+  C --> E
+  E --> F
+  F --> G
+
+  H["Pengaman satu-satunya:<br/>dropdown status<br/>DISEMBUNYIKAN di UI<br/>untuk COR & QUOTATION"]
+  H -.->|"tidak berlaku untuk<br/>pemanggilan langsung"| A
+```
+
+`updateStatus` hanya memvalidasi bahwa status **ada di daftar tipe itu** — bukan bahwa transisinya sah. `Not Started` → `Approved` langsung diizinkan. → detail §4.3
+
+---
+
+### V11. Mesin COR — Gross Down, urutan tidak boleh diubah
+
+```mermaid
+flowchart TB
+  F["Baris dana<br/>COR_Fund"]
+  FC["fundCalc per baris<br/>lihat V12"]
+  TM["① totalMasuk<br/>= Σ Implementation Fund"]
+  VS{"② Via SALSET?"}
+  SF["salFee = totalMasuk × ngoRate%<br/>sisaDana = totalMasuk − salFee<br/>cashGross = sisaDana − biayaSalset"]
+  CG["cashGross = totalMasuk"]
+  PKP{"③ PKP?"}
+  PPN["ppnGd = cashGross ÷ 1,11"]
+  NOPPN["ppnGd = cashGross"]
+  PPH["pph23 = ppnGd × 2%<br/>bila pphOn"]
+  CN["cashNet = ppnGd − pph23<br/>'Cash In Vendor Net'"]
+  MG{"④ Default Margin"}
+  M0["totalMgnFrac = 0"]
+  MM["= manualMarginPct ÷ 100"]
+  MC["= Σ persentase 4 komponen"]
+  PR["profit = cashNet × totalMgnFrac<br/>availCost = cashNet − profit"]
+  CO["⑤ Total biaya<br/>totalSal · totalBaa<br/>dari calcItemRow.tap"]
+  SPP["⑥ Blok SPP<br/>dpp · ppn11 · pphSpp · neto"]
+  PM["⑦ Margin AKTUAL<br/>pmProfit = cashNet − totalBaa<br/>pmPct = pmProfit ÷ cashNet"]
+  SO{"⑧ SALSET Saja?"}
+  ZERO["🔴 pmProfit = 0<br/>pmPct = 0"]
+  OUT["COR_Result<br/>+ PDF"]
+
+  F --> FC --> TM --> VS
+  VS -->|"ya"| SF
+  VS -->|"tidak"| CG
+  SF --> PKP
+  CG --> PKP
+  PKP -->|"ya"| PPN
+  PKP -->|"tidak"| NOPPN
+  PPN --> PPH
+  NOPPN --> PPH
+  PPH --> CN --> MG
+  MG -->|"Margin_Enabled=false"| M0
+  MG -->|"mode MANUAL"| MM
+  MG -->|"mode COMPONENT"| MC
+  M0 --> PR
+  MM --> PR
+  MC --> PR
+  PR --> CO --> SPP --> PM --> SO
+  SO -->|"ya"| ZERO --> OUT
+  SO -->|"tidak"| OUT
+```
+
+**Langkah ⑧ wajib ada.** COR "SALSET Saja" tidak lewat vendor, jadi `totalBaa` selalu 0 → `cashNet − 0` akan salah membaca **seluruh sisa dana sebagai profit**. Ini bug nyata yang pernah terjadi di produksi. Perhatikan juga bahwa **margin aktual (⑦) independen dari Default Margin (④)**. → detail §5.3
+
+---
+
+### V12. `fundCalc` — fee per baris dana
+
+```mermaid
+flowchart TB
+  N["nominal / GDV<br/>input admin"]
+  FT{"Fund_Type"}
+  ZK{"Zakat/Bencana?"}
+  PF5["Platform Fee<br/>= nominal × 5%"]
+  PF0["Platform Fee = 0"]
+  TFM{"Tech_Fee_Manual?"}
+  TFA["Tech Fee<br/>= nominal × 1%"]
+  TFB["Tech Fee<br/>= angka ketikan admin"]
+  CAMP["Platform Fee = 0<br/>Tech Fee = 0"]
+  AF["NDV = nominal − PF − TF"]
+  ADM["Disbursement Fee =<br/>ceil(NDV ÷ 200 juta)<br/>× Biaya_Pencairan entitas"]
+  TOT["Implementation Fund<br/>= NDV − Disbursement Fee"]
+
+  N --> FT
+  FT -->|"CLIENT"| ZK
+  FT -->|"CAMPAIGN"| CAMP
+  ZK -->|"ya"| PF0
+  ZK -->|"tidak"| PF5
+  PF0 --> TFM
+  PF5 --> TFM
+  TFM -->|"tidak"| TFA
+  TFM -->|"ya"| TFB
+  TFA --> AF
+  TFB --> AF
+  CAMP --> AF
+  AF --> ADM --> TOT
+```
+
+**Aturan yang paling mudah salah:** Platform Fee **nol** untuk Zakat/Bencana, tapi **Tech Fee tetap 1%**. Dana `CAMPAIGN` tidak dikenakan keduanya. Biaya admin dikenakan **per kelipatan Rp200 juta, dibulatkan ke atas**. → detail §5.2
+
+---
+
+### V13. Gross Up — arah kebalikan, semua pembagian adalah gross-up
+
+```mermaid
+flowchart TB
+  C["Biaya vendor<br/>totalGuBaa"]
+  M["÷ (1 − totalMargin%)<br/>→ guMargin"]
+  P["÷ 0,98<br/>gross-up PPh 23 2%<br/>→ guPph"]
+  V["× 1,11 bila PKP<br/>→ guPpn"]
+  S{"Via SALSET?"}
+  SS["÷ (1 − ngoRate)<br/>→ guBaa<br/>+ salGu dari biaya SALSET"]
+  NS["guBaa = guPpn"]
+  TH["totalHasilGu"]
+  AD["+ adminFee"]
+  FIN["÷ 0,94<br/>gross-up Platform 5% + Tech 1%<br/>→ guFinal<br/>= dana yang harus diminta ke klien"]
+
+  C --> M --> P --> V --> S
+  S -->|"ya"| SS
+  S -->|"tidak"| NS
+  SS --> TH
+  NS --> TH
+  TH --> AD --> FIN
+
+  WARN["⚠️ Angka 0,94 = 1 − 0,05 − 0,01.<br/>Kalau tarif fee berubah,<br/>angka ini HARUS ikut berubah.<br/>Konstanta tersembunyi."]
+  WARN -.-> FIN
+```
+
+Gross Up dipakai saat **dana belum masuk** — alat nego consultant. **Tidak bisa diajukan approval**; harus dikonversi ke Gross Down dulu (satu arah, `Gross_Up_Snapshot` disimpan). → detail §5.4
+
+---
+
+### V14. Approval COR — 3 gerbang token & magic link tanpa login
+
+```mermaid
+sequenceDiagram
+  actor C as Consultant
+  participant S as Server
+  participant G as Margin Guard
+  participant D as Drive
+  participant M as MailApp
+  actor A as Head of B2B
+  participant CM as Cost Monitoring
+
+  C->>S: requestApproval(docId, approverId, alasan?)
+  S->>S: tolak bila Status = Not Started
+  S->>S: tolak bila metode masih GROSS_UP
+  S->>S: tolak bila approver bukan Head of B2B
+  S->>G: evaluateMarginGuard — DIHITUNG ULANG di server
+  alt margin di bawah panduan & alasan kosong
+    G-->>C: ❌ COR_MARGIN_BELOW_GUIDE
+  end
+  S->>D: generate PDF tanpa cap
+  S->>S: token = UUID, expiry = +14 hari<br/>reset field approval lama
+  S->>M: email: PDF + link Approve + link Reject
+  M->>A: ✉️ peringatan margin PALING ATAS
+  S->>S: Status → Waiting Approval 🔒
+
+  Note over A: TANPA LOGIN
+  A->>S: GET ?action=cor-approve&token=...
+  S->>S: gerbang 1 — token cocok?
+  S->>S: gerbang 2 — sudah diputuskan?
+  S->>S: gerbang 3 — kedaluwarsa?
+  S->>D: regenerate PDF + footer "Approved by ..."<br/>FILE YANG SAMA, URL tidak berubah
+  S->>S: Status → Approved
+  S->>CM: snapshotBudgetItems (best-effort)
+  CM-->>S: gagal pun approval TETAP sah
+```
+
+**Tiga gerbang punya pesan berbeda dengan sengaja** — "link tidak valid" untuk tautan yang cuma kedaluwarsa akan membuat orang mengira sistemnya rusak, lalu meneruskan email lama ke orang lain. → detail §5.8
+
+---
+
+### V15. Cost Monitoring — anggaran beku vs realisasi berjalan
+
+```mermaid
+flowchart TB
+  AP["COR di-approve"]
+  G1{"Gross Down?"}
+  G2{"sudah pernah<br/>di-snapshot?"}
+  FLT["buang baris Row_Role = ITEM<br/>(tidak punya nominal sendiri)"]
+  BI[("COR_Budget_Item<br/>Budgeted_Amount<br/>🔒 BEKU SELAMANYA<br/>ID stabil")]
+  DIS[("COR_Disbursement<br/>APPEND-ONLY<br/>UUID sungguhan")]
+  T["totals<br/>budgetSalset · budgetVendor<br/>realizedSalset · realizedVendor"]
+  ST{"Cost_Monitoring<br/>_Closed?"}
+  L1["label: Selesai"]
+  L2{"ada realisasi?"}
+  L3["label: Belum Ada Realisasi<br/>budgetTag: null"]
+  L4["label: Dalam Proses"]
+  TAG{"totalRealized ><br/>totalBudget?"}
+  TG1["🔴 Melebihi Anggaran"]
+  TG2["✅ Sesuai Anggaran"]
+  MRG["Margin AKTUAL:<br/>deltaVendor = budgetVendor − realizedVendor<br/>actualProfit = budgetedProfit + deltaVendor"]
+
+  AP --> G1
+  G1 -->|"tidak"| X1["tidak ada Cost Monitoring"]
+  G1 -->|"ya"| G2
+  G2 -->|"ya"| X2["TIDAK ditimpa —<br/>realisasi lama tidak jadi yatim"]
+  G2 -->|"tidak"| FLT --> BI
+  BI --> T
+  DIS --> T
+  T --> ST
+  ST -->|"ya"| L1
+  ST -->|"tidak"| L2
+  L2 -->|"tidak"| L3
+  L2 -->|"ya"| L4
+  L1 --> TAG
+  L4 --> TAG
+  TAG -->|"ya"| TG1
+  TAG -->|"tidak"| TG2
+  T --> MRG
+```
+
+**Aturan bisnis inti:** margin/profit **hanya dipengaruhi realisasi Cost VENDOR**. Cost Salset tetap dimonitor tapi murni operasional. "Melebihi Anggaran" dihitung **agregat per dokumen** (mencampur Salset + Vendor) — satu item boleh over selama total masih di bawah. **Tidak ada validasi yang memblokir realisasi melebihi anggaran** — cuma ditandai. → detail §6.2
+
+---
+
+### V16. GDV Matching — rekonsiliasi klaim consultant vs realisasi Tableau
+
+```mermaid
+flowchart TB
+  subgraph TABLEAU["Sisi realisasi — GDV_Controller"]
+    T1["baris CSV Tableau"]
+    T2["agregat per Link_Campaign:<br/>Realized_Nominal DIJUMLAH<br/>satu campaign muncul<br/>beberapa kali per Main_Source"]
+    T3["peta alias:<br/>Child_Short_URL → Link_Campaign"]
+    T4["🔴 alias AMBIGU<br/>menunjuk >1 link<br/>→ DITOLAK & dilaporkan"]
+  end
+  subgraph CLAIM["Sisi klaim — Revenue_Breakdown"]
+    C1["baris Value_Type = GDV<br/>LINTAS SEMUA PROJECT"]
+    C2["Item_Name = link<br/>yang DIKETIK consultant"]
+  end
+  R{"resolusi — urutan menentukan"}
+  R1["① cocok langsung ke<br/>Link_Campaign"]
+  R2["② baru coba alias<br/>Child_Short_URL"]
+  R3["matchedVia = '' <br/>tidak ketemu"]
+  S1["BELUM_SINKRON<br/>link tidak ada di Tableau"]
+  S2["KLAIM_MELEBIHI<br/>claimed > realized"]
+  S3["✅ SINKRON"]
+  DP["departmentPortion =<br/>max(0, realized − claimed)"]
+
+  T1 --> T2
+  T1 --> T3 --> T4
+  C1 --> C2 --> R
+  T2 --> R
+  R --> R1
+  R1 -->|"ketemu"| S2
+  R1 -->|"tidak ketemu"| R2
+  R2 -->|"ketemu"| S2
+  R2 -->|"tidak ketemu"| R3 --> S1
+  S2 -->|"claimed ≤ realized"| S3
+  S3 --> DP
+```
+
+**Tiga aturan penjagaan yang harus dipertahankan:** (1) pencocokan langsung **selalu menang atas alias** — supaya child URL baru tidak bisa membajak link yang sudah punya arti; (2) child URL yang kebetulan juga sebuah `Link_Campaign` **tidak pernah dijadikan alias**; (3) alias ambigu **ditolak & dilaporkan ke manusia, bukan ditebak**. → detail §9.5
+
+---
+
+### V17. Dua pola upload CSV yang sengaja berbeda
+
+```mermaid
+flowchart TB
+  subgraph GDV["GDV Controller — REPLACE-ALL"]
+    G1["WAJIB 2 file sekaligus<br/>Brand + Not-Brand"]
+    G2["validasi 14 kolom<br/>satu hilang = TOLAK KERAS"]
+    G3["🔴 REPLACE seluruh tab<br/>TIDAK ADA RIWAYAT"]
+    G4["log: 1 baris per PASANG file"]
+    G1 --> G2 --> G3 --> G4
+  end
+  subgraph ADS["Ads Progress — APPEND-ONLY"]
+    A1["N file, satu file =<br/>satu account_name"]
+    A2["validasi 7 kolom<br/>+ parseUang yang benar"]
+    A3["✅ APPEND — riwayat terjaga<br/>Active_Wallet turun = ada pencairan"]
+    A4["log: 1 baris per FILE"]
+    A5["baca = baris TERBARU<br/>per Campaign_Id"]
+    A1 --> A2 --> A3 --> A4
+    A3 --> A5
+  end
+  W1["⚠️ Kalau replace-all dipakai di sini,<br/>upload satu klien akan<br/>MENGHAPUS data klien lain"]
+  W2["🔴 Tidak ada validasi Brand ≠ Not-Brand<br/>→ file sama diupload 2x =<br/>GDV terhitung DUA KALI"]
+  W1 -.-> ADS
+  W2 -.-> GDV
+```
+
+**Kenapa berbeda:** export Ads datang **per klien**, jadi replace-all akan menghapus data klien lain — dan "progress" memang soal pergerakan saldo. Keduanya memakai pencocokan header ternormalisasi + auto-detect delimiter tab/koma. → detail §9.3 & §9.4
+
+---
+
+### V18. Struktur folder Drive & tiga sumber lampiran
+
+```mermaid
+flowchart TB
+  subgraph DRIVE["Shared Drive B2B — akses dari membership, bukan share per file"]
+    R["Tech-Ford<br/>TECHFORD_ROOT_FOLDER_ID"]
+    C["CL26-00173-PARAGON<br/>sanitize(Client_ID)-sanitize(Brand_Name)"]
+    P["PRJ26-00084-CL26-00173-PARAGON<br/>sanitize(Project_ID)-clientFolderName"]
+    F1["COR - DOC26-00012.pdf"]
+    F2["Proposal.pdf"]
+    F3["Deck Q1 - Slides"]
+    R --> C --> P
+    P --> F1
+    P --> F2
+    P --> F3
+  end
+  S1["GENERATE<br/>PDF hasil render sistem"] --> F1
+  S2["UPLOAD<br/>base64 lewat RPC<br/>⚠️ batas ~6MB"] --> F2
+  S3["LINK<br/>file di-MOVE, bukan COPY<br/>parent lama DILEPAS"] --> F3
+  ATT[("Document_Attachment<br/>File_Id = rujukan tunggal<br/>File_Name = cache yang bisa basi")]
+  F1 --> ATT
+  F2 --> ATT
+  F3 --> ATT
+  OWN["Gerbang Input Link =<br/>KEPEMILIKAN file (ownedByMe),<br/>bukan role.<br/>Bukan milik B2B →<br/>minta transfer ownership MANUAL"]
+  OWN -.-> S3
+  DEL["Melepas lampiran<br/>TIDAK menghapus file Drive"]
+  DEL -.-> ATT
+```
+
+**Folder ID disimpan; folder tidak pernah dicari lewat nama** — nama murni kosmetik, dan folder di-rename kalau `Brand_Name` berubah (idempoten, self-healing kalau folder di-trash). ⚠️ Tapi rename **tidak pernah dipanggil dari jalur update** — fungsi `syncClientFolderName` yang dijanjikan docstring tidak ada. → detail §9.2
+
+---
+
+### V19. 🚨 Tiga salinan rumus COR — risiko tertinggi di kodebase ini
+
+```mermaid
+flowchart TB
+  IN["Input yang SAMA<br/>funds · costs · margins"]
+  S1["① SERVER<br/>43_CorReportRenderer.gs"]
+  S2["② CLIENT<br/>CorCalc di Shell.html"]
+  S3["③ CLIENT<br/>calcAll di CorCalculatorContent"]
+  O1["PDF yang DISIMPAN ke Drive<br/>+ ledger COR_Result<br/>→ dikirim ke approver"]
+  O2["preview 'Lihat COR'<br/>+ Download PDF"]
+  O3["angka yang DILIHAT consultant<br/>saat mengetik"]
+  RISK["🔴 Kalau salah satu menyimpang:<br/>consultant menyetujui angka A,<br/>approver menerima PDF angka B<br/>— TANPA GEJALA APA PUN"]
+
+  IN --> S1 --> O1
+  IN --> S2 --> O2
+  IN --> S3 --> O3
+  O1 --> RISK
+  O2 --> RISK
+  O3 --> RISK
+
+  WHY["Kenapa ada: client (iframe sandbox)<br/>dan server (Apps Script) TIDAK BISA<br/>saling import satu file JS.<br/>Alasan ini HILANG di stack baru."]
+  FIX["✅ Perbaikan: satu paket TypeScript<br/>fungsi murni, di-import<br/>frontend DAN backend<br/>+ golden-file test"]
+  WHY -.-> IN
+  RISK --> FIX
+```
+
+**Sudah ada bukti drift historis:** `marginEnabled`/`marginMode` dulu tidak ikut dikirim ke `buildPdfModel`, sehingga Download PDF selalu menampilkan Default Margin walau toggle dimatikan — sementara "Lihat COR" sudah benar. Yang diduplikasi bukan formatting, tapi **rumus pajak & fee**. → detail §9.7
+
+---
+
+### V20. Mekanisme kolapsnya platform — kenapa rate limit terjadi
+
+```mermaid
+flowchart TB
+  U["User buka satu halaman"]
+  BOOT["bootstrap menembakkan<br/>8-10 RPC PARALEL"]
+  BADGE["+ setiap render halaman<br/>menghitung badge sidebar<br/>countOverBudget menarik<br/>6 tabel + COR_Result per dokumen"]
+  SCAN["tiap RPC = full-scan sheet<br/>getDataRange = SELURUH sheet<br/>TIDAK ADA INDEX"]
+  CACHE{"cache hangat?"}
+  FAST["✅ cepat — masalah tersembunyi"]
+  SLOW["🔴 lambat"]
+  GIVEUP["client menyerah /<br/>transport menelan respons"]
+  RETRY["dua lapis retry yang<br/>tidak saling sadar:<br/>gsRunWithRetry 5x<br/>+ makeLoader 5x"]
+  AMP["≈50 eksekusi<br/>untuk SATU user<br/>membuka SATU halaman"]
+  SLOT["slot eksekusi GAS habis<br/>antrian tidak pulih"]
+  LOOP["setiap reload memicu<br/>ULANG serbuan yang sama"]
+  CLEAN["Executions log BERSIH —<br/>tidak ada yang throw,<br/>semuanya cuma TERLALU LAMBAT"]
+
+  U --> BOOT --> SCAN
+  U --> BADGE --> SCAN
+  SCAN --> CACHE
+  CACHE -->|"ya"| FAST
+  CACHE -->|"tidak"| SLOW
+  SLOW --> GIVEUP --> RETRY --> AMP --> SLOT --> LOOP
+  LOOP --> SLOW
+  SLOT --> CLEAN
+  TRIG["Pemicu: satu klik Refresh<br/>membuang SELURUH cache<br/>termasuk badge yang mahal"]
+  TRIG -.-> CACHE
+```
+
+**Klaim:** ini **loop yang bertahan sendiri**, bukan kegagalan sesaat — dan tidak terlihat di log server karena tidak ada exception. Empat pola yang harus dihindari di stack baru: full-scan tanpa index, fan-out RPC per halaman, retry bertingkat, invalidasi cache terlalu luas. → detail §10
+
+---
+
+### V21. Peta data — entitas & relasi
+
+```mermaid
+erDiagram
+  EMPLOYEE ||--o{ PROJECT : "consultant"
+  EMPLOYEE ||--o| ACHIEVEMENT_TARGET : "target"
+  LEAD |o--|| CLIENT : "moveToClient"
+  CLIENT ||--o{ PIC_CLIENT : "punya"
+  CLIENT ||--o{ PROJECT : "punya"
+  PROJECT ||--o{ REVENUE_BREAKDOWN : "GDV & Service"
+  PROJECT ||--o{ DOCUMENT_PIPELINE : "dokumen"
+  DOCUMENT_PIPELINE ||--o{ DOCUMENT_ATTACHMENT : "lampiran"
+  DOCUMENT_PIPELINE ||--o{ DOCUMENT_ACTIVITY : "riwayat approval"
+  DOCUMENT_PIPELINE ||--o| COR_HEADER : "bila tipe COR"
+  DOCUMENT_PIPELINE ||--o| QUOTATION_HEADER : "bila tipe QUOTATION"
+  COR_HEADER ||--o{ COR_FUND : "sumber dana"
+  COR_HEADER ||--o{ COR_COST : "item biaya"
+  COR_HEADER ||--o{ COR_MARGIN : "4 atau 8 baris"
+  COR_HEADER ||--o{ COR_RESULT : "1 atau 2 per tab"
+  COR_HEADER ||--o{ COR_BUDGET_ITEM : "snapshot beku"
+  COR_BUDGET_ITEM ||--o{ COR_DISBURSEMENT : "realisasi"
+  QUOTATION_HEADER ||--o{ QUOTATION_ITEM : "item"
+  QUOTATION_HEADER }o--|| PIC_CLIENT : "snapshot PIC"
+  COR_ENTITY ||--o{ COR_HEADER : "vendor (join NAMA)"
+  MARGIN_GUIDE ||--o{ COR_MARGIN : "snapshot NILAI"
+  MASTER_DATA ||--o{ CLIENT : "opsi dropdown"
+  ADS_UPLOAD_LOG ||--o{ ADS_PROGRESS : "batch"
+  REVENUE_BREAKDOWN }o--o{ GDV_CONTROLLER : "join SLUG URL"
+```
+
+**Yang perlu diperhatikan:** relasi bergaris "join NAMA" / "join SLUG URL" adalah **relasi lemah lewat teks**, bukan FK sungguhan — semuanya wajib diperbaiki jadi FK di stack baru. `COR_BUDGET_ITEM` adalah **satu-satunya ID anak COR yang stabil** (yang lain berubah setiap simpan karena pola replace-all). → detail §3.11
+
+---
+
+### V22. Peta 16 halaman & data yang dibacanya
+
+```mermaid
+flowchart LR
+  subgraph DASH["Dashboard Analytics"]
+    P1["Dashboard Sales"]
+  end
+  subgraph SALES["Sales Module"]
+    P2["Lead Capturing"]
+    P3["Client Monitoring"]
+    P4["Sales Pipeline"]
+  end
+  subgraph OPS["Operation Module"]
+    P5["Document Pipeline"]
+    P6["COR Calculator"]
+    P7["Quotation Composer"]
+    P8["Cost Monitoring"]
+  end
+  subgraph SET["Setting"]
+    P9["Master Data"]
+    P10["Configure Account"]
+    P11["Achievement Setting"]
+    P12["GDV Controller"]
+    P13["GDV Matching"]
+    P14["Ads Progress"]
+  end
+
+  P2 --> S1[("Lead · Inbound_Raw")]
+  P3 --> S2[("Client · PIC_Client<br/>Master_Data · Project")]
+  P4 --> S3[("Project · Revenue_Breakdown<br/>Client · Employee · Document")]
+  P5 --> S4[("Document_Pipeline · Attachment<br/>Activity · COR_Header · Quotation")]
+  P6 --> S5[("COR_Header/Fund/Cost/Margin<br/>COR_Entity · Margin_Guide")]
+  P7 --> S6[("Quotation_Header/Item")]
+  P8 --> S7[("COR_Budget_Item<br/>COR_Disbursement · COR_Result")]
+  P1 --> S8[("SEMUA di atas +<br/>GDV_Controller + Achievement")]
+  P12 --> S9[("GDV_Controller<br/>+ Upload_Log")]
+  P13 --> S9
+  P14 --> S10[("Ads_Progress<br/>+ Upload_Log")]
+  P9 --> S11[("Master_Data · COR_Entity<br/>Margin_Guide")]
+  P10 --> S12[("Employee")]
+  P11 --> S13[("Achievement_Target")]
+
+  NOTE["⚠️ Dashboard Sales membaca<br/>DUA spreadsheet sekaligus —<br/>karena itu ia dipecah jadi<br/>2 RPC terpisah, supaya satu sisi<br/>yang gagal tidak menggelapkan<br/>seluruh halaman"]
+  NOTE -.-> P1
+```
+
+Halaman yang paling berat = **Document Pipeline** (10 RPC bootstrap) dan **Dashboard Sales** (dua spreadsheet). → detail §8 & §9.8
 
 ---
 
