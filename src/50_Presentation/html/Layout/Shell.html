@@ -139,20 +139,41 @@
          * DIDEFINISIKAN DI SINI (bukan di blok bawah) karena inilah helper
          * pertama yang dipanggil hampir semua halaman saat bootstrap.
          */
-        function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, delayMs) {
-          if (retriesLeft == null) retriesLeft = 2;
-          if (delayMs == null) delayMs = 700;
+        /**
+         * BUKTI LAPANGAN (DevTools Network tab, halaman Document Pipeline):
+         * SEMUA 13 request RPC bootstrap balik 200 dalam 1.4-4.5 detik, TIDAK
+         * ADA yang gagal secara transport — tapi halaman tetap menampilkan
+         * "Tidak ada respons dari server". Ini membuktikan glitch yang
+         * disebut komentar di atas ("transport sesekali menelan panggilan
+         * pertama") itu SUNGGUHAN dan bisa kena document_getAll pada
+         * BOOTSTRAP PERTAMA — bukan cuma di refresh berikutnya, dan bukan
+         * soal beban server (v180, sebelum ada fitur invalidate cache,
+         * mengalaminya juga).
+         *
+         * Sebelumnya hanya 2 retry @ 700ms tetap (total percobaan cuma
+         * membentang ~1.4 detik) — terlalu sedikit & terlalu rapat untuk
+         * glitch yang perlu waktu untuk hilang sendiri. Sekarang 5 retry
+         * dengan backoff eksponensial (700ms -> 1.4s -> 2.8s -> 5.6s -> 8s,
+         * dibatasi 8s), pola yang sama yang sudah dibuktikan bekerja di
+         * makeLoader (Client Monitoring & Dashboard Sales) — jadi jendela
+         * totalnya sekitar 18 detik alih-alih 1.4 detik sebelum benar-benar
+         * menyerah.
+         */
+        function gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft, attemptKe) {
+          if (retriesLeft == null) retriesLeft = 5;
+          if (attemptKe == null) attemptKe = 0;
+          var delayMs = Math.min(700 * Math.pow(2, attemptKe), 8000);
           var runner = google.script.run
             .withSuccessHandler(function (res) {
               if (!res && retriesLeft > 0) {
-                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, attemptKe + 1); }, delayMs);
                 return;
               }
               onSuccess(res);
             })
             .withFailureHandler(function (err) {
               if (retriesLeft > 0) {
-                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, delayMs); }, delayMs);
+                setTimeout(function () { gsRunWithRetry(fnName, args, onSuccess, onFailure, retriesLeft - 1, attemptKe + 1); }, delayMs);
                 return;
               }
               onFailure(err);
