@@ -2160,7 +2160,16 @@
     document.getElementById('picPhone').value = '62';
     document.getElementById('picTitle').value = '';
     document.getElementById('picPopupTitle').innerText = 'Tambah PIC';
-    document.getElementById('picPopupSubmitBtn').innerText = 'Tambah';
+    var submitBtn = document.getElementById('picPopupSubmitBtn');
+    // BUG YANG DIPERBAIKI: submitPicEdit() men-disable tombol ini selama
+    // request ke server berjalan, dan hanya melepasnya lagi di
+    // withSuccessHandler/withFailureHandler-nya. Kalau admin membuka popup
+    // Add PIC ini SEBELUM request Edit sebelumnya selesai (mis. lagi lambat
+    // menunggu watchdog 90 detik), tombol "Tambah" tampil normal tapi masih
+    // disabled dari sesi Edit sebelumnya — klik jadi tidak bereaksi sama
+    // sekali. Selalu dilepas paksa setiap popup dibuka ulang.
+    submitBtn.disabled = false;
+    submitBtn.innerText = 'Tambah';
     document.getElementById('addPicPopup').classList.add('open');
   }
 
@@ -2184,7 +2193,9 @@
     document.getElementById('picPhone').value = pic.Phone || '';
     document.getElementById('picTitle').value = pic.Title || '';
     document.getElementById('picPopupTitle').innerText = 'Edit PIC';
-    document.getElementById('picPopupSubmitBtn').innerText = 'Simpan';
+    var submitBtn = document.getElementById('picPopupSubmitBtn');
+    submitBtn.disabled = false; // lihat catatan bug yang sama di openAddPicPopup()
+    submitBtn.innerText = 'Simpan';
     document.getElementById('addPicPopup').classList.add('open');
   }
 
