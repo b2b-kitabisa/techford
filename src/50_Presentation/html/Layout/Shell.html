@@ -181,6 +181,50 @@
         }
 
         /**
+         * Penangkap error global — DIDEFINISIKAN DI SINI (bukan di blok
+         * besar bawah) karena harus aktif SEBELUM script fragment halaman
+         * dieksekusi saat load penuh (lihat komentar di atas techfordOnReady).
+         *
+         * KENAPA: sebelumnya kalau ada exception tak tertangkap di tengah
+         * script fragment sebuah halaman (baik saat load penuh maupun saat
+         * execScripts jalan lewat SPA), fragment itu berhenti diam-diam di
+         * baris itu — tidak ada satu pun jejak di UI. Halaman terlihat stuck
+         * di "Memuat..." selamanya TANPA pesan apa pun, dan karena exception
+         * client-side tidak pernah tercatat di Executions log Apps Script,
+         * user maupun kita tidak punya cara tahu baris mana yang gagal.
+         *
+         * Sekarang exception apa pun (sync lewat window.onerror, atau
+         * promise yang tidak di-catch lewat unhandledrejection) memunculkan
+         * banner merah di atas halaman dengan pesan aslinya, supaya kejadian
+         * berikutnya langsung kelihatan APA yang gagal — bukan cuma "gagal
+         * memuat, tidak ada respons".
+         */
+        function techfordShowFatalBanner(msg) {
+          try {
+            var id = 'techfordFatalBanner';
+            var el = document.getElementById(id);
+            if (!el) {
+              el = document.createElement('div');
+              el.id = id;
+              el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
+                'background:#b91c1c;color:#fff;padding:10px 16px;font:13px/1.5 sans-serif;' +
+                'text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+              var appendTarget = document.body || document.documentElement;
+              if (appendTarget) appendTarget.appendChild(el);
+            }
+            el.innerText = '⚠️ Halaman gagal memuat sepenuhnya: ' + msg +
+              ' — coba muat ulang. Kalau berulang, laporkan pesan ini.';
+          } catch (bannerErr) { /* jangan sampai banner sendiri ikut melempar */ }
+        }
+        window.addEventListener('error', function (e) {
+          techfordShowFatalBanner((e && (e.message || (e.error && e.error.message))) || 'unknown error');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var reason = e && e.reason;
+          techfordShowFatalBanner((reason && reason.message) || String(reason));
+        });
+
+        /**
          * Placeholder berdenyut untuk score card selama datanya BELUM lengkap.
          *
          * KENAPA: score card dulu langsung dirender dengan angka sungguhan
