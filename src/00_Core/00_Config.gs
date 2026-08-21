@@ -704,15 +704,43 @@ var Config = (function (module) {
   // akan gagal dengan pesan jelas ("spreadsheet belum dikonfigurasi").
   module.GDV_CONTROLLER_SPREADSHEET_ID = '15alu24X-_98FZxUEO4UuxnKcpnHqhPIJf4-XdrvgwMo';
 
+  /**
+   * BUKTI LAPANGAN (Apps Script Executions log, 21 Agustus 2026): satu
+   * eksekusi adsProgress_getStatus gagal dengan pesan asli dari Google
+   * ("Service Spreadsheets failed while accessing document with id ...") —
+   * ini error TRANSIENT dari sisi Google Sheets sendiri (server sedang
+   * under-load sesaat), BUKAN bug logika, dan sebelum ini SpreadsheetApp.
+   * openById() dipanggil langsung tanpa retry sama sekali — begitu Google
+   * mengembalikan error itu SEKALI, seluruh permintaan gagal total.
+   *
+   * openWithRetry() memberi 3 percobaan dengan backoff singkat (300ms,
+   * 900ms) sebelum benar-benar menyerah — cukup untuk melewati hiccup
+   * sesaat tanpa membuat user menunggu lama kalau memang gagal permanen
+   * (misal ID salah/spreadsheet dihapus, yang gagal konsisten di semua
+   * percobaan dan tetap harus melempar, bukan disembunyikan).
+   */
+  function openWithRetry(spreadsheetId) {
+    var percobaanTerakhir;
+    for (var i = 0; i < 3; i++) {
+      try {
+        return SpreadsheetApp.openById(spreadsheetId);
+      } catch (e) {
+        percobaanTerakhir = e;
+        if (i < 2) Utilities.sleep(300 * Math.pow(3, i));   // 300ms, 900ms
+      }
+    }
+    throw percobaanTerakhir;
+  }
+
   module.getGdvControllerSpreadsheet = function () {
     if (!module.GDV_CONTROLLER_SPREADSHEET_ID) {
       throw new AppError('CONFIG_MISSING', 'GDV_CONTROLLER_SPREADSHEET_ID belum diisi di Config.gs — lihat SETUP.md bagian GDV Controller.');
     }
-    return SpreadsheetApp.openById(module.GDV_CONTROLLER_SPREADSHEET_ID);
+    return openWithRetry(module.GDV_CONTROLLER_SPREADSHEET_ID);
   };
 
   module.getSpreadsheet = function () {
-    return SpreadsheetApp.openById(module.SPREADSHEET_ID);
+    return openWithRetry(module.SPREADSHEET_ID);
   };
 
   return module;
