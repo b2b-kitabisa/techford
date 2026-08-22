@@ -302,14 +302,78 @@
     line-height: 1.55;
   }
 
-  .prose pre.mermaid {
-    background: var(--surface);
+  /* ============ DIAGRAM PAN/ZOOM ============ */
+  .mmd-zoom {
+    position: relative;
+    margin: 20px 0 28px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 20px;
-    margin: 20px 0 28px;
-    overflow-x: auto;
+    background: var(--surface);
     box-shadow: var(--shadow);
+    overflow: hidden;
+    height: min(56vh, 520px);
+    touch-action: none;
+    cursor: grab;
+  }
+  .mmd-zoom.is-dragging { cursor: grabbing; }
+  .mmd-zoom-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 20px;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  .mmd-zoom-stage pre.mermaid {
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    background: none;
+    overflow: visible;
+  }
+  .mmd-zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mmd-zoom-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    font: 600 16px/1 "IBM Plex Sans", sans-serif;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .mmd-zoom-btn:hover { background: var(--surface-alt); }
+  .mmd-zoom-hint {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    z-index: 2;
+    font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    pointer-events: none;
+    opacity: .88;
+    transition: opacity .3s ease;
+  }
+  .mmd-zoom.hint-hidden .mmd-zoom-hint { opacity: 0; }
+  @media (max-width: 640px) {
+    .mmd-zoom { height: 340px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mmd-zoom-stage { transition: none !important; }
   }
 
   .prose blockquote {
@@ -502,7 +566,7 @@
 <p>Bagian ini dibuat supaya orang bisa memahami <strong>seluruh mekanisme Techford</strong> tanpa membaca 1.600 baris di bawahnya. Tiap diagram menggambarkan satu mekanisme nyata, bukan sekadar nama kotak. Nomor bagian di caption menunjuk ke penjelasan detailnya.</p>
 </blockquote>
 <h3 id="v1-bagaimana-satu-klik-user-berjalan-sampai-ke-data">V1. Bagaimana satu klik user berjalan sampai ke data</h3>
-<pre class="mermaid">flowchart LR
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart LR
   U["👤 User<br/>browser"]
   subgraph CLIENT["Client — di dalam iframe sandbox GAS"]
     SH["Shell.html<br/>SPA shell + router"]
@@ -533,11 +597,11 @@
   SVC -->|"approval"| ML
   REP <-->|"getDataRange<br/>SELURUH sheet"| DB
   INF -.->|"cache 60-300s"| DB
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Klaim diagram ini:</strong> setiap permintaan menembus 5 lapis, dan <strong><code>20_Repository</code> adalah satu-satunya pintu ke Sheets</strong> — itulah sebabnya migrasi ke database sungguhan tidak perlu menyentuh Service Layer. Perhatikan juga dua hal yang jadi sumber masalah: <strong>8-10 panggilan paralel per halaman</strong> (§10.2) dan <strong><code>CorCalc</code> sebagai salinan rumus di client</strong> (§9.7). → detail §2.1</p>
 <hr />
 <h3 id="v2-peta-17-modul-siapa-memanggil-siapa">V2. Peta 17 modul &amp; siapa memanggil siapa</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   subgraph SALES["🟦 Sales Module"]
     LEAD["Lead<br/>lead_*"]
     CLIENT["Client<br/>client_*"]
@@ -585,11 +649,11 @@
   ADS -.->|"realisasi Ads"| DASH
   COR -.->|"COR_Result"| DASH
   PROJ -.->|"Total_GDV · Stage"| DASH
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Garis penuh = pemanggilan langsung antar Service</strong> (pengecualian arsitektur yang disengaja &amp; didokumentasikan). <strong>Garis putus-putus = ketergantungan data</strong>, bukan pemanggilan kode. Modul umumnya tidak boleh saling panggil; yang ada di sini adalah transaksi yang secara alami melibatkan 2 entitas. → detail §2.1</p>
 <hr />
 <h3 id="v3-alur-bisnis-end-to-end-dari-form-publik-sampai-rekonsiliasi-biaya">V3. Alur bisnis end-to-end — dari form publik sampai rekonsiliasi biaya</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   TF["📝 Typeform<br/>form inbound publik"]
   IR[("Inbound_Raw<br/>READ-ONLY<br/>IMPORTRANGE")]
   LD["Lead Capturing"]
@@ -622,11 +686,11 @@
   PJ -->|"klaim link campaign"| GDVM
   GDVM --> DSH
   ADS["Ads Sponsorship<br/>Progress"] --> DSH
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Klaim:</strong> hanya ada <strong>satu titik masuk otomatis</strong> (Typeform → Inbound_Raw), sisanya digerakkan aksi manusia. <strong>Tidak ada satu pun time-driven trigger</strong> di seluruh platform. Perhatikan dua jalur yang tidak bisa dibatalkan: Move to Client, dan snapshot anggaran saat approval. → detail §4.1</p>
 <hr />
 <h3 id="v4-state-machine-lead-moved-adalah-pintu-satu-arah">V4. State machine Lead — <code>Moved</code> adalah pintu satu arah</h3>
-<pre class="mermaid">stateDiagram-v2
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">stateDiagram-v2
   state "New Leads" as NewLeads
   state "Contacted" as Contacted
   state "Other" as Other
@@ -651,11 +715,11 @@
   Spam --> Moved : "moveToClient()"
 
   Moved --> [*] : "TERKUNCI TOTAL<br/>LEAD_LOCKED"
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Dua aturan yang ditegakkan server:</strong> (1) transisi antar status non-<code>Moved</code> <strong>bebas tanpa urutan</strong> — <code>New Leads</code> → <code>Spam</code> langsung sah; (2) <code>Moved</code> <strong>hanya</strong> bisa dicapai lewat <code>moveToClient()</code>, dan begitu tercapai <strong>seluruh baris terkunci</strong> (<code>updateLead</code> melempar <code>LEAD_LOCKED</code>). → detail §4.3</p>
 <hr />
 <h3 id="v5-state-machine-projectstage-tiga-jalur-dengan-aturan-berbeda">V5. State machine Project.Stage — tiga jalur dengan aturan berbeda</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   subgraph AUTO["JALUR A — Otomatis dari dokumen"]
     A1["Dokumen mencapai<br/>Stage 'Done'"]
     A2{"targetRank ><br/>currentRank?"}
@@ -696,11 +760,11 @@
   B3 --> WONLOCK
   RANK -.-> A2
   LOSS -.->|"SENGAJA lepas dari<br/>Allow_Manual_Deal"| MANUAL
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Klaim:</strong> jalur otomatis <strong>hanya bisa maju dan tidak pernah menyentuh project yang sudah <code>Loss</code></strong>; jalur manual terkunci total kecuali toggle dinyalakan; jalur Loss sengaja dibuat lepas dari toggle itu. <code>Won</code> mengunci hampir seluruh field project. → detail §4.3</p>
 <hr />
 <h3 id="v6-algoritma-auto-advance-stage-project-dari-dokumen">V6. Algoritma auto-advance Stage project dari dokumen</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   S["Status dokumen berubah →<br/>Stage baru = 'Done'"]
   P{"Project_ID kosong?"}
   Q["ambil semua dokumen project ini"]
@@ -727,11 +791,11 @@
 
   NOTE["⚠️ PKS · TRANSFER_REQUEST · BAST<br/>= dokumen pasca-deal,<br/>TIDAK PERNAH memengaruhi Stage"]
   NOTE -.-> V
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Konsekuensi bisnis yang penting:</strong> project yang <strong>tidak pernah minta Quotation tidak bisa <code>Won</code> otomatis</strong> — harus lewat toggle <code>Allow_Manual_Deal</code>. Dan COR tanpa project (<code>Project_ID</code> kosong) tidak pernah memengaruhi Stage siapa pun. → detail §4.3</p>
 <hr />
 <h3 id="v7-state-machine-dokumen-cor-quotation-putaran-approval">V7. State machine dokumen COR &amp; Quotation — putaran approval</h3>
-<pre class="mermaid">stateDiagram-v2
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">stateDiagram-v2
   state "Not Started<br/>Stage: New Request" as NS
   state "Drafting<br/>Stage: In Progress" as DR
   state "Waiting Approval<br/>Stage: In Progress<br/>🔒 kalkulator terkunci" as WA
@@ -761,11 +825,11 @@
     Status tidak pernah MUNDUR
     ke Not Started
   end note
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Yang membedakan COR dan Quotation:</strong> COR berhenti di <code>Approved</code>; Quotation punya 3 transisi manual sesudahnya karena <strong>proses tanda tangan client dilakukan di luar sistem</strong>. <code>Approved</code> untuk Quotation = approval <strong>internal Head of B2B</strong>, bukan "client sudah tanda tangan". → detail §4.3</p>
 <hr />
 <h3 id="v8-status-6-tipe-dokumen-lainnya-semuanya-linear">V8. Status 6 tipe dokumen lainnya — semuanya linear</h3>
-<pre class="mermaid">flowchart LR
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart LR
   subgraph DECK["DECK"]
     D1["Not Started"] --> D2["Drafting"] --> D3["Sent ✅Done"]
   end
@@ -778,11 +842,11 @@
   subgraph BAST["BAST"]
     B1["Not Started"] --> B2["Request"] --> B3["Sent<br/>Client Review"] --> B4["Signed ✅Done"]
   end
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p>Keenam tipe ini <strong>tidak punya approval internal</strong> — statusnya diubah manual lewat dropdown. Semua Stage universal: <code>New Request</code> → <code>In Progress</code> → <code>Client Review</code> → <code>Done</code>. → detail §4.3</p>
 <hr />
 <h3 id="v9-di-mana-otorisasi-ditegakkan-dan-di-mana-tidak">V9. ⚠️ Di mana otorisasi ditegakkan — dan di mana tidak</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   U["👤 User login<br/>role apa pun"]
   LS["localStorage<br/>objek Employee<br/>bisa diedit user"]
   UI["UI Shell.html<br/>TechfordAccess"]
@@ -802,11 +866,11 @@
 
   GATE["❌ Tidak ada gerbang otorisasi<br/>di layer server sama sekali.<br/>Config.getAccessLevel hanya<br/>dipakai merender menu."]
   GATE -.-> SVC
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Ini temuan keamanan utama.</strong> Seorang Consultant bisa memanggil <code>employee_setRole(myId,'Master Admin')</code>, <code>client_delete(...)</code>, atau <code>document_updateStatus(docId,'Approved')</code> langsung dari console — UI menyembunyikan tombolnya, <strong>server tidak menolaknya</strong>. Digabung dengan V10, artinya <strong>integritas data bergantung pada UI</strong>. → detail §7.4</p>
 <hr />
 <h3 id="v10-state-machine-dokumen-tidak-ditegakkan-di-server">V10. ⚠️ State machine dokumen tidak ditegakkan di server</h3>
-<pre class="mermaid">flowchart LR
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart LR
   A["document_updateStatus<br/>(docId, 'Approved')"]
   B{"status ada di daftar<br/>DOCUMENT_STATUS_MAP<br/>untuk tipe ini?"}
   C["✅ TULIS<br/>tanpa cek transisi"]
@@ -824,11 +888,11 @@
 
   H["Pengaman satu-satunya:<br/>dropdown status<br/>DISEMBUNYIKAN di UI<br/>untuk COR & QUOTATION"]
   H -.->|"tidak berlaku untuk<br/>pemanggilan langsung"| A
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><code>updateStatus</code> hanya memvalidasi bahwa status <strong>ada di daftar tipe itu</strong> — bukan bahwa transisinya sah. <code>Not Started</code> → <code>Approved</code> langsung diizinkan. → detail §4.3</p>
 <hr />
 <h3 id="v11-mesin-cor-gross-down-urutan-tidak-boleh-diubah">V11. Mesin COR — Gross Down, urutan tidak boleh diubah</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   F["Baris dana<br/>COR_Fund"]
   FC["fundCalc per baris<br/>lihat V12"]
   TM["① totalMasuk<br/>= Σ Implementation Fund"]
@@ -871,11 +935,11 @@
   PR --> CO --> SPP --> PM --> SO
   SO -->|"ya"| ZERO --> OUT
   SO -->|"tidak"| OUT
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Langkah ⑧ wajib ada.</strong> COR "SALSET Saja" tidak lewat vendor, jadi <code>totalBaa</code> selalu 0 → <code>cashNet − 0</code> akan salah membaca <strong>seluruh sisa dana sebagai profit</strong>. Ini bug nyata yang pernah terjadi di produksi. Perhatikan juga bahwa <strong>margin aktual (⑦) independen dari Default Margin (④)</strong>. → detail §5.3</p>
 <hr />
 <h3 id="v12-fundcalc-fee-per-baris-dana">V12. <code>fundCalc</code> — fee per baris dana</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   N["nominal / GDV<br/>input admin"]
   FT{"Fund_Type"}
   ZK{"Zakat/Bencana?"}
@@ -902,11 +966,11 @@
   TFB --> AF
   CAMP --> AF
   AF --> ADM --> TOT
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Aturan yang paling mudah salah:</strong> Platform Fee <strong>nol</strong> untuk Zakat/Bencana, tapi <strong>Tech Fee tetap 1%</strong>. Dana <code>CAMPAIGN</code> tidak dikenakan keduanya. Biaya admin dikenakan <strong>per kelipatan Rp200 juta, dibulatkan ke atas</strong>. → detail §5.2</p>
 <hr />
 <h3 id="v13-gross-up-arah-kebalikan-semua-pembagian-adalah-gross-up">V13. Gross Up — arah kebalikan, semua pembagian adalah gross-up</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   C["Biaya vendor<br/>totalGuBaa"]
   M["÷ (1 − totalMargin%)<br/>→ guMargin"]
   P["÷ 0,98<br/>gross-up PPh 23 2%<br/>→ guPph"]
@@ -927,11 +991,11 @@
 
   WARN["⚠️ Angka 0,94 = 1 − 0,05 − 0,01.<br/>Kalau tarif fee berubah,<br/>angka ini HARUS ikut berubah.<br/>Konstanta tersembunyi."]
   WARN -.-> FIN
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p>Gross Up dipakai saat <strong>dana belum masuk</strong> — alat nego consultant. <strong>Tidak bisa diajukan approval</strong>; harus dikonversi ke Gross Down dulu (satu arah, <code>Gross_Up_Snapshot</code> disimpan). → detail §5.4</p>
 <hr />
 <h3 id="v14-approval-cor-3-gerbang-token-magic-link-tanpa-login">V14. Approval COR — 3 gerbang token &amp; magic link tanpa login</h3>
-<pre class="mermaid">sequenceDiagram
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">sequenceDiagram
   actor C as Consultant
   participant S as Server
   participant G as Margin Guard
@@ -963,11 +1027,11 @@
   S->>S: Status → Approved
   S->>CM: snapshotBudgetItems (best-effort)
   CM-->>S: gagal pun approval TETAP sah
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Tiga gerbang punya pesan berbeda dengan sengaja</strong> — "link tidak valid" untuk tautan yang cuma kedaluwarsa akan membuat orang mengira sistemnya rusak, lalu meneruskan email lama ke orang lain. → detail §5.8</p>
 <hr />
 <h3 id="v15-cost-monitoring-anggaran-beku-vs-realisasi-berjalan">V15. Cost Monitoring — anggaran beku vs realisasi berjalan</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   AP["COR di-approve"]
   G1{"Gross Down?"}
   G2{"sudah pernah<br/>di-snapshot?"}
@@ -1002,11 +1066,11 @@
   TAG -->|"ya"| TG1
   TAG -->|"tidak"| TG2
   T --> MRG
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Aturan bisnis inti:</strong> margin/profit <strong>hanya dipengaruhi realisasi Cost VENDOR</strong>. Cost Salset tetap dimonitor tapi murni operasional. "Melebihi Anggaran" dihitung <strong>agregat per dokumen</strong> (mencampur Salset + Vendor) — satu item boleh over selama total masih di bawah. <strong>Tidak ada validasi yang memblokir realisasi melebihi anggaran</strong> — cuma ditandai. → detail §6.2</p>
 <hr />
 <h3 id="v16-gdv-matching-rekonsiliasi-klaim-consultant-vs-realisasi-tableau">V16. GDV Matching — rekonsiliasi klaim consultant vs realisasi Tableau</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   subgraph TABLEAU["Sisi realisasi — GDV_Controller"]
     T1["baris CSV Tableau"]
     T2["agregat per Link_Campaign:<br/>Realized_Nominal DIJUMLAH<br/>satu campaign muncul<br/>beberapa kali per Main_Source"]
@@ -1037,11 +1101,11 @@
   R2 -->|"tidak ketemu"| R3 --> S1
   S2 -->|"claimed ≤ realized"| S3
   S3 --> DP
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Tiga aturan penjagaan yang harus dipertahankan:</strong> (1) pencocokan langsung <strong>selalu menang atas alias</strong> — supaya child URL baru tidak bisa membajak link yang sudah punya arti; (2) child URL yang kebetulan juga sebuah <code>Link_Campaign</code> <strong>tidak pernah dijadikan alias</strong>; (3) alias ambigu <strong>ditolak &amp; dilaporkan ke manusia, bukan ditebak</strong>. → detail §9.5</p>
 <hr />
 <h3 id="v17-dua-pola-upload-csv-yang-sengaja-berbeda">V17. Dua pola upload CSV yang sengaja berbeda</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   subgraph GDV["GDV Controller — REPLACE-ALL"]
     G1["WAJIB 2 file sekaligus<br/>Brand + Not-Brand"]
     G2["validasi 14 kolom<br/>satu hilang = TOLAK KERAS"]
@@ -1062,11 +1126,11 @@
   W2["🔴 Tidak ada validasi Brand ≠ Not-Brand<br/>→ file sama diupload 2x =<br/>GDV terhitung DUA KALI"]
   W1 -.-> ADS
   W2 -.-> GDV
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Kenapa berbeda:</strong> export Ads datang <strong>per klien</strong>, jadi replace-all akan menghapus data klien lain — dan "progress" memang soal pergerakan saldo. Keduanya memakai pencocokan header ternormalisasi + auto-detect delimiter tab/koma. → detail §9.3 &amp; §9.4</p>
 <hr />
 <h3 id="v18-struktur-folder-drive-tiga-sumber-lampiran">V18. Struktur folder Drive &amp; tiga sumber lampiran</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   subgraph DRIVE["Shared Drive B2B — akses dari membership, bukan share per file"]
     R["Tech-Ford<br/>TECHFORD_ROOT_FOLDER_ID"]
     C["CL26-00173-PARAGON<br/>sanitize(Client_ID)-sanitize(Brand_Name)"]
@@ -1090,11 +1154,11 @@
   OWN -.-> S3
   DEL["Melepas lampiran<br/>TIDAK menghapus file Drive"]
   DEL -.-> ATT
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Folder ID disimpan; folder tidak pernah dicari lewat nama</strong> — nama murni kosmetik, dan folder di-rename kalau <code>Brand_Name</code> berubah (idempoten, self-healing kalau folder di-trash). ⚠️ Tapi rename <strong>tidak pernah dipanggil dari jalur update</strong> — fungsi <code>syncClientFolderName</code> yang dijanjikan docstring tidak ada. → detail §9.2</p>
 <hr />
 <h3 id="v19-tiga-salinan-rumus-cor-risiko-tertinggi-di-kodebase-ini">V19. 🚨 Tiga salinan rumus COR — risiko tertinggi di kodebase ini</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   IN["Input yang SAMA<br/>funds · costs · margins"]
   S1["① SERVER<br/>43_CorReportRenderer.gs"]
   S2["② CLIENT<br/>CorCalc di Shell.html"]
@@ -1115,11 +1179,11 @@
   FIX["✅ Perbaikan: satu paket TypeScript<br/>fungsi murni, di-import<br/>frontend DAN backend<br/>+ golden-file test"]
   WHY -.-> IN
   RISK --> FIX
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Sudah ada bukti drift historis:</strong> <code>marginEnabled</code>/<code>marginMode</code> dulu tidak ikut dikirim ke <code>buildPdfModel</code>, sehingga Download PDF selalu menampilkan Default Margin walau toggle dimatikan — sementara "Lihat COR" sudah benar. Yang diduplikasi bukan formatting, tapi <strong>rumus pajak &amp; fee</strong>. → detail §9.7</p>
 <hr />
 <h3 id="v20-mekanisme-kolapsnya-platform-kenapa-rate-limit-terjadi">V20. Mekanisme kolapsnya platform — kenapa rate limit terjadi</h3>
-<pre class="mermaid">flowchart TB
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart TB
   U["User buka satu halaman"]
   BOOT["bootstrap menembakkan<br/>8-10 RPC PARALEL"]
   BADGE["+ setiap render halaman<br/>menghitung badge sidebar<br/>countOverBudget menarik<br/>6 tabel + COR_Result per dokumen"]
@@ -1144,11 +1208,11 @@
   SLOT --> CLEAN
   TRIG["Pemicu: satu klik Refresh<br/>membuang SELURUH cache<br/>termasuk badge yang mahal"]
   TRIG -.-> CACHE
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Klaim:</strong> ini <strong>loop yang bertahan sendiri</strong>, bukan kegagalan sesaat — dan tidak terlihat di log server karena tidak ada exception. Empat pola yang harus dihindari di stack baru: full-scan tanpa index, fan-out RPC per halaman, retry bertingkat, invalidasi cache terlalu luas. → detail §10</p>
 <hr />
 <h3 id="v21-peta-data-entitas-relasi">V21. Peta data — entitas &amp; relasi</h3>
-<pre class="mermaid">erDiagram
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">erDiagram
   EMPLOYEE ||--o{ PROJECT : "consultant"
   EMPLOYEE ||--o| ACHIEVEMENT_TARGET : "target"
   LEAD |o--|| CLIENT : "moveToClient"
@@ -1173,11 +1237,11 @@
   MASTER_DATA ||--o{ CLIENT : "opsi dropdown"
   ADS_UPLOAD_LOG ||--o{ ADS_PROGRESS : "batch"
   REVENUE_BREAKDOWN }o--o{ GDV_CONTROLLER : "join SLUG URL"
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p><strong>Yang perlu diperhatikan:</strong> relasi bergaris "join NAMA" / "join SLUG URL" adalah <strong>relasi lemah lewat teks</strong>, bukan FK sungguhan — semuanya wajib diperbaiki jadi FK di stack baru. <code>COR_BUDGET_ITEM</code> adalah <strong>satu-satunya ID anak COR yang stabil</strong> (yang lain berubah setiap simpan karena pola replace-all). → detail §3.11</p>
 <hr />
 <h3 id="v22-peta-16-halaman-data-yang-dibacanya">V22. Peta 16 halaman &amp; data yang dibacanya</h3>
-<pre class="mermaid">flowchart LR
+<div class="mmd-zoom" data-mmd-zoom><div class="mmd-zoom-stage"><pre class="mermaid">flowchart LR
   subgraph DASH["Dashboard Analytics"]
     P1["Dashboard Sales"]
   end
@@ -1218,7 +1282,7 @@
 
   NOTE["⚠️ Dashboard Sales membaca<br/>DUA spreadsheet sekaligus —<br/>karena itu ia dipecah jadi<br/>2 RPC terpisah, supaya satu sisi<br/>yang gagal tidak menggelapkan<br/>seluruh halaman"]
   NOTE -.-> P1
-</pre>
+</pre></div><div class="mmd-zoom-controls"><button type="button" class="mmd-zoom-btn" data-act="in" aria-label="Perbesar diagram">+</button><button type="button" class="mmd-zoom-btn" data-act="out" aria-label="Perkecil diagram">−</button><button type="button" class="mmd-zoom-btn" data-act="reset" aria-label="Kembalikan tampilan diagram">↻</button></div><div class="mmd-zoom-hint">scroll/pinch untuk zoom &middot; seret untuk geser</div></div>
 <p>Halaman yang paling berat = <strong>Document Pipeline</strong> (10 RPC bootstrap) dan <strong>Dashboard Sales</strong> (dua spreadsheet). → detail §8 &amp; §9.8</p>
 <hr />
 <h2 id="1-apa-itu-techford-kenapa-pindah-stack">1. Apa itu Techford &amp; kenapa pindah stack</h2>
@@ -3729,5 +3793,125 @@ Typeform webhook (ganti IMPORTRANGE), import batch untuk CSV, campaign sebagai e
     }, { rootMargin: '-10% 0px -75% 0px', threshold: 0 });
     headings.forEach(function (h) { observer.observe(h); });
   }
+})();
+
+// Google Maps-style pan/zoom for every mermaid diagram. Diagrams with many
+// nodes render at a fixed SVG size that's often too small to read at the
+// page's normal width -- this lets a reader scroll/pinch to zoom and drag
+// to pan INSIDE the diagram, instead of having to zoom the whole browser
+// tab (which also blows up all the surrounding text).
+(function () {
+  var MIN_SCALE = 0.4;
+  var MAX_SCALE = 6;
+
+  function setupZoom(wrap) {
+    var stage = wrap.querySelector('.mmd-zoom-stage');
+    var controls = wrap.querySelector('.mmd-zoom-controls');
+    var scale = 1, tx = 0, ty = 0;
+    var fitted = false;
+    var userMoved = false;
+
+    function apply() {
+      stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+    }
+
+    function clamp(s) { return Math.max(MIN_SCALE, Math.min(MAX_SCALE, s)); }
+
+    // Fit the whole diagram inside the viewport the first time its real
+    // size is known (mermaid renders the SVG asynchronously after this
+    // script runs, so we poll briefly instead of assuming it's ready).
+    function fitToView() {
+      var svg = stage.querySelector('svg');
+      if (!svg) return false;
+      var box;
+      try { box = svg.getBBox ? svg.getBBox() : null; } catch (e) { box = null; }
+      var svgW = (box && box.width) || svg.clientWidth || svg.getBoundingClientRect().width;
+      var svgH = (box && box.height) || svg.clientHeight || svg.getBoundingClientRect().height;
+      if (!svgW || !svgH) return false;
+      var padding = 40;
+      var availW = wrap.clientWidth - padding;
+      var availH = wrap.clientHeight - padding;
+      var fit = Math.min(availW / svgW, availH / svgH);
+      scale = clamp(fit > 0 ? fit : 1);
+      tx = (wrap.clientWidth - svgW * scale) / 2;
+      ty = (wrap.clientHeight - svgH * scale) / 2;
+      apply();
+      return true;
+    }
+
+    var tries = 0;
+    var poll = setInterval(function () {
+      tries++;
+      if (userMoved) { clearInterval(poll); return; }
+      if (fitToView()) { fitted = true; }
+      if (tries > 40) clearInterval(poll); // ~6s ceiling, then give up quietly
+    }, 150);
+
+    function zoomAt(clientX, clientY, factor) {
+      userMoved = true;
+      var rect = wrap.getBoundingClientRect();
+      var x = clientX - rect.left;
+      var y = clientY - rect.top;
+      var next = clamp(scale * factor);
+      var ratio = next / scale;
+      tx = x - (x - tx) * ratio;
+      ty = y - (y - ty) * ratio;
+      scale = next;
+      apply();
+    }
+
+    wrap.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    var dragging = false, lastX = 0, lastY = 0;
+    wrap.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      userMoved = true;
+      lastX = e.clientX; lastY = e.clientY;
+      wrap.classList.add('is-dragging');
+      wrap.classList.add('hint-hidden');
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    wrap.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      tx += e.clientX - lastX;
+      ty += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      apply();
+    });
+    function endDrag() { dragging = false; wrap.classList.remove('is-dragging'); }
+    wrap.addEventListener('pointerup', endDrag);
+    wrap.addEventListener('pointercancel', endDrag);
+    wrap.addEventListener('pointerleave', endDrag);
+
+    wrap.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      userMoved = false;
+      fitToView();
+    });
+
+    if (controls) {
+      controls.addEventListener('click', function (e) {
+        var btn = e.target.closest('.mmd-zoom-btn');
+        if (!btn) return;
+        var rect = wrap.getBoundingClientRect();
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        var act = btn.getAttribute('data-act');
+        if (act === 'in') zoomAt(cx, cy, 1.3);
+        else if (act === 'out') zoomAt(cx, cy, 1 / 1.3);
+        else { userMoved = false; fitToView(); }
+      });
+    }
+
+    // Re-fit on resize as long as the reader hasn't zoomed/panned manually.
+    window.addEventListener('resize', function () {
+      if (!userMoved && fitted) fitToView();
+    });
+  }
+
+  Array.prototype.slice.call(document.querySelectorAll('[data-mmd-zoom]')).forEach(setupZoom);
 })();
 </script>
