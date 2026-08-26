@@ -1,0 +1,314 @@
+Add a Project (Sales Pipeline) module to this Next.js + Supabase app, enforcing the 3-path stage state machine on the server (not just UI): (a) manual stage change only allowed when allow_manual_deal=true, (b) Mark Loss / Undo Loss are independent of that toggle, (c) Won-locked fields are not editable (no edit form built yet, so this just needs the create + stage-change + loss flow for now).
+
+File: src/app/projects/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation cuma bisa lihat Sales Pipeline, tidak bisa mengubah.')
+  return employee
+}
+
+export async function createProject(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+
+  const clientId = formData.get('client_id') as string
+  const projectName = ((formData.get('project_name') as string) || '').trim()
+  if (!clientId) throw new Error('Client wajib dipilih.')
+  if (!projectName) throw new Error('Project Name wajib diisi.')
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `PROJECT_${year}` })
+  if (seqErr) throw new Error(seqErr.message)
+  const projectId = `PRJ${year}-${String(seqValue).padStart(5, '0')}`
+
+  const services = formData.getAll('services') as string[]
+  const issues = formData.getAll('issues') as string[]
+
+  const { error } = await admin.from('project').insert({
+    project_id: projectId,
+    project_name: projectName,
+    client_id: clientId,
+    consultant_name_fallback: employee.name,
+    services,
+    issues,
+    program_type: (formData.get('program_type') as string) || null,
+    is_retainer: formData.get('is_retainer') === 'on',
+    stage: 'Prospect',
+    created_by: employee.name,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/projects')
+  redirect('/projects')
+}
+
+export async function toggleAllowManualDeal(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { data: project, error: findErr } = await admin.from('project').select('allow_manual_deal').eq('id', id).single()
+  if (findErr || !project) throw new Error('Project tidak ditemukan.')
+
+  const { error } = await admin.from('project').update({ allow_manual_deal: !project.allow_manual_deal }).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/projects')
+}
+
+export async function updateProjectStageManual(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const newStage = formData.get('stage') as string
+
+  const { data: project, error: findErr } = await admin.from('project').select('*').eq('id', id).single()
+  if (findErr || !project) throw new Error('Project tidak ditemukan.')
+  if (!project.allow_manual_deal) {
+    throw new Error('Manual Deal belum diaktifkan untuk project ini -- nyalakan dulu toggle "Allow Manual Deal".')
+  }
+
+  const { error } = await admin
+    .from('project')
+    .update({ stage: newStage, stage_changed_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/projects')
+}
+
+export async function markLoss(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { data: project, error: findErr } = await admin.from('project').select('stage').eq('id', id).single()
+  if (findErr || !project) throw new Error('Project tidak ditemukan.')
+  if (project.stage === 'Won' || project.stage === 'Loss') {
+    throw new Error('Project yang sudah Won atau Loss tidak bisa di-mark Loss lagi.')
+  }
+
+  const { error } = await admin
+    .from('project')
+    .update({ stage: 'Loss', pre_loss_stage: project.stage, stage_changed_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/projects')
+}
+
+export async function undoLoss(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { data: project, error: findErr } = await admin.from('project').select('stage, pre_loss_stage').eq('id', id).single()
+  if (findErr || !project) throw new Error('Project tidak ditemukan.')
+  if (project.stage !== 'Loss') throw new Error('Project ini tidak sedang berstatus Loss.')
+
+  const { error } = await admin
+    .from('project')
+    .update({ stage: project.pre_loss_stage || 'Prospect', pre_loss_stage: null, stage_changed_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/projects')
+}
+
+File: src/app/projects/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { toggleAllowManualDeal, updateProjectStageManual, markLoss, undoLoss } from './actions'
+
+const STAGE_STYLES: Record<string, string> = {
+  Prospect: 'bg-gray-100 text-gray-700',
+  Negotiation: 'bg-amber-100 text-amber-700',
+  Won: 'bg-green-100 text-green-700',
+  Loss: 'bg-red-100 text-red-700',
+}
+const STAGE_OPTIONS = ['Prospect', 'Negotiation', 'Won', 'Loss']
+
+export default async function ProjectsPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: projects } = await admin.from('project').select('*').order('created_at', { ascending: false })
+  const { data: clients } = await admin.from('client').select('id, brand_name')
+  const canWrite = employee.role !== 'Operation'
+  const clientName = (id: string) => (clients ?? []).find((c) => c.id === id)?.brand_name ?? '-'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Sales Pipeline</h1>
+        {canWrite && (
+          <a href="/projects/new" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+            + Project Baru
+          </a>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Project ID</th>
+              <th className="px-4 py-3">Nama</th>
+              <th className="px-4 py-3">Client</th>
+              <th className="px-4 py-3">Stage</th>
+              <th className="px-4 py-3">Manual Deal</th>
+              <th className="px-4 py-3">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(projects ?? []).map((p) => (
+              <tr key={p.id}>
+                <td className="px-4 py-3 font-mono text-gray-700">{p.project_id}</td>
+                <td className="px-4 py-3 text-gray-900">{p.project_name}</td>
+                <td className="px-4 py-3 text-gray-600">{clientName(p.client_id)}</td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STAGE_STYLES[p.stage] ?? 'bg-gray-100 text-gray-700'}`}>
+                    {p.stage}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  {canWrite ? (
+                    <form action={toggleAllowManualDeal}>
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                        {p.allow_manual_deal ? 'ON (klik matikan)' : 'OFF (klik nyalakan)'}
+                      </button>
+                    </form>
+                  ) : (p.allow_manual_deal ? 'ON' : 'OFF')}
+                </td>
+                <td className="px-4 py-3">
+                  {canWrite && (
+                    <div className="flex flex-col gap-2">
+                      {p.stage === 'Loss' ? (
+                        <form action={undoLoss}>
+                          <input type="hidden" name="id" value={p.id} />
+                          <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">Undo Loss</button>
+                        </form>
+                      ) : (
+                        <form action={markLoss}>
+                          <input type="hidden" name="id" value={p.id} />
+                          <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Mark Loss</button>
+                        </form>
+                      )}
+                      <form action={updateProjectStageManual} className="flex items-center gap-2">
+                        <input type="hidden" name="id" value={p.id} />
+                        <select name="stage" defaultValue={p.stage} disabled={!p.allow_manual_deal} className="rounded-md border-gray-300 text-xs disabled:bg-gray-100">
+                          {STAGE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button type="submit" disabled={!p.allow_manual_deal} className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:text-gray-300">
+                          Ubah
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {(projects ?? []).length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum ada Project.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/projects/new/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { createProject } from '../actions'
+
+const SERVICES = ['CSR', 'Sustainability Services', 'Event', 'Ads Sponsorship', 'Placement & Production']
+const ISSUES = ['Social', 'Health', 'Empowerment', 'Education', 'Environment', 'Momentum']
+
+export default async function NewProjectPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role === 'Operation') redirect('/projects')
+
+  const admin = createAdminClient()
+  const { data: clients } = await admin.from('client').select('id, brand_name').order('brand_name')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Project Baru</h1>
+      <form action={createProject} className="max-w-xl space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Client *</label>
+          <select name="client_id" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">Pilih Client...</option>
+            {(clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.brand_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Project Name *</label>
+          <input name="project_name" required className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Program Type</label>
+          <select name="program_type" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">-</option>
+            <option value="KB.ORG Program">KB.ORG Program</option>
+            <option value="Client Program">Client Program</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Services</label>
+          <div className="flex flex-wrap gap-3">
+            {SERVICES.map((s) => (
+              <label key={s} className="flex items-center gap-1 text-sm text-gray-700">
+                <input type="checkbox" name="services" value={s} /> {s}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Issues</label>
+          <div className="flex flex-wrap gap-3">
+            {ISSUES.map((s) => (
+              <label key={s} className="flex items-center gap-1 text-sm text-gray-700">
+                <input type="checkbox" name="issues" value={s} /> {s}
+              </label>
+            ))}
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="is_retainer" /> Is Retainer (sekali dinyalakan, tidak bisa dimatikan lagi)
+        </label>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+          Simpan
+        </button>
+      </form>
+    </AppShell>
+  )
+}
+
+File: src/components/app-shell.tsx — update NAV_ITEMS again to include Sales Pipeline:
+const NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Project module: create, stage state machine (manual/loss), sales pipeline list" && git push
