@@ -1,0 +1,291 @@
+Add a Document Pipeline module (for the 6 linear document types only — DECK, RAB, PRODCOST, PKS, TRANSFER_REQUEST, BAST — NOT COR or QUOTATION, those get a separate approval-flow module later) to this Next.js + Supabase app. Each type has a fixed linear status->stage sequence, enforced server-side by only allowing advancing exactly one step at a time (never arbitrary jumps). When a document reaches stage "Done" for types DECK/RAB/PRODCOST, auto-advance the parent Project's stage to "Negotiation" if it's currently ranked lower (Prospect < Negotiation < Won), never touching a project that's Won or Loss already.
+
+File: src/lib/document-flows.ts
+export type FlowStep = { status: string; stage: string }
+
+export const DOCUMENT_FLOWS: Record<string, FlowStep[]> = {
+  DECK: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Drafting', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Done' },
+  ],
+  RAB: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Drafting', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Client Review' },
+    { status: 'Signed', stage: 'Done' },
+  ],
+  PRODCOST: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Drafting', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Client Review' },
+    { status: 'Signed', stage: 'Done' },
+  ],
+  PKS: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Drafting', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Client Review' },
+    { status: 'Signed', stage: 'Done' },
+  ],
+  TRANSFER_REQUEST: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Request', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Done' },
+  ],
+  BAST: [
+    { status: 'Not Started', stage: 'New Request' },
+    { status: 'Request', stage: 'In Progress' },
+    { status: 'Sent', stage: 'Client Review' },
+    { status: 'Signed', stage: 'Done' },
+  ],
+}
+
+export const CREATABLE_DOCUMENT_TYPES = Object.keys(DOCUMENT_FLOWS)
+
+// Types whose reaching "Done" stage should auto-advance the Project to
+// Negotiation (never Won -- that requires an approved Quotation, built later).
+export const NEGOTIATION_TRIGGER_TYPES = ['DECK', 'RAB', 'PRODCOST']
+
+File: src/app/documents/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { DOCUMENT_FLOWS, CREATABLE_DOCUMENT_TYPES, NEGOTIATION_TRIGGER_TYPES } from '@/lib/document-flows'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa mengubah Document Pipeline.')
+  return employee
+}
+
+const STAGE_RANK: Record<string, number> = { Prospect: 1, Negotiation: 2, Won: 3 }
+
+async function maybeAdvanceProjectStage(admin: ReturnType<typeof createAdminClient>, projectId: string, documentType: string) {
+  if (!NEGOTIATION_TRIGGER_TYPES.includes(documentType)) return
+
+  const { data: project } = await admin.from('project').select('stage').eq('id', projectId).single()
+  if (!project || project.stage === 'Loss') return
+
+  const currentRank = STAGE_RANK[project.stage] ?? 0
+  const targetRank = STAGE_RANK['Negotiation']
+  if (targetRank > currentRank) {
+    await admin.from('project').update({ stage: 'Negotiation', stage_changed_at: new Date().toISOString() }).eq('id', projectId)
+  }
+}
+
+export async function createDocument(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+
+  const projectId = formData.get('project_id') as string
+  const documentType = formData.get('document_type') as string
+  if (!projectId) throw new Error('Project wajib dipilih.')
+  if (!CREATABLE_DOCUMENT_TYPES.includes(documentType)) throw new Error('Tipe dokumen tidak valid.')
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `DOC_${year}` })
+  if (seqErr) throw new Error(seqErr.message)
+  const docId = `DOC${year}-${String(seqValue).padStart(5, '0')}`
+
+  const firstStep = DOCUMENT_FLOWS[documentType][0]
+  const { error } = await admin.from('document_pipeline').insert({
+    doc_id: docId,
+    project_id: projectId,
+    document_type: documentType,
+    status: firstStep.status,
+    stage: firstStep.stage,
+    requested_by: employee.name,
+  })
+  if (error) {
+    if (error.message.includes('uniq_doc_per_project_type')) {
+      throw new Error('Project ini sudah punya dokumen dengan tipe yang sama.')
+    }
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/documents')
+  redirect('/documents')
+}
+
+export async function advanceDocumentStatus(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { data: doc, error: findErr } = await admin.from('document_pipeline').select('*').eq('id', id).single()
+  if (findErr || !doc) throw new Error('Dokumen tidak ditemukan.')
+
+  const flow = DOCUMENT_FLOWS[doc.document_type]
+  if (!flow) throw new Error('Tipe dokumen ini dikelola lewat modul khusus (COR/Quotation), bukan di sini.')
+
+  const currentIndex = flow.findIndex((step) => step.status === doc.status)
+  if (currentIndex === -1) throw new Error('Status dokumen saat ini tidak dikenali di alur yang berlaku.')
+  const nextStep = flow[currentIndex + 1]
+  if (!nextStep) throw new Error('Dokumen ini sudah di status akhir, tidak bisa dimajukan lagi.')
+
+  const { error } = await admin
+    .from('document_pipeline')
+    .update({ status: nextStep.status, stage: nextStep.stage, last_updated: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+
+  if (nextStep.stage === 'Done' && doc.project_id) {
+    await maybeAdvanceProjectStage(admin, doc.project_id, doc.document_type)
+  }
+
+  revalidatePath('/documents')
+  revalidatePath('/projects')
+}
+
+File: src/app/documents/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { DOCUMENT_FLOWS } from '@/lib/document-flows'
+import { advanceDocumentStatus } from './actions'
+
+const STAGE_STYLES: Record<string, string> = {
+  'New Request': 'bg-gray-100 text-gray-700',
+  'In Progress': 'bg-amber-100 text-amber-700',
+  'Client Review': 'bg-blue-100 text-blue-700',
+  'Done': 'bg-green-100 text-green-700',
+}
+
+export default async function DocumentsPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: docs } = await admin.from('document_pipeline').select('*').order('requested_at', { ascending: false })
+  const { data: projects } = await admin.from('project').select('id, project_name, project_id')
+  const canWrite = employee.role !== 'Operation'
+  const projectLabel = (id: string | null) => {
+    const p = (projects ?? []).find((x) => x.id === id)
+    return p ? `${p.project_id} - ${p.project_name}` : '-'
+  }
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Document Pipeline</h1>
+        {canWrite && (
+          <a href="/documents/new" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+            + Dokumen Baru
+          </a>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Doc ID</th>
+              <th className="px-4 py-3">Tipe</th>
+              <th className="px-4 py-3">Project</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Stage</th>
+              <th className="px-4 py-3">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(docs ?? []).map((doc) => {
+              const flow = DOCUMENT_FLOWS[doc.document_type]
+              const currentIndex = flow ? flow.findIndex((s) => s.status === doc.status) : -1
+              const nextStep = flow ? flow[currentIndex + 1] : null
+              return (
+                <tr key={doc.id}>
+                  <td className="px-4 py-3 font-mono text-gray-700">{doc.doc_id}</td>
+                  <td className="px-4 py-3 text-gray-900">{doc.document_type}</td>
+                  <td className="px-4 py-3 text-gray-600">{projectLabel(doc.project_id)}</td>
+                  <td className="px-4 py-3 text-gray-700">{doc.status}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STAGE_STYLES[doc.stage] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {doc.stage}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {canWrite && nextStep ? (
+                      <form action={advanceDocumentStatus}>
+                        <input type="hidden" name="id" value={doc.id} />
+                        <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                          Majukan ke: {nextStep.status}
+                        </button>
+                      </form>
+                    ) : (
+                      <em className="text-xs text-gray-400">{nextStep === null && flow ? 'Status akhir' : '-'}</em>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+            {(docs ?? []).length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum ada dokumen.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/documents/new/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { CREATABLE_DOCUMENT_TYPES } from '@/lib/document-flows'
+import { createDocument } from '../actions'
+
+export default async function NewDocumentPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role === 'Operation') redirect('/documents')
+
+  const admin = createAdminClient()
+  const { data: projects } = await admin.from('project').select('id, project_id, project_name').order('project_name')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Dokumen Baru</h1>
+      <form action={createDocument} className="max-w-xl space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Project *</label>
+          <select name="project_id" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">Pilih Project...</option>
+            {(projects ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.project_id} - {p.project_name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Tipe Dokumen *</label>
+          <select name="document_type" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">Pilih Tipe...</option>
+            {CREATABLE_DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">COR & Quotation dibuat lewat modul khusus (belum tersedia).</p>
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+          Simpan
+        </button>
+      </form>
+    </AppShell>
+  )
+}
+
+File: src/components/app-shell.tsx — update NAV_ITEMS to include Document Pipeline:
+const NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/documents', label: 'Document Pipeline' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Document Pipeline module for the 6 linear document types with project auto-advance" && git push
