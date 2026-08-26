@@ -1,0 +1,229 @@
+Add COR Entity (vendor master data) management and COR document creation to this Next.js + Supabase app. This is step 1 of the COR module (funds/costs/margin calculator comes in a later step) -- for now just get a COR document + its settings created and visible in the Document Pipeline list.
+
+File: src/app/cor-entities/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function addCorEntity(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa menambah Vendor.')
+
+  const entityName = ((formData.get('entity_name') as string) || '').trim()
+  if (!entityName) throw new Error('Entity Name wajib diisi.')
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('cor_entity').insert({
+    entity_name: entityName,
+    bank: (formData.get('bank') as string) || null,
+    is_pkp: formData.get('is_pkp') === 'on',
+    biaya_pencairan: Number(formData.get('biaya_pencairan') || 0),
+    created_by: employee.name,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/cor-entities')
+}
+
+File: src/app/cor-entities/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addCorEntity } from './actions'
+
+export default async function CorEntitiesPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: entities } = await admin.from('cor_entity').select('*').order('entity_name')
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Vendor (COR Entity)</h1>
+
+      {canWrite && (
+        <form action={addCorEntity} className="mb-8 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Entity Name *</label>
+            <input name="entity_name" required className="rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Bank</label>
+            <input name="bank" className="rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Biaya Pencairan (per Rp200jt)</label>
+            <input name="biaya_pencairan" type="number" defaultValue={50000} className="w-40 rounded-md border-gray-300 text-sm" />
+          </div>
+          <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
+            <input type="checkbox" name="is_pkp" /> PKP
+          </label>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+            Tambah
+          </button>
+        </form>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Entity Name</th><th className="px-4 py-3">Bank</th><th className="px-4 py-3">PKP</th><th className="px-4 py-3">Biaya Pencairan</th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {(entities ?? []).map((e) => (
+              <tr key={e.id}>
+                <td className="px-4 py-3 text-gray-900">{e.entity_name}</td>
+                <td className="px-4 py-3 text-gray-600">{e.bank || '-'}</td>
+                <td className="px-4 py-3 text-gray-600">{e.is_pkp ? 'Ya' : 'Tidak'}</td>
+                <td className="px-4 py-3 text-gray-600">Rp {Number(e.biaya_pencairan).toLocaleString('id-ID')}</td>
+              </tr>
+            ))}
+            {(entities ?? []).length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Belum ada Vendor.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/documents/cor/new/actions.ts
+'use server'
+
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function createCorDocument(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa membuat COR.')
+
+  const admin = createAdminClient()
+  const projectId = (formData.get('project_id') as string) || null
+  const vendorEntityId = (formData.get('vendor_entity_id') as string) || null
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `DOC_${year}` })
+  if (seqErr) throw new Error(seqErr.message)
+  const docId = `DOC${year}-${String(seqValue).padStart(5, '0')}`
+
+  const { data: doc, error: docErr } = await admin
+    .from('document_pipeline')
+    .insert({
+      doc_id: docId,
+      project_id: projectId,
+      document_type: 'COR',
+      status: 'Not Started',
+      stage: 'New Request',
+      requested_by: employee.name,
+    })
+    .select()
+    .single()
+  if (docErr || !doc) throw new Error(docErr?.message || 'Gagal membuat dokumen.')
+
+  const isViaSalset = formData.get('is_via_salset') === 'on'
+  const isSalsetOnly = formData.get('is_salset_only') === 'on'
+
+  const { error: headerErr } = await admin.from('cor_header').insert({
+    doc_id: doc.id,
+    cor_method: 'GROSS_UP',
+    is_via_salset: isViaSalset,
+    is_salset_only: isSalsetOnly,
+    vendor_entity_id: vendorEntityId,
+    ngo_rate_pct: Number(formData.get('ngo_rate_pct') || 10),
+    biaya_salset: Number(formData.get('biaya_salset') || 0),
+    cor_tab: 'CLIENT',
+    margin_enabled: true,
+    margin_mode: 'COMPONENT',
+    manual_project_name: projectId ? null : ((formData.get('manual_project_name') as string) || null),
+    created_by: employee.name,
+  })
+  if (headerErr) throw new Error(headerErr.message)
+
+  redirect('/documents')
+}
+
+File: src/app/documents/cor/new/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { createCorDocument } from './actions'
+
+export default async function NewCorPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role === 'Operation') redirect('/documents')
+
+  const admin = createAdminClient()
+  const { data: projects } = await admin.from('project').select('id, project_id, project_name').order('project_name')
+  const { data: entities } = await admin.from('cor_entity').select('id, entity_name').order('entity_name')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-2 text-2xl font-bold text-gray-900">COR Baru</h1>
+      <p className="mb-6 text-sm text-gray-500">Ini cuma bikin dokumen COR + setting dasarnya. Dana masuk/biaya/margin diisi di langkah berikutnya (Kalkulator COR, belum tersedia).</p>
+      <form action={createCorDocument} className="max-w-xl space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Project (kosongkan kalau COR tanpa project)</label>
+          <select name="project_id" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Tanpa Project -</option>
+            {(projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.project_id} - {p.project_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Manual Project Name (kalau tanpa Project)</label>
+          <input name="manual_project_name" className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Vendor</label>
+          <select name="vendor_entity_id" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Pilih Vendor -</option>
+            {(entities ?? []).map((e) => <option key={e.id} value={e.id}>{e.entity_name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">Belum ada di daftar? Tambah dulu di menu Vendor (COR Entity).</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="is_via_salset" /> Via SALSET
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="is_salset_only" /> SALSET Saja (tanpa vendor)
+        </label>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">NGO Rate % (kalau via SALSET)</label>
+          <input name="ngo_rate_pct" type="number" defaultValue={10} className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Biaya SALSET (Rp, kalau via SALSET)</label>
+          <input name="biaya_salset" type="number" defaultValue={0} className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+          Buat COR
+        </button>
+      </form>
+    </AppShell>
+  )
+}
+
+File: src/app/documents/page.tsx -- add a link/button near the existing "+ Dokumen Baru" button (keep everything else in this file exactly as-is): add another link `<a href="/documents/cor/new" className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">+ COR Baru</a>` right next to the existing "+ Dokumen Baru" link, both inside the same flex container.
+
+File: src/components/app-shell.tsx -- add a nav item for Vendor management:
+const NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/documents', label: 'Document Pipeline' },
+  { href: '/cor-entities', label: 'Vendor' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add COR Entity management and COR document creation (settings only, calculator comes next)" && git push
