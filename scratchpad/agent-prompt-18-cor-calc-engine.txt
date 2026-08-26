@@ -1,0 +1,259 @@
+Add the COR (Cost of Revenue) calculation engine as a pure TypeScript library to this Next.js app, plus a temporary test page to manually verify the numbers. This is the single most financially critical piece of the whole app — implement the formulas EXACTLY as specified below, in this exact order, with no shortcuts or "simplifications".
+
+File: src/lib/cor-calc.ts
+
+// All money values are rounded to whole rupiah. NaN/Infinity round to 0.
+export function round(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  return Math.round(n)
+}
+
+export function pphRate(kategori: string, tipe: string): number {
+  if (kategori === 'Jasa' && tipe === 'Lembaga') return 0.02
+  if (kategori === 'Jasa' && tipe === 'Individu') return 0.025
+  return 0
+}
+
+export type CostItem = {
+  rowRole: 'PRICE' | 'ITEM'
+  harga: number
+  qty: number
+  periode: number
+  kategori?: string
+  tipe?: string
+}
+
+// One cost row -> { total, tap }. ITEM rows never carry a nominal.
+export function calcItemRow(item: CostItem): { total: number; tap: number } {
+  if (item.rowRole === 'ITEM') return { total: 0, tap: 0 }
+  const total = round(item.harga * item.qty * item.periode)
+  const rt = pphRate(item.kategori || '', item.tipe || '')
+  const tap = rt > 0 ? total / (1 - rt) : total
+  return { total, tap }
+}
+
+// Bank disbursement fee: charged per full/partial Rp200,000,000 chunk, rounded up.
+export function adminFee(bankRate: number, afterFee: number): number {
+  if (afterFee <= 0) return 0
+  return Math.ceil(afterFee / 200_000_000) * bankRate
+}
+
+export type FundRow = {
+  fundType: 'CLIENT' | 'CAMPAIGN'
+  nominal: number
+  isZakat: boolean
+  techFeeManual: boolean
+  manualTechFee?: number
+}
+
+// Per-row fee breakdown for one fund/donation entry.
+export function fundCalc(f: FundRow, biayaPencairan: number) {
+  const pf = f.fundType === 'CLIENT' && !f.isZakat ? round(f.nominal * 0.05) : 0
+  const tf =
+    f.fundType === 'CLIENT'
+      ? f.techFeeManual
+        ? round(f.manualTechFee || 0)
+        : round(f.nominal * 0.01)
+      : 0
+  const af = f.nominal - pf - tf
+  const adm = adminFee(biayaPencairan, af)
+  const total = af - adm
+  return { pf, tf, af, adm, total }
+}
+
+export type MarginComponent = { component: string; percentage: number }
+
+export type ComputeGDOptions = {
+  funds: FundRow[]
+  biayaPencairan: number
+  isViaSalset: boolean
+  ngoRatePct: number
+  biayaSalset: number
+  pkp: boolean
+  pphOn: boolean
+  marginEnabled: boolean
+  marginMode: 'COMPONENT' | 'MANUAL'
+  manualMarginPct: number
+  marginComponents: MarginComponent[]
+  salItems: CostItem[]
+  baaItems: CostItem[]
+  salsetOnly: boolean
+}
+
+// Gross Down: funds already received, this computes the final actual ledger.
+// STEP ORDER MATTERS -- do not reorder.
+export function computeGD(opts: ComputeGDOptions) {
+  // 1. total funds in
+  const totalMasuk = round(opts.funds.reduce((sum, f) => sum + fundCalc(f, opts.biayaPencairan).total, 0))
+
+  // 2. SALSET layer
+  let salFee = 0, sisaDana = 0, cashGross: number
+  if (opts.isViaSalset) {
+    salFee = round(totalMasuk * (opts.ngoRatePct / 100))
+    sisaDana = totalMasuk - salFee
+    cashGross = sisaDana - opts.biayaSalset
+  } else {
+    cashGross = totalMasuk
+  }
+
+  // 3. vendor-side tax
+  const ppnGd = opts.pkp ? round(cashGross / 1.11) : cashGross
+  const pph23 = opts.pphOn ? round(ppnGd * 0.02) : 0
+  const cashNet = ppnGd - pph23
+
+  // 4. default margin (profit taken upfront)
+  let totalMgnFrac = 0
+  if (opts.marginEnabled === false) totalMgnFrac = 0
+  else if (opts.marginMode === 'MANUAL') totalMgnFrac = opts.manualMarginPct / 100
+  else totalMgnFrac = opts.marginComponents.reduce((sum, m) => sum + m.percentage / 100, 0)
+
+  const profit = round(cashNet * totalMgnFrac)
+  const availCost = cashNet - profit
+
+  // 5. total costs
+  const totalSal = round(opts.salItems.reduce((sum, i) => sum + calcItemRow(i).tap, 0))
+  const totalBaa = round(opts.baaItems.reduce((sum, i) => sum + calcItemRow(i).tap, 0))
+
+  // 6. SPP block
+  const dpp = ppnGd
+  const ppn11 = opts.pkp ? round(dpp * 0.11) : 0
+  const pphSpp = opts.pphOn ? round(dpp * 0.02) : 0
+  const neto = dpp - pphSpp
+
+  // 7. ACTUAL margin/profit (independent from step 4's default margin)
+  let pmProfit = cashNet - totalBaa
+  let pmPct = cashNet > 0 ? pmProfit / cashNet : 0
+
+  // 8. REQUIRED "SALSET Saja" exception -- no vendor leg at all, so totalBaa
+  // is always 0, and without this the whole remaining balance would be
+  // misread as profit. This is a real production bug that must never recur.
+  if (opts.salsetOnly) { pmProfit = 0; pmPct = 0 }
+
+  return {
+    totalMasuk, salFee, sisaDana, cashGross, ppnGd, pph23, cashNet,
+    profit, availCost, totalSal, totalBaa, dpp, ppn11, pphSpp, neto,
+    pmProfit, pmPct, totalMgnFrac,
+  }
+}
+
+export type ComputeGUOptions = {
+  ngoRatePct: number
+  isViaSalset: boolean
+  pkp: boolean
+  biayaPencairan: number
+  salItems: CostItem[]
+  baaItems: CostItem[]
+  marginComponents: MarginComponent[]
+}
+
+// Gross Up: funds not yet received -- work backward from costs to the
+// amount that must be requested from the client. Every division here is
+// intentionally a gross-up, not a simple multiply.
+export function computeGU(opts: ComputeGUOptions) {
+  const ngoRateFrac = (opts.ngoRatePct || 10) / 100
+  const totalGuSal = round(opts.salItems.reduce((sum, i) => sum + calcItemRow(i).tap, 0))
+  const totalGuBaa = round(opts.baaItems.reduce((sum, i) => sum + calcItemRow(i).tap, 0))
+  const guTotalMgnFrac = opts.marginComponents.reduce((sum, m) => sum + m.percentage / 100, 0)
+
+  const salGu = opts.isViaSalset ? totalGuSal / (1 - ngoRateFrac) : 0
+  const guMargin = guTotalMgnFrac < 1 ? totalGuBaa / (1 - guTotalMgnFrac) : totalGuBaa
+  const guPph = guMargin / 0.98
+  const guPpn = opts.pkp ? guPph * 1.11 : guPph
+
+  let guBaa: number, totalHasilGu: number
+  if (opts.isViaSalset) {
+    guBaa = guPpn / (1 - ngoRateFrac)
+    totalHasilGu = salGu + guBaa
+  } else {
+    guBaa = guPpn
+    totalHasilGu = guPpn
+  }
+
+  const guAdmin = adminFee(opts.biayaPencairan, totalHasilGu)
+  // 0.94 = 1 - 0.05 (Platform Fee) - 0.01 (Tech Fee). Kept as an explicit
+  // named constant on purpose -- if the fee rates ever change, this MUST
+  // change with them.
+  const PLATFORM_FEE_RATE = 0.05
+  const TECH_FEE_RATE = 0.01
+  const guFinal = (totalHasilGu + guAdmin) / (1 - PLATFORM_FEE_RATE - TECH_FEE_RATE)
+
+  const guDpp = guPph
+  const guPpn11 = opts.pkp ? round(guDpp * 0.11) : 0
+  const guPphSpp = round(guDpp * 0.02) // NOTE: unlike computeGD, this has NO pphOn gate -- always computed in Gross Up. Keep as-is.
+  const guNeto = guDpp - guPphSpp
+  const guProfit = guMargin - totalGuBaa
+  const guSalFee = opts.isViaSalset ? round(totalHasilGu * ngoRateFrac) : 0
+
+  return { salGu, guMargin, guPph, guPpn, guBaa, totalHasilGu, guAdmin, guFinal, guDpp, guPpn11, guPphSpp, guNeto, guProfit, guSalFee }
+}
+
+// Margin guard: compares planned margin (from computeGD step 4) against
+// actual margin (from step 7). Must be re-evaluated server-side at
+// request-approval time, never trusted from what was shown on screen.
+export function evaluateMarginGuard(totalMgnFrac: number, pmPct: number) {
+  const planPct = Math.round(totalMgnFrac * 10000) / 100
+  const actualPct = Math.round(pmPct * 10000) / 100
+  return { planPct, actualPct, below: actualPct < planPct }
+}
+
+File: src/app/cor-test/page.tsx
+'use client'
+import { useState } from 'react'
+import { computeGD, evaluateMarginGuard } from '@/lib/cor-calc'
+
+export default function CorTestPage() {
+  const [nominal, setNominal] = useState(100000000)
+  const [isZakat, setIsZakat] = useState(false)
+  const [pkp, setPkp] = useState(true)
+  const [vendorHarga, setVendorHarga] = useState(50000000)
+  const [marginPct, setMarginPct] = useState(10)
+
+  const result = computeGD({
+    funds: [{ fundType: 'CLIENT', nominal, isZakat, techFeeManual: false }],
+    biayaPencairan: 50000,
+    isViaSalset: false,
+    ngoRatePct: 10,
+    biayaSalset: 0,
+    pkp,
+    pphOn: true,
+    marginEnabled: true,
+    marginMode: 'MANUAL',
+    manualMarginPct: marginPct,
+    marginComponents: [],
+    salItems: [],
+    baaItems: [{ rowRole: 'PRICE', harga: vendorHarga, qty: 1, periode: 1, kategori: 'Jasa', tipe: 'Lembaga' }],
+    salsetOnly: false,
+  })
+
+  const guard = evaluateMarginGuard(result.totalMgnFrac, result.pmPct)
+
+  return (
+    <main style={{ padding: 24, fontFamily: 'monospace' }}>
+      <h1>COR Calc Engine -- Manual Test</h1>
+      <p style={{ color: '#888' }}>Halaman sementara buat ngecek angka computeGD() bener. Akan dihapus setelah form kalkulator resmi (Langkah 19) jadi.</p>
+
+      <div style={{ display: 'flex', gap: 24, marginTop: 16, flexWrap: 'wrap' }}>
+        <label>Nominal Dana Masuk (CLIENT)<br />
+          <input type="number" value={nominal} onChange={(e) => setNominal(Number(e.target.value))} />
+        </label>
+        <label>Biaya Vendor (Jasa, Lembaga)<br />
+          <input type="number" value={vendorHarga} onChange={(e) => setVendorHarga(Number(e.target.value))} />
+        </label>
+        <label>Default Margin %<br />
+          <input type="number" value={marginPct} onChange={(e) => setMarginPct(Number(e.target.value))} />
+        </label>
+        <label><input type="checkbox" checked={isZakat} onChange={(e) => setIsZakat(e.target.checked)} /> Zakat/Bencana</label>
+        <label><input type="checkbox" checked={pkp} onChange={(e) => setPkp(e.target.checked)} /> PKP</label>
+      </div>
+
+      <pre style={{ background: '#f3f3f3', padding: 16, marginTop: 24 }}>{JSON.stringify(result, null, 2)}</pre>
+
+      <p>
+        Margin Guard -- Plan: {guard.planPct}% | Actual: {guard.actualPct}% |{' '}
+        <strong style={{ color: guard.below ? 'red' : 'green' }}>{guard.below ? 'DI BAWAH PANDUAN' : 'AMAN'}</strong>
+      </p>
+    </main>
+  )
+}
+
+After creating the files, commit and push: git add . && git commit -m "Add COR calculation engine (pure functions) with a manual verification test page" && git push
