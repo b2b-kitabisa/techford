@@ -1,0 +1,176 @@
+Add a Project detail page with Revenue Breakdown (GDV/SERVICE line items), recalculating the parent project's total_gdv and total_service_revenue on every add/remove.
+
+File: src/app/projects/[id]/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation cuma bisa lihat, tidak bisa mengubah Revenue Breakdown.')
+  return employee
+}
+
+async function recalcProjectTotals(admin: ReturnType<typeof createAdminClient>, projectId: string) {
+  const { data: rows } = await admin.from('revenue_breakdown').select('value_type, amount').eq('project_id', projectId)
+  const totalGdv = (rows ?? []).filter((r) => r.value_type === 'GDV').reduce((sum, r) => sum + Number(r.amount), 0)
+  const totalServiceRevenue = (rows ?? []).filter((r) => r.value_type === 'SERVICE').reduce((sum, r) => sum + Number(r.amount), 0)
+  await admin.from('project').update({ total_gdv: totalGdv, total_service_revenue: totalServiceRevenue }).eq('id', projectId)
+}
+
+export async function addRevenueBreakdown(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+  const projectId = formData.get('project_id') as string
+  const valueType = formData.get('value_type') as string
+  const itemName = ((formData.get('item_name') as string) || '').trim()
+  const amount = Number(formData.get('amount') || 0)
+
+  if (!['GDV', 'SERVICE'].includes(valueType)) throw new Error('Value Type tidak valid.')
+  if (!itemName) throw new Error('Item Name wajib diisi.')
+  if (amount <= 0) throw new Error('Amount harus lebih dari 0.')
+
+  const { error } = await admin.from('revenue_breakdown').insert({
+    project_id: projectId,
+    value_type: valueType,
+    item_name: itemName,
+    amount,
+    notes: (formData.get('notes') as string) || null,
+    created_by: employee.name,
+    entry_date: new Date().toISOString().slice(0, 10),
+  })
+  if (error) throw new Error(error.message)
+
+  await recalcProjectTotals(admin, projectId)
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+}
+
+export async function removeRevenueBreakdown(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const projectId = formData.get('project_id') as string
+
+  const { error } = await admin.from('revenue_breakdown').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  await recalcProjectTotals(admin, projectId)
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+}
+
+File: src/app/projects/[id]/page.tsx
+import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addRevenueBreakdown, removeRevenueBreakdown } from './actions'
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: project } = await admin.from('project').select('*').eq('id', id).single()
+  if (!project) notFound()
+
+  const { data: client } = await admin.from('client').select('brand_name').eq('id', project.client_id).single()
+  const { data: rows } = await admin.from('revenue_breakdown').select('*').eq('project_id', id).order('created_at', { ascending: false })
+  const canWrite = employee.role !== 'Operation'
+
+  const gdvRows = (rows ?? []).filter((r) => r.value_type === 'GDV')
+  const serviceRows = (rows ?? []).filter((r) => r.value_type === 'SERVICE')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <p className="mb-2"><Link href="/projects" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Sales Pipeline</Link></p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">{project.project_name}</h1>
+      <p className="mb-6 text-sm text-gray-500">{project.project_id} · {client?.brand_name} · Stage: {project.stage}</p>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total GDV</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(project.total_gdv)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Service Revenue</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(project.total_service_revenue)}</div>
+        </div>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Revenue Breakdown</h2>
+      {canWrite && (
+        <form action={addRevenueBreakdown} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="project_id" value={id} />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Value Type</label>
+            <select name="value_type" className="rounded-md border-gray-300 text-sm">
+              <option value="GDV">GDV</option>
+              <option value="SERVICE">SERVICE</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Item Name *</label>
+            <input name="item_name" required placeholder="Link campaign / nama service" className="w-56 rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Amount *</label>
+            <input name="amount" type="number" required className="w-40 rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Notes</label>
+            <input name="notes" className="rounded-md border-gray-300 text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah</button>
+        </form>
+      )}
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        {[{ label: 'GDV', data: gdvRows }, { label: 'SERVICE', data: serviceRows }].map((group) => (
+          <div key={group.label} className="overflow-hidden rounded-lg border bg-white shadow-sm">
+            <div className="bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{group.label}</div>
+            <table className="w-full text-sm">
+              <tbody className="divide-y">
+                {group.data.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-3 text-gray-900">{r.item_name}</td>
+                    <td className="px-4 py-3 text-gray-700">{rupiah(r.amount)}</td>
+                    <td className="px-4 py-3">
+                      {canWrite && (
+                        <form action={removeRevenueBreakdown}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="project_id" value={id} />
+                          <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {group.data.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400">Belum ada data.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/projects/page.tsx -- in the existing table, change the Project ID cell from plain text to a link to the detail page. Find this line:
+<td className="px-4 py-3 font-mono text-gray-700">{project.project_id}</td>
+Replace it with:
+<td className="px-4 py-3 font-mono text-gray-700"><Link href={`/projects/${project.id}`} className="text-blue-600 hover:underline">{project.project_id}</Link></td>
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Project detail page with Revenue Breakdown (GDV/SERVICE) and auto-recalculated totals" && git push
