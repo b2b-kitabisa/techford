@@ -1,0 +1,179 @@
+Redesign the shared app shell/navigation of this Next.js + Tailwind app. The current top-bar nav has grown to ~11 flat links and is cramped. Replace it with a clean left sidebar, grouped by section, with active-link highlighting. Also fix two bugs in the scaffold defaults: globals.css hardcodes `font-family: Arial, Helvetica, sans-serif` on body which silently overrides the nicer Geist font already configured (never actually used), and there's an automatic dark-mode color-scheme flip in globals.css that conflicts with the app's Tailwind components (all currently hardcoded for light mode) -- remove that dark-mode auto-invert so the app doesn't render mismatched half-dark/half-light when a user's OS is in dark mode. Also fix the page <title>/description in layout.tsx, still showing the create-next-app defaults.
+
+File: src/app/globals.css -- REPLACE the whole file with this:
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+File: src/app/layout.tsx -- REPLACE the whole file with this (same font setup, just fixed metadata):
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Techford",
+  description: "Techford - B2B Kitabisa internal platform",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="id"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+
+File: src/components/sidebar-nav.tsx (NEW FILE, client component for active-link highlighting)
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+
+const NAV_GROUPS = [
+  {
+    label: 'Utama',
+    items: [
+      { href: '/dashboard', label: 'Dashboard Sales' },
+      { href: '/', label: 'Home' },
+    ],
+  },
+  {
+    label: 'Sales',
+    items: [
+      { href: '/leads', label: 'Lead Capturing' },
+      { href: '/clients', label: 'Client Monitoring' },
+      { href: '/projects', label: 'Sales Pipeline' },
+    ],
+  },
+  {
+    label: 'Operasional',
+    items: [
+      { href: '/documents', label: 'Document Pipeline' },
+      { href: '/cor-entities', label: 'Vendor' },
+      { href: '/cost-monitoring', label: 'Cost Monitoring' },
+    ],
+  },
+  {
+    label: 'Pengaturan',
+    items: [
+      { href: '/achievement-target', label: 'Achievement Target' },
+      { href: '/employees', label: 'Employee' },
+      { href: '/master-data', label: 'Master Data' },
+    ],
+  },
+]
+
+export function SidebarNav() {
+  const pathname = usePathname()
+
+  function isActive(href: string) {
+    if (href === '/') return pathname === '/'
+    return pathname === href || pathname.startsWith(href + '/')
+  }
+
+  return (
+    <nav className="flex flex-col gap-6">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label}>
+          <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {group.label}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {group.items.map((item) => {
+              const active = isActive(item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  )
+}
+
+File: src/components/app-shell.tsx -- REPLACE the whole file with this:
+import { SidebarNav } from './sidebar-nav'
+
+export function AppShell({
+  employeeName,
+  employeeRole,
+  children,
+}: {
+  employeeName: string
+  employeeRole: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-5 py-5">
+          <span className="text-lg font-bold tracking-tight text-slate-900">Techford</span>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-5">
+          <SidebarNav />
+        </div>
+        <div className="border-t border-slate-200 p-4">
+          <div className="mb-2">
+            <div className="truncate text-sm font-medium text-slate-900">{employeeName}</div>
+            <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {employeeRole}
+            </span>
+          </div>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              Logout
+            </button>
+          </form>
+        </div>
+      </aside>
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl px-8 py-8">{children}</div>
+      </main>
+    </div>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "UI polish: sidebar navigation with active-link highlighting, fix font/title/dark-mode defaults" && git push
