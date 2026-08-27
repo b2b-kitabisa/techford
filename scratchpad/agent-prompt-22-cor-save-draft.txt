@@ -1,0 +1,304 @@
+Add "Save Draft" (persists the computed result and advances document status) and "Convert to Gross Down" (one-way, snapshots the Gross Up result) to the COR module. First extract the shared computation logic into a reusable loader so both the page and the server actions use the exact same calculation, instead of duplicating it.
+
+File: src/lib/cor-load.ts
+import { fundCalc, calcItemRow, computeGD, computeGU } from './cor-calc'
+
+const MARGIN_COMPONENTS_LIST = ['CONS', 'CRE', 'PROG', 'IMP']
+
+export async function loadCorComputation(admin: any, docId: string) {
+  const { data: header } = await admin.from('cor_header').select('*').eq('doc_id', docId).single()
+  const { data: funds } = await admin.from('cor_fund').select('*').eq('doc_id', docId).order('sort_order')
+  const { data: costs } = await admin.from('cor_cost').select('*').eq('doc_id', docId).order('sort_order')
+  const { data: margins } = await admin.from('cor_margin').select('*').eq('doc_id', docId).eq('cor_tab', 'CLIENT')
+  const { data: vendor } = header?.vendor_entity_id
+    ? await admin.from('cor_entity').select('*').eq('id', header.vendor_entity_id).single()
+    : { data: null }
+
+  const biayaPencairan = vendor?.biaya_pencairan ?? 0
+  const pkp = vendor?.is_pkp ?? false
+
+  const fundRows = (funds ?? []).map((f: any) => ({
+    ...f,
+    calc: fundCalc(
+      { fundType: f.fund_type, nominal: Number(f.gdv), isZakat: f.is_zakat, techFeeManual: f.tech_fee_manual, manualTechFee: Number(f.manual_tech_fee || 0) },
+      biayaPencairan
+    ),
+  }))
+
+  const salItems = (costs ?? []).filter((c: any) => c.cost_group === 'SAL')
+  const baaItems = (costs ?? []).filter((c: any) => c.cost_group === 'VENDOR')
+  const toCostItem = (c: any) => ({ rowRole: c.row_role, harga: Number(c.harga), qty: Number(c.qty), periode: Number(c.periode), kategori: c.kategori, tipe: c.tipe })
+
+  const marginComponents = MARGIN_COMPONENTS_LIST.map((key) => {
+    const row = (margins ?? []).find((m: any) => m.component === key)
+    return { component: key, percentage: row ? Number(row.percentage) : 0 }
+  })
+
+  const pphOn = header?.is_via_salset || fundRows.some((f: any) => f.fund_type === 'CLIENT')
+
+  let result: any = null
+  if (header?.cor_method === 'GROSS_DOWN') {
+    result = computeGD({
+      funds: fundRows.map((f: any) => ({ fundType: f.fund_type, nominal: Number(f.gdv), isZakat: f.is_zakat, techFeeManual: f.tech_fee_manual, manualTechFee: Number(f.manual_tech_fee || 0) })),
+      biayaPencairan,
+      isViaSalset: header.is_via_salset,
+      ngoRatePct: Number(header.ngo_rate_pct),
+      biayaSalset: Number(header.biaya_salset),
+      pkp,
+      pphOn,
+      marginEnabled: header.margin_enabled,
+      marginMode: header.margin_mode,
+      manualMarginPct: Number(header.manual_margin_pct || 0),
+      marginComponents,
+      salItems: salItems.map(toCostItem),
+      baaItems: baaItems.map(toCostItem),
+      salsetOnly: header.is_salset_only,
+    })
+  } else if (header) {
+    result = computeGU({
+      ngoRatePct: Number(header.ngo_rate_pct || 10),
+      isViaSalset: header.is_via_salset,
+      pkp,
+      biayaPencairan,
+      salItems: salItems.map(toCostItem),
+      baaItems: baaItems.map(toCostItem),
+      marginComponents,
+    })
+  }
+
+  return { header, vendor, funds: funds ?? [], fundRows, costs: costs ?? [], marginComponents, marginRows: margins ?? [], result, biayaPencairan, pkp }
+}
+
+File: src/app/documents/cor/[id]/actions.ts -- ADD these two functions to the existing file (keep everything else as-is), and add `import { loadCorComputation } from '@/lib/cor-load'` at the top:
+
+export async function saveDraft(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { header, result } = await loadCorComputation(admin, docId)
+  if (!header) throw new Error('COR Header tidak ditemukan.')
+
+  if (header.cor_method === 'GROSS_DOWN') {
+    await admin.from('cor_result').delete().eq('doc_id', docId).eq('cor_tab', 'CLIENT')
+    const { error } = await admin.from('cor_result').insert({ doc_id: docId, cor_tab: 'CLIENT', snapshot: result })
+    if (error) throw new Error(error.message)
+  }
+
+  const { data: doc } = await admin.from('document_pipeline').select('status').eq('id', docId).single()
+  if (doc?.status === 'Not Started') {
+    await admin.from('document_pipeline').update({ status: 'Drafting', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', docId)
+  }
+
+  revalidatePath(`/documents/cor/${docId}`)
+  revalidatePath('/documents')
+}
+
+export async function convertToGrossDown(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { header, result } = await loadCorComputation(admin, docId)
+  if (!header) throw new Error('COR Header tidak ditemukan.')
+  if (header.cor_method !== 'GROSS_UP') throw new Error('Cuma COR dengan metode Gross Up yang bisa dikonversi.')
+
+  const { error } = await admin
+    .from('cor_header')
+    .update({ cor_method: 'GROSS_DOWN', gross_up_snapshot: result, converted_at: new Date().toISOString() })
+    .eq('doc_id', docId)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/cor/${docId}`)
+}
+
+File: src/app/documents/cor/[id]/page.tsx -- REPLACE the whole file with this (same sections as before, but now sourced from loadCorComputation, plus new Save Draft / Convert buttons and a saved-result panel):
+
+import { redirect, notFound } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { calcItemRow } from '@/lib/cor-calc'
+import { loadCorComputation } from '@/lib/cor-load'
+import { addFund, removeFund, addCost, removeCost, setMarginComponent, saveDraft, convertToGrossDown } from './actions'
+
+const MARGIN_COMPONENTS = [
+  { key: 'CONS', label: 'Consultancy Service Fee' },
+  { key: 'CRE', label: 'Creative Development' },
+  { key: 'PROG', label: 'Program Implementation and Coordination' },
+  { key: 'IMP', label: 'Impact Measurement and Reporting' },
+]
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function CorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', id).single()
+  if (!doc || doc.document_type !== 'COR') notFound()
+
+  const { header, vendor, fundRows, costs, marginRows, result, biayaPencairan } = await loadCorComputation(admin, id)
+  const { data: savedResult } = header?.cor_method === 'GROSS_DOWN'
+    ? await admin.from('cor_result').select('*').eq('doc_id', id).eq('cor_tab', 'CLIENT').maybeSingle()
+    : { data: null }
+
+  const canWrite = employee.role !== 'Operation'
+  const totalImplementationFund = fundRows.reduce((sum: number, r: any) => sum + r.calc.total, 0)
+  const toCostItem = (c: any) => ({ rowRole: c.row_role, harga: Number(c.harga), qty: Number(c.qty), periode: Number(c.periode), kategori: c.kategori, tipe: c.tipe })
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">COR: {doc.doc_id}</h1>
+        {canWrite && (
+          <div className="flex gap-2">
+            {header?.cor_method === 'GROSS_UP' && (
+              <form action={convertToGrossDown}>
+                <input type="hidden" name="doc_id" value={id} />
+                <button type="submit" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">
+                  Convert ke Gross Down (satu arah)
+                </button>
+              </form>
+            )}
+            <form action={saveDraft}>
+              <input type="hidden" name="doc_id" value={id} />
+              <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                Simpan Draft
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+      <p className="mb-6 text-sm text-gray-500">
+        Vendor: {vendor?.entity_name ?? '-'} · Metode: {header?.cor_method} · Via SALSET: {header?.is_via_salset ? 'Ya' : 'Tidak'} · Status: {doc.status}
+      </p>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Dana Masuk</h2>
+      {canWrite && (
+        <form action={addFund} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="doc_id" value={id} />
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Fund Type</label>
+            <select name="fund_type" className="rounded-md border-gray-300 text-sm"><option value="CLIENT">CLIENT</option><option value="CAMPAIGN">CAMPAIGN</option></select></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Nominal (Rp) *</label>
+            <input name="gdv" type="number" required className="w-40 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Link Campaign</label>
+            <input name="link_campaign" className="rounded-md border-gray-300 text-sm" /></div>
+          <label className="flex items-center gap-2 pb-2 text-sm text-gray-700"><input type="checkbox" name="is_zakat" /> Zakat/Bencana</label>
+          <label className="flex items-center gap-2 pb-2 text-sm text-gray-700"><input type="checkbox" name="tech_fee_manual" /> Tech Fee Manual</label>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Manual Tech Fee</label>
+            <input name="manual_tech_fee" type="number" className="w-40 rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah Dana</button>
+        </form>
+      )}
+      <div className="mb-8 overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Tipe</th><th className="px-4 py-3">Nominal</th><th className="px-4 py-3">Platform Fee</th><th className="px-4 py-3">Tech Fee</th><th className="px-4 py-3">NDV</th><th className="px-4 py-3">Admin Fee</th><th className="px-4 py-3">Implementation Fund</th><th className="px-4 py-3"></th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {fundRows.map((r: any) => (
+              <tr key={r.id}>
+                <td className="px-4 py-3">{r.fund_type}{r.is_zakat ? ' (Zakat)' : ''}</td>
+                <td className="px-4 py-3">{rupiah(r.gdv)}</td>
+                <td className="px-4 py-3">{rupiah(r.calc.pf)}</td>
+                <td className="px-4 py-3">{rupiah(r.calc.tf)}</td>
+                <td className="px-4 py-3">{rupiah(r.calc.af)}</td>
+                <td className="px-4 py-3">{rupiah(r.calc.adm)}</td>
+                <td className="px-4 py-3 font-medium">{rupiah(r.calc.total)}</td>
+                <td className="px-4 py-3">{canWrite && (
+                  <form action={removeFund}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="doc_id" value={id} />
+                    <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button></form>
+                )}</td>
+              </tr>
+            ))}
+            {fundRows.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Belum ada dana masuk.</td></tr>}
+          </tbody>
+          {fundRows.length > 0 && <tfoot><tr className="bg-gray-50 font-semibold"><td className="px-4 py-3" colSpan={6}>Total Implementation Fund</td><td className="px-4 py-3">{rupiah(totalImplementationFund)}</td><td></td></tr></tfoot>}
+        </table>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Biaya</h2>
+      {canWrite && (
+        <form action={addCost} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="doc_id" value={id} />
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Kelompok</label>
+            <select name="cost_group" className="rounded-md border-gray-300 text-sm"><option value="VENDOR">VENDOR</option><option value="SAL">SAL (SALSET)</option></select></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Keterangan</label>
+            <input name="keterangan" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Kategori</label>
+            <input name="kategori" placeholder="mis. Jasa" className="w-28 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Tipe</label>
+            <select name="tipe" className="rounded-md border-gray-300 text-sm"><option value="">-</option><option value="Lembaga">Lembaga</option><option value="Individu">Individu</option></select></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Harga *</label>
+            <input name="harga" type="number" required className="w-32 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Qty</label>
+            <input name="qty" type="number" defaultValue={1} className="w-20 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Periode</label>
+            <input name="periode" type="number" defaultValue={1} className="w-20 rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah Biaya</button>
+        </form>
+      )}
+      <div className="mb-8 overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Kelompok</th><th className="px-4 py-3">Keterangan</th><th className="px-4 py-3">Kategori/Tipe</th><th className="px-4 py-3">Harga x Qty x Periode</th><th className="px-4 py-3">Total (after PPh)</th><th className="px-4 py-3"></th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {costs.map((c: any) => {
+              const calc = calcItemRow(toCostItem(c))
+              return (
+                <tr key={c.id}>
+                  <td className="px-4 py-3">{c.cost_group}</td>
+                  <td className="px-4 py-3">{c.keterangan || '-'}</td>
+                  <td className="px-4 py-3">{c.kategori || '-'} / {c.tipe || '-'}</td>
+                  <td className="px-4 py-3">{rupiah(c.harga)} x {c.qty} x {c.periode}</td>
+                  <td className="px-4 py-3 font-medium">{rupiah(calc.tap)}</td>
+                  <td className="px-4 py-3">{canWrite && (
+                    <form action={removeCost}><input type="hidden" name="id" value={c.id} /><input type="hidden" name="doc_id" value={id} />
+                      <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button></form>
+                  )}</td>
+                </tr>
+              )
+            })}
+            {costs.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum ada biaya.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Default Margin (Component Mode)</h2>
+      <div className="mb-8 grid gap-3 sm:grid-cols-2">
+        {MARGIN_COMPONENTS.map((mc) => {
+          const existing = marginRows.find((m: any) => m.component === mc.key)
+          return (
+            <form key={mc.key} action={setMarginComponent} className="flex items-center gap-2 rounded-lg border bg-white p-3 shadow-sm">
+              <input type="hidden" name="doc_id" value={id} />
+              <input type="hidden" name="component" value={mc.key} />
+              <span className="w-40 text-xs font-medium text-gray-600">{mc.label}</span>
+              <input name="sub_category" defaultValue={existing?.sub_category || ''} placeholder="Sub kategori" className="flex-1 rounded-md border-gray-300 text-xs" />
+              <input name="percentage" type="number" step="0.1" defaultValue={existing?.percentage ?? 0} className="w-20 rounded-md border-gray-300 text-xs" />
+              <span className="text-xs text-gray-500">%</span>
+              {canWrite && <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">Set</button>}
+            </form>
+          )
+        })}
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">
+        {header?.cor_method === 'GROSS_DOWN' && savedResult ? 'Hasil Tersimpan (dari Simpan Draft terakhir)' : 'Preview Hasil (belum disimpan)'}
+      </h2>
+      <pre className="overflow-x-auto rounded-lg border bg-gray-50 p-4 text-xs">
+        {JSON.stringify(header?.cor_method === 'GROSS_DOWN' && savedResult ? savedResult.snapshot : result, null, 2)}
+      </pre>
+      {header?.cor_method === 'GROSS_DOWN' && !savedResult && (
+        <p className="mt-2 text-xs text-amber-600">Belum pernah di-Simpan Draft -- ini masih preview live, klik "Simpan Draft" buat menyimpan permanen.</p>
+      )}
+    </AppShell>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Save Draft (persist cor_result, advance status) and Convert to Gross Down" && git push
