@@ -1,0 +1,193 @@
+Add the public, no-login magic-link approve/reject pages for COR, completing the approval loop. GET requests must NOT mutate anything by themselves (only show a confirmation screen) -- the actual approve/reject only happens when the confirmation form is submitted, to avoid email link-scanners/prefetchers accidentally triggering an approval.
+
+File: src/lib/cor-approval-guard.ts
+export async function findValidCorHeaderByToken(admin: any, token: string) {
+  const { data: header } = await admin.from('cor_header').select('*').eq('approval_token', token).maybeSingle()
+  if (!header) {
+    return { header: null, error: 'Link sudah tidak berlaku, mungkin ada permintaan approval yang lebih baru.' }
+  }
+  if (header.approval_resolved_at) {
+    return { header: null, error: 'Dokumen ini sudah diputuskan sebelumnya.' }
+  }
+  if (header.approval_expires_at && new Date(header.approval_expires_at) < new Date()) {
+    return { header: null, error: `Link kedaluwarsa pada ${new Date(header.approval_expires_at).toLocaleString('id-ID')}, minta pengaju kirim ulang.` }
+  }
+  return { header, error: null }
+}
+
+File: src/app/approve/cor/[token]/actions.ts
+'use server'
+
+import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findValidCorHeaderByToken } from '@/lib/cor-approval-guard'
+
+const STAGE_RANK: Record<string, number> = { Prospect: 1, Negotiation: 2, Won: 3 }
+
+export async function confirmApprove(formData: FormData) {
+  const token = formData.get('token') as string
+  const admin = createAdminClient()
+  const { header, error } = await findValidCorHeaderByToken(admin, token)
+  if (error || !header) throw new Error(error || 'Link tidak valid.')
+
+  const { data: approverEmp } = await admin.from('employee').select('id').eq('email', header.approval_requested_to).maybeSingle()
+
+  await admin.from('cor_header').update({
+    approval_resolved_at: new Date().toISOString(),
+    approved_by: approverEmp?.id || null,
+    approved_at: new Date().toISOString(),
+  }).eq('doc_id', header.doc_id)
+
+  await admin.from('document_pipeline').update({ status: 'Approved', stage: 'Done', last_updated: new Date().toISOString() }).eq('id', header.doc_id)
+
+  await admin.from('document_activity').insert({
+    doc_id: header.doc_id,
+    activity_type: 'APPROVED',
+    round_no: 1,
+    actor_name: header.approval_requested_name,
+    actor_email: header.approval_requested_to,
+  })
+
+  // Best-effort budget snapshot for Cost Monitoring -- a failure here must
+  // NEVER undo an approval that has already legitimately happened.
+  try {
+    const { data: costs } = await admin.from('cor_cost').select('*').eq('doc_id', header.doc_id).neq('row_role', 'ITEM')
+    if (costs && costs.length) {
+      await admin.from('cor_budget_item').insert(
+        costs.map((c: any) => ({
+          doc_id: header.doc_id,
+          cor_tab: c.cor_tab,
+          cost_group: c.cost_group,
+          keterangan: c.keterangan,
+          kategori: c.kategori,
+          budgeted_amount: Number(c.harga) * Number(c.qty) * Number(c.periode),
+          sort_order: c.sort_order,
+        }))
+      )
+    }
+  } catch (e) {
+    console.error('Snapshot budget gagal (approval tetap sah):', e)
+  }
+
+  // Auto-advance the parent Project's stage, same rule as DECK/RAB/PRODCOST:
+  // forward-only, never touches a Won or Loss project.
+  const { data: doc } = await admin.from('document_pipeline').select('project_id').eq('id', header.doc_id).single()
+  if (doc?.project_id) {
+    const { data: project } = await admin.from('project').select('stage').eq('id', doc.project_id).single()
+    if (project && project.stage !== 'Loss') {
+      const currentRank = STAGE_RANK[project.stage] ?? 0
+      if (STAGE_RANK['Negotiation'] > currentRank) {
+        await admin.from('project').update({ stage: 'Negotiation', stage_changed_at: new Date().toISOString() }).eq('id', doc.project_id)
+      }
+    }
+  }
+
+  redirect(`/approve/cor/${token}/done?result=approved`)
+}
+
+export async function confirmReject(formData: FormData) {
+  const token = formData.get('token') as string
+  const note = ((formData.get('note') as string) || '').trim()
+  const admin = createAdminClient()
+  const { header, error } = await findValidCorHeaderByToken(admin, token)
+  if (error || !header) throw new Error(error || 'Link tidak valid.')
+  if (!note) throw new Error('Alasan reject wajib diisi.')
+
+  await admin.from('cor_header').update({
+    approval_resolved_at: new Date().toISOString(),
+    rejection_note: note,
+  }).eq('doc_id', header.doc_id)
+
+  await admin.from('document_pipeline').update({ status: 'Revision', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', header.doc_id)
+
+  await admin.from('document_activity').insert({
+    doc_id: header.doc_id,
+    activity_type: 'REJECTED',
+    round_no: 1,
+    actor_name: header.approval_requested_name,
+    actor_email: header.approval_requested_to,
+    note,
+  })
+
+  redirect(`/approve/cor/${token}/done?result=rejected`)
+}
+
+File: src/app/approve/cor/[token]/page.tsx
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findValidCorHeaderByToken } from '@/lib/cor-approval-guard'
+import { confirmApprove, confirmReject } from './actions'
+
+export default async function ApproveCorPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>
+  searchParams: Promise<{ action?: string }>
+}) {
+  const { token } = await params
+  const { action } = await searchParams
+  const admin = createAdminClient()
+  const { header, error } = await findValidCorHeaderByToken(admin, token)
+
+  if (error || !header) {
+    return (
+      <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif', textAlign: 'center' }}>
+        <h1>Link Tidak Valid</h1>
+        <p style={{ color: '#888' }}>{error}</p>
+      </main>
+    )
+  }
+
+  const { data: doc } = await admin.from('document_pipeline').select('doc_id').eq('id', header.doc_id).single()
+
+  return (
+    <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif' }}>
+      <h1>Approval COR {doc?.doc_id}</h1>
+      <p>Diminta oleh: {header.approval_requested_name}</p>
+
+      {action === 'reject' ? (
+        <form action={confirmReject}>
+          <input type="hidden" name="token" value={token} />
+          <label>
+            Alasan reject (wajib)
+            <br />
+            <textarea name="note" required rows={3} style={{ width: '100%' }} />
+          </label>
+          <br />
+          <br />
+          <button type="submit" style={{ background: '#dc2626', color: '#fff', padding: '10px 20px', border: 'none', borderRadius: 6 }}>
+            Konfirmasi Reject
+          </button>
+        </form>
+      ) : (
+        <form action={confirmApprove}>
+          <input type="hidden" name="token" value={token} />
+          <button type="submit" style={{ background: '#16a34a', color: '#fff', padding: '10px 20px', border: 'none', borderRadius: 6 }}>
+            Konfirmasi Approve
+          </button>
+        </form>
+      )}
+
+      <p style={{ marginTop: 24 }}>
+        {action === 'reject' ? (
+          <a href={`/approve/cor/${token}?action=approve`}>Batal, saya mau Approve</a>
+        ) : (
+          <a href={`/approve/cor/${token}?action=reject`}>Saya mau Reject, bukan Approve</a>
+        )}
+      </p>
+    </main>
+  )
+}
+
+File: src/app/approve/cor/[token]/done/page.tsx
+export default async function DonePage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
+  const { result } = await searchParams
+  return (
+    <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif', textAlign: 'center' }}>
+      <h1>{result === 'approved' ? 'Approved' : 'Rejected'}</h1>
+      <p>Terima kasih, keputusan Anda sudah tercatat.</p>
+    </main>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add COR magic-link approve/reject pages, budget snapshot, and project auto-advance" && git push
