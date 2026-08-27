@@ -1,0 +1,300 @@
+Two things in this Next.js + Supabase app:
+
+1. FIX a regression: src/app/master-data/page.tsx lost its "add new option" form somewhere along the way (there's no src/app/master-data/actions.ts file anymore). Restore it.
+
+2. ADD Employee management, and fix the employee-linking logic so employees added via the UI can log in without needing manual SQL.
+
+File: src/lib/get-current-employee.ts -- REPLACE the whole file with this (adds self-healing auth linkage by email):
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function getCurrentEmployee() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const admin = createAdminClient()
+
+  // Already linked to this login before -- fast path.
+  const { data: byAuthId } = await admin.from('employee').select('*').eq('auth_user_id', user.id).maybeSingle()
+  if (byAuthId) return byAuthId
+
+  // Not linked yet (e.g. this employee was added via the UI and is logging
+  // in for the very first time) -- match by email and self-heal the link
+  // so every subsequent login uses the fast path above.
+  if (user.email) {
+    const { data: byEmail } = await admin.from('employee').select('*').eq('email', user.email).maybeSingle()
+    if (byEmail) {
+      await admin.from('employee').update({ auth_user_id: user.id }).eq('id', byEmail.id)
+      return { ...byEmail, auth_user_id: user.id }
+    }
+  }
+
+  return null
+}
+
+File: src/app/master-data/actions.ts (this file is MISSING currently -- create it)
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function addMasterDataOption(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee || employee.role !== 'Master Admin') {
+    throw new Error('Cuma Master Admin yang boleh menambah Master Data.')
+  }
+
+  const category = formData.get('category') as string
+  const value = ((formData.get('value') as string) || '').trim()
+  const validCategories = ['Head_Office', 'Industry', 'Entity_Type', 'Client_Source']
+  if (!validCategories.includes(category)) throw new Error('Category tidak valid.')
+  if (!value) throw new Error('Value wajib diisi.')
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('master_data').insert({ category, value })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/master-data')
+}
+
+File: src/app/master-data/page.tsx -- REPLACE the whole file to restore the add form (keep the existing list/grid section, just add the form back above it):
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addMasterDataOption } from './actions'
+
+export default async function MasterDataPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role !== 'Master Admin') {
+    return (
+      <AppShell employeeName={employee.name} employeeRole={employee.role}>
+        <p className="text-gray-600">Halaman ini cuma untuk Master Admin.</p>
+      </AppShell>
+    )
+  }
+
+  const admin = createAdminClient()
+  const { data: rows } = await admin.from('master_data').select('*').order('category').order('value')
+  const categories = ['Head_Office', 'Industry', 'Entity_Type', 'Client_Source']
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Master Data</h1>
+      <p className="mb-6"><Link href="/" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Kembali</Link></p>
+
+      <form action={addMasterDataOption} className="mb-8 flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4 shadow-sm">
+        <select name="category" required className="rounded-md border-gray-300 text-sm">
+          {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+        </select>
+        <input name="value" placeholder="Nilai baru, mis. Jakarta Selatan" required className="flex-1 min-w-[200px] rounded-md border-gray-300 text-sm" />
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah</button>
+      </form>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {categories.map((cat) => (
+          <div key={cat} className="rounded-lg border bg-white p-4 shadow-sm">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">{cat}</h3>
+            <ul className="space-y-1">
+              {(rows ?? []).filter((r) => r.category === cat).map((r) => (
+                <li key={r.id} className="text-sm text-gray-800">{r.value}</li>
+              ))}
+              {(rows ?? []).filter((r) => r.category === cat).length === 0 && (
+                <li className="text-sm text-gray-400">(belum ada data)</li>
+              )}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/employees/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+const ROLES = ['Master Admin', 'Consultant', 'Operation', 'Head of B2B']
+
+async function requireMasterAdmin() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role !== 'Master Admin') throw new Error('Cuma Master Admin yang bisa mengelola Employee.')
+  return employee
+}
+
+async function countOtherActiveMasterAdmins(admin: ReturnType<typeof createAdminClient>, excludeId: string) {
+  const { data } = await admin.from('employee').select('id').eq('role', 'Master Admin').eq('status', 'Active')
+  return (data ?? []).filter((e: any) => e.id !== excludeId).length
+}
+
+export async function addEmployee(formData: FormData) {
+  await requireMasterAdmin()
+  const admin = createAdminClient()
+
+  const name = ((formData.get('name') as string) || '').trim()
+  const email = ((formData.get('email') as string) || '').trim().toLowerCase()
+  const role = formData.get('role') as string
+
+  if (!name) throw new Error('Nama wajib diisi.')
+  if (!email.endsWith('@kitabisa.com')) throw new Error('Email harus domain @kitabisa.com.')
+  if (!ROLES.includes(role)) throw new Error('Role tidak valid.')
+
+  const { error } = await admin.from('employee').insert({ name, email, role, status: 'Active' })
+  if (error) {
+    if (error.message.includes('duplicate') || error.message.includes('unique')) {
+      throw new Error('Email ini sudah terdaftar.')
+    }
+    throw new Error(error.message)
+  }
+
+  revalidatePath('/employees')
+}
+
+export async function setEmployeeRole(formData: FormData) {
+  await requireMasterAdmin()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const newRole = formData.get('role') as string
+  if (!ROLES.includes(newRole)) throw new Error('Role tidak valid.')
+
+  const { data: emp } = await admin.from('employee').select('*').eq('id', id).single()
+  if (!emp) throw new Error('Employee tidak ditemukan.')
+
+  if (emp.role === 'Master Admin' && emp.status === 'Active' && newRole !== 'Master Admin') {
+    const others = await countOtherActiveMasterAdmins(admin, id)
+    if (others === 0) throw new Error('Tidak bisa mengubah role -- ini satu-satunya Master Admin aktif yang tersisa.')
+  }
+
+  const { error } = await admin.from('employee').update({ role: newRole }).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/employees')
+}
+
+export async function setEmployeeStatus(formData: FormData) {
+  await requireMasterAdmin()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const newStatus = formData.get('status') as string
+  if (!['Active', 'Inactive'].includes(newStatus)) throw new Error('Status tidak valid.')
+
+  const { data: emp } = await admin.from('employee').select('*').eq('id', id).single()
+  if (!emp) throw new Error('Employee tidak ditemukan.')
+
+  if (emp.role === 'Master Admin' && emp.status === 'Active' && newStatus === 'Inactive') {
+    const others = await countOtherActiveMasterAdmins(admin, id)
+    if (others === 0) throw new Error('Tidak bisa menonaktifkan -- ini satu-satunya Master Admin aktif yang tersisa.')
+  }
+
+  const { error } = await admin.from('employee').update({ status: newStatus }).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/employees')
+}
+
+File: src/app/employees/page.tsx
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addEmployee, setEmployeeRole, setEmployeeStatus } from './actions'
+
+const ROLES = ['Master Admin', 'Consultant', 'Operation', 'Head of B2B']
+
+export default async function EmployeesPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role !== 'Master Admin') {
+    return (
+      <AppShell employeeName={employee.name} employeeRole={employee.role}>
+        <p className="text-gray-600">Halaman ini cuma untuk Master Admin.</p>
+      </AppShell>
+    )
+  }
+
+  const admin = createAdminClient()
+  const { data: employees } = await admin.from('employee').select('*').order('created_at')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Configure Account (Employee)</h1>
+      <p className="mb-6"><Link href="/" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Kembali</Link></p>
+
+      <form action={addEmployee} className="mb-8 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Nama *</label>
+          <input name="name" required className="rounded-md border-gray-300 text-sm" /></div>
+        <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Email (@kitabisa.com) *</label>
+          <input name="email" type="email" required className="rounded-md border-gray-300 text-sm" /></div>
+        <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Role *</label>
+          <select name="role" required className="rounded-md border-gray-300 text-sm">
+            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah Employee</button>
+      </form>
+      <p className="mb-6 text-xs text-gray-400">
+        Employee baru bisa langsung login pakai email di atas -- tidak perlu setup tambahan, sistem otomatis menyambungkan akunnya saat login pertama kali.
+      </p>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {(employees ?? []).map((e) => (
+              <tr key={e.id}>
+                <td className="px-4 py-3 text-gray-900">{e.name}</td>
+                <td className="px-4 py-3 text-gray-600">{e.email}</td>
+                <td className="px-4 py-3">
+                  <form action={setEmployeeRole} className="flex items-center gap-2">
+                    <input type="hidden" name="id" value={e.id} />
+                    <select name="role" defaultValue={e.role} className="rounded-md border-gray-300 text-xs">
+                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">Set</button>
+                  </form>
+                </td>
+                <td className="px-4 py-3">
+                  <form action={setEmployeeStatus}>
+                    <input type="hidden" name="id" value={e.id} />
+                    <input type="hidden" name="status" value={e.status === 'Active' ? 'Inactive' : 'Active'} />
+                    <button type="submit" className={`rounded-full px-2 py-0.5 text-xs font-medium ${e.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {e.status}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {(employees ?? []).length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Belum ada Employee.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/app-shell.tsx -- add Employee to NAV_ITEMS:
+const NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/documents', label: 'Document Pipeline' },
+  { href: '/cor-entities', label: 'Vendor' },
+  { href: '/employees', label: 'Employee' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Employee management with self-healing auth linkage; restore missing Master Data add form" && git push
