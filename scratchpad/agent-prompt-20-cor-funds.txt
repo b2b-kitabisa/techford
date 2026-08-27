@@ -1,0 +1,202 @@
+Add a COR detail/calculator page that manages fund rows (money coming in), using the existing cor-calc.ts engine to show computed fee breakdown per row. Also link to it from the Document Pipeline list.
+
+File: src/app/documents/cor/[id]/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa mengubah COR.')
+  return employee
+}
+
+export async function addFund(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+  const fundType = formData.get('fund_type') as string
+  const gdv = Number(formData.get('gdv') || 0)
+  if (gdv <= 0) throw new Error('Nominal harus lebih dari 0.')
+
+  const { error } = await admin.from('cor_fund').insert({
+    doc_id: docId,
+    fund_type: fundType,
+    link_campaign: (formData.get('link_campaign') as string) || null,
+    campaign_fund_kind: fundType === 'CAMPAIGN' ? ((formData.get('campaign_fund_kind') as string) || null) : null,
+    gdv,
+    is_zakat: formData.get('is_zakat') === 'on',
+    tech_fee_manual: formData.get('tech_fee_manual') === 'on',
+    manual_tech_fee: formData.get('tech_fee_manual') === 'on' ? Number(formData.get('manual_tech_fee') || 0) : null,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/cor/${docId}`)
+}
+
+export async function removeFund(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const docId = formData.get('doc_id') as string
+
+  const { error } = await admin.from('cor_fund').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/cor/${docId}`)
+}
+
+File: src/app/documents/cor/[id]/page.tsx
+import { redirect, notFound } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { fundCalc } from '@/lib/cor-calc'
+import { addFund, removeFund } from './actions'
+
+export default async function CorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', id).single()
+  if (!doc || doc.document_type !== 'COR') notFound()
+
+  const { data: header } = await admin.from('cor_header').select('*').eq('doc_id', id).single()
+  const { data: funds } = await admin.from('cor_fund').select('*').eq('doc_id', id).order('sort_order')
+  const { data: vendor } = header?.vendor_entity_id
+    ? await admin.from('cor_entity').select('*').eq('id', header.vendor_entity_id).single()
+    : { data: null }
+
+  const biayaPencairan = vendor?.biaya_pencairan ?? 0
+  const canWrite = employee.role !== 'Operation'
+
+  const rows = (funds ?? []).map((f) => ({
+    ...f,
+    calc: fundCalc(
+      { fundType: f.fund_type, nominal: Number(f.gdv), isZakat: f.is_zakat, techFeeManual: f.tech_fee_manual, manualTechFee: Number(f.manual_tech_fee || 0) },
+      biayaPencairan
+    ),
+  }))
+  const totalImplementationFund = rows.reduce((sum, r) => sum + r.calc.total, 0)
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">COR: {doc.doc_id}</h1>
+      <p className="mb-6 text-sm text-gray-500">
+        Vendor: {vendor?.entity_name ?? '-'} · Via SALSET: {header?.is_via_salset ? 'Ya' : 'Tidak'} · Status: {doc.status}
+      </p>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Dana Masuk</h2>
+
+      {canWrite && (
+        <form action={addFund} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="doc_id" value={id} />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Fund Type</label>
+            <select name="fund_type" className="rounded-md border-gray-300 text-sm">
+              <option value="CLIENT">CLIENT</option>
+              <option value="CAMPAIGN">CAMPAIGN</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Nominal (Rp) *</label>
+            <input name="gdv" type="number" required className="w-40 rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Link Campaign</label>
+            <input name="link_campaign" className="rounded-md border-gray-300 text-sm" />
+          </div>
+          <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
+            <input type="checkbox" name="is_zakat" /> Zakat/Bencana
+          </label>
+          <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
+            <input type="checkbox" name="tech_fee_manual" /> Tech Fee Manual
+          </label>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Manual Tech Fee (kalau dicentang)</label>
+            <input name="manual_tech_fee" type="number" className="w-40 rounded-md border-gray-300 text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+            Tambah Dana
+          </button>
+        </form>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Tipe</th>
+              <th className="px-4 py-3">Nominal</th>
+              <th className="px-4 py-3">Platform Fee</th>
+              <th className="px-4 py-3">Tech Fee</th>
+              <th className="px-4 py-3">NDV</th>
+              <th className="px-4 py-3">Admin Fee</th>
+              <th className="px-4 py-3">Implementation Fund</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="px-4 py-3">{r.fund_type}{r.is_zakat ? ' (Zakat)' : ''}</td>
+                <td className="px-4 py-3">Rp {Number(r.gdv).toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3">Rp {r.calc.pf.toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3">Rp {r.calc.tf.toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3">Rp {r.calc.af.toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3">Rp {r.calc.adm.toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3 font-medium">Rp {r.calc.total.toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3">
+                  {canWrite && (
+                    <form action={removeFund}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <input type="hidden" name="doc_id" value={id} />
+                      <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Belum ada dana masuk.</td></tr>
+            )}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="bg-gray-50 font-semibold">
+                <td className="px-4 py-3" colSpan={6}>Total Implementation Fund</td>
+                <td className="px-4 py-3">Rp {totalImplementationFund.toLocaleString('id-ID')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      <p className="mt-4 text-sm text-gray-500">Biaya (Vendor/SALSET) dan Margin diisi di langkah berikutnya.</p>
+    </AppShell>
+  )
+}
+
+File: src/app/documents/page.tsx -- in the Aksi <td>, when doc.document_type === 'COR', instead of showing "-" show a link to the calculator. Find the ternary that renders `nextStep === null && flow ? 'Status akhir' : '-'` inside the `<em>` fallback, and change the whole Aksi cell logic to:
+{canWrite && nextStep ? (
+  <form action={advanceDocumentStatus}>
+    <input type="hidden" name="id" value={doc.id} />
+    <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">
+      Majukan ke: {nextStep.status}
+    </button>
+  </form>
+) : doc.document_type === 'COR' ? (
+  <a href={`/documents/cor/${doc.id}`} className="text-xs font-medium text-green-600 hover:text-green-700">
+    Buka Kalkulator
+  </a>
+) : (
+  <em className="text-xs text-gray-400">{nextStep === null && flow ? 'Status akhir' : '-'}</em>
+)}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add COR fund rows management with live fee calculation" && git push
