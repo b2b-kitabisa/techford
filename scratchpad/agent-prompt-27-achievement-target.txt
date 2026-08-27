@@ -1,0 +1,182 @@
+Add an Achievement Target module (Master Admin only) to this Next.js + Supabase app. Two kinds of target rows: per-consultant (scope=CONSULTANT, unique consultant name, deletable) and a single department-wide target (scope=DEPARTMENT, always exactly one row, upsert instead of insert-duplicate).
+
+File: src/app/achievement-target/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireMasterAdmin() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role !== 'Master Admin') throw new Error('Cuma Master Admin yang bisa mengelola Achievement Target.')
+  return employee
+}
+
+export async function addConsultantTarget(formData: FormData) {
+  const employee = await requireMasterAdmin()
+  const admin = createAdminClient()
+
+  const consultantName = ((formData.get('consultant_name') as string) || '').trim()
+  const targetGdv = Number(formData.get('target_gdv') || 0)
+  const targetServiceRevenue = Number(formData.get('target_service_revenue') || 0)
+  if (!consultantName) throw new Error('Consultant Name wajib diisi.')
+
+  const { data: existing } = await admin
+    .from('achievement_target')
+    .select('id')
+    .eq('scope', 'CONSULTANT')
+    .ilike('consultant_name', consultantName)
+    .maybeSingle()
+  if (existing) throw new Error('Consultant ini sudah punya target -- hapus dulu yang lama kalau mau ganti.')
+
+  const { error } = await admin.from('achievement_target').insert({
+    scope: 'CONSULTANT',
+    consultant_name: consultantName,
+    target_gdv: targetGdv,
+    target_service_revenue: targetServiceRevenue,
+    created_by: employee.name,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/achievement-target')
+}
+
+export async function setDepartmentTarget(formData: FormData) {
+  const employee = await requireMasterAdmin()
+  const admin = createAdminClient()
+
+  const targetGdv = Number(formData.get('target_gdv') || 0)
+  const targetServiceRevenue = Number(formData.get('target_service_revenue') || 0)
+
+  await admin.from('achievement_target').delete().eq('scope', 'DEPARTMENT')
+  const { error } = await admin.from('achievement_target').insert({
+    scope: 'DEPARTMENT',
+    consultant_name: 'DEPARTMENT',
+    target_gdv: targetGdv,
+    target_service_revenue: targetServiceRevenue,
+    created_by: employee.name,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/achievement-target')
+}
+
+export async function removeConsultantTarget(formData: FormData) {
+  await requireMasterAdmin()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { error } = await admin.from('achievement_target').delete().eq('id', id).eq('scope', 'CONSULTANT')
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/achievement-target')
+}
+
+File: src/app/achievement-target/page.tsx
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addConsultantTarget, setDepartmentTarget, removeConsultantTarget } from './actions'
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function AchievementTargetPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role !== 'Master Admin') {
+    return (
+      <AppShell employeeName={employee.name} employeeRole={employee.role}>
+        <p className="text-gray-600">Halaman ini cuma untuk Master Admin.</p>
+      </AppShell>
+    )
+  }
+
+  const admin = createAdminClient()
+  const { data: targets } = await admin.from('achievement_target').select('*').order('consultant_name')
+  const department = (targets ?? []).find((t) => t.scope === 'DEPARTMENT')
+  const consultants = (targets ?? []).filter((t) => t.scope === 'CONSULTANT')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Achievement Target</h1>
+      <p className="mb-6"><Link href="/" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Kembali</Link></p>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Target Departemen</h2>
+      <form action={setDepartmentTarget} className="mb-8 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Target GDV</label>
+          <input name="target_gdv" type="number" defaultValue={department?.target_gdv ?? 0} className="w-48 rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Target Service Revenue</label>
+          <input name="target_service_revenue" type="number" defaultValue={department?.target_service_revenue ?? 0} className="w-48 rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Simpan Target Departemen</button>
+      </form>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Target per Consultant</h2>
+      <form action={addConsultantTarget} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Consultant Name *</label>
+          <input name="consultant_name" required className="rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Target GDV</label>
+          <input name="target_gdv" type="number" defaultValue={0} className="w-40 rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Target Service Revenue</label>
+          <input name="target_service_revenue" type="number" defaultValue={0} className="w-40 rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah</button>
+      </form>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Consultant</th><th className="px-4 py-3">Target GDV</th><th className="px-4 py-3">Target Service Revenue</th><th className="px-4 py-3"></th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {consultants.map((t) => (
+              <tr key={t.id}>
+                <td className="px-4 py-3 text-gray-900">{t.consultant_name}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiah(t.target_gdv)}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiah(t.target_service_revenue)}</td>
+                <td className="px-4 py-3">
+                  <form action={removeConsultantTarget}>
+                    <input type="hidden" name="id" value={t.id} />
+                    <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {consultants.length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Belum ada target consultant.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/app-shell.tsx -- add Achievement Target to NAV_ITEMS:
+const NAV_ITEMS = [
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/documents', label: 'Document Pipeline' },
+  { href: '/cor-entities', label: 'Vendor' },
+  { href: '/achievement-target', label: 'Achievement Target' },
+  { href: '/employees', label: 'Employee' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Achievement Target module (department + per-consultant targets)" && git push
