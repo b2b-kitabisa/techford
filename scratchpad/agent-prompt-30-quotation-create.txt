@@ -1,0 +1,403 @@
+Add the Quotation module (creation, items, draft, request approval) to this Next.js + Supabase app -- similar overall shape to the COR module but without any calculation engine (Quotation is a price list document, not a financial calculator). Quotation always requires a Project (project_id is never null here, unlike COR).
+
+File: src/lib/roman-month.ts
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
+export function romanMonth(monthIndex0to11: number) {
+  return ROMAN[monthIndex0to11] || ''
+}
+
+File: src/app/documents/quotation/new/actions.ts
+'use server'
+
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { romanMonth } from '@/lib/roman-month'
+
+const ENTITY_LABELS: Record<string, string> = {
+  YKB: 'YKB (Yayasan Kita Bisa)',
+  KAI: 'PT KAI (PT Kolaborasi Aksi Indonesia)',
+}
+
+export async function createQuotationDocument(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa membuat Quotation.')
+
+  const admin = createAdminClient()
+  const projectId = formData.get('project_id') as string
+  const entityCode = formData.get('entity_code') as string
+  const picClientId = (formData.get('pic_client_id') as string) || null
+  if (!projectId) throw new Error('Project wajib dipilih.')
+  if (!ENTITY_LABELS[entityCode]) throw new Error('Entity tidak valid.')
+
+  const { data: project } = await admin.from('project').select('client_id').eq('id', projectId).single()
+  if (!project) throw new Error('Project tidak ditemukan.')
+  const { data: client } = await admin.from('client').select('client_id').eq('id', project.client_id).single()
+
+  const year = new Date().getFullYear() % 100
+  const { data: docSeq, error: docSeqErr } = await admin.rpc('next_sequence', { seq_key: `DOC_${year}` })
+  if (docSeqErr) throw new Error(docSeqErr.message)
+  const docId = `DOC${year}-${String(docSeq).padStart(5, '0')}`
+
+  const { data: doc, error: docErr } = await admin
+    .from('document_pipeline')
+    .insert({
+      doc_id: docId,
+      project_id: projectId,
+      document_type: 'QUOTATION',
+      entity: ENTITY_LABELS[entityCode],
+      status: 'Not Started',
+      stage: 'New Request',
+      requested_by: employee.name,
+    })
+    .select()
+    .single()
+  if (docErr || !doc) {
+    if (docErr?.message.includes('uniq_quotation_per_project_entity')) {
+      throw new Error('Project ini sudah punya Quotation untuk entity yang sama.')
+    }
+    throw new Error(docErr?.message || 'Gagal membuat dokumen.')
+  }
+
+  // Combined YKB+KAI sequence per year, formatted QO/0001/VIII/2026/KAI/CL26-00001
+  const fullYear = new Date().getFullYear()
+  const { data: qSeq, error: qSeqErr } = await admin.rpc('next_sequence', { seq_key: `QUOTATION_${year}` })
+  if (qSeqErr) throw new Error(qSeqErr.message)
+  const quotationNumber = `QO/${String(qSeq).padStart(4, '0')}/${romanMonth(new Date().getMonth())}/${fullYear}/${entityCode}/${client?.client_id || '-'}`
+
+  let picSnapshot = { pic_name: null as string | null, pic_email: null as string | null, pic_phone: null as string | null, pic_title: null as string | null }
+  if (picClientId) {
+    const { data: pic } = await admin.from('pic_client').select('*').eq('id', picClientId).single()
+    if (pic) picSnapshot = { pic_name: pic.pic_name, pic_email: pic.email, pic_phone: pic.phone, pic_title: pic.title }
+  }
+
+  const { error: headerErr } = await admin.from('quotation_header').insert({
+    doc_id: doc.id,
+    entity_code: entityCode,
+    language: 'ID',
+    quotation_number: quotationNumber,
+    valid_days: 14,
+    pic_client_id: picClientId,
+    ...picSnapshot,
+    agency_fee_rate: entityCode === 'KAI' ? 5 : null,
+    created_by: employee.name,
+  })
+  if (headerErr) throw new Error(headerErr.message)
+
+  redirect(`/documents/quotation/${doc.id}`)
+}
+
+File: src/app/documents/quotation/new/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { createQuotationDocument } from './actions'
+
+export default async function NewQuotationPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role === 'Operation') redirect('/documents')
+
+  const admin = createAdminClient()
+  const { data: projects } = await admin.from('project').select('id, project_id, project_name, client_id').order('project_name')
+  const { data: allPics } = await admin.from('pic_client').select('*')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Quotation Baru</h1>
+      <form action={createQuotationDocument} className="max-w-xl space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Project *</label>
+          <select name="project_id" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">Pilih Project...</option>
+            {(projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.project_id} - {p.project_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Entity *</label>
+          <select name="entity_code" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="YKB">YKB (Yayasan Kita Bisa)</option>
+            <option value="KAI">PT KAI (PT Kolaborasi Aksi Indonesia)</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">PIC Client (opsional, snapshot saat ini)</label>
+          <select name="pic_client_id" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Tanpa PIC -</option>
+            {(allPics ?? []).map((p) => <option key={p.id} value={p.id}>{p.pic_name} ({p.email || '-'})</option>)}
+          </select>
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Buat Quotation</button>
+      </form>
+    </AppShell>
+  )
+}
+
+File: src/app/documents/quotation/[id]/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { sendEmail } from '@/lib/send-email'
+import { randomUUID } from 'crypto'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa mengubah Quotation.')
+  return employee
+}
+
+export async function saveQuotationDraft(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { error } = await admin.from('quotation_header').update({
+    head_name: (formData.get('head_name') as string) || null,
+    title_name: (formData.get('title_name') as string) || null,
+    service_name: (formData.get('service_name') as string) || null,
+    valid_days: Number(formData.get('valid_days') || 14),
+    agency_fee_rate: formData.get('agency_fee_rate') ? Number(formData.get('agency_fee_rate')) : null,
+    hide_agency_fee: formData.get('hide_agency_fee') === 'on',
+    single_box_price: formData.get('single_box_price') === 'on',
+    first_statement: (formData.get('first_statement') as string) || null,
+    important_remarks: (formData.get('important_remarks') as string) || null,
+    last_updated: new Date().toISOString(),
+  }).eq('doc_id', docId)
+  if (error) throw new Error(error.message)
+
+  const { data: doc } = await admin.from('document_pipeline').select('status').eq('id', docId).single()
+  if (doc?.status === 'Not Started') {
+    await admin.from('document_pipeline').update({ status: 'Drafting', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', docId)
+  }
+
+  revalidatePath(`/documents/quotation/${docId}`)
+  revalidatePath('/documents')
+}
+
+export async function addQuotationItem(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+  const itemLabel = ((formData.get('item_label') as string) || '').trim()
+  const value = Number(formData.get('value') || 0)
+  if (!itemLabel) throw new Error('Item Label wajib diisi.')
+
+  const { error } = await admin.from('quotation_item').insert({
+    doc_id: docId,
+    category_label: (formData.get('category_label') as string) || null,
+    row_role: 'PRICE',
+    item_label: itemLabel,
+    value,
+    qty: Number(formData.get('qty') || 1),
+    remarks_detail: (formData.get('remarks_detail') as string) || null,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/quotation/${docId}`)
+}
+
+export async function removeQuotationItem(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const docId = formData.get('doc_id') as string
+
+  const { error } = await admin.from('quotation_item').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/quotation/${docId}`)
+}
+
+export async function requestQuotationApproval(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+  const approverId = formData.get('approver_id') as string
+
+  const { data: approver } = await admin.from('employee').select('*').eq('id', approverId).single()
+  if (!approver || approver.role !== 'Head of B2B') throw new Error('Approver harus employee dengan role Head of B2B.')
+
+  const token = randomUUID()
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { error: headerErr } = await admin.from('quotation_header').update({
+    approval_token: token,
+    approval_expires_at: expiresAt,
+    approval_requested_to: approver.email,
+    approval_requested_name: approver.name,
+    approval_requested_at: new Date().toISOString(),
+    approval_resolved_at: null,
+    rejection_note: null,
+  }).eq('doc_id', docId)
+  if (headerErr) throw new Error(headerErr.message)
+
+  await admin.from('document_pipeline').update({ status: 'Waiting Approval', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', docId)
+
+  await admin.from('document_activity').insert({
+    doc_id: docId,
+    activity_type: 'APPROVAL_REQUESTED',
+    round_no: 1,
+    actor_name: employee.name,
+    actor_email: employee.email,
+  })
+
+  const { data: doc } = await admin.from('document_pipeline').select('doc_id').eq('id', docId).single()
+  const { data: header } = await admin.from('quotation_header').select('quotation_number').eq('doc_id', docId).single()
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+  const approveUrl = `${baseUrl}/approve/quotation/${token}?action=approve`
+  const rejectUrl = `${baseUrl}/approve/quotation/${token}?action=reject`
+
+  await sendEmail({
+    to: approver.email,
+    subject: `Approval Quotation ${doc?.doc_id} (${header?.quotation_number}) diperlukan`,
+    html: `
+      <p>Dokumen Quotation <strong>${doc?.doc_id}</strong> (${header?.quotation_number}) menunggu approval Anda.</p>
+      <p><a href="${approveUrl}">Approve</a> &nbsp;|&nbsp; <a href="${rejectUrl}">Reject</a></p>
+      <p style="color:#888;font-size:12px;">Link berlaku 14 hari, tanpa perlu login.</p>
+    `,
+  })
+
+  revalidatePath(`/documents/quotation/${docId}`)
+  revalidatePath('/documents')
+}
+
+File: src/app/documents/quotation/[id]/page.tsx
+import { redirect, notFound } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { saveQuotationDraft, addQuotationItem, removeQuotationItem, requestQuotationApproval } from './actions'
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', id).single()
+  if (!doc || doc.document_type !== 'QUOTATION') notFound()
+
+  const { data: header } = await admin.from('quotation_header').select('*').eq('doc_id', id).single()
+  const { data: items } = await admin.from('quotation_item').select('*').eq('doc_id', id).order('item_sort_order')
+  const { data: approvers } = await admin.from('employee').select('id, name, email').eq('role', 'Head of B2B').eq('status', 'Active')
+
+  const canWrite = employee.role !== 'Operation'
+  const total = (items ?? []).reduce((sum, i) => sum + Number(i.value) * Number(i.qty), 0)
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">Quotation: {header?.quotation_number}</h1>
+      <p className="mb-6 text-sm text-gray-500">{doc.doc_id} · Entity: {header?.entity_code} · Status: {doc.status}</p>
+
+      {canWrite && (
+        <form action={saveQuotationDraft} className="mb-8 max-w-2xl space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="doc_id" value={id} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Head Name</label>
+              <input name="head_name" defaultValue={header?.head_name || ''} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Title Name</label>
+              <input name="title_name" defaultValue={header?.title_name || ''} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Service Name</label>
+              <input name="service_name" defaultValue={header?.service_name || ''} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Valid Days</label>
+              <input name="valid_days" type="number" defaultValue={header?.valid_days ?? 14} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            {header?.entity_code === 'KAI' && (
+              <div><label className="mb-1 block text-xs font-medium text-gray-500">Agency Fee Rate %</label>
+                <input name="agency_fee_rate" type="number" defaultValue={header?.agency_fee_rate ?? 0} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            )}
+          </div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-500">First Statement</label>
+            <textarea name="first_statement" defaultValue={header?.first_statement || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-500">Important Remarks</label>
+            <textarea name="important_remarks" defaultValue={header?.important_remarks || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" /></div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" name="single_box_price" defaultChecked={header?.single_box_price} /> Single Box Price
+          </label>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Simpan Draft</button>
+        </form>
+      )}
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Item Quotation</h2>
+      {canWrite && (
+        <form action={addQuotationItem} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="doc_id" value={id} />
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Kategori</label>
+            <input name="category_label" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Item Label *</label>
+            <input name="item_label" required className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Value *</label>
+            <input name="value" type="number" required className="w-32 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Qty</label>
+            <input name="qty" type="number" defaultValue={1} className="w-20 rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Remarks</label>
+            <input name="remarks_detail" className="rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah Item</button>
+        </form>
+      )}
+      <div className="mb-8 overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Kategori</th><th className="px-4 py-3">Item</th><th className="px-4 py-3">Value</th><th className="px-4 py-3">Qty</th><th className="px-4 py-3">Subtotal</th><th className="px-4 py-3"></th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {(items ?? []).map((it) => (
+              <tr key={it.id}>
+                <td className="px-4 py-3 text-gray-600">{it.category_label || '-'}</td>
+                <td className="px-4 py-3 text-gray-900">{it.item_label}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiah(it.value)}</td>
+                <td className="px-4 py-3 text-gray-700">{it.qty}</td>
+                <td className="px-4 py-3 font-medium">{rupiah(it.value * it.qty)}</td>
+                <td className="px-4 py-3">
+                  {canWrite && (
+                    <form action={removeQuotationItem}>
+                      <input type="hidden" name="id" value={it.id} />
+                      <input type="hidden" name="doc_id" value={id} />
+                      <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {(items ?? []).length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum ada item.</td></tr>}
+          </tbody>
+          {(items ?? []).length > 0 && (
+            <tfoot><tr className="bg-gray-50 font-semibold"><td className="px-4 py-3" colSpan={4}>Total</td><td className="px-4 py-3">{rupiah(total)}</td><td></td></tr></tfoot>
+          )}
+        </table>
+      </div>
+
+      {canWrite && (doc.status === 'Drafting' || doc.status === 'Revision') && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Request Approval</h2>
+          <form action={requestQuotationApproval} className="max-w-xl flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+            <input type="hidden" name="doc_id" value={id} />
+            <select name="approver_id" required className="rounded-md border-gray-300 text-sm">
+              <option value="">Pilih Approver (Head of B2B)...</option>
+              {(approvers ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.email})</option>)}
+            </select>
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Kirim Approval Request</button>
+          </form>
+        </div>
+      )}
+
+      {doc.status === 'Waiting Approval' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Sedang menunggu approval dari <strong>{header?.approval_requested_name}</strong> ({header?.approval_requested_to}).
+        </div>
+      )}
+    </AppShell>
+  )
+}
+
+File: src/app/documents/page.tsx -- add a second create button and a "Buka Quotation" link for existing rows. Near the existing "+ Dokumen Baru" and "+ COR Baru" links, add: `<a href="/documents/quotation/new" className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">+ Quotation Baru</a>`. In the Aksi <td>, add another else-if branch: when `doc.document_type === 'QUOTATION'`, show a link to `/documents/quotation/${doc.id}` labeled "Buka Quotation" (same style as the existing COR "Buka Kalkulator" link).
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Quotation module: create, PIC snapshot, items, draft, request approval" && git push
