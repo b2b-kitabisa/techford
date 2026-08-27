@@ -1,0 +1,278 @@
+Complete the Quotation module: magic-link approve/reject pages, plus the 3 manual post-approval transitions (Approved -> Signed, Approved/Signed -> Revision, any status -> LOSS at any time). When a Quotation reaches "Done" stage (Approved or Signed), check if it should trigger the parent Project's stage to advance to "Won": this happens when ALL non-LOSS Quotations for that project have stage "Done" (forward-only, never touches a Won or Loss project, and never overrides the DECK/COR/RAB/PRODCOST -> Negotiation trigger which is separate).
+
+File: src/lib/quotation-approval-guard.ts
+export async function findValidQuotationHeaderByToken(admin: any, token: string) {
+  const { data: header } = await admin.from('quotation_header').select('*').eq('approval_token', token).maybeSingle()
+  if (!header) {
+    return { header: null, error: 'Link sudah tidak berlaku, mungkin ada permintaan approval yang lebih baru.' }
+  }
+  if (header.approval_resolved_at) {
+    return { header: null, error: 'Dokumen ini sudah diputuskan sebelumnya.' }
+  }
+  if (header.approval_expires_at && new Date(header.approval_expires_at) < new Date()) {
+    return { header: null, error: `Link kedaluwarsa pada ${new Date(header.approval_expires_at).toLocaleString('id-ID')}, minta pengaju kirim ulang.` }
+  }
+  return { header, error: null }
+}
+
+File: src/app/documents/quotation/[id]/actions.ts -- ADD these functions to the existing file (keep everything else as-is):
+
+const STAGE_RANK: Record<string, number> = { Prospect: 1, Negotiation: 2, Won: 3 }
+
+async function maybeAdvanceProjectToWon(admin: ReturnType<typeof createAdminClient>, projectId: string | null) {
+  if (!projectId) return
+  const { data: project } = await admin.from('project').select('stage').eq('id', projectId).single()
+  if (!project || project.stage === 'Loss') return
+
+  const { data: quotations } = await admin.from('document_pipeline').select('status, stage').eq('project_id', projectId).eq('document_type', 'QUOTATION')
+  const wonEligible = (quotations ?? []).filter((q: any) => q.status !== 'LOSS')
+  if (wonEligible.length === 0) return
+  const allDone = wonEligible.every((q: any) => q.stage === 'Done')
+  if (!allDone) return
+
+  const currentRank = STAGE_RANK[project.stage] ?? 0
+  if (STAGE_RANK['Won'] > currentRank) {
+    await admin.from('project').update({ stage: 'Won', stage_changed_at: new Date().toISOString() }).eq('id', projectId)
+  }
+}
+
+export async function markSigned(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', docId).single()
+  if (!doc) throw new Error('Dokumen tidak ditemukan.')
+  if (doc.status !== 'Approved') throw new Error('Cuma Quotation berstatus Approved yang bisa ditandai Signed.')
+
+  const { error } = await admin.from('document_pipeline').update({ status: 'Signed', stage: 'Done', last_updated: new Date().toISOString() }).eq('id', docId)
+  if (error) throw new Error(error.message)
+
+  await maybeAdvanceProjectToWon(admin, doc.project_id)
+  revalidatePath(`/documents/quotation/${docId}`)
+  revalidatePath('/projects')
+}
+
+export async function requestRevisionAfterApproval(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { data: doc } = await admin.from('document_pipeline').select('status').eq('id', docId).single()
+  if (!doc) throw new Error('Dokumen tidak ditemukan.')
+  if (doc.status !== 'Approved' && doc.status !== 'Signed') {
+    throw new Error('Cuma Quotation berstatus Approved atau Signed yang bisa diminta Revision.')
+  }
+
+  const { error } = await admin.from('document_pipeline').update({ status: 'Revision', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', docId)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/documents/quotation/${docId}`)
+}
+
+export async function markQuotationLoss(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', docId).single()
+  if (!doc) throw new Error('Dokumen tidak ditemukan.')
+  if (doc.status === 'LOSS') throw new Error('Quotation ini sudah berstatus LOSS.')
+
+  const { error } = await admin.from('document_pipeline').update({ status: 'LOSS', stage: 'Done', last_updated: new Date().toISOString() }).eq('id', docId)
+  if (error) throw new Error(error.message)
+
+  await maybeAdvanceProjectToWon(admin, doc.project_id)
+  revalidatePath(`/documents/quotation/${docId}`)
+  revalidatePath('/projects')
+}
+
+File: src/app/approve/quotation/[token]/actions.ts
+'use server'
+
+import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findValidQuotationHeaderByToken } from '@/lib/quotation-approval-guard'
+
+const STAGE_RANK: Record<string, number> = { Prospect: 1, Negotiation: 2, Won: 3 }
+
+async function maybeAdvanceProjectToWon(admin: any, projectId: string | null) {
+  if (!projectId) return
+  const { data: project } = await admin.from('project').select('stage').eq('id', projectId).single()
+  if (!project || project.stage === 'Loss') return
+
+  const { data: quotations } = await admin.from('document_pipeline').select('status, stage').eq('project_id', projectId).eq('document_type', 'QUOTATION')
+  const wonEligible = (quotations ?? []).filter((q: any) => q.status !== 'LOSS')
+  if (wonEligible.length === 0) return
+  const allDone = wonEligible.every((q: any) => q.stage === 'Done')
+  if (!allDone) return
+
+  const currentRank = STAGE_RANK[project.stage] ?? 0
+  if (STAGE_RANK['Won'] > currentRank) {
+    await admin.from('project').update({ stage: 'Won', stage_changed_at: new Date().toISOString() }).eq('id', projectId)
+  }
+}
+
+export async function confirmApprove(formData: FormData) {
+  const token = formData.get('token') as string
+  const admin = createAdminClient()
+  const { header, error } = await findValidQuotationHeaderByToken(admin, token)
+  if (error || !header) throw new Error(error || 'Link tidak valid.')
+
+  const { data: approverEmp } = await admin.from('employee').select('id').eq('email', header.approval_requested_to).maybeSingle()
+
+  await admin.from('quotation_header').update({
+    approval_resolved_at: new Date().toISOString(),
+    approved_by: approverEmp?.id || null,
+    approved_at: new Date().toISOString(),
+  }).eq('doc_id', header.doc_id)
+
+  const { data: doc } = await admin.from('document_pipeline').select('project_id').eq('id', header.doc_id).single()
+
+  await admin.from('document_pipeline').update({ status: 'Approved', stage: 'Done', last_updated: new Date().toISOString() }).eq('id', header.doc_id)
+
+  await admin.from('document_activity').insert({
+    doc_id: header.doc_id,
+    activity_type: 'APPROVED',
+    round_no: 1,
+    actor_name: header.approval_requested_name,
+    actor_email: header.approval_requested_to,
+  })
+
+  await maybeAdvanceProjectToWon(admin, doc?.project_id || null)
+
+  redirect(`/approve/quotation/${token}/done?result=approved`)
+}
+
+export async function confirmReject(formData: FormData) {
+  const token = formData.get('token') as string
+  const note = ((formData.get('note') as string) || '').trim()
+  const admin = createAdminClient()
+  const { header, error } = await findValidQuotationHeaderByToken(admin, token)
+  if (error || !header) throw new Error(error || 'Link tidak valid.')
+  if (!note) throw new Error('Alasan reject wajib diisi.')
+
+  await admin.from('quotation_header').update({
+    approval_resolved_at: new Date().toISOString(),
+    rejection_note: note,
+  }).eq('doc_id', header.doc_id)
+
+  await admin.from('document_pipeline').update({ status: 'Revision', stage: 'In Progress', last_updated: new Date().toISOString() }).eq('id', header.doc_id)
+
+  await admin.from('document_activity').insert({
+    doc_id: header.doc_id,
+    activity_type: 'REJECTED',
+    round_no: 1,
+    actor_name: header.approval_requested_name,
+    actor_email: header.approval_requested_to,
+    note,
+  })
+
+  redirect(`/approve/quotation/${token}/done?result=rejected`)
+}
+
+File: src/app/approve/quotation/[token]/page.tsx
+import { createAdminClient } from '@/lib/supabase/admin'
+import { findValidQuotationHeaderByToken } from '@/lib/quotation-approval-guard'
+import { confirmApprove, confirmReject } from './actions'
+
+export default async function ApproveQuotationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>
+  searchParams: Promise<{ action?: string }>
+}) {
+  const { token } = await params
+  const { action } = await searchParams
+  const admin = createAdminClient()
+  const { header, error } = await findValidQuotationHeaderByToken(admin, token)
+
+  if (error || !header) {
+    return (
+      <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif', textAlign: 'center' }}>
+        <h1>Link Tidak Valid</h1>
+        <p style={{ color: '#888' }}>{error}</p>
+      </main>
+    )
+  }
+
+  const { data: doc } = await admin.from('document_pipeline').select('doc_id').eq('id', header.doc_id).single()
+
+  return (
+    <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif' }}>
+      <h1>Approval Quotation {header.quotation_number}</h1>
+      <p>Dokumen: {doc?.doc_id} · Diminta oleh: {header.approval_requested_name}</p>
+
+      {action === 'reject' ? (
+        <form action={confirmReject}>
+          <input type="hidden" name="token" value={token} />
+          <label>
+            Alasan reject (wajib)
+            <br />
+            <textarea name="note" required rows={3} style={{ width: '100%' }} />
+          </label>
+          <br />
+          <br />
+          <button type="submit" style={{ background: '#dc2626', color: '#fff', padding: '10px 20px', border: 'none', borderRadius: 6 }}>
+            Konfirmasi Reject
+          </button>
+        </form>
+      ) : (
+        <form action={confirmApprove}>
+          <input type="hidden" name="token" value={token} />
+          <button type="submit" style={{ background: '#16a34a', color: '#fff', padding: '10px 20px', border: 'none', borderRadius: 6 }}>
+            Konfirmasi Approve
+          </button>
+        </form>
+      )}
+
+      <p style={{ marginTop: 24 }}>
+        {action === 'reject' ? (
+          <a href={`/approve/quotation/${token}?action=approve`}>Batal, saya mau Approve</a>
+        ) : (
+          <a href={`/approve/quotation/${token}?action=reject`}>Saya mau Reject, bukan Approve</a>
+        )}
+      </p>
+    </main>
+  )
+}
+
+File: src/app/approve/quotation/[token]/done/page.tsx
+export default async function DonePage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
+  const { result } = await searchParams
+  return (
+    <main style={{ maxWidth: 480, margin: '80px auto', padding: 24, fontFamily: 'sans-serif', textAlign: 'center' }}>
+      <h1>{result === 'approved' ? 'Approved' : 'Rejected'}</h1>
+      <p>Terima kasih, keputusan Anda sudah tercatat.</p>
+    </main>
+  )
+}
+
+File: src/app/documents/quotation/[id]/page.tsx -- add imports `markSigned, requestRevisionAfterApproval, markQuotationLoss` to the existing import from './actions'. Right after the existing "Waiting Approval" info block (the amber box), ADD this new block for post-approval actions and the always-available Mark LOSS button:
+
+{canWrite && (doc.status === 'Approved' || doc.status === 'Signed') && (
+  <div className="mt-6 flex flex-wrap gap-2">
+    {doc.status === 'Approved' && (
+      <form action={markSigned}>
+        <input type="hidden" name="doc_id" value={id} />
+        <button type="submit" className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">Tandai Signed</button>
+      </form>
+    )}
+    <form action={requestRevisionAfterApproval}>
+      <input type="hidden" name="doc_id" value={id} />
+      <button type="submit" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">Client Minta Revisi</button>
+    </form>
+  </div>
+)}
+
+{canWrite && doc.status !== 'LOSS' && (
+  <div className="mt-6">
+    <form action={markQuotationLoss}>
+      <input type="hidden" name="doc_id" value={id} />
+      <button type="submit" className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100">Mark LOSS</button>
+    </form>
+  </div>
+)}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Quotation magic-link approval, Signed/Revision/LOSS transitions, and Won auto-advance" && git push
