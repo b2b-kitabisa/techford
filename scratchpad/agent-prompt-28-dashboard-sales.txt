@@ -1,0 +1,185 @@
+Add a Dashboard Sales page to this Next.js + Supabase app -- a read-only summary page available to all roles (no write actions here, so no server action file needed). Aggregate numbers directly in the page component from existing tables. No chart library -- build simple bar visualizations with plain divs + Tailwind widths.
+
+File: src/app/dashboard/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+function pct(value: number, target: number) {
+  if (!target || target <= 0) return 0
+  return Math.min(100, Math.round((value / target) * 100))
+}
+
+const LEAD_STATUSES = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam']
+const PROJECT_STAGES = ['Prospect', 'Negotiation', 'Won', 'Loss']
+
+export default async function DashboardPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const [{ data: projects }, { data: leads }, { data: clients }, { data: targets }] = await Promise.all([
+    admin.from('project').select('*'),
+    admin.from('lead').select('status'),
+    admin.from('client').select('id'),
+    admin.from('achievement_target').select('*'),
+  ])
+
+  const totalGdv = (projects ?? []).reduce((sum, p) => sum + Number(p.total_gdv || 0), 0)
+  const totalServiceRevenue = (projects ?? []).reduce((sum, p) => sum + Number(p.total_service_revenue || 0), 0)
+
+  const department = (targets ?? []).find((t) => t.scope === 'DEPARTMENT')
+  const consultantTargets = (targets ?? []).filter((t) => t.scope === 'CONSULTANT')
+
+  const leadsByStatus = LEAD_STATUSES.map((s) => ({
+    status: s,
+    count: (leads ?? []).filter((l) => l.status === s).length,
+  }))
+
+  const projectsByStage = PROJECT_STAGES.map((s) => ({
+    stage: s,
+    count: (projects ?? []).filter((p) => p.stage === s).length,
+  }))
+
+  const gdvByConsultant = new Map<string, number>()
+  const serviceByConsultant = new Map<string, number>()
+  for (const p of projects ?? []) {
+    const name = p.consultant_name_fallback || '(belum ada consultant)'
+    gdvByConsultant.set(name, (gdvByConsultant.get(name) || 0) + Number(p.total_gdv || 0))
+    serviceByConsultant.set(name, (serviceByConsultant.get(name) || 0) + Number(p.total_service_revenue || 0))
+  }
+  const consultantNames = Array.from(new Set([...gdvByConsultant.keys(), ...consultantTargets.map((t) => t.consultant_name)]))
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Dashboard Sales</h1>
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total GDV</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(totalGdv)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Service Revenue</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(totalServiceRevenue)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Client</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{(clients ?? []).length}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Project</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{(projects ?? []).length}</div>
+        </div>
+      </div>
+
+      {department && (
+        <div className="mb-8 rounded-lg border bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-gray-900">Progress vs Target Departemen</h2>
+          <div className="mb-3">
+            <div className="mb-1 flex justify-between text-xs text-gray-600">
+              <span>GDV: {rupiah(totalGdv)} / {rupiah(department.target_gdv)}</span>
+              <span>{pct(totalGdv, department.target_gdv)}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-gray-100">
+              <div className="h-2 rounded-full bg-blue-600" style={{ width: `${pct(totalGdv, department.target_gdv)}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 flex justify-between text-xs text-gray-600">
+              <span>Service Revenue: {rupiah(totalServiceRevenue)} / {rupiah(department.target_service_revenue)}</span>
+              <span>{pct(totalServiceRevenue, department.target_service_revenue)}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-gray-100">
+              <div className="h-2 rounded-full bg-green-600" style={{ width: `${pct(totalServiceRevenue, department.target_service_revenue)}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 grid gap-6 sm:grid-cols-2">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-gray-900">Lead by Status</h2>
+          <div className="space-y-2">
+            {leadsByStatus.map((s) => (
+              <div key={s.status} className="flex items-center gap-2 text-xs">
+                <span className="w-24 text-gray-600">{s.status}</span>
+                <div className="h-2 flex-1 rounded-full bg-gray-100">
+                  <div className="h-2 rounded-full bg-blue-500" style={{ width: `${(leads ?? []).length ? (s.count / (leads ?? []).length) * 100 : 0}%` }} />
+                </div>
+                <span className="w-6 text-right text-gray-700">{s.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-gray-900">Project by Stage</h2>
+          <div className="space-y-2">
+            {projectsByStage.map((s) => (
+              <div key={s.stage} className="flex items-center gap-2 text-xs">
+                <span className="w-24 text-gray-600">{s.stage}</span>
+                <div className="h-2 flex-1 rounded-full bg-gray-100">
+                  <div className="h-2 rounded-full bg-green-500" style={{ width: `${(projects ?? []).length ? (s.count / (projects ?? []).length) * 100 : 0}%` }} />
+                </div>
+                <span className="w-6 text-right text-gray-700">{s.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <div className="bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">GDV per Consultant vs Target</div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Consultant</th><th className="px-4 py-3">GDV Aktual</th><th className="px-4 py-3">Target GDV</th><th className="px-4 py-3">Progress</th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {consultantNames.map((name) => {
+              const target = consultantTargets.find((t) => t.consultant_name === name)
+              const actual = gdvByConsultant.get(name) || 0
+              return (
+                <tr key={name}>
+                  <td className="px-4 py-3 text-gray-900">{name}</td>
+                  <td className="px-4 py-3 text-gray-700">{rupiah(actual)}</td>
+                  <td className="px-4 py-3 text-gray-700">{target ? rupiah(target.target_gdv) : '-'}</td>
+                  <td className="px-4 py-3">
+                    {target ? (
+                      <div className="h-2 w-32 rounded-full bg-gray-100">
+                        <div className="h-2 rounded-full bg-blue-600" style={{ width: `${pct(actual, target.target_gdv)}%` }} />
+                      </div>
+                    ) : '-'}
+                  </td>
+                </tr>
+              )
+            })}
+            {consultantNames.length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Belum ada data.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/app-shell.tsx -- add Dashboard Sales as the FIRST nav item (before Home):
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard Sales' },
+  { href: '/', label: 'Home' },
+  { href: '/leads', label: 'Lead Capturing' },
+  { href: '/clients', label: 'Client Monitoring' },
+  { href: '/projects', label: 'Sales Pipeline' },
+  { href: '/documents', label: 'Document Pipeline' },
+  { href: '/cor-entities', label: 'Vendor' },
+  { href: '/achievement-target', label: 'Achievement Target' },
+  { href: '/employees', label: 'Employee' },
+  { href: '/master-data', label: 'Master Data' },
+]
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Dashboard Sales page (GDV/service revenue totals, lead/project breakdowns, consultant progress)" && git push
