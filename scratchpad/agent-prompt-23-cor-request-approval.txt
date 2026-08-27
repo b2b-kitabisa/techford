@@ -1,0 +1,134 @@
+Add email sending and "Request Approval" for COR to this Next.js + Supabase app. First install nodemailer: run `npm install nodemailer` and `npm install -D @types/nodemailer` in the terminal. Then create these files.
+
+File: src/lib/send-email.ts
+import nodemailer from 'nodemailer'
+
+export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: false,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  })
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+    to,
+    subject,
+    html,
+  })
+}
+
+File: src/app/documents/cor/[id]/actions.ts -- ADD this function to the existing file (keep everything else as-is), and add these imports at the top:
+import { randomUUID } from 'crypto'
+import { evaluateMarginGuard } from '@/lib/cor-calc'
+import { loadCorComputation } from '@/lib/cor-load'
+import { sendEmail } from '@/lib/send-email'
+
+export async function requestApproval(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+  const docId = formData.get('doc_id') as string
+  const approverId = formData.get('approver_id') as string
+  const marginAckNote = ((formData.get('margin_ack_note') as string) || '').trim()
+
+  const { header, result } = await loadCorComputation(admin, docId)
+  if (!header) throw new Error('COR Header tidak ditemukan.')
+  if (header.cor_method !== 'GROSS_DOWN') throw new Error('Cuma metode Gross Down yang bisa diajukan approval. Convert dulu.')
+
+  const { data: approver } = await admin.from('employee').select('*').eq('id', approverId).single()
+  if (!approver || approver.role !== 'Head of B2B') throw new Error('Approver harus employee dengan role Head of B2B.')
+
+  if (!header.is_salset_only) {
+    const guard = evaluateMarginGuard(result.totalMgnFrac ?? 0, result.pmPct ?? 0)
+    if (guard.below && !marginAckNote) {
+      throw new Error(`Margin aktual (${guard.actualPct}%) di bawah panduan (${guard.planPct}%) -- wajib isi alasan sebelum lanjut.`)
+    }
+  }
+
+  const token = randomUUID()
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { error: headerErr } = await admin.from('cor_header').update({
+    approval_token: token,
+    approval_expires_at: expiresAt,
+    approval_requested_to: approver.email,
+    approval_requested_name: approver.name,
+    approval_requested_at: new Date().toISOString(),
+    approval_resolved_at: null,
+    rejection_note: null,
+  }).eq('doc_id', docId)
+  if (headerErr) throw new Error(headerErr.message)
+
+  const { error: docErr } = await admin
+    .from('document_pipeline')
+    .update({ status: 'Waiting Approval', stage: 'In Progress', last_updated: new Date().toISOString() })
+    .eq('id', docId)
+  if (docErr) throw new Error(docErr.message)
+
+  await admin.from('document_activity').insert({
+    doc_id: docId,
+    activity_type: 'APPROVAL_REQUESTED',
+    round_no: 1,
+    actor_name: employee.name,
+    actor_email: employee.email,
+  })
+
+  const { data: doc } = await admin.from('document_pipeline').select('doc_id').eq('id', docId).single()
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+  const approveUrl = `${baseUrl}/approve/cor/${token}?action=approve`
+  const rejectUrl = `${baseUrl}/approve/cor/${token}?action=reject`
+  const marginNoteHtml = marginAckNote
+    ? `<p style="color:#b91c1c;font-weight:bold;">Catatan margin di bawah panduan: ${marginAckNote}</p>`
+    : ''
+
+  await sendEmail({
+    to: approver.email,
+    subject: `Approval COR ${doc?.doc_id} diperlukan`,
+    html: `
+      ${marginNoteHtml}
+      <p>Dokumen COR <strong>${doc?.doc_id}</strong> menunggu approval Anda.</p>
+      <p><a href="${approveUrl}">Approve</a> &nbsp;|&nbsp; <a href="${rejectUrl}">Reject</a></p>
+      <p style="color:#888;font-size:12px;">Link berlaku 14 hari, tanpa perlu login.</p>
+    `,
+  })
+
+  revalidatePath(`/documents/cor/${docId}`)
+  revalidatePath('/documents')
+}
+
+File: src/app/documents/cor/[id]/page.tsx -- inside the existing page, right after the closing </div> of the "Preview Hasil"/"Hasil Tersimpan" <pre> block (before the final closing </AppShell>), ADD this new section. Also add `requestApproval` to the existing import from './actions', and fetch the list of Head of B2B employees near the top of the component (right after the other admin.from(...) fetches): `const { data: approvers } = await admin.from('employee').select('id, name, email').eq('role', 'Head of B2B').eq('status', 'Active')`
+
+New JSX section to add (only render when header?.cor_method === 'GROSS_DOWN' and canWrite and doc.status is 'Drafting' or 'Revision'):
+
+{canWrite && header?.cor_method === 'GROSS_DOWN' && (doc.status === 'Drafting' || doc.status === 'Revision') && (
+  <div className="mt-8">
+    <h2 className="mb-3 text-lg font-semibold text-gray-900">Request Approval</h2>
+    <form action={requestApproval} className="max-w-xl space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+      <input type="hidden" name="doc_id" value={id} />
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Approver (Head of B2B) *</label>
+        <select name="approver_id" required className="w-full rounded-md border-gray-300 text-sm">
+          <option value="">Pilih Approver...</option>
+          {(approvers ?? []).map((a: any) => <option key={a.id} value={a.id}>{a.name} ({a.email})</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Alasan (WAJIB kalau margin di bawah panduan)</label>
+        <textarea name="margin_ack_note" className="w-full rounded-md border-gray-300 text-sm" rows={2} />
+      </div>
+      <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        Kirim Approval Request
+      </button>
+    </form>
+  </div>
+)}
+
+{doc.status === 'Waiting Approval' && (
+  <div className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+    Sedang menunggu approval dari <strong>{header?.approval_requested_name}</strong> ({header?.approval_requested_to}).
+    Diminta pada {header?.approval_requested_at ? new Date(header.approval_requested_at).toLocaleString('id-ID') : '-'},
+    kedaluwarsa {header?.approval_expires_at ? new Date(header.approval_expires_at).toLocaleString('id-ID') : '-'}.
+  </div>
+)}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add COR request approval with email notification to Head of B2B" && git push
