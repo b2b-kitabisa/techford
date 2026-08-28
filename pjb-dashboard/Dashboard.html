@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+/* ============================================================ tokens */
+:root {
+  color-scheme: light;
+  --plane:        #f9f9f7;
+  --surface:      #fcfcfb;
+  --ink:          #0b0b0b;
+  --ink-2:        #52514e;
+  --muted:        #898781;
+  --grid:         #e1e0d9;
+  --axis:         #c3c2b7;
+  --border:       rgba(11,11,11,0.10);
+  --series-1:     #2a78d6;
+  --series-1-soft:#cde2fb;
+  --pole-low:     #d03b3b;
+  --pole-high:    #2a78d6;
+  --neutral-mid:  #f0efec;
+  --good:         #0ca30c;
+  --critical:     #d03b3b;
+  --warning:      #fab219;
+  --chip-bg:      rgba(11,11,11,0.05);
+  --shadow:       0 1px 2px rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane:        #0d0d0d;
+    --surface:      #1a1a19;
+    --ink:          #ffffff;
+    --ink-2:        #c3c2b7;
+    --muted:        #898781;
+    --grid:         #2c2c2a;
+    --axis:         #383835;
+    --border:       rgba(255,255,255,0.10);
+    --series-1:     #3987e5;
+    --series-1-soft:#184f95;
+    --pole-low:     #d03b3b;
+    --pole-high:    #3987e5;
+    --neutral-mid:  #383835;
+    --chip-bg:      rgba(255,255,255,0.07);
+    --shadow:       none;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ============================================================ layout */
+.page { max-width: 1480px; margin: 0 auto; padding: 0 24px 72px; }
+
+header.top {
+  padding: 22px 24px 16px;
+  max-width: 1480px;
+  margin: 0 auto;
+  display: flex; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+}
+header.top h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
+header.top .meta { font-size: 12px; color: var(--muted); }
+
+.section-title {
+  font-size: 11px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); margin: 34px 0 12px;
+}
+.section-title:first-of-type { margin-top: 20px; }
+
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1080px) { .g2, .g3 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.card-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 4px;
+}
+.card h3 { margin: 0; font-size: 14px; font-weight: 620; letter-spacing: -0.005em; }
+.card .sub { font-size: 12px; color: var(--muted); margin: 2px 0 14px; }
+
+/* ============================================================ filter bar */
+.filterbar {
+  position: sticky; top: 0; z-index: 60;
+  background: var(--plane);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 24px 12px;
+  margin-bottom: 4px;
+}
+.filterbar-inner {
+  max-width: 1480px; margin: 0 auto;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.fgroup { display: flex; align-items: center; gap: 6px; }
+.flabel { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
+
+.ctrl {
+  appearance: none;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit; font-size: 13px;
+  min-height: 34px;
+  cursor: pointer;
+}
+.ctrl:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+input.ctrl { cursor: text; }
+.btn {
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 12px; font: inherit; font-size: 12.5px; cursor: pointer; min-height: 34px;
+}
+.btn:hover { background: var(--chip-bg); }
+.btn.primary { background: var(--series-1); color: #fff; border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.tiny { padding: 4px 9px; min-height: 0; font-size: 11.5px; border-radius: 6px; }
+
+/* preset date chips */
+.presets { display: flex; gap: 4px; }
+.preset {
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+  border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; min-height: 30px;
+}
+.preset[aria-pressed="true"] { background: var(--series-1); color: #fff; border-color: transparent; }
+
+/* multiselect */
+.ms { position: relative; }
+.ms-toggle { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ms-count {
+  background: var(--chip-bg); border-radius: 999px; padding: 1px 7px;
+  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-2);
+}
+.ms-panel {
+  position: absolute; top: calc(100% + 5px); left: 0; z-index: 80;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(11,11,11,0.14);
+  padding: 8px; min-width: 232px; max-height: 320px; overflow-y: auto;
+}
+.ms-panel[hidden] { display: none; }
+.ms-actions { display: flex; gap: 6px; padding: 0 2px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.ms-opt {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.ms-opt:hover { background: var(--chip-bg); }
+.ms-opt input { accent-color: var(--series-1); width: 15px; height: 15px; cursor: pointer; }
+
+/* ============================================================ KPI */
+.kpis { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1180px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 620px)  { .kpis { grid-template-columns: 1fr; } }
+
+.kpi .label { font-size: 12px; color: var(--ink-2); }
+.kpi .value { font-size: 30px; font-weight: 640; letter-spacing: -0.02em; margin-top: 4px; }
+.kpi.hero .value { font-size: 52px; line-height: 1.05; }
+.kpi .foot { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+.meter { height: 6px; border-radius: 999px; background: var(--series-1-soft); overflow: hidden; margin-top: 12px; position: relative; }
+.meter > i { display: block; height: 100%; border-radius: 999px; background: var(--series-1); }
+.meter.below > i { background: var(--pole-low); }
+.meter-target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-2); opacity: .55; }
+
+.status-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; border-radius: 999px;
+  padding: 2px 9px; background: var(--chip-bg); color: var(--ink-2);
+  white-space: nowrap;
+}
+.status-chip .ic { font-size: 11px; line-height: 1; }
+.status-chip.ok   { color: var(--good); }
+.status-chip.bad  { color: var(--critical); }
+.status-chip.warn { color: #8a6100; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .status-chip.warn { color: var(--warning); } }
+
+/* ============================================================ charts */
+.chart { width: 100%; display: block; overflow: visible; }
+.chart-wrap { position: relative; }
+.axis-label { font-size: 10.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.baseline { stroke: var(--axis); stroke-width: 1; }
+.targetline { stroke: var(--ink-2); stroke-width: 1; opacity: .5; }
+.series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot-ring { stroke: var(--surface); stroke-width: 2; }
+.direct-label { font-size: 11px; font-weight: 620; fill: var(--ink); }
+
+/* bar rows */
+.rows { display: flex; flex-direction: column; gap: 7px; }
+.brow { display: grid; grid-template-columns: 108px 1fr auto; align-items: center; gap: 10px; }
+.brow .rname { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brow .rtrack { position: relative; height: 20px; }
+.brow .rfill { position: absolute; left: 0; top: 0; height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.brow .rfill.low  { background: var(--pole-low); }
+.brow .rfill.high { background: var(--pole-high); }
+.brow .rval { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; min-width: 116px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.brow:hover .rfill { filter: brightness(1.08); }
+.rtargetline { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--ink-2); opacity: .45; }
+
+/* baris skala di atas bar diverging */
+.rank-axis { margin-bottom: 6px; }
+.rank-axis-track { position: relative; height: 14px; }
+.rank-axis-track span { position: absolute; top: 0; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.rank-axis-track .ax-l { left: 0; }
+.rank-axis-track .ax-c { left: 50%; transform: translateX(-50%); }
+.rank-axis-track .ax-r { right: 0; }
+
+.scroll-y { max-height: 460px; overflow-y: auto; padding-right: 4px; }
+
+/* heatmap */
+/* Wadah ini menggulir dua arah sendiri: ke samping saat bulannya sudah banyak,
+   ke bawah karena barisnya 30 RW. Karena ia scroll container, header sticky di
+   dalamnya menempel ke tepi wadah (top/left 0), bukan ke viewport. */
+.hm { overflow: auto; max-height: 560px; }
+.hm table { border-collapse: separate; border-spacing: 2px; }
+.hm th { font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 6px; text-align: center; white-space: nowrap; }
+.hm th.rw { text-align: left; }
+.hm thead th { position: sticky; top: 0; z-index: 5; background: var(--surface); }
+.hm tbody th.rw { position: sticky; left: 0; z-index: 4; background: var(--surface); }
+.hm thead th.rw { z-index: 6; left: 0; }
+.hm td { padding: 0; }
+.hm .cell {
+  width: 92px; height: 30px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-variant-numeric: tabular-nums; cursor: default;
+}
+.hm .cell.empty { background: var(--chip-bg); color: var(--muted); }
+.hm .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.scale-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11px; color: var(--muted); }
+.scale-swatches { display: flex; gap: 2px; }
+.scale-swatches i { width: 22px; height: 10px; border-radius: 2px; display: block; }
+
+/* legend */
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.legend .key-line { width: 14px; height: 2px; border-radius: 2px; }
+.legend .key-rect { width: 11px; height: 11px; border-radius: 3px; }
+
+/* tables */
+table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.data th {
+  text-align: left; font-size: 11px; font-weight: 620; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); padding: 7px 10px;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface);
+}
+table.data td { padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+table.data tbody tr:hover { background: var(--chip-bg); }
+table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* tooltip */
+#tip {
+  position: fixed; z-index: 200; pointer-events: none;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(11,11,11,0.18);
+  padding: 8px 10px; font-size: 12px; max-width: 280px;
+  opacity: 0; transition: opacity .09s ease;
+}
+#tip.on { opacity: 1; }
+#tip .t-title { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+#tip .t-row { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+#tip .t-key { width: 12px; height: 2px; border-radius: 2px; flex: none; transform: translateY(-3px); }
+#tip .t-val { font-weight: 650; font-variant-numeric: tabular-nums; }
+#tip .t-name { color: var(--ink-2); font-size: 11.5px; }
+
+/* misc */
+.empty { color: var(--muted); font-size: 13px; padding: 26px 0; text-align: center; }
+.stale { opacity: .45; transition: opacity .12s; }
+.notice {
+  background: var(--chip-bg); border: 1px solid var(--border); border-left: 3px solid var(--warning);
+  border-radius: 8px; padding: 10px 13px; font-size: 12.5px; color: var(--ink-2); margin-top: 14px;
+}
+.notice b { color: var(--ink); font-weight: 620; }
+.loader { text-align: center; padding: 70px 0; color: var(--muted); }
+.vis-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.toolbar { display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Dashboard PJB — Kader Jumantik</h1>
+    <div class="meta" id="metaLine">Memuat data…</div>
+  </div>
+  <div class="toolbar">
+    <button class="btn" id="btnRefresh" type="button">Muat ulang data</button>
+  </div>
+</header>
+
+<div class="filterbar" id="filterbar" hidden>
+  <div class="filterbar-inner">
+    <div class="fgroup">
+      <span class="flabel">Periode</span>
+      <div class="presets" id="presets">
+        <button class="preset" type="button" data-preset="all" aria-pressed="true">Semua</button>
+        <button class="preset" type="button" data-preset="last">Bulan terakhir</button>
+        <button class="preset" type="button" data-preset="30">30 hari</button>
+        <button class="preset" type="button" data-preset="90">90 hari</button>
+      </div>
+      <input class="ctrl" type="date" id="dateFrom" aria-label="Tanggal mulai">
+      <span style="color:var(--muted)">–</span>
+      <input class="ctrl" type="date" id="dateTo" aria-label="Tanggal akhir">
+    </div>
+
+    <div class="fgroup" id="msRw"></div>
+    <div class="fgroup" id="msRt"></div>
+    <div class="fgroup" id="msKader"></div>
+
+    <div class="fgroup">
+      <select class="ctrl" id="fStatus" aria-label="Status bangunan">
+        <option value="all">Semua bangunan</option>
+        <option value="positif">Positif jentik saja</option>
+        <option value="negatif">Bebas jentik saja</option>
+      </select>
+    </div>
+    <div class="fgroup">
+      <select class="ctrl" id="fTindakan" aria-label="Status tindakan">
+        <option value="all">Semua tindakan</option>
+        <option value="ada">Sudah ada tindakan</option>
+        <option value="belum">Belum ada tindakan</option>
+        <option value="3m">3M saja</option>
+        <option value="larva">Larvasidasi saja</option>
+      </select>
+    </div>
+
+    <button class="btn" id="btnReset" type="button">Reset</button>
+    <span class="ms-count" id="rowCount" style="margin-left:auto"></span>
+  </div>
+</div>
+
+<div class="page">
+  <div class="loader" id="loader">Memuat data dari tab “Master Data”…</div>
+  <div id="app" hidden>
+
+    <div class="section-title">Ringkasan</div>
+    <div class="kpis" id="kpis"></div>
+    <div id="dataNotice"></div>
+
+    <div class="section-title">Tren indikator per bulan</div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>Angka Bebas Jentik (ABJ)</h3>
+            <div class="sub">Bangunan bebas jentik ÷ bangunan diperiksa. Target nasional ≥ 95%.</div>
+          </div>
+          <button class="btn tiny" type="button" data-tableview="abjTrend">Tabel</button>
+        </div>
+        <div class="chart-wrap" id="abjTrend"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>Container Index (CI)</h3>
+            <div class="sub">Container positif ÷ container diperiksa. Target &lt; 5%.</div>
+          </div>
+          <button class="btn tiny" type="button" data-tableview="ciTrend">Tabel</button>
+        </div>
+        <div class="chart-wrap" id="ciTrend"></div>
+      </div>
+    </div>
+
+    <div class="section-title">Prioritas wilayah</div>
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h3>ABJ per RW — selisih dari target</h3>
+          <div class="sub">Panjang bar = selisih poin terhadap target 95% (baseline di tengah). Diurutkan dari ABJ terendah.</div>
+        </div>
+        <button class="btn tiny" type="button" data-tableview="rwRank">Tabel</button>
+      </div>
+      <div class="legend">
+        <span class="item"><i class="key-rect" style="background:var(--pole-low)"></i> Di bawah target (&lt; 95%)</span>
+        <span class="item"><i class="key-rect" style="background:var(--pole-high)"></i> Memenuhi target (≥ 95%)</span>
+      </div>
+      <div class="scroll-y" id="rwRank"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div>
+          <h3>ABJ per RW per bulan</h3>
+          <div class="sub">Warna menyimpang dari titik netral 95% — merah di bawah target, biru di atas.</div>
+        </div>
+        <button class="btn tiny" type="button" data-tableview="heatmap">Tabel</button>
+      </div>
+      <div class="hm" id="heatmap"></div>
+    </div>
+
+    <div class="section-title">Sumber jentik &amp; tindak lanjut</div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>Jenis kontainer tercatat</h3>
+            <div class="sub">Dari kolom kode kontainer pada formulir PJB.</div>
+          </div>
+          <button class="btn tiny" type="button" data-tableview="containers">Tabel</button>
+        </div>
+        <div id="containers"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>Kepatuhan tindakan</h3>
+            <div class="sub">Tindakan yang tercatat pada bangunan yang diperiksa.</div>
+          </div>
+          <button class="btn tiny" type="button" data-tableview="actions">Tabel</button>
+        </div>
+        <div id="actions"></div>
+      </div>
+    </div>
+
+    <div class="section-title">Aktivitas pemeriksaan</div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>Volume pemeriksaan harian</h3>
+            <div class="sub">Jumlah bangunan diperiksa per tanggal.</div>
+          </div>
+          <button class="btn tiny" type="button" data-tableview="daily">Tabel</button>
+        </div>
+        <div class="chart-wrap" id="daily"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Kinerja kader</h3>
+          <div class="sub">Diurutkan dari jumlah bangunan diperiksa terbanyak.</div></div>
+        </div>
+        <div class="scroll-y" id="kader"></div>
+      </div>
+    </div>
+
+    <div class="section-title">Daftar tindak lanjut</div>
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h3>Bangunan positif jentik</h3>
+          <div class="sub" id="followSub"></div>
+        </div>
+        <div class="toolbar">
+          <input class="ctrl" type="search" id="followSearch" placeholder="Cari nama / alamat / RW…" style="min-width:230px">
+          <button class="btn tiny" id="btnCopy" type="button">Salin tabel</button>
+        </div>
+      </div>
+      <div class="scroll-y" id="follow"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="tip" role="tooltip" aria-hidden="true"></div>
+
+<script>
+// ================================================================ state
+var DATA = null;
+var F = {
+  from: '', to: '', preset: 'all',
+  rw: new Set(), rt: new Set(), kader: new Set(),
+  status: 'all', tindakan: 'all', search: ''
+};
+var VIEW = {}; // chartId -> 'chart' | 'table'
+var LAST = {}; // chartId -> table data for the table view
+
+// row indices (harus sama dengan DashboardData.gs)
+var R_RW = 0, R_KADER = 1, R_RT = 2, R_BULAN = 3, R_TAHUN = 4, R_DATE = 5,
+    R_CDIP = 6, R_CPOS = 7, R_CNEG = 8, R_NEG = 9, R_3M = 10, R_LARVA = 11,
+    R_CODES = 12, R_NAMA = 13, R_ALAMAT = 14;
+
+var BULAN_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+var ABJ_TARGET = 95, CI_TARGET = 5;
+
+var BLUE = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#2a78d6', '#256abf', '#184f95'];
+var RED  = ['#fbd9d9', '#f4b3b3', '#ec8c8c', '#e26565', '#d03b3b', '#ab2f2f', '#862424'];
+
+// ================================================================ utils
+function nf(n, d) {
+  return Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+}
+function pct(n) { return nf(n, 1) + '%'; }
+function el(tag, cls, txt) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt !== undefined && txt !== null) n.textContent = String(txt);
+  return n;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function svgEl(tag, attrs) {
+  var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (var k in attrs) if (attrs[k] !== undefined && attrs[k] !== null) n.setAttribute(k, attrs[k]);
+  return n;
+}
+/** Skala sumbu dengan langkah 1/2/5/10 supaya label tick selalu angka bulat. */
+function niceScale(min, max, ticks) {
+  var range = (max - min) || 1;
+  var raw = range / ticks;
+  var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  var norm = raw / mag;
+  var step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  return { min: Math.floor(min / step) * step, max: Math.ceil(max / step) * step, step: step };
+}
+
+// ================================================================ tooltip
+var TIP = document.getElementById('tip');
+function showTip(html, x, y) {
+  clear(TIP);
+  TIP.appendChild(html);
+  TIP.classList.add('on');
+  TIP.setAttribute('aria-hidden', 'false');
+  var r = TIP.getBoundingClientRect();
+  var left = Math.min(x + 14, window.innerWidth - r.width - 10);
+  var top = y - r.height - 12;
+  if (top < 8) top = y + 18;
+  TIP.style.left = Math.max(8, left) + 'px';
+  TIP.style.top = top + 'px';
+}
+function hideTip() { TIP.classList.remove('on'); TIP.setAttribute('aria-hidden', 'true'); }
+function tipBox(title, rows) {
+  var box = document.createDocumentFragment();
+  var t = el('div', 't-title', title);
+  box.appendChild(t);
+  rows.forEach(function (r) {
+    var line = el('div', 't-row');
+    if (r.color) {
+      var k = el('span', 't-key');
+      k.style.background = r.color;
+      line.appendChild(k);
+    }
+    line.appendChild(el('span', 't-val', r.value));
+    if (r.name) line.appendChild(el('span', 't-name', r.name));
+    box.appendChild(line);
+  });
+  return box;
+}
+
+// ================================================================ boot
+function boot(force) {
+  document.getElementById('app').classList.add('stale');
+  google.script.run
+    .withSuccessHandler(onData)
+    .withFailureHandler(onError)
+    .getDashboardPayload(!!force);
+}
+function onError(err) {
+  document.getElementById('loader').hidden = false;
+  document.getElementById('loader').textContent = 'Gagal memuat data: ' + (err && err.message ? err.message : err);
+  document.getElementById('app').classList.remove('stale');
+}
+function onData(payload) {
+  DATA = payload;
+  DATA.rows.forEach(function (r) { r._d = r[R_DATE] || ''; });
+
+  document.getElementById('loader').hidden = true;
+  document.getElementById('app').hidden = false;
+  document.getElementById('filterbar').hidden = false;
+  document.getElementById('app').classList.remove('stale');
+  document.getElementById('metaLine').textContent =
+    nf(DATA.totalRows) + ' baris pemeriksaan · ' + DATA.rwList.length + ' RW · diperbarui ' + DATA.generatedAt;
+
+  buildFilters();
+  renderAll();
+}
+
+// ================================================================ filters
+function buildMulti(mountId, label, options, stateSet) {
+  var mount = document.getElementById(mountId);
+  clear(mount);
+
+  var wrap = el('div', 'ms');
+  var btn = el('button', 'ctrl ms-toggle');
+  btn.type = 'button';
+  btn.appendChild(el('span', null, label));
+  var count = el('span', 'ms-count', 'Semua');
+  btn.appendChild(count);
+  btn.appendChild(el('span', null, '▾'));
+
+  var panel = el('div', 'ms-panel');
+  panel.hidden = true;
+
+  var actions = el('div', 'ms-actions');
+  var bAll = el('button', 'btn tiny', 'Pilih semua'); bAll.type = 'button';
+  var bNone = el('button', 'btn tiny', 'Kosongkan'); bNone.type = 'button';
+  actions.appendChild(bAll); actions.appendChild(bNone);
+  panel.appendChild(actions);
+
+  var boxes = [];
+  options.forEach(function (opt, i) {
+    var row = el('label', 'ms-opt');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.value = String(i);
+    row.appendChild(cb);
+    row.appendChild(el('span', null, opt));
+    panel.appendChild(row);
+    boxes.push(cb);
+    cb.addEventListener('change', sync);
+  });
+
+  function sync() {
+    stateSet.clear();
+    var on = 0;
+    boxes.forEach(function (cb, i) { if (cb.checked) { stateSet.add(i); on++; } });
+    count.textContent = (on === boxes.length) ? 'Semua' : nf(on);
+    renderAll();
+  }
+  bAll.addEventListener('click', function () { boxes.forEach(function (c) { c.checked = true; }); sync(); });
+  bNone.addEventListener('click', function () { boxes.forEach(function (c) { c.checked = false; }); sync(); });
+
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.querySelectorAll('.ms-panel').forEach(function (p) { if (p !== panel) p.hidden = true; });
+    panel.hidden = !panel.hidden;
+  });
+  panel.addEventListener('click', function (e) { e.stopPropagation(); });
+
+  options.forEach(function (_, i) { stateSet.add(i); });
+
+  wrap.appendChild(btn);
+  wrap.appendChild(panel);
+  mount.appendChild(wrap);
+  return { reset: function () { boxes.forEach(function (c) { c.checked = true; }); stateSet.clear(); options.forEach(function (_, i) { stateSet.add(i); }); count.textContent = 'Semua'; } };
+}
+
+var MS = {};
+function buildFilters() {
+  // urutkan RT secara numerik agar 2 tidak muncul setelah 10
+  MS.rw = buildMulti('msRw', 'RW', DATA.rwList, F.rw);
+  MS.rt = buildMulti('msRt', 'RT', DATA.rtList, F.rt);
+  MS.kader = buildMulti('msKader', 'Kader', DATA.kaderList, F.kader);
+
+  var dates = DATA.rows.map(function (r) { return r[R_DATE]; }).filter(Boolean).sort();
+  if (dates.length) {
+    document.getElementById('dateFrom').min = dates[0];
+    document.getElementById('dateTo').max = dates[dates.length - 1];
+  }
+
+  document.getElementById('dateFrom').addEventListener('change', function () {
+    F.from = this.value; F.preset = ''; syncPresetButtons(); renderAll();
+  });
+  document.getElementById('dateTo').addEventListener('change', function () {
+    F.to = this.value; F.preset = ''; syncPresetButtons(); renderAll();
+  });
+  document.getElementById('fStatus').addEventListener('change', function () { F.status = this.value; renderAll(); });
+  document.getElementById('fTindakan').addEventListener('change', function () { F.tindakan = this.value; renderAll(); });
+  document.getElementById('followSearch').addEventListener('input', function () { F.search = this.value.toLowerCase(); renderFollow(applyFilters()); });
+
+  document.getElementById('presets').addEventListener('click', function (e) {
+    var b = e.target.closest('.preset');
+    if (!b) return;
+    applyPreset(b.getAttribute('data-preset'));
+  });
+
+  document.getElementById('btnReset').addEventListener('click', function () {
+    F.from = ''; F.to = ''; F.preset = 'all'; F.status = 'all'; F.tindakan = 'all'; F.search = '';
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('fStatus').value = 'all';
+    document.getElementById('fTindakan').value = 'all';
+    document.getElementById('followSearch').value = '';
+    MS.rw.reset(); MS.rt.reset(); MS.kader.reset();
+    syncPresetButtons();
+    renderAll();
+  });
+
+  document.getElementById('btnRefresh').addEventListener('click', function () { boot(true); });
+  document.getElementById('btnCopy').addEventListener('click', copyFollowTable);
+
+  document.addEventListener('click', function () {
+    document.querySelectorAll('.ms-panel').forEach(function (p) { p.hidden = true; });
+  });
+
+  document.querySelectorAll('[data-tableview]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var id = b.getAttribute('data-tableview');
+      VIEW[id] = (VIEW[id] === 'table') ? 'chart' : 'table';
+      b.textContent = VIEW[id] === 'table' ? 'Grafik' : 'Tabel';
+      renderAll();
+    });
+  });
+}
+
+function applyPreset(preset) {
+  F.preset = preset;
+  var dates = DATA.rows.map(function (r) { return r[R_DATE]; }).filter(Boolean).sort();
+  if (!dates.length) { F.from = ''; F.to = ''; }
+  else if (preset === 'all') { F.from = ''; F.to = ''; }
+  else {
+    var last = dates[dates.length - 1];
+    F.to = last;
+    if (preset === 'last') {
+      F.from = last.slice(0, 8) + '01';
+    } else {
+      var d = new Date(last + 'T00:00:00');
+      d.setDate(d.getDate() - (parseInt(preset, 10) - 1));
+      F.from = d.toISOString().slice(0, 10);
+    }
+  }
+  document.getElementById('dateFrom').value = F.from;
+  document.getElementById('dateTo').value = F.to;
+  syncPresetButtons();
+  renderAll();
+}
+function syncPresetButtons() {
+  document.querySelectorAll('.preset').forEach(function (b) {
+    b.setAttribute('aria-pressed', b.getAttribute('data-preset') === F.preset ? 'true' : 'false');
+  });
+}
+
+function applyFilters() {
+  var allRw = F.rw.size === DATA.rwList.length;
+  var allRt = F.rt.size === DATA.rtList.length;
+  var allKader = F.kader.size === DATA.kaderList.length;
+
+  return DATA.rows.filter(function (r) {
+    if (!allRw && !F.rw.has(r[R_RW])) return false;
+    if (!allRt && !F.rt.has(r[R_RT])) return false;
+    if (!allKader && !F.kader.has(r[R_KADER])) return false;
+
+    if (F.from || F.to) {
+      var d = r[R_DATE];
+      if (!d) return false; // tanggal tidak valid — dikecualikan saat filter tanggal aktif
+      if (F.from && d < F.from) return false;
+      if (F.to && d > F.to) return false;
+    }
+
+    if (F.status === 'positif' && r[R_NEG] === 1) return false;
+    if (F.status === 'negatif' && r[R_NEG] !== 1) return false;
+
+    var has3m = r[R_3M] === 1, hasLv = r[R_LARVA] === 1;
+    if (F.tindakan === 'ada' && !has3m && !hasLv) return false;
+    if (F.tindakan === 'belum' && (has3m || hasLv)) return false;
+    if (F.tindakan === '3m' && !(has3m && !hasLv)) return false;
+    if (F.tindakan === 'larva' && !(hasLv && !has3m)) return false;
+
+    return true;
+  });
+}
+
+// ================================================================ render
+function renderAll() {
+  if (!DATA) return;
+  var rows = applyFilters();
+  document.getElementById('rowCount').textContent = nf(rows.length) + ' baris terpilih';
+
+  renderKpis(rows);
+  renderNotice();
+  renderTrends(rows);
+  renderRwRank(rows);
+  renderHeatmap(rows);
+  renderContainers(rows);
+  renderActions(rows);
+  renderDaily(rows);
+  renderKader(rows);
+  renderFollow(rows);
+}
+
+function totals(rows) {
+  var t = { bangunan: rows.length, negatif: 0, cDip: 0, cPos: 0, m3: 0, larva: 0, belum: 0 };
+  rows.forEach(function (r) {
+    if (r[R_NEG] === 1) t.negatif++;
+    t.cDip += r[R_CDIP];
+    t.cPos += r[R_CPOS];
+    if (r[R_3M] === 1) t.m3++;
+    if (r[R_LARVA] === 1) t.larva++;
+    if (r[R_NEG] !== 1 && r[R_3M] !== 1 && r[R_LARVA] !== 1) t.belum++;
+  });
+  t.positif = t.bangunan - t.negatif;
+  t.abj = t.bangunan ? (t.negatif / t.bangunan) * 100 : 0;
+  t.ci = t.cDip ? (t.cPos / t.cDip) * 100 : 0;
+  return t;
+}
+
+// ---------------------------------------------------------------- KPI
+function renderKpis(rows) {
+  var t = totals(rows);
+  var host = document.getElementById('kpis');
+  clear(host);
+
+  // Hero: ABJ
+  var hero = el('div', 'card kpi hero');
+  hero.appendChild(el('div', 'label', 'Angka Bebas Jentik (ABJ)'));
+  hero.appendChild(el('div', 'value', t.bangunan ? pct(t.abj) : '—'));
+  var meter = el('div', 'meter' + (t.abj < ABJ_TARGET ? ' below' : ''));
+  var fill = document.createElement('i');
+  fill.style.width = Math.max(0, Math.min(100, t.abj)) + '%';
+  meter.appendChild(fill);
+  var tick = el('span', 'meter-target');
+  tick.style.left = ABJ_TARGET + '%';
+  meter.appendChild(tick);
+  hero.appendChild(meter);
+  var heroFoot = el('div', 'foot');
+  heroFoot.appendChild(document.createTextNode('Target ≥ 95% · '));
+  var chip = el('span', 'status-chip ' + (t.abj >= ABJ_TARGET ? 'ok' : 'bad'));
+  chip.appendChild(el('span', 'ic', t.abj >= ABJ_TARGET ? '✓' : '▲'));
+  chip.appendChild(el('span', null, t.abj >= ABJ_TARGET ? 'Risiko rendah' : 'Risiko tinggi'));
+  heroFoot.appendChild(chip);
+  hero.appendChild(heroFoot);
+  host.appendChild(hero);
+
+  host.appendChild(kpiCard('Container Index (CI)', t.cDip ? pct(t.ci) : '—',
+    'Target < 5% · ' , t.ci < CI_TARGET ? 'ok' : 'bad', t.ci < CI_TARGET ? '✓ Risiko rendah' : '▲ Di atas target'));
+  host.appendChild(kpiCard('Bangunan diperiksa', nf(t.bangunan), nf(t.cDip) + ' container diperiksa'));
+  host.appendChild(kpiCard('Bangunan positif jentik', nf(t.positif),
+    t.bangunan ? pct((t.positif / t.bangunan) * 100) + ' dari yang diperiksa' : '—'));
+  host.appendChild(kpiCard('Positif tanpa tindakan', nf(t.belum),
+    'Belum 3M maupun larvasidasi', t.belum > 0 ? 'warn' : 'ok', t.belum > 0 ? '▲ Perlu tindak lanjut' : '✓ Tertangani'));
+}
+
+function kpiCard(label, value, foot, chipCls, chipTxt) {
+  var c = el('div', 'card kpi');
+  c.appendChild(el('div', 'label', label));
+  c.appendChild(el('div', 'value', value));
+  var f = el('div', 'foot');
+  if (foot) f.appendChild(document.createTextNode(foot));
+  if (chipTxt) {
+    var chip = el('span', 'status-chip ' + (chipCls || ''));
+    chip.appendChild(el('span', null, chipTxt));
+    f.appendChild(chip);
+  }
+  c.appendChild(f);
+  return c;
+}
+
+function renderNotice() {
+  var host = document.getElementById('dataNotice');
+  clear(host);
+  var i = DATA.issues || {};
+  var msgs = [];
+  if (i.tanggalDitukar) msgs.push(nf(i.tanggalDitukar) + ' tanggal hari/bulan tertukar — dikoreksi otomatis mengikuti kolom Bulan');
+  if (i.tanggalTidakValid) msgs.push(nf(i.tanggalTidakValid) + ' tanggal tidak dapat dibaca — baris ini keluar dari hasil bila filter tanggal aktif');
+  if (i.containerPositifNolTapiAdaKode) msgs.push(nf(i.containerPositifNolTapiAdaKode) + ' baris punya kode kontainer terisi tetapi jumlah container positif 0 — CI kemungkinan under-report');
+  if (i.kodeKontainerNonNumerik) msgs.push(nf(i.kodeKontainerNonNumerik) + ' baris memuat kode kontainer berupa teks bebas');
+  if (!msgs.length) return;
+
+  var box = el('div', 'notice');
+  box.appendChild(el('b', null, 'Catatan kualitas data — '));
+  box.appendChild(document.createTextNode(msgs.join('; ') + '.'));
+  host.appendChild(box);
+}
+
+// ---------------------------------------------------------------- tren
+function monthKeyList(rows) {
+  var seen = {};
+  rows.forEach(function (r) {
+    if (!r[R_BULAN] || !r[R_TAHUN]) return;
+    seen[r[R_TAHUN] + '-' + ('0' + r[R_BULAN]).slice(-2)] = true;
+  });
+  return Object.keys(seen).sort();
+}
+
+function renderTrends(rows) {
+  var keys = monthKeyList(rows);
+  var byMonth = {};
+  keys.forEach(function (k) { byMonth[k] = []; });
+  rows.forEach(function (r) {
+    var k = r[R_TAHUN] + '-' + ('0' + r[R_BULAN]).slice(-2);
+    if (byMonth[k]) byMonth[k].push(r);
+  });
+
+  var abjPts = keys.map(function (k) { var t = totals(byMonth[k]); return { key: k, v: t.abj, n: t.bangunan }; });
+  var ciPts = keys.map(function (k) { var t = totals(byMonth[k]); return { key: k, v: t.ci, n: t.cDip }; });
+
+  drawTrend('abjTrend', abjPts, ABJ_TARGET, 'ABJ', 'bangunan diperiksa', true);
+  drawTrend('ciTrend', ciPts, CI_TARGET, 'CI', 'container diperiksa', false);
+}
+
+function monthLabel(key) {
+  var p = key.split('-');
+  return BULAN_SHORT[parseInt(p[1], 10)] + ' ' + p[0].slice(2);
+}
+
+function drawTrend(id, pts, target, name, unitName, higherIsBetter) {
+  var host = document.getElementById(id);
+  clear(host);
+  LAST[id] = {
+    head: ['Bulan', name + ' (%)', 'Jumlah ' + unitName],
+    rows: pts.map(function (p) { return [monthLabel(p.key), nf(p.v, 1), nf(p.n)]; })
+  };
+  if (VIEW[id] === 'table') { host.appendChild(buildTable(LAST[id])); return; }
+  if (!pts.length) { host.appendChild(el('div', 'empty', 'Tidak ada data pada filter ini.')); return; }
+
+  var W = host.clientWidth || 520, H = 220;
+  var m = { t: 16, r: 46, b: 28, l: 42 };
+  var iw = Math.max(60, W - m.l - m.r), ih = H - m.t - m.b;
+
+  var vals = pts.map(function (p) { return p.v; }).concat([target]);
+  var vmax = Math.max.apply(null, vals), vmin = Math.min.apply(null, vals);
+  var pad = Math.max(0.5, (vmax - vmin) * 0.25);
+  // CI adalah rasio yang bermakna dari nol, jadi sumbunya selalu menyentuh 0.
+  var scale = niceScale(higherIsBetter ? vmin - pad : 0, vmax + pad, 4);
+  var yMin = higherIsBetter ? Math.max(0, scale.min) : 0;
+  var yMax = higherIsBetter ? Math.min(100, scale.max) : scale.max;
+  if (yMax - yMin < scale.step) yMax = yMin + scale.step;
+  var tickCount = Math.max(2, Math.min(6, Math.round((yMax - yMin) / scale.step)));
+  var tickDec = scale.step < 1 ? 1 : 0;
+
+  var svg = svgEl('svg', { class: 'chart', viewBox: '0 0 ' + W + ' ' + H, height: H, role: 'img' });
+  svg.setAttribute('aria-label', 'Tren ' + name + ' per bulan');
+
+  function X(i) { return m.l + (pts.length === 1 ? iw / 2 : (i / (pts.length - 1)) * iw); }
+  function Y(v) { return m.t + ih - ((v - yMin) / (yMax - yMin)) * ih; }
+
+  // gridlines + y ticks (langkah "bulat" supaya label tidak dibulatkan menyesatkan)
+  for (var g = 0; g <= tickCount; g++) {
+    var v = yMin + ((yMax - yMin) * g) / tickCount;
+    var y = Y(v);
+    svg.appendChild(svgEl('line', { class: 'gridline', x1: m.l, x2: m.l + iw, y1: y, y2: y }));
+    var tk = svgEl('text', { class: 'axis-label', x: m.l - 8, y: y + 3.5, 'text-anchor': 'end' });
+    tk.textContent = nf(v, tickDec) + '%';
+    svg.appendChild(tk);
+  }
+
+  // target line
+  svg.appendChild(svgEl('line', { class: 'targetline', x1: m.l, x2: m.l + iw, y1: Y(target), y2: Y(target) }));
+  var tl = svgEl('text', { class: 'axis-label', x: m.l + iw + 5, y: Y(target) + 3.5 });
+  tl.textContent = 'Target ' + target + '%';
+  svg.appendChild(tl);
+
+  // x labels
+  pts.forEach(function (p, i) {
+    var xl = svgEl('text', { class: 'axis-label', x: X(i), y: H - 8, 'text-anchor': 'middle' });
+    xl.textContent = monthLabel(p.key);
+    svg.appendChild(xl);
+  });
+
+  svg.appendChild(svgEl('line', { class: 'baseline', x1: m.l, x2: m.l + iw, y1: m.t + ih, y2: m.t + ih }));
+
+  // line
+  var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(i) + ' ' + Y(p.v); }).join(' ');
+  svg.appendChild(svgEl('path', { class: 'series-line', d: d, stroke: 'var(--series-1)' }));
+
+  // dots
+  pts.forEach(function (p, i) {
+    svg.appendChild(svgEl('circle', { class: 'dot-ring', cx: X(i), cy: Y(p.v), r: 4.5, fill: 'var(--series-1)' }));
+  });
+
+  // direct label pada titik terakhir saja
+  var li = pts.length - 1;
+  var lab = svgEl('text', { class: 'direct-label', x: X(li), y: Y(pts[li].v) - 12, 'text-anchor': li === 0 ? 'middle' : 'end' });
+  lab.textContent = pct(pts[li].v);
+  svg.appendChild(lab);
+
+  // hover: crosshair + hit area per bulan
+  var cross = svgEl('line', { class: 'gridline', y1: m.t, y2: m.t + ih, opacity: 0, stroke: 'var(--ink-2)' });
+  svg.appendChild(cross);
+
+  pts.forEach(function (p, i) {
+    var half = pts.length === 1 ? iw / 2 : iw / (pts.length - 1) / 2;
+    var hit = svgEl('rect', {
+      x: Math.max(m.l, X(i) - half), y: m.t,
+      width: Math.max(24, half * 2), height: ih, fill: 'transparent'
+    });
+    hit.style.cursor = 'crosshair';
+    hit.addEventListener('pointermove', function (e) {
+      cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('opacity', 0.5);
+      showTip(tipBox(monthLabel(p.key), [
+        { color: getComputedStyle(document.body).getPropertyValue('--series-1'), value: pct(p.v), name: name },
+        { value: nf(p.n), name: unitName }
+      ]), e.clientX, e.clientY);
+    });
+    hit.addEventListener('pointerleave', function () { cross.setAttribute('opacity', 0); hideTip(); });
+    svg.appendChild(hit);
+  });
+
+  host.appendChild(svg);
+}
+
+// ---------------------------------------------------------------- ranking RW
+function renderRwRank(rows) {
+  var host = document.getElementById('rwRank');
+  clear(host);
+
+  var by = {};
+  rows.forEach(function (r) {
+    var k = r[R_RW];
+    if (!by[k]) by[k] = [];
+    by[k].push(r);
+  });
+
+  var items = Object.keys(by).map(function (k) {
+    var t = totals(by[k]);
+    return { name: DATA.rwList[k], abj: t.abj, n: t.bangunan, pos: t.positif };
+  }).sort(function (a, b) { return a.abj - b.abj; });
+
+  LAST.rwRank = {
+    head: ['RW', 'ABJ (%)', 'Bangunan diperiksa', 'Positif jentik', 'Status'],
+    rows: items.map(function (it) {
+      return [it.name, nf(it.abj, 1), nf(it.n), nf(it.pos), it.abj >= ABJ_TARGET ? 'Risiko rendah' : 'Risiko tinggi'];
+    })
+  };
+  if (VIEW.rwRank === 'table') { host.appendChild(buildTable(LAST.rwRank)); return; }
+  if (!items.length) { host.appendChild(el('div', 'empty', 'Tidak ada data pada filter ini.')); return; }
+
+  // Rentang ABJ antar-RW sempit (mis. 89–98%), jadi skala 0–100 membuat semua bar
+  // tampak sama panjang. Yang digambar adalah SELISIH terhadap target 95% —
+  // baseline nyata di tengah, jadi perbedaan antar-RW langsung terbaca.
+  var maxDev = Math.max.apply(null, items.map(function (it) { return Math.abs(it.abj - ABJ_TARGET); }));
+  maxDev = Math.max(2, Math.ceil(maxDev));
+
+  var axis = el('div', 'brow rank-axis');
+  axis.appendChild(el('div', 'rname'));
+  var axisTrack = el('div', 'rtrack rank-axis-track');
+  axisTrack.appendChild(el('span', 'ax-l', '−' + maxDev + ' poin'));
+  axisTrack.appendChild(el('span', 'ax-c', 'target ' + ABJ_TARGET + '%'));
+  axisTrack.appendChild(el('span', 'ax-r', '+' + maxDev + ' poin'));
+  axis.appendChild(axisTrack);
+  axis.appendChild(el('div', 'rval'));
+  host.appendChild(axis);
+
+  var wrap = el('div', 'rows');
+  items.forEach(function (it) {
+    var row = el('div', 'brow');
+    row.appendChild(el('div', 'rname', it.name));
+
+    var dev = it.abj - ABJ_TARGET;
+    var halfPct = (Math.abs(dev) / maxDev) * 50;
+
+    var track = el('div', 'rtrack');
+    var fill = el('div', 'rfill ' + (dev >= 0 ? 'high' : 'low'));
+    if (dev >= 0) {
+      fill.style.left = '50%';
+      fill.style.borderRadius = '0 4px 4px 0';
+    } else {
+      fill.style.left = (50 - halfPct) + '%';
+      fill.style.borderRadius = '4px 0 0 4px';
+    }
+    fill.style.width = halfPct + '%';
+    track.appendChild(fill);
+    var tline = el('span', 'rtargetline');
+    tline.style.left = '50%';
+    track.appendChild(tline);
+    row.appendChild(track);
+
+    var val = el('div', 'rval');
+    val.appendChild(el('span', null, pct(it.abj)));
+    var chip = el('span', 'status-chip ' + (it.abj >= ABJ_TARGET ? 'ok' : 'bad'));
+    chip.appendChild(el('span', 'ic', it.abj >= ABJ_TARGET ? '✓' : '▲'));
+    chip.appendChild(el('span', null, it.abj >= ABJ_TARGET ? 'Target' : 'Risiko'));
+    val.appendChild(chip);
+    row.appendChild(val);
+
+    row.addEventListener('pointermove', function (e) {
+      showTip(tipBox(it.name, [
+        { color: dev >= 0 ? 'var(--pole-high)' : 'var(--pole-low)', value: pct(it.abj), name: 'ABJ' },
+        { value: (dev >= 0 ? '+' : '−') + nf(Math.abs(dev), 1), name: 'poin dari target 95%' },
+        { value: nf(it.n), name: 'bangunan diperiksa' },
+        { value: nf(it.pos), name: 'positif jentik' }
+      ]), e.clientX, e.clientY);
+    });
+    row.addEventListener('pointerleave', hideTip);
+
+    wrap.appendChild(row);
+  });
+  host.appendChild(wrap);
+}
+
+// ---------------------------------------------------------------- heatmap
+/**
+ * Lengan skala sengaja asimetris: ABJ mentok di 100% sehingga sisi atas target
+ * hanya punya 5 poin ruang, sedangkan sisi bawah bisa jauh. Kalau kedua lengan
+ * dibuat sama lebar, seluruh sisi biru akan terlihat nyaris seragam.
+ */
+function divergingColor(v, target) {
+  if (v === null || v === undefined) return null;
+  var diff = v - target;
+  var span = diff < 0 ? 12 : Math.max(1, 100 - target);
+  var t = Math.min(1, Math.abs(diff) / span);
+  var step = Math.min(6, Math.max(0, Math.round(t * 6)));
+  if (Math.abs(diff) < 0.35) return 'var(--neutral-mid)';
+  return diff < 0 ? RED[step] : BLUE[step];
+}
+function inkFor(bg) {
+  if (!bg || bg.indexOf('var(') === 0) return 'var(--ink-2)';
+  var r = parseInt(bg.substr(1, 2), 16), g = parseInt(bg.substr(3, 2), 16), b = parseInt(bg.substr(5, 2), 16);
+  var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6 ? '#0b0b0b' : '#ffffff';
+}
+
+function renderHeatmap(rows) {
+  var host = document.getElementById('heatmap');
+  clear(host);
+
+  var months = monthKeyList(rows);
+  var rwKeys = [];
+  var cellRows = {};
+  rows.forEach(function (r) {
+    var rw = DATA.rwList[r[R_RW]];
+    var mk = r[R_TAHUN] + '-' + ('0' + r[R_BULAN]).slice(-2);
+    if (!cellRows[rw]) { cellRows[rw] = {}; rwKeys.push(rw); }
+    if (!cellRows[rw][mk]) cellRows[rw][mk] = [];
+    cellRows[rw][mk].push(r);
+  });
+  rwKeys.sort();
+
+  LAST.heatmap = {
+    head: ['RW'].concat(months.map(monthLabel)),
+    rows: rwKeys.map(function (rw) {
+      return [rw].concat(months.map(function (mk) {
+        var g = cellRows[rw][mk];
+        return g ? nf(totals(g).abj, 1) : '—';
+      }));
+    })
+  };
+  if (VIEW.heatmap === 'table') { host.appendChild(buildTable(LAST.heatmap)); return; }
+  if (!rwKeys.length || !months.length) { host.appendChild(el('div', 'empty', 'Tidak ada data pada filter ini.')); return; }
+
+  var table = document.createElement('table');
+  var thead = document.createElement('thead');
+  var htr = document.createElement('tr');
+  htr.appendChild(el('th', 'rw', 'RW'));
+  months.forEach(function (mk) { htr.appendChild(el('th', null, monthLabel(mk))); });
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  var tbody = document.createElement('tbody');
+  rwKeys.forEach(function (rw) {
+    var tr = document.createElement('tr');
+    tr.appendChild(el('th', 'rw', rw));
+    months.forEach(function (mk) {
+      var td = document.createElement('td');
+      var group = cellRows[rw][mk];
+      var cell;
+      if (!group) {
+        cell = el('div', 'cell empty', '—');
+      } else {
+        var t = totals(group);
+        var bg = divergingColor(t.abj, ABJ_TARGET);
+        cell = el('div', 'cell', nf(t.abj, 1) + '%');
+        cell.style.background = bg;
+        cell.style.color = inkFor(bg);
+        cell.setAttribute('tabindex', '0');
+        var show = function (e) {
+          showTip(tipBox(rw + ' · ' + monthLabel(mk), [
+            { color: bg, value: pct(t.abj), name: 'ABJ' },
+            { value: nf(t.bangunan), name: 'bangunan diperiksa' },
+            { value: nf(t.positif), name: 'positif jentik' }
+          ]), e.clientX || 0, e.clientY || 0);
+        };
+        cell.addEventListener('pointermove', show);
+        cell.addEventListener('focus', function () {
+          var r = cell.getBoundingClientRect();
+          show({ clientX: r.left + r.width / 2, clientY: r.top });
+        });
+        cell.addEventListener('pointerleave', hideTip);
+        cell.addEventListener('blur', hideTip);
+      }
+      td.appendChild(cell);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  host.appendChild(table);
+
+  var lg = el('div', 'scale-legend');
+  lg.appendChild(el('span', null, '≤ ' + (ABJ_TARGET - 12) + '%'));
+  var sw = el('div', 'scale-swatches');
+  [6, 4, 2, 0].forEach(function (i) { var s = document.createElement('i'); s.style.background = RED[i]; sw.appendChild(s); });
+  var mid = document.createElement('i'); mid.style.background = 'var(--neutral-mid)'; sw.appendChild(mid);
+  [0, 2, 4, 6].forEach(function (i) { var s = document.createElement('i'); s.style.background = BLUE[i]; sw.appendChild(s); });
+  lg.appendChild(sw);
+  lg.appendChild(el('span', null, '100%'));
+  lg.appendChild(el('span', null, '· titik netral = target ' + ABJ_TARGET + '%'));
+  host.appendChild(lg);
+}
+
+// ---------------------------------------------------------------- kontainer
+function renderContainers(rows) {
+  var host = document.getElementById('containers');
+  clear(host);
+
+  var counts = {};
+  rows.forEach(function (r) {
+    (r[R_CODES] || []).forEach(function (c) { counts[c] = (counts[c] || 0) + 1; });
+  });
+  var items = Object.keys(counts).map(function (c) {
+    return { name: DATA.containerLabels[c] || ('Kode ' + c), v: counts[c] };
+  }).sort(function (a, b) { return b.v - a.v; });
+
+  LAST.containers = { head: ['Jenis kontainer', 'Jumlah bangunan'], rows: items.map(function (i) { return [i.name, nf(i.v)]; }) };
+  if (VIEW.containers === 'table') { host.appendChild(buildTable(LAST.containers)); return; }
+  drawSimpleBars(host, items, 'bangunan', 215);
+}
+
+function renderActions(rows) {
+  var host = document.getElementById('actions');
+  clear(host);
+  var c = { both: 0, m3: 0, lv: 0, none: 0 };
+  rows.forEach(function (r) {
+    var a = r[R_3M] === 1, b = r[R_LARVA] === 1;
+    if (a && b) c.both++; else if (a) c.m3++; else if (b) c.lv++; else c.none++;
+  });
+  var items = [
+    { name: '3M saja', v: c.m3 },
+    { name: '3M + larvasidasi', v: c.both },
+    { name: 'Larvasidasi saja', v: c.lv },
+    { name: 'Belum ada tindakan', v: c.none }
+  ];
+  LAST.actions = { head: ['Tindakan', 'Jumlah bangunan'], rows: items.map(function (i) { return [i.name, nf(i.v)]; }) };
+  if (VIEW.actions === 'table') { host.appendChild(buildTable(LAST.actions)); return; }
+  drawSimpleBars(host, items, 'bangunan', 160);
+}
+
+function drawSimpleBars(host, items, unit, labelW) {
+  if (!items.length) { host.appendChild(el('div', 'empty', 'Tidak ada data pada filter ini.')); return; }
+  var max = Math.max.apply(null, items.map(function (i) { return i.v; })) || 1;
+  var wrap = el('div', 'rows');
+  items.forEach(function (it) {
+    var row = el('div', 'brow');
+    row.style.gridTemplateColumns = labelW + 'px 1fr auto';
+    row.appendChild(el('div', 'rname', it.name));
+    var track = el('div', 'rtrack');
+    var fill = el('div', 'rfill');
+    fill.style.width = ((it.v / max) * 100) + '%';
+    track.appendChild(fill);
+    row.appendChild(track);
+    var val = el('div', 'rval');
+    val.style.minWidth = '54px';
+    val.appendChild(el('span', null, nf(it.v)));
+    row.appendChild(val);
+    row.addEventListener('pointermove', function (e) {
+      showTip(tipBox(it.name, [{ color: 'var(--series-1)', value: nf(it.v), name: unit }]), e.clientX, e.clientY);
+    });
+    row.addEventListener('pointerleave', hideTip);
+    wrap.appendChild(row);
+  });
+  host.appendChild(wrap);
+}
+
+// ---------------------------------------------------------------- harian
+function renderDaily(rows) {
+  var host = document.getElementById('daily');
+  clear(host);
+
+  var by = {};
+  rows.forEach(function (r) {
+    if (!r[R_DATE]) return;
+    if (!by[r[R_DATE]]) by[r[R_DATE]] = { n: 0, pos: 0 };
+    by[r[R_DATE]].n++;
+    if (r[R_NEG] !== 1) by[r[R_DATE]].pos++;
+  });
+  var keys = Object.keys(by).sort();
+
+  LAST.daily = { head: ['Tanggal', 'Bangunan diperiksa', 'Positif jentik'], rows: keys.map(function (k) { return [k, nf(by[k].n), nf(by[k].pos)]; }) };
+  if (VIEW.daily === 'table') { host.appendChild(buildTable(LAST.daily)); return; }
+  if (!keys.length) { host.appendChild(el('div', 'empty', 'Tidak ada tanggal valid pada filter ini.')); return; }
+
+  var W = host.clientWidth || 520, H = 220;
+  var m = { t: 14, r: 10, b: 34, l: 42 };
+  var iw = Math.max(60, W - m.l - m.r), ih = H - m.t - m.b;
+  var max = Math.max.apply(null, keys.map(function (k) { return by[k].n; }));
+  var yMax = Math.max(5, Math.ceil(max / 5) * 5);
+
+  var svg = svgEl('svg', { class: 'chart', viewBox: '0 0 ' + W + ' ' + H, height: H, role: 'img' });
+  svg.setAttribute('aria-label', 'Volume pemeriksaan harian');
+
+  for (var g = 0; g <= 4; g++) {
+    var v = (yMax * g) / 4, y = m.t + ih - (v / yMax) * ih;
+    svg.appendChild(svgEl('line', { class: 'gridline', x1: m.l, x2: m.l + iw, y1: y, y2: y }));
+    var tk = svgEl('text', { class: 'axis-label', x: m.l - 8, y: y + 3.5, 'text-anchor': 'end' });
+    tk.textContent = nf(v);
+    svg.appendChild(tk);
+  }
+
+  var slot = iw / keys.length;
+  var bw = Math.min(24, Math.max(2, slot - 2)); // 2px surface gap
+
+  keys.forEach(function (k, i) {
+    var d = by[k];
+    var h = (d.n / yMax) * ih;
+    var x = m.l + i * slot + (slot - bw) / 2;
+    var y = m.t + ih - h;
+    var r = Math.min(4, bw / 2);
+    var path = 'M' + x + ' ' + (m.t + ih) + ' V' + (y + r) +
+               ' q0 ' + (-r) + ' ' + r + ' ' + (-r) + ' h' + (bw - 2 * r) +
+               ' q' + r + ' 0 ' + r + ' ' + r + ' V' + (m.t + ih) + ' Z';
+    svg.appendChild(svgEl('path', { d: path, fill: 'var(--series-1)' }));
+
+    var hit = svgEl('rect', { x: m.l + i * slot, y: m.t, width: Math.max(24, slot), height: ih, fill: 'transparent' });
+    hit.addEventListener('pointermove', function (e) {
+      showTip(tipBox(k, [
+        { color: 'var(--series-1)', value: nf(d.n), name: 'bangunan diperiksa' },
+        { value: nf(d.pos), name: 'positif jentik' }
+      ]), e.clientX, e.clientY);
+    });
+    hit.addEventListener('pointerleave', hideTip);
+    svg.appendChild(hit);
+  });
+
+  svg.appendChild(svgEl('line', { class: 'baseline', x1: m.l, x2: m.l + iw, y1: m.t + ih, y2: m.t + ih }));
+
+  // label hanya tanggal pertama & terakhir agar tidak bertabrakan
+  [0, keys.length - 1].forEach(function (i, n) {
+    if (keys.length === 1 && n === 1) return;
+    var t = svgEl('text', { class: 'axis-label', x: m.l + i * slot + slot / 2, y: H - 10, 'text-anchor': n === 0 ? 'start' : 'end' });
+    t.textContent = keys[i].slice(5);
+    svg.appendChild(t);
+  });
+
+  host.appendChild(svg);
+}
+
+// ---------------------------------------------------------------- kader
+function renderKader(rows) {
+  var host = document.getElementById('kader');
+  clear(host);
+  var by = {};
+  rows.forEach(function (r) {
+    var k = r[R_KADER];
+    if (!by[k]) by[k] = [];
+    by[k].push(r);
+  });
+  var items = Object.keys(by).map(function (k) {
+    var t = totals(by[k]);
+    return [DATA.kaderList[k], nf(t.bangunan), nf(t.abj, 1) + '%', nf(t.positif)];
+  }).sort(function (a, b) { return parseInt(b[1].replace(/\D/g, ''), 10) - parseInt(a[1].replace(/\D/g, ''), 10); });
+
+  if (!items.length) { host.appendChild(el('div', 'empty', 'Tidak ada data pada filter ini.')); return; }
+  host.appendChild(buildTable({ head: ['Kader', 'Diperiksa', 'ABJ', 'Positif'], rows: items, numCols: [1, 2, 3] }));
+}
+
+// ---------------------------------------------------------------- follow-up
+function renderFollow(rows) {
+  var host = document.getElementById('follow');
+  clear(host);
+
+  var list = rows.filter(function (r) { return r[R_NEG] !== 1; });
+  if (F.search) {
+    list = list.filter(function (r) {
+      return (r[R_NAMA] + ' ' + r[R_ALAMAT] + ' ' + DATA.rwList[r[R_RW]]).toLowerCase().indexOf(F.search) !== -1;
+    });
+  }
+  list.sort(function (a, b) { return (b[R_DATE] || '').localeCompare(a[R_DATE] || ''); });
+
+  document.getElementById('followSub').textContent =
+    nf(list.length) + ' bangunan positif' + (F.search ? ' (hasil pencarian)' : '') + ' — yang belum ada tindakan ditandai.';
+
+  if (!list.length) { host.appendChild(el('div', 'empty', 'Tidak ada bangunan positif pada filter ini.')); return; }
+
+  var tableRows = list.slice(0, 500).map(function (r) {
+    var tindakan = [];
+    if (r[R_3M] === 1) tindakan.push('3M');
+    if (r[R_LARVA] === 1) tindakan.push('Larvasidasi');
+    var codes = (r[R_CODES] || []).map(function (c) { return DATA.containerLabels[c] || ('Kode ' + c); }).join(', ');
+    return [
+      r[R_DATE] || (BULAN_SHORT[r[R_BULAN]] + ' ' + r[R_TAHUN]),
+      DATA.rwList[r[R_RW]],
+      'RT ' + DATA.rtList[r[R_RT]],
+      r[R_NAMA],
+      r[R_ALAMAT],
+      codes || '—',
+      tindakan.length ? tindakan.join(' + ') : '⚠ Belum ada'
+    ];
+  });
+
+  LAST.follow = { head: ['Tanggal', 'RW', 'RT', 'Nama pemilik', 'Alamat', 'Kontainer tercatat', 'Tindakan'], rows: tableRows };
+  host.appendChild(buildTable(LAST.follow));
+
+  if (list.length > 500) {
+    host.appendChild(el('div', 'empty', 'Menampilkan 500 dari ' + nf(list.length) + ' baris. Persempit filter untuk melihat sisanya.'));
+  }
+}
+
+function copyFollowTable() {
+  var t = LAST.follow;
+  if (!t) return;
+  var tsv = [t.head.join('\t')].concat(t.rows.map(function (r) { return r.join('\t'); })).join('\n');
+  var ta = document.createElement('textarea');
+  ta.value = tsv;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  var btn = document.getElementById('btnCopy');
+  btn.textContent = ok ? 'Tersalin ✓' : 'Gagal menyalin';
+  setTimeout(function () { btn.textContent = 'Salin tabel'; }, 1800);
+}
+
+// ---------------------------------------------------------------- table view
+function buildTable(spec) {
+  var t = el('table', 'data');
+  var thead = document.createElement('thead');
+  var tr = document.createElement('tr');
+  spec.head.forEach(function (h, i) {
+    var th = el('th', (spec.numCols && spec.numCols.indexOf(i) !== -1) ? 'num' : null, h);
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+  t.appendChild(thead);
+
+  var tb = document.createElement('tbody');
+  spec.rows.forEach(function (row) {
+    var r = document.createElement('tr');
+    row.forEach(function (c, i) {
+      r.appendChild(el('td', (spec.numCols && spec.numCols.indexOf(i) !== -1) ? 'num' : null, c));
+    });
+    tb.appendChild(r);
+  });
+  t.appendChild(tb);
+  return t;
+}
+
+// ================================================================ go
+var resizeTimer;
+window.addEventListener('resize', function () {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () { if (DATA) renderAll(); }, 180);
+});
+window.addEventListener('scroll', hideTip, true);
+
+boot(false);
+</script>
+</body>
+</html>
