@@ -128,7 +128,15 @@ function parseRwSheet_(sheet, ssId, issues) {
   // Satu kali baca per tab. Nilai sel yang berisi gambar tersisip akan muncul
   // sebagai objek CellImage di sini — cukup untuk mendeteksi ADA/TIDAK-nya foto
   // tanpa satu pun panggilan API tambahan per sel.
-  var values = sheet.getDataRange().getValues();
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+  // getDisplayValues() mengembalikan TEKS PERSIS seperti yang tampil di sel —
+  // dipakai khusus untuk kolom "Tanggal Mentah (asli)". getValues() tidak cocok
+  // untuk itu: sel yang Sheets otomatis kenali sebagai tanggal pulang sebagai
+  // objek Date (lalu kita format ulang ke ISO), sedangkan sel yang gagal
+  // dikenali (mis. "12-06-26", "28 -6-2026") pulang sebagai teks apa adanya —
+  // dua sumber itu bercampur dan kolomnya terlihat "beda-beda format".
+  var display = range.getDisplayValues();
   var gid = sheet.getSheetId();
   var rwFromName = mdNormalizeRw_(sheet.getName());
 
@@ -155,7 +163,8 @@ function parseRwSheet_(sheet, ssId, issues) {
         var nama = cellText_(row[cols.nama]);
         var tgl = cellText_(row[cols.tanggal]);
         if (nama || tgl) {
-          records.push(buildRecord_(sheet.getName(), gid, ssId, meta, no, row, cols, j + 1, issues));
+          var tglAsli = display[j] ? display[j][cols.tanggal] : '';
+          records.push(buildRecord_(sheet.getName(), gid, ssId, meta, no, row, cols, j + 1, tglAsli, issues));
         }
       }
       j++;
@@ -257,7 +266,7 @@ function extractBlockMeta_(values, from, headerRowIdx, rwFromName) {
 
 // ---------------------------------------------------------------- record
 
-function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, issues) {
+function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, tglAsli, issues) {
   var notes = [];
   var bulanNum = MD_BULAN_ORDER.indexOf(meta.bulan) + 1;
 
@@ -275,7 +284,7 @@ function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, issu
     meta.tahun ? Number(meta.tahun) : '',
     no,
     tgl,
-    cellText_(rawTgl),
+    String(tglAsli || '').trim(),
     cellText_(row[cols.nama]),
     cellText_(row[cols.alamat]),
     cellText_(row[cols.rt]),
