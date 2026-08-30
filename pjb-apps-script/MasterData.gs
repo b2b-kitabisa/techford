@@ -1,34 +1,16 @@
 /**
- * MasterDataBuilder.gs
+ * MasterData.gs — pembangun tab "Master Data" dari seluruh tab RW.
  *
- * Konsolidasi seluruh tab per-RW (formulir PJB — Pemeriksaan Jentik Berkala)
- * menjadi satu tab flat "Master Data": satu baris per rumah per bulan.
- *
- * Tab RW asli TIDAK PERNAH diubah. Tab "Master Data" dihapus-total lalu ditulis
- * ulang setiap dijalankan, jadi aman diulang kapan pun.
- *
- * CATATAN PENTING SOAL FOTO
- * -------------------------
- * Foto pada kolom "DOKUMETASI (FOTO PEMERIKSAAN)" tersimpan sebagai *in-cell
- * image* (objek CellImage), bukan URL maupun rumus =IMAGE(). Untuk gambar hasil
- * unggah/tempel seperti ini:
- *   - getContentUrl() melempar error ("Unexpected error while getting the
- *     method or property getContentUrl on object SpreadsheetApp.CellImage"),
- *   - getUrl() mengembalikan null (hanya terisi kalau sumbernya =IMAGE(url)).
- * Selain gagal, memanggilnya sel-per-sel untuk ribuan baris menghabiskan batas
- * eksekusi 6 menit Apps Script — itulah sebabnya versi sebelumnya berhenti di
- * RW 01 dan hanya menghasilkan 111 baris.
- *
- * Jadi di sini foto TIDAK diekstrak per sel. Keberadaannya dideteksi gratis dari
- * hasil getValues() yang sudah dibaca sekali per tab, lalu Master Data diisi
- * TAUTAN LANGSUNG KE SEL sumbernya. Sekali klik, sel berisi fotonya terbuka.
+ * CATATAN: file ini berbagi ruang nama global dengan DashboardData.gs di project
+ * Apps Script yang sama, jadi konstanta dan fungsi internalnya diberi awalan
+ * MD_ / md agar tidak bentrok. Menu ada di Menu.gs (satu onOpen untuk semuanya).
  */
 
-var MASTER_SHEET_NAME = 'Master Data';
+var MD_SHEET_NAME = 'Master Data';
 var RW_TAB_PATTERN = /^RW[\s.]*\d+/i; // "RW.01", "RW 01", "RW01"
 var MAX_ROWS_PER_BLOCK = 400;         // rem pengaman kalau penanda akhir blok hilang
 
-var BULAN_ORDER = [
+var MD_BULAN_ORDER = [
   'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI',
   'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'
 ];
@@ -65,16 +47,6 @@ var MASTER_HEADERS = [
   'Sheet Asal', 'Baris Sumber', 'Catatan Kualitas Data'
 ];
 
-// ---------------------------------------------------------------- menu
-
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('🦟 Jumantik PJB')
-    .addItem('Build / Update Master Data', 'buildMasterData')
-    .addItem('Cek Kelengkapan per RW', 'verifyMasterData')
-    .addToUi();
-}
-
 // ---------------------------------------------------------------- entry
 
 function buildMasterData() {
@@ -88,7 +60,7 @@ function buildMasterData() {
 
   ss.getSheets().forEach(function (sheet) {
     var name = sheet.getName();
-    if (name === MASTER_SHEET_NAME) return;
+    if (name === MD_SHEET_NAME) return;
     if (!RW_TAB_PATTERN.test(name)) return; // lewati REKAP dan tab lain
 
     var got = parseRwSheet_(sheet, ssId, issues);
@@ -123,8 +95,8 @@ function buildMasterData() {
  */
 function verifyMasterData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var master = ss.getSheetByName(MASTER_SHEET_NAME);
-  if (!master) { SpreadsheetApp.getUi().alert('Tab "' + MASTER_SHEET_NAME + '" belum ada. Jalankan Build dulu.'); return; }
+  var master = ss.getSheetByName(MD_SHEET_NAME);
+  if (!master) { SpreadsheetApp.getUi().alert('Tab "' + MD_SHEET_NAME + '" belum ada. Jalankan Build dulu.'); return; }
 
   var mv = master.getDataRange().getValues();
   var countByRw = {};
@@ -136,8 +108,8 @@ function verifyMasterData() {
   var lines = [], total = 0, missing = [];
   ss.getSheets().forEach(function (sheet) {
     var name = sheet.getName();
-    if (name === MASTER_SHEET_NAME || !RW_TAB_PATTERN.test(name)) return;
-    var rw = normalizeRw_(name);
+    if (name === MD_SHEET_NAME || !RW_TAB_PATTERN.test(name)) return;
+    var rw = mdNormalizeRw_(name);
     var n = countByRw[rw] || 0;
     total += n;
     lines.push(rw + ': ' + n + ' baris');
@@ -158,7 +130,7 @@ function parseRwSheet_(sheet, ssId, issues) {
   // tanpa satu pun panggilan API tambahan per sel.
   var values = sheet.getDataRange().getValues();
   var gid = sheet.getSheetId();
-  var rwFromName = normalizeRw_(sheet.getName());
+  var rwFromName = mdNormalizeRw_(sheet.getName());
 
   var records = [];
   var blocks = 0;
@@ -263,7 +235,7 @@ function extractBlockMeta_(values, from, headerRowIdx, rwFromName) {
         meta.kader = (after && after.trim()) ? after.trim() : next;
         continue;
       }
-      if (/^RW\s*:?$/i.test(cell) && next) { meta.rw = normalizeRw_(next); continue; }
+      if (/^RW\s*:?$/i.test(cell) && next) { meta.rw = mdNormalizeRw_(next); continue; }
 
       if (/BULAN/i.test(cell) && /TAHUN/i.test(cell)) {
         var m1 = next.match(/([A-Za-z]+)\s*\/?\s*(\d{4})/);
@@ -287,7 +259,7 @@ function extractBlockMeta_(values, from, headerRowIdx, rwFromName) {
 
 function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, issues) {
   var notes = [];
-  var bulanNum = BULAN_ORDER.indexOf(meta.bulan) + 1;
+  var bulanNum = MD_BULAN_ORDER.indexOf(meta.bulan) + 1;
 
   var rawTgl = row[cols.tanggal];
   var tgl = parseTanggal_(rawTgl, bulanNum, meta.tahun, notes, issues);
@@ -377,7 +349,7 @@ function parseTanggal_(raw, bulanNum, metaTahun, notes, issues) {
     return '';
   }
 
-  return y + '-' + pad2_(m) + '-' + pad2_(d);
+  return y + '-' + mdPad2_(m) + '-' + mdPad2_(d);
 }
 
 /**
@@ -413,9 +385,9 @@ function describeFoto_(cell, ssId, gid, colIdx, rowNum) {
 // ---------------------------------------------------------------- output
 
 function writeMasterSheet_(ss, records) {
-  var sheet = ss.getSheetByName(MASTER_SHEET_NAME);
+  var sheet = ss.getSheetByName(MD_SHEET_NAME);
   if (sheet) sheet.clear();
-  else sheet = ss.insertSheet(MASTER_SHEET_NAME);
+  else sheet = ss.insertSheet(MD_SHEET_NAME);
 
   sheet.getRange(1, 1, 1, MASTER_HEADERS.length)
     .setValues([MASTER_HEADERS])
@@ -431,9 +403,9 @@ function writeMasterSheet_(ss, records) {
 
 // ---------------------------------------------------------------- helpers
 
-function normalizeRw_(raw) {
+function mdNormalizeRw_(raw) {
   var m = String(raw || '').match(/(\d{1,2})/);
-  return m ? 'RW ' + pad2_(parseInt(m[1], 10)) : (cellText_(raw) || 'Tidak Diketahui');
+  return m ? 'RW ' + mdPad2_(parseInt(m[1], 10)) : (cellText_(raw) || 'Tidak Diketahui');
 }
 
 /** Bertipe-bebek, bukan instanceof: lebih tahan terhadap objek Date lintas-realm. */
@@ -469,4 +441,4 @@ function columnLetter_(idx) {
   return s;
 }
 
-function pad2_(n) { return ('0' + n).slice(-2); }
+function mdPad2_(n) { return ('0' + n).slice(-2); }
