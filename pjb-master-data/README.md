@@ -1,87 +1,109 @@
-# Master Data Builder — PJB Kader Jumantik (per RW)
+# Master Data Builder — PJB Kader Jumantik
 
-Script Apps Script untuk menggabungkan seluruh tab per-RW (formulir PJB —
-Pemeriksaan Jentik Berkala) di satu spreadsheet menjadi **satu tab "Master
-Data"** yang rapi, satu baris per rumah per bulan pemeriksaan.
+Menggabungkan seluruh tab per-RW (formulir PJB — Pemeriksaan Jentik Berkala)
+menjadi satu tab **"Master Data"**: satu baris per rumah per bulan.
 
-Spreadsheet sumber: `https://docs.google.com/spreadsheets/d/1BMrkteaPD-iSNLJ95872MJLJuimr4EjvZcjAd1OASuY/...`
-Spreadsheet ID: `1BMrkteaPD-iSNLJ95872MJLJuimr4EjvZcjAd1OASuY`
+Spreadsheet: `1BMrkteaPD-iSNLJ95872MJLJuimr4EjvZcjAd1OASuY`
 
-Ini adalah **project Apps Script terpisah** dari `jumantik-dashboard/` —
-dashboard untuk data ini akan dibuat menyusul setelah Master Data siap
-(datanya beda topik: yang ini per-rumah dari 30 tab RW dengan format
-formulir PJB, bukan Google Form biasa).
+Tab RW asli **tidak pernah diubah**. Tab "Master Data" ditulis ulang dari nol
+setiap kali dijalankan, jadi aman diulang kapan saja.
 
-## Apa yang dilakukan script ini
+## Kenapa versi sebelumnya menghasilkan data tidak sinkron
 
-`buildMasterData()` di `MasterDataBuilder.gs`:
+Hasil pemeriksaan langsung ke spreadsheet:
 
-1. Membaca **semua tab yang namanya mengandung "RW" + angka** (RW.01 s/d RW.30), otomatis — tidak perlu diketik satu-satu, jadi tetap jalan walau nanti ada tab RW baru.
-2. Melewati tab non-RW seperti tab rekap yang sudah ada.
-3. Di tiap tab, mendeteksi setiap "blok bulan" (Juni, Juli, dst — akan otomatis ikut kalau Agustus/bulan berikutnya ditambahkan dengan format form yang sama) berdasarkan isi sel, bukan nomor baris tetap — supaya tetap jalan walau ada tab yang formatnya sedikit bergeser (ditemukan RW.23 punya pola merge sel yang agak beda).
-4. Membuang baris "Cont" (baris contoh/template bawaan form) dan baris kosong yang belum diisi.
-5. Membersihkan tanggal:
-   - Format tanpa tanda hubung seperti `12-062026` diperbaiki jadi `12-06-2026`.
-   - Tahun yang salah ketik (ditemukan banyak: `2006`, `2038`, `2058`, `2926`, dst — jelas typo dari `2026`) **diganti otomatis** mengikuti bulan/tahun form yang sedang diproses.
-   - Tanggal yang tetap tidak masuk akal dicatat di kolom **"Catatan Kualitas Data"**, tapi teks aslinya tetap disimpan utuh di kolom "Tanggal Mentah (asli)" — tidak ada data yang hilang, hanya ditandai untuk dicek manual.
-6. Menulis hasil ke tab **"Master Data"** dengan 21 kolom (RW, Kelurahan, Nama Kader, Bulan, Tahun, tanggal, nama pemilik rumah, alamat, RT, jumlah container diperiksa/positif/negatif, kode kontainer positif, tindakan 3M/larvasidasi, dokumentasi, sheet asal, catatan kualitas data).
+| Gejala | Penyebab sebenarnya |
+|---|---|
+| Master Data hanya **111 baris, semuanya RW 01** (padahal REKAP = 4.189) | Script mengambil foto **sel per sel**. Untuk ribuan baris, ini menghabiskan **batas eksekusi 6 menit** Apps Script sebelum sampai RW 02, jadi 29 RW tidak pernah tertulis. |
+| 21 baris berisi `Foto gagal disalin: ... getContentUrl on object SpreadsheetApp.CellImage` | Foto tersimpan sebagai **in-cell image** (bukan URL, bukan `=IMAGE()`). Untuk gambar unggahan, `getContentUrl()` memang melempar error dan `getUrl()` mengembalikan null. |
+| Tanggal banyak yang kosong / salah | Parser lama hanya menerima `dd-mm-yyyy`. Data asli jauh lebih beragam. |
 
-**Tab RW asli tidak pernah diubah.** Setiap dijalankan, tab "Master Data" dihapus total dan ditulis ulang dari nol — jadi aman dijalankan berkali-kali tiap kali ada bulan baru yang diisi di tab RW.
+**RW 24 ternyata bukan penyebabnya.** Ke-30 tab sudah diperiksa satu per satu:
+semuanya persis **13 kolom dengan urutan identik**, dan header RW 24 sama
+byte-for-byte dengan RW 23 dan RW 25. Yang benar-benar berbeda adalah **jumlah
+baris dan posisi blok**, bukan kolom:
 
-## Langkah setup (clasp)
+- **RW 16** — blok pertama kehilangan baris `JUMLAH` dan blok tanda tangannya
+- **RW 18** — blok kedua mulai 7 baris lebih bawah dari tab lain
+- **RW 29** — blok kedua bergeser 3 baris, 105 baris data
+- **RW 21** — 101 baris data; label kolom ke-13 kosong
+- **RW 26** — kolom ke-13 tertulis `DOKUMETASI (FOTO-FOTO PEMERIKSAAN)`
 
-### 1. Prasyarat (kalau belum, sama seperti project `jumantik-dashboard/` sebelumnya)
+Parser lama berhenti membaca blok hanya saat menemukan baris `JUMLAH`. Pada RW 16
+penanda itu tidak ada, sehingga header blok berikutnya ikut terbaca sebagai data.
 
-```bash
-npm install -g @google/clasp
-clasp login
-```
+## Yang diperbaiki
 
-Pastikan juga Apps Script API aktif: https://script.google.com/home/usersettings → ON.
+1. **Foto tidak lagi diambil per sel.** `getValues()` yang sudah dibaca sekali per
+   tab sudah mengembalikan objek `CellImage` untuk gambar tersisip, jadi
+   keberadaan foto dideteksi gratis dari situ — **nol panggilan API tambahan**,
+   sehingga proses tidak lagi kehabisan waktu. `getContentUrl()` sengaja tidak
+   pernah dipanggil.
+2. **Kolom foto jadi dua kolom yang berguna:**
+   - `Status Foto` — `Ada foto` / `Tidak ada foto` / `Catatan teks`
+   - `Link Foto` — **tautan langsung ke sel sumbernya**
+     (`...#gid=<gid>&range=M42`). Sekali klik, sel berisi fotonya terbuka.
+     Kalau foto berasal dari `=IMAGE(url)` atau berupa URL teks, URL aslinya yang dipakai.
+3. **Penutup blok lebih tahan banting** — blok berakhir di `JUMLAH`, **atau** saat
+   header blok berikutnya muncul, **atau** saat baris legenda/tanda tangan
+   (`Keterangan`, `Kode Jenis`, `Mengetahui`, `FORMULIR`, …). Ini yang membuat
+   RW 16 terbaca benar.
+4. **Kolom dipetakan dari baris header tiap blok**, bukan posisi tetap — termasuk
+   menangani label kolom ke-13 yang kosong (RW 21, RW 26) dan varian
+   `FOTO-FOTO` (RW 26), serta salah ketik `DOKUMETASI` di sumbernya.
+5. **Tanggal jauh lebih toleran.** Format yang kini terbaca:
 
-### 2. Ambil folder ini
+   | Ditemukan di | Contoh | Hasil |
+   |---|---|---|
+   | RW 24 | `28 -6-2026` (ada spasi) | `2026-06-28` |
+   | RW 24 | `28-6-2026` (bulan 1 digit) | `2026-06-28` |
+   | RW 25 | `12-06-26` (tahun 2 digit) | `2026-06-12` |
+   | RW 01 | `12-062026` (tanda hubung hilang) | `2026-06-12` |
+   | berbagai | `19-06-2038` (tahun salah ketik) | `2026-06-19` |
+   | berbagai | `13/07/2026` | `2026-07-13` |
 
-Clone/pull branch `claude/looker-studio-dashboard-8eupjr`, masuk ke folder `pjb-master-data/`.
+   Tahun yang tidak cocok dikoreksi mengikuti kolom `Tahun` pada form. Kalau bulan
+   tidak cocok kolom `Bulan` **tetapi** hari & bulannya kalau ditukar jadi cocok,
+   keduanya ditukar. Kalau tetap tidak cocok, tanggalnya **tetap disimpan** dan
+   diberi catatan — tidak dibuang.
+6. **Teks tanggal asli tetap disimpan** di kolom `Tanggal Mentah (asli)`, dan tiap
+   koreksi dicatat di kolom `Catatan Kualitas Data`. Tidak ada data yang hilang diam-diam.
+7. **Menu "Cek Kelengkapan per RW"** — menampilkan jumlah baris per RW dan
+   menandai RW yang kosong, supaya ketimpangan seperti kemarin langsung ketahuan.
 
-### 3. Buat project Apps Script yang terikat ke spreadsheet PJB ini
+## Kolom Master Data (23)
+
+`RW · Kelurahan · Nama Kader · Bulan · Tahun · No Urut (asal form) · Tanggal
+Pemantauan · Tanggal Mentah (asli) · Nama Pemilik Rumah/Bangunan · Alamat
+(Jalan/Blok/No) · RT · Jumlah Container Diperiksa · Jumlah Container Positif (+) ·
+Jumlah Container Negatif (-) · Kode Jenis Container Positif Jentik · Bangunan
+Negatif (-) Jentik · Tindakan 3M (0/1) · Tindakan Larvasidasi (0/1) · Status Foto ·
+Link Foto · Sheet Asal · Baris Sumber · Catatan Kualitas Data`
+
+## Cara menjalankan
+
+Kalau script sudah terpasang: reload spreadsheet → menu **🦟 Jumantik PJB →
+Build / Update Master Data**. Setelah selesai muncul ringkasan jumlah baris per
+tab beserta catatan kualitas data. Lalu jalankan **Cek Kelengkapan per RW** untuk
+memastikan semua 30 RW terisi.
+
+Kalau belum terpasang, tempel `MasterDataBuilder.gs` dan `appsscript.json`
+ke Apps Script editor spreadsheet ini, atau lewat clasp:
 
 ```bash
 cd pjb-master-data
 clasp create --type sheets --title "PJB Master Data Builder" --parentId 1BMrkteaPD-iSNLJ95872MJLJuimr4EjvZcjAd1OASuY --rootDir .
-```
-
-### 4. Push kode
-
-```bash
 clasp push
 ```
 
-### 5. Jalankan
+## Setelah dijalankan, mohon cek
 
-**Cara termudah:** buka spreadsheet-nya di browser, reload halaman (F5) — akan muncul menu baru **"🦟 Jumantik PJB"** di menu bar, klik **Build / Update Master Data**. Saat pertama kali klik, Google akan minta izin akses ke spreadsheet — klik **Allow/Izinkan**.
-
-**Alternatif via editor:**
-```bash
-clasp open
-```
-Lalu di Apps Script editor, pilih function `buildMasterData` di dropdown atas, klik **Run**. Izinkan permission saat diminta pertama kali.
-
-Setelah selesai akan muncul ringkasan jumlah baris per tab yang berhasil diproses.
-
-### 6. Setiap ada tab/bulan baru ditambahkan
-
-Cukup jalankan lagi **Build / Update Master Data** dari menu — tidak perlu push ulang kode kecuali Anda mengubah `MasterDataBuilder.gs`-nya.
-
-## Cek hasil & data yang perlu ditinjau manual
-
-Setelah Master Data terbentuk, filter/urutkan kolom **"Catatan Kualitas Data"**
-untuk melihat baris mana saja yang tanggalnya perlu dicek manual ke form
-aslinya (baris ini tetap ikut masuk ke Master Data, tidak dibuang, supaya
-tidak ada data hilang).
-
-## Langkah selanjutnya
-
-Setelah Master Data ini siap dan Anda cek datanya sudah sesuai, beri tahu
-saya — saya akan buatkan dashboard (KPI ABJ/CI per RW, tren bulanan, ranking
-RW berisiko, dll) yang membaca dari tab "Master Data" ini, sama seperti
-`jumantik-dashboard/` sebelumnya.
+- **Jumlah total** mendekati 4.189 (angka grand total pada tab REKAP). Kalau masih
+  jauh, jalankan **Cek Kelengkapan per RW** untuk melihat RW mana yang kosong.
+- **Kolom `Catatan Kualitas Data`** — urutkan/filter kolom ini untuk melihat baris
+  yang tanggalnya perlu dicek manual ke formulir aslinya.
+- **`Jumlah Container Positif (+)` yang banyak bernilai 0 padahal kolom kode
+  kontainer terisi.** Ini bukan bug parser — memang begitu di formulirnya. Kalau
+  kader sebenarnya mencatat kontainer yang *diperiksa* (bukan yang *positif*),
+  maka **CI pada dashboard akan under-report** dan perlu diklarifikasi ke kader
+  sebelum dipakai untuk pelaporan resmi.
