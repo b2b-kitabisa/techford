@@ -225,6 +225,23 @@ function mapColumns_(values, headerRowIdx) {
   return cols;
 }
 
+/**
+ * Label metadata ("NAMA KADER :", "RW :", "BULAN / TAHUN :") menempati SEL
+ * HASIL MERGE 2 KOLOM di formulir aslinya. getValues() mengembalikan label itu
+ * di kolom pertama dan STRING KOSONG di kolom kedua (sisa merge) — nilai
+ * sebenarnya baru muncul di kolom KETIGA. Mengecek cuma satu sel di sebelah
+ * label (row[c+1]) selalu kena sel kosong itu, bukan nilainya — itu sebabnya
+ * Nama Kader selalu jatuh ke "Tidak Diketahui". Cari sel tak-kosong pertama
+ * setelah label, berapa pun jaraknya, bukan cuma satu sel di sebelahnya.
+ */
+function firstNonEmptyAfter_(row, fromCol) {
+  for (var c = fromCol; c < row.length; c++) {
+    var t = cellText_(row[c]);
+    if (t) return t;
+  }
+  return '';
+}
+
 function extractBlockMeta_(values, from, headerRowIdx, rwFromName) {
   var meta = { kelurahan: '', kader: '', rw: rwFromName, bulan: '', tahun: '' };
 
@@ -233,21 +250,31 @@ function extractBlockMeta_(values, from, headerRowIdx, rwFromName) {
     for (var c = 0; c < row.length; c++) {
       var cell = cellText_(row[c]);
       if (!cell) continue;
-      var next = cellText_(row[c + 1]);
 
       var mKel = cell.match(/^KELURAHAN\s+(.+)/i);
       if (mKel) { meta.kelurahan = mKel[1].trim(); continue; }
-      if (/^KELURAHAN\s*:?$/i.test(cell) && next) { meta.kelurahan = next; continue; }
+      if (/^KELURAHAN\s*:?$/i.test(cell)) {
+        var kelVal = firstNonEmptyAfter_(row, c + 1);
+        if (kelVal) meta.kelurahan = kelVal;
+        continue;
+      }
 
       if (/NAMA\s*KADER/i.test(cell)) {
         var after = cell.split(':')[1];
-        meta.kader = (after && after.trim()) ? after.trim() : next;
+        var kaderVal = (after && after.trim()) ? after.trim() : firstNonEmptyAfter_(row, c + 1);
+        if (kaderVal) meta.kader = kaderVal;
         continue;
       }
-      if (/^RW\s*:?$/i.test(cell) && next) { meta.rw = mdNormalizeRw_(next); continue; }
+
+      if (/^RW\s*:?$/i.test(cell)) {
+        var rwVal = firstNonEmptyAfter_(row, c + 1);
+        if (rwVal) meta.rw = mdNormalizeRw_(rwVal);
+        continue;
+      }
 
       if (/BULAN/i.test(cell) && /TAHUN/i.test(cell)) {
-        var m1 = next.match(/([A-Za-z]+)\s*\/?\s*(\d{4})/);
+        var bulanVal = firstNonEmptyAfter_(row, c + 1);
+        var m1 = bulanVal.match(/([A-Za-z]+)\s*\/?\s*(\d{4})/);
         if (m1) { meta.bulan = m1[1].toUpperCase(); meta.tahun = m1[2]; }
         continue;
       }
