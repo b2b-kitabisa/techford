@@ -1,0 +1,186 @@
+Add the GDV Controller module to this Next.js + Supabase app: upload TWO CSV files at once (Brand + Not-Brand export from Tableau), REPLACE-ALL the gdv_controller table each upload (delete everything, insert fresh), and record one upload_log row per pair of files. First install papaparse for robust CSV parsing: run `npm install papaparse` and `npm install -D @types/papaparse` in the terminal.
+
+File: src/lib/parse-gdv-csv.ts
+import Papa from 'papaparse'
+
+// Canonical keys we need, matched against normalized (lowercase, spaces/
+// underscores stripped) CSV headers. Tableau exports can vary slightly in
+// header wording, so this is deliberately forgiving on formatting but
+// strict on which columns must exist.
+const REQUIRED_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'campaigner_name', aliases: ['campaignername', 'campaigner_name'] },
+  { key: 'campaigner_id', aliases: ['campaignerid', 'campaigner_id'] },
+  { key: 'tableau_project_id', aliases: ['projectid', 'project_id', 'tableauprojectid'] },
+  { key: 'link_campaign', aliases: ['linkcampaign', 'link_campaign'] },
+  { key: 'fundraiser_name', aliases: ['fundraisername', 'fundraiser_name'] },
+  { key: 'child_id', aliases: ['childid', 'child_id'] },
+  { key: 'child_short_url', aliases: ['childshorturl', 'child_short_url', 'shorturl'] },
+  { key: 'project_launch_year', aliases: ['projectlaunchyear', 'launchyear', 'project_launch_year'] },
+  { key: 'project_status', aliases: ['projectstatus', 'project_status'] },
+  { key: 'main_source', aliases: ['mainsource', 'main_source'] },
+  { key: 'realized_nominal', aliases: ['realizednominal', 'realized_nominal', 'realizedgdv'] },
+  { key: 'platform_fee', aliases: ['platformfee', 'platform_fee'] },
+  { key: 'subscription_fee', aliases: ['subscriptionfee', 'subscription_fee'] },
+  { key: 'bank_charge_fee', aliases: ['bankchargefee', 'bank_charge_fee', 'bankfee'] },
+]
+
+function normalize(s: string) {
+  return s.toLowerCase().replace(/[\s_]+/g, '')
+}
+
+export function parseGdvCsv(csvText: string) {
+  const result = Papa.parse<Record<string, string>>(csvText, { header: true, skipEmptyLines: true })
+  const rawHeaders = result.meta.fields || []
+  const normalizedToRaw = new Map(rawHeaders.map((h) => [normalize(h), h]))
+
+  const missing: string[] = []
+  const columnMap: Record<string, string> = {}
+  for (const col of REQUIRED_COLUMNS) {
+    const found = col.aliases.map(normalize).find((a) => normalizedToRaw.has(a))
+    if (!found) {
+      missing.push(col.key)
+    } else {
+      columnMap[col.key] = normalizedToRaw.get(found)!
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Kolom wajib tidak ditemukan di CSV: ${missing.join(', ')}`)
+  }
+
+  const rows = result.data.map((row) => ({
+    campaigner_name: row[columnMap.campaigner_name] || null,
+    campaigner_id: row[columnMap.campaigner_id] || null,
+    tableau_project_id: row[columnMap.tableau_project_id] || null,
+    link_campaign: row[columnMap.link_campaign] || '',
+    fundraiser_name: row[columnMap.fundraiser_name] || null,
+    child_id: row[columnMap.child_id] || null,
+    child_short_url: row[columnMap.child_short_url] || null,
+    project_launch_year: row[columnMap.project_launch_year] ? Number(row[columnMap.project_launch_year]) : null,
+    project_status: row[columnMap.project_status] || null,
+    main_source: row[columnMap.main_source] || null,
+    realized_nominal: row[columnMap.realized_nominal] ? Number(row[columnMap.realized_nominal].replace(/[^0-9.-]/g, '')) : null,
+    platform_fee: row[columnMap.platform_fee] ? Number(row[columnMap.platform_fee].replace(/[^0-9.-]/g, '')) : null,
+    subscription_fee: row[columnMap.subscription_fee] ? Number(row[columnMap.subscription_fee].replace(/[^0-9.-]/g, '')) : null,
+    bank_charge_fee: row[columnMap.bank_charge_fee] ? Number(row[columnMap.bank_charge_fee].replace(/[^0-9.-]/g, '')) : null,
+  }))
+
+  return rows.filter((r) => r.link_campaign.trim() !== '')
+}
+
+File: src/app/gdv-controller/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { parseGdvCsv } from '@/lib/parse-gdv-csv'
+import { logAudit } from '@/lib/audit-log'
+
+export async function uploadGdvControllerCsv(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Consultant' || employee.role === 'Head of B2B') {
+    throw new Error('Role ini tidak bisa upload GDV Controller.')
+  }
+
+  const brandFile = formData.get('brand_file') as File | null
+  const notBrandFile = formData.get('not_brand_file') as File | null
+  if (!brandFile || !brandFile.size) throw new Error('File Brand wajib diupload.')
+  if (!notBrandFile || !notBrandFile.size) throw new Error('File Not-Brand wajib diupload.')
+
+  const brandText = await brandFile.text()
+  const notBrandText = await notBrandFile.text()
+
+  const brandRows = parseGdvCsv(brandText).map((r) => ({ ...r, source_category: 'Brand' }))
+  const notBrandRows = parseGdvCsv(notBrandText).map((r) => ({ ...r, source_category: 'Not-Brand' }))
+
+  const admin = createAdminClient()
+
+  const { error: deleteErr } = await admin.from('gdv_controller').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  if (deleteErr) throw new Error(deleteErr.message)
+
+  const { data: log, error: logErr } = await admin.from('gdv_controller_upload_log').insert({
+    uploaded_by: employee.name,
+    brand_file_name: brandFile.name,
+    brand_row_count: brandRows.length,
+    not_brand_file_name: notBrandFile.name,
+    not_brand_row_count: notBrandRows.length,
+    total_row_count: brandRows.length + notBrandRows.length,
+  }).select().single()
+  if (logErr) throw new Error(logErr.message)
+
+  const allRows = [...brandRows, ...notBrandRows].map((r) => ({ ...r, upload_log_id: log?.id }))
+  const { error: insertErr } = await admin.from('gdv_controller').insert(allRows)
+  if (insertErr) throw new Error(insertErr.message)
+
+  await logAudit(admin, {
+    actorUserId: employee.auth_user_id,
+    actorEmail: employee.email,
+    action: 'UPLOAD_GDV_CONTROLLER',
+    entityType: 'gdv_controller_upload_log',
+    entityId: log?.id,
+    diff: { brandRows: brandRows.length, notBrandRows: notBrandRows.length },
+  })
+
+  revalidatePath('/gdv-controller')
+}
+
+File: src/app/gdv-controller/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { uploadGdvControllerCsv } from './actions'
+
+export default async function GdvControllerPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { count } = await admin.from('gdv_controller').select('*', { count: 'exact', head: true })
+  const { data: lastLog } = await admin.from('gdv_controller_upload_log').select('*').order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
+
+  const canWrite = employee.role !== 'Consultant' && employee.role !== 'Head of B2B'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">GDV Controller</h1>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Baris Aktif</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{count ?? 0}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Upload Terakhir</div>
+          <div className="mt-1 text-sm text-gray-700">
+            {lastLog ? `${new Date(lastLog.uploaded_at).toLocaleString('id-ID')} oleh ${lastLog.uploaded_by}` : 'Belum pernah upload'}
+          </div>
+        </div>
+      </div>
+
+      {canWrite && (
+        <form action={uploadGdvControllerCsv} className="max-w-xl space-y-4 rounded-lg border bg-white p-4 shadow-sm" encType="multipart/form-data">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Upload akan MENGGANTI SELURUH data GDV Controller lama -- pastikan kedua file sudah benar sebelum submit.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">File Brand (CSV) *</label>
+            <input type="file" name="brand_file" accept=".csv" required className="w-full text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">File Not-Brand (CSV) *</label>
+            <input type="file" name="not_brand_file" accept=".csv" required className="w-full text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Upload &amp; Replace</button>
+        </form>
+      )}
+    </AppShell>
+  )
+}
+
+File: src/components/sidebar-nav.tsx -- add GDV Controller to the "Operasional" group's items array:
+{ href: '/gdv-controller', label: 'GDV Controller' },
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add GDV Controller module: dual-file CSV upload with replace-all" && git push
