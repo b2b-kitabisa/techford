@@ -1,0 +1,111 @@
+Fix the "Tambah PIC" popup on the Client detail page in this Next.js + Supabase app -- clicking submit inside the popup does not add the PIC. Replace it with a reliable client-component <dialog> pattern that properly calls the Server Action and closes itself only after the action succeeds.
+
+File: src/app/clients/[id]/pic-modal.tsx (NEW FILE)
+'use client'
+
+import { useRef, useState, useTransition } from 'react'
+import { addPic } from '../actions'
+
+export function AddPicModal({ clientId }: { clientId: string }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  function handleSubmit(formData: FormData) {
+    setError(null)
+    startTransition(async () => {
+      try {
+        await addPic(formData)
+        dialogRef.current?.close()
+        ;(dialogRef.current?.querySelector('form') as HTMLFormElement | null)?.reset()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menambahkan PIC.')
+      }
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => dialogRef.current?.showModal()}
+        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+      >
+        + Tambah PIC
+      </button>
+      <dialog
+        ref={dialogRef}
+        className="w-full max-w-md rounded-lg p-0 backdrop:bg-black/30"
+        onClose={() => setError(null)}
+      >
+        <form action={handleSubmit} className="space-y-3 p-5">
+          <h3 className="text-base font-semibold text-gray-900">Tambah PIC</h3>
+          <input type="hidden" name="client_id" value={clientId} />
+          {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Nama *</label>
+            <input name="pic_name" required className="w-full rounded-md border-gray-300 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Title</label>
+            <input name="title" className="w-full rounded-md border-gray-300 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Email</label>
+            <input name="email" type="email" className="w-full rounded-md border-gray-300 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Phone</label>
+            <input name="phone" className="w-full rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => dialogRef.current?.close()}
+              className="rounded-md border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            >
+              {isPending ? 'Menyimpan...' : 'Tambah'}
+            </button>
+          </div>
+        </form>
+      </dialog>
+    </>
+  )
+}
+
+File: src/app/clients/[id]/page.tsx -- find this whole block (the inline "Tambah PIC" form):
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">PIC Client</h2>
+      {canWrite && (
+        <form action={addPic} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="client_id" value={id} />
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Nama *</label>
+            <input name="pic_name" required className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Title</label>
+            <input name="title" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Email</label>
+            <input name="email" type="email" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Phone</label>
+            <input name="phone" className="rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah PIC</button>
+        </form>
+      )}
+
+Replace that whole block with:
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">PIC Client</h2>
+        {canWrite && <AddPicModal clientId={id} />}
+      </div>
+
+Then update the imports at the top of the same file: remove `addPic` from the `import { updateClient, addPic, removePic, setPrimaryPic } from '../actions'` line (keep the rest: `updateClient, removePic, setPrimaryPic`), and add a new import line right below it:
+import { AddPicModal } from './pic-modal'
+
+If any other file in this project also renders a "Tambah PIC" popup/modal for Client Monitoring (search the codebase for other usages of `addPic` or any existing PIC modal/dialog component before making this change) -- apply the same fix pattern there instead of creating a duplicate, and tell me what you found.
+
+After all files are created/updated, commit and push: git add . && git commit -m "Fix Tambah PIC popup: use dialog + useTransition so Server Action actually runs and popup closes only on success" && git push
