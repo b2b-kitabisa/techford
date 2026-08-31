@@ -1,0 +1,138 @@
+Add a Margin Guide module (Master Admin only) to this Next.js + Supabase app -- the official reference list of margin percentages per component (CONS, CRE, PROG, IMP) that consultants should follow when filling in COR margins. This does not auto-fill the COR calculator (that stays manual entry) -- it's just a reference table admins maintain.
+
+File: src/app/margin-guide/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireMasterAdmin() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role !== 'Master Admin') throw new Error('Cuma Master Admin yang bisa mengelola Margin Guide.')
+  return employee
+}
+
+export async function addMarginGuide(formData: FormData) {
+  const employee = await requireMasterAdmin()
+  const admin = createAdminClient()
+
+  const component = formData.get('component') as string
+  const subCategory = ((formData.get('sub_category') as string) || '').trim()
+  const percentage = Number(formData.get('percentage') || 0)
+  const validComponents = ['CONS', 'CRE', 'PROG', 'IMP']
+
+  if (!validComponents.includes(component)) throw new Error('Component tidak valid.')
+  if (!subCategory) throw new Error('Sub Category wajib diisi.')
+  if (percentage < 0 || percentage > 100) throw new Error('Percentage harus antara 0-100.')
+
+  const { data: existingCount } = await admin.from('margin_guide').select('id').eq('component', component)
+
+  const { error } = await admin.from('margin_guide').insert({
+    component,
+    sub_category: subCategory,
+    percentage,
+    sort_order: (existingCount ?? []).length,
+    created_by: employee.name,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/margin-guide')
+}
+
+export async function removeMarginGuide(formData: FormData) {
+  await requireMasterAdmin()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { error } = await admin.from('margin_guide').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/margin-guide')
+}
+
+File: src/app/margin-guide/page.tsx
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addMarginGuide, removeMarginGuide } from './actions'
+
+const COMPONENTS = [
+  { key: 'CONS', label: 'Consultancy Service Fee' },
+  { key: 'CRE', label: 'Creative Development' },
+  { key: 'PROG', label: 'Program Implementation and Coordination' },
+  { key: 'IMP', label: 'Impact Measurement and Reporting' },
+]
+
+export default async function MarginGuidePage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role !== 'Master Admin') {
+    return (
+      <AppShell employeeName={employee.name} employeeRole={employee.role}>
+        <p className="text-gray-600">Halaman ini cuma untuk Master Admin.</p>
+      </AppShell>
+    )
+  }
+
+  const admin = createAdminClient()
+  const { data: rows } = await admin.from('margin_guide').select('*').order('component').order('sort_order')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Margin Guide</h1>
+      <p className="mb-6"><Link href="/" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Kembali</Link></p>
+      <p className="mb-6 max-w-2xl text-sm text-gray-500">
+        Panduan resmi persentase margin per komponen -- dipakai consultant sebagai acuan saat mengisi margin di Kalkulator COR (bukan auto-fill, cuma referensi).
+      </p>
+
+      <form action={addMarginGuide} className="mb-8 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Component *</label>
+          <select name="component" required className="rounded-md border-gray-300 text-sm">
+            {COMPONENTS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Sub Category *</label>
+          <input name="sub_category" required className="rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Percentage (%) *</label>
+          <input name="percentage" type="number" step="0.1" required className="w-32 rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah</button>
+      </form>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {COMPONENTS.map((c) => (
+          <div key={c.key} className="rounded-lg border bg-white p-4 shadow-sm">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">{c.label}</h3>
+            <ul className="space-y-1">
+              {(rows ?? []).filter((r) => r.component === c.key).map((r) => (
+                <li key={r.id} className="flex items-center justify-between text-sm text-gray-800">
+                  <span>{r.sub_category} -- {r.percentage}%</span>
+                  <form action={removeMarginGuide}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                  </form>
+                </li>
+              ))}
+              {(rows ?? []).filter((r) => r.component === c.key).length === 0 && (
+                <li className="text-sm text-gray-400">(belum ada data)</li>
+              )}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/sidebar-nav.tsx -- add Margin Guide to the "Pengaturan" group's items array:
+{ href: '/margin-guide', label: 'Margin Guide' },
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Margin Guide module (reference percentages per component)" && git push

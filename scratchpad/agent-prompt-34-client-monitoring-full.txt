@@ -1,0 +1,392 @@
+Complete the Client Monitoring module: manual client creation, editing existing client info, and PIC management (add/remove/set-primary) on a dedicated client detail page. This mirrors the pattern already used for Lead/Project/COR/Quotation modules.
+
+File: src/app/clients/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function requireWriteAccess() {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation cuma bisa lihat Client Monitoring, tidak bisa mengubah.')
+  return employee
+}
+
+export async function createClient(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+
+  const brandName = ((formData.get('brand_name') as string) || '').trim()
+  const clientSource = formData.get('client_source') as string
+  if (!brandName) throw new Error('Brand Name wajib diisi.')
+  if (!clientSource) throw new Error('Client Source wajib dipilih.')
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `CLIENT_${year}` })
+  if (seqErr) throw new Error(seqErr.message)
+  const clientId = `CL${year}-${String(seqValue).padStart(5, '0')}`
+
+  const { data: client, error } = await admin
+    .from('client')
+    .insert({
+      client_id: clientId,
+      brand_name: brandName.toUpperCase(),
+      entity_name: ((formData.get('entity_name') as string) || '').toUpperCase(),
+      entity_type: (formData.get('entity_type') as string) || null,
+      head_office: (formData.get('head_office') as string) || null,
+      website: (formData.get('website') as string) || null,
+      industry: (formData.get('industry') as string) || null,
+      client_source: clientSource,
+      is_from_lead: false,
+      other_notes: (formData.get('other_notes') as string) || null,
+      created_by: employee.name,
+    })
+    .select()
+    .single()
+  if (error || !client) throw new Error(error?.message || 'Gagal membuat Client.')
+
+  redirect(`/clients/${client.id}`)
+}
+
+export async function updateClient(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { data: existing } = await admin.from('client').select('is_from_lead, client_source').eq('id', id).single()
+  if (!existing) throw new Error('Client tidak ditemukan.')
+
+  const patch: Record<string, unknown> = {
+    brand_name: ((formData.get('brand_name') as string) || '').toUpperCase(),
+    entity_name: ((formData.get('entity_name') as string) || '').toUpperCase(),
+    entity_type: (formData.get('entity_type') as string) || null,
+    head_office: (formData.get('head_office') as string) || null,
+    website: (formData.get('website') as string) || null,
+    industry: (formData.get('industry') as string) || null,
+    other_notes: (formData.get('other_notes') as string) || null,
+    last_updated: new Date().toISOString(),
+  }
+
+  // Client_Source terkunci 'Inbound' kalau Is_From_Lead -- tidak boleh diubah lewat form ini.
+  if (!existing.is_from_lead) {
+    patch.client_source = formData.get('client_source') as string
+  }
+
+  const { error } = await admin.from('client').update(patch).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/clients/${id}`)
+  revalidatePath('/clients')
+}
+
+export async function addPic(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const clientId = formData.get('client_id') as string
+  const picName = ((formData.get('pic_name') as string) || '').trim()
+  if (!picName) throw new Error('Nama PIC wajib diisi.')
+
+  const { data: existingPics } = await admin.from('pic_client').select('id').eq('client_id', clientId)
+  const isFirst = (existingPics ?? []).length === 0
+
+  const { error } = await admin.from('pic_client').insert({
+    client_id: clientId,
+    pic_name: picName,
+    title: (formData.get('title') as string) || null,
+    email: (formData.get('email') as string) || null,
+    phone: (formData.get('phone') as string) || null,
+    is_primary: isFirst,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/clients/${clientId}`)
+  revalidatePath('/clients')
+}
+
+export async function removePic(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const clientId = formData.get('client_id') as string
+
+  const { error } = await admin.from('pic_client').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/clients/${clientId}`)
+  revalidatePath('/clients')
+}
+
+export async function setPrimaryPic(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const clientId = formData.get('client_id') as string
+
+  await admin.from('pic_client').update({ is_primary: false }).eq('client_id', clientId)
+  const { error } = await admin.from('pic_client').update({ is_primary: true }).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/clients/${clientId}`)
+  revalidatePath('/clients')
+}
+
+File: src/app/clients/new/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { createClient } from '../actions'
+
+export default async function NewClientPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role === 'Operation') redirect('/clients')
+
+  const admin = createAdminClient()
+  const { data: masterData } = await admin.from('master_data').select('*')
+  const options = (cat: string) => (masterData ?? []).filter((m) => m.category === cat)
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Client Baru</h1>
+      <form action={createClient} className="max-w-xl space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Brand Name *</label>
+          <input name="brand_name" required className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+          <input name="entity_name" className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+          <select name="entity_type" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Pilih -</option>
+            {options('Entity_Type').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+          <select name="head_office" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Pilih -</option>
+            {options('Head_Office').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+          <select name="industry" className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Pilih -</option>
+            {options('Industry').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Client Source *</label>
+          <select name="client_source" required className="w-full rounded-md border-gray-300 text-sm">
+            <option value="">- Pilih -</option>
+            {options('Client_Source').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+          <input name="website" className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+          <textarea name="other_notes" rows={2} className="w-full rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Simpan</button>
+      </form>
+    </AppShell>
+  )
+}
+
+File: src/app/clients/[id]/page.tsx
+import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { updateClient, addPic, removePic, setPrimaryPic } from '../actions'
+
+export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: client } = await admin.from('client').select('*').eq('id', id).single()
+  if (!client) notFound()
+
+  const { data: pics } = await admin.from('pic_client').select('*').eq('client_id', id).order('created_at')
+  const { data: masterData } = await admin.from('master_data').select('*')
+  const options = (cat: string) => (masterData ?? []).filter((m) => m.category === cat)
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <p className="mb-2"><Link href="/clients" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Client Monitoring</Link></p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">{client.brand_name}</h1>
+      <p className="mb-6 text-sm text-gray-500">{client.client_id} {client.is_from_lead && '· Berasal dari Lead (Client Source terkunci)'}</p>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Info Client</h2>
+      {canWrite && (
+        <form action={updateClient} className="mb-8 max-w-2xl space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="id" value={id} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Brand Name</label>
+              <input name="brand_name" defaultValue={client.brand_name} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+              <input name="entity_name" defaultValue={client.entity_name} className="w-full rounded-md border-gray-300 text-sm" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+              <select name="entity_type" defaultValue={client.entity_type || ''} className="w-full rounded-md border-gray-300 text-sm">
+                <option value="">- Pilih -</option>
+                {options('Entity_Type').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+              </select></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+              <select name="head_office" defaultValue={client.head_office || ''} className="w-full rounded-md border-gray-300 text-sm">
+                <option value="">- Pilih -</option>
+                {options('Head_Office').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+              </select></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+              <select name="industry" defaultValue={client.industry || ''} className="w-full rounded-md border-gray-300 text-sm">
+                <option value="">- Pilih -</option>
+                {options('Industry').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+              </select></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Client Source {client.is_from_lead && '(terkunci)'}</label>
+              <select name="client_source" defaultValue={client.client_source || ''} disabled={client.is_from_lead} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100">
+                {options('Client_Source').map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
+              </select></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+              <input name="website" defaultValue={client.website || ''} className="w-full rounded-md border-gray-300 text-sm" /></div>
+          </div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+            <textarea name="other_notes" defaultValue={client.other_notes || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Simpan Perubahan</button>
+        </form>
+      )}
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">PIC Client</h2>
+      {canWrite && (
+        <form action={addPic} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="client_id" value={id} />
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Nama *</label>
+            <input name="pic_name" required className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Title</label>
+            <input name="title" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Email</label>
+            <input name="email" type="email" className="rounded-md border-gray-300 text-sm" /></div>
+          <div className="flex flex-col gap-1"><label className="text-xs font-medium text-gray-500">Phone</label>
+            <input name="phone" className="rounded-md border-gray-300 text-sm" /></div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah PIC</button>
+        </form>
+      )}
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Primary</th><th className="px-4 py-3"></th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {(pics ?? []).map((pic) => (
+              <tr key={pic.id}>
+                <td className="px-4 py-3 text-gray-900">{pic.pic_name}</td>
+                <td className="px-4 py-3 text-gray-600">{pic.title || '-'}</td>
+                <td className="px-4 py-3 text-gray-600">{pic.email || '-'}</td>
+                <td className="px-4 py-3 text-gray-600">{pic.phone || '-'}</td>
+                <td className="px-4 py-3">
+                  {pic.is_primary ? (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Primary</span>
+                  ) : canWrite ? (
+                    <form action={setPrimaryPic}>
+                      <input type="hidden" name="id" value={pic.id} />
+                      <input type="hidden" name="client_id" value={id} />
+                      <button type="submit" className="text-xs font-medium text-blue-600 hover:text-blue-700">Jadikan Primary</button>
+                    </form>
+                  ) : '-'}
+                </td>
+                <td className="px-4 py-3">
+                  {canWrite && (
+                    <form action={removePic}>
+                      <input type="hidden" name="id" value={pic.id} />
+                      <input type="hidden" name="client_id" value={id} />
+                      <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {(pics ?? []).length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum ada PIC.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/app/clients/page.tsx -- REPLACE the whole file to add a "+ Client Baru" button and make Client ID a link to the detail page:
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+
+export default async function ClientsPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: clients } = await admin.from('client').select('*').order('created_at', { ascending: false })
+  const { data: pics } = await admin.from('pic_client').select('*')
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Client Monitoring</h1>
+        {canWrite && (
+          <Link href="/clients/new" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+            + Client Baru
+          </Link>
+        )}
+      </div>
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Client ID</th>
+              <th className="px-4 py-3">Brand Name</th>
+              <th className="px-4 py-3">Source</th>
+              <th className="px-4 py-3">PIC Utama</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(clients ?? []).map((client) => {
+              const primaryPic = (pics ?? []).find((pic) => pic.client_id === client.id && pic.is_primary)
+              return (
+                <tr key={client.id}>
+                  <td className="px-4 py-3 font-mono text-gray-700">
+                    <Link href={`/clients/${client.id}`} className="text-blue-600 hover:underline">{client.client_id}</Link>
+                  </td>
+                  <td className="px-4 py-3 text-gray-900">{client.brand_name}</td>
+                  <td className="px-4 py-3 text-gray-600">{client.client_source}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {primaryPic ? `${primaryPic.pic_name} (${primaryPic.email || '-'})` : '-'}
+                  </td>
+                </tr>
+              )
+            })}
+            {(clients ?? []).length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Belum ada Client.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Complete Client Monitoring: manual create, edit info, PIC management (add/remove/set-primary)" && git push
