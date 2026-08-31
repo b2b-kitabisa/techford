@@ -1,0 +1,225 @@
+Add an "Edit Info" section to the existing Project detail page, enforcing the Won-lock rule: when project.stage === 'Won', only other_notes can still be edited -- all other fields (project_name, consultant, services, program_type, program_category, program_name, issues) must be rejected server-side if changed. Also enforce that is_retainer, once true, can never be set back to false.
+
+File: src/app/projects/[id]/actions.ts -- ADD this function to the existing file (keep addRevenueBreakdown and removeRevenueBreakdown as-is):
+
+export async function updateProjectInfo(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('project_id') as string
+
+  const { data: project } = await admin.from('project').select('*').eq('id', id).single()
+  if (!project) throw new Error('Project tidak ditemukan.')
+
+  const otherNotes = (formData.get('other_notes') as string) || null
+
+  if (project.stage === 'Won') {
+    // Won-locked: cuma other_notes yang boleh diubah lewat form ini.
+    const { error } = await admin.from('project').update({ other_notes: otherNotes, last_updated: new Date().toISOString() }).eq('id', id)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/projects/${id}`)
+    revalidatePath('/projects')
+    return
+  }
+
+  const services = formData.getAll('services') as string[]
+  const issues = formData.getAll('issues') as string[]
+  // is_retainer sekali true, tidak bisa dimatikan lagi.
+  const isRetainer = project.is_retainer || formData.get('is_retainer') === 'on'
+
+  const { error } = await admin.from('project').update({
+    project_name: ((formData.get('project_name') as string) || '').trim(),
+    consultant_name_fallback: (formData.get('consultant_name_fallback') as string) || null,
+    services,
+    issues,
+    program_type: (formData.get('program_type') as string) || null,
+    program_category: (formData.get('program_category') as string) || null,
+    program_name: (formData.get('program_name') as string) || null,
+    is_retainer: isRetainer,
+    other_notes: otherNotes,
+    last_updated: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/projects/${id}`)
+  revalidatePath('/projects')
+}
+
+File: src/app/projects/[id]/page.tsx -- REPLACE the whole file with this (adds the Edit Info section right after the GDV/Service Revenue summary cards, before the existing "Revenue Breakdown" heading -- everything else stays the same):
+
+import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { addRevenueBreakdown, removeRevenueBreakdown, updateProjectInfo } from './actions'
+
+const SERVICES = ['CSR', 'Sustainability Services', 'Event', 'Ads Sponsorship', 'Placement & Production']
+const ISSUES = ['Social', 'Health', 'Empowerment', 'Education', 'Environment', 'Momentum']
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const { data: project } = await admin.from('project').select('*').eq('id', id).single()
+  if (!project) notFound()
+
+  const { data: client } = await admin.from('client').select('brand_name').eq('id', project.client_id).single()
+  const { data: rows } = await admin.from('revenue_breakdown').select('*').eq('project_id', id).order('created_at', { ascending: false })
+  const canWrite = employee.role !== 'Operation'
+  const isWonLocked = project.stage === 'Won'
+
+  const gdvRows = (rows ?? []).filter((r) => r.value_type === 'GDV')
+  const serviceRows = (rows ?? []).filter((r) => r.value_type === 'SERVICE')
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <p className="mb-2"><Link href="/projects" className="text-sm font-medium text-gray-600 hover:text-gray-900">&larr; Sales Pipeline</Link></p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">{project.project_name}</h1>
+      <p className="mb-6 text-sm text-gray-500">
+        {project.project_id} · {client?.brand_name} · Stage: {project.stage}
+        {isWonLocked && <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Terkunci (Won)</span>}
+      </p>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total GDV</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(project.total_gdv)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Service Revenue</div>
+          <div className="mt-1 text-xl font-bold text-gray-900">{rupiah(project.total_service_revenue)}</div>
+        </div>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Info Project</h2>
+      {canWrite && (
+        <form action={updateProjectInfo} className="mb-8 max-w-2xl space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="project_id" value={id} />
+          {isWonLocked && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Project sudah Won -- semua field terkunci kecuali Other Notes.
+            </p>
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Project Name</label>
+            <input name="project_name" defaultValue={project.project_name || ''} disabled={isWonLocked} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Consultant</label>
+            <input name="consultant_name_fallback" defaultValue={project.consultant_name_fallback || ''} disabled={isWonLocked} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Program Type</label>
+            <select name="program_type" defaultValue={project.program_type || ''} disabled={isWonLocked} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100">
+              <option value="">-</option>
+              <option value="KB.ORG Program">KB.ORG Program</option>
+              <option value="Client Program">Client Program</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Program Category</label>
+            <input name="program_category" defaultValue={project.program_category || ''} disabled={isWonLocked} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Program Name</label>
+            <input name="program_name" defaultValue={project.program_name || ''} disabled={isWonLocked} className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Services</label>
+            <div className="flex flex-wrap gap-3">
+              {SERVICES.map((s) => (
+                <label key={s} className="flex items-center gap-1 text-sm text-gray-700">
+                  <input type="checkbox" name="services" value={s} defaultChecked={(project.services || []).includes(s)} disabled={isWonLocked} /> {s}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Issues</label>
+            <div className="flex flex-wrap gap-3">
+              {ISSUES.map((s) => (
+                <label key={s} className="flex items-center gap-1 text-sm text-gray-700">
+                  <input type="checkbox" name="issues" value={s} defaultChecked={(project.issues || []).includes(s)} disabled={isWonLocked} /> {s}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" name="is_retainer" defaultChecked={project.is_retainer} disabled={isWonLocked || project.is_retainer} />
+            Is Retainer {project.is_retainer && '(sudah aktif, tidak bisa dimatikan)'}
+          </label>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes (selalu bisa diubah, walau Won)</label>
+            <textarea name="other_notes" defaultValue={project.other_notes || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Simpan Perubahan</button>
+        </form>
+      )}
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Revenue Breakdown</h2>
+      {canWrite && (
+        <form action={addRevenueBreakdown} className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm">
+          <input type="hidden" name="project_id" value={id} />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Value Type</label>
+            <select name="value_type" className="rounded-md border-gray-300 text-sm">
+              <option value="GDV">GDV</option>
+              <option value="SERVICE">SERVICE</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Item Name *</label>
+            <input name="item_name" required placeholder="Link campaign / nama service" className="w-56 rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Amount *</label>
+            <input name="amount" type="number" required className="w-40 rounded-md border-gray-300 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Notes</label>
+            <input name="notes" className="rounded-md border-gray-300 text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Tambah</button>
+        </form>
+      )}
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        {[{ label: 'GDV', data: gdvRows }, { label: 'SERVICE', data: serviceRows }].map((group) => (
+          <div key={group.label} className="overflow-hidden rounded-lg border bg-white shadow-sm">
+            <div className="bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{group.label}</div>
+            <table className="w-full text-sm">
+              <tbody className="divide-y">
+                {group.data.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-3 text-gray-900">{r.item_name}</td>
+                    <td className="px-4 py-3 text-gray-700">{rupiah(r.amount)}</td>
+                    <td className="px-4 py-3">
+                      {canWrite && (
+                        <form action={removeRevenueBreakdown}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="project_id" value={id} />
+                          <button type="submit" className="text-xs font-medium text-red-600 hover:text-red-700">Hapus</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {group.data.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400">Belum ada data.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </AppShell>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Project edit info with Won-lock enforcement and one-way is_retainer" && git push

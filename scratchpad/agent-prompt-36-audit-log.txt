@@ -1,0 +1,158 @@
+Add an Audit Log system to this Next.js + Supabase app. First a shared best-effort logging helper (a logging failure must never break the main operation), then a Master-Admin-only viewer page, then wire it into the highest-value mutation points: employee role/status changes and creation, client/project creation, COR request-approval and Gross-Up-to-Down conversion, COR and Quotation magic-link approve/reject, and cost monitoring disbursements/closing.
+
+File: src/lib/audit-log.ts
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function logAudit(
+  admin: ReturnType<typeof createAdminClient>,
+  entry: {
+    actorUserId?: string | null
+    actorEmail?: string | null
+    action: string
+    entityType: string
+    entityId?: string | null
+    diff?: unknown
+  }
+) {
+  try {
+    await admin.from('audit_log').insert({
+      actor_user_id: entry.actorUserId || null,
+      actor_email: entry.actorEmail || null,
+      action: entry.action,
+      entity_type: entry.entityType,
+      entity_id: entry.entityId || null,
+      diff: entry.diff ? JSON.stringify(entry.diff) : null,
+    })
+  } catch (e) {
+    console.error('Audit log gagal ditulis (operasi utama tetap lanjut):', e)
+  }
+}
+
+File: src/app/audit-log/page.tsx
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+
+export default async function AuditLogPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+  if (employee.role !== 'Master Admin') {
+    return (
+      <AppShell employeeName={employee.name} employeeRole={employee.role}>
+        <p className="text-gray-600">Halaman ini cuma untuk Master Admin.</p>
+      </AppShell>
+    )
+  }
+
+  const admin = createAdminClient()
+  const { data: logs } = await admin
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Audit Log</h1>
+      <p className="mb-6 text-sm text-gray-500">200 aktivitas terakhir, terbaru di atas.</p>
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Waktu</th>
+              <th className="px-4 py-3">Actor</th>
+              <th className="px-4 py-3">Action</th>
+              <th className="px-4 py-3">Entity</th>
+              <th className="px-4 py-3">Detail</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(logs ?? []).map((log) => (
+              <tr key={log.id}>
+                <td className="px-4 py-3 whitespace-nowrap text-gray-600">{new Date(log.created_at).toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3 text-gray-700">{log.actor_email || '-'}</td>
+                <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{log.action}</span></td>
+                <td className="px-4 py-3 text-gray-600">{log.entity_type}{log.entity_id ? ` (${String(log.entity_id).slice(0, 8)}...)` : ''}</td>
+                <td className="px-4 py-3">
+                  {log.diff ? (
+                    <details>
+                      <summary className="cursor-pointer text-xs font-medium text-blue-600">lihat</summary>
+                      <pre className="mt-1 max-w-md overflow-x-auto rounded bg-gray-50 p-2 text-xs">{typeof log.diff === 'string' ? log.diff : JSON.stringify(log.diff, null, 2)}</pre>
+                    </details>
+                  ) : '-'}
+                </td>
+              </tr>
+            ))}
+            {(logs ?? []).length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Belum ada aktivitas tercatat.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/sidebar-nav.tsx -- add Audit Log to the "Pengaturan" group's items array:
+{ href: '/audit-log', label: 'Audit Log' },
+
+File: src/app/employees/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. Then in addEmployee, right before the final `revalidatePath('/employees')` line, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'ADD_EMPLOYEE', entityType: 'employee', diff: { name, email, role } })
+
+In setEmployeeRole, right before its final `revalidatePath('/employees')`, add (note: `employee` here is the variable returned by requireMasterAdmin()):
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'SET_EMPLOYEE_ROLE', entityType: 'employee', entityId: id, diff: { from: emp.role, to: newRole } })
+
+In setEmployeeStatus, right before its final `revalidatePath('/employees')`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'SET_EMPLOYEE_STATUS', entityType: 'employee', entityId: id, diff: { from: emp.status, to: newStatus } })
+
+File: src/app/clients/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. In createClient, right before `redirect(...)`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'CREATE_CLIENT', entityType: 'client', entityId: client.id, diff: { brandName, clientSource } })
+
+File: src/app/projects/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. Find createProject: it does `const { error } = await admin.from('project').insert({...})`. Change that line to capture the inserted row and log it:
+  const { data: newProject, error } = await admin.from('project').insert({
+    project_id: projectId,
+    project_name: projectName,
+    client_id: clientId,
+    consultant_name_fallback: employee.name,
+    services,
+    issues,
+    program_type: (formData.get('program_type') as string) || null,
+    is_retainer: formData.get('is_retainer') === 'on',
+    stage: 'Prospect',
+    created_by: employee.name,
+  }).select().single()
+  if (error) throw new Error(error.message)
+
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'CREATE_PROJECT', entityType: 'project', entityId: newProject?.id, diff: { projectId, projectName, clientId } })
+
+  revalidatePath('/projects')
+  redirect('/projects')
+
+(Keep the rest of the file -- toggleAllowManualDeal, updateProjectStageManual, markLoss, undoLoss -- unchanged.)
+
+File: src/app/documents/cor/[id]/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. In requestApproval, right before its final `revalidatePath('/documents')`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'REQUEST_APPROVAL_COR', entityType: 'document_pipeline', entityId: docId, diff: { approverEmail: approver.email, marginAckNote: marginAckNote || null } })
+
+In convertToGrossDown, right before its final `revalidatePath('/documents/cor/${docId}')`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'CONVERT_TO_GROSS_DOWN', entityType: 'cor_header', entityId: docId })
+
+File: src/app/approve/cor/[token]/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. In confirmApprove, right before `redirect(...)`, add:
+  await logAudit(admin, { actorEmail: header.approval_requested_to, action: 'APPROVE_COR', entityType: 'cor_header', entityId: header.doc_id })
+
+In confirmReject, right before `redirect(...)`, add:
+  await logAudit(admin, { actorEmail: header.approval_requested_to, action: 'REJECT_COR', entityType: 'cor_header', entityId: header.doc_id, diff: { note } })
+
+File: src/app/approve/quotation/[token]/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. In confirmApprove, right before `redirect(...)`, add:
+  await logAudit(admin, { actorEmail: header.approval_requested_to, action: 'APPROVE_QUOTATION', entityType: 'quotation_header', entityId: header.doc_id })
+
+In confirmReject, right before `redirect(...)`, add:
+  await logAudit(admin, { actorEmail: header.approval_requested_to, action: 'REJECT_QUOTATION', entityType: 'quotation_header', entityId: header.doc_id, diff: { note } })
+
+File: src/app/cost-monitoring/actions.ts -- add `import { logAudit } from '@/lib/audit-log'` at the top. In addDisbursement, right before its final `revalidatePath('/cost-monitoring')`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'ADD_DISBURSEMENT', entityType: 'cor_disbursement', entityId: docId, diff: { budgetItemId, amount } })
+
+In closeCostMonitoring, right before its final `revalidatePath('/cost-monitoring')`, add:
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'CLOSE_COST_MONITORING', entityType: 'cor_header', entityId: docId })
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Audit Log: viewer page + logging on high-value mutations (employee, client, project, COR/Quotation approval, disbursement)" && git push
