@@ -1,0 +1,191 @@
+Add the GDV Matching module to this Next.js + Supabase app -- a read-only reconciliation report comparing GDV claimed in each Project's Revenue Breakdown against the realized nominal uploaded via GDV Controller. Matching is by link_campaign first, falling back to child_short_url alias. No write actions, this is a computed report page.
+
+File: src/lib/gdv-matching.ts
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export type GdvMatchStatus = 'BELUM_SINKRON' | 'KLAIM_MELEBIHI' | 'SINKRON'
+
+export type GdvMatchRow = {
+  revenueBreakdownId: string
+  projectId: string
+  projectName: string
+  projectDbId: string
+  clientBrandName: string
+  linkCampaign: string
+  claimed: number
+  realized: number
+  status: GdvMatchStatus
+  matchedBy: 'link_campaign' | 'child_short_url' | 'none'
+}
+
+function normalize(s: string) {
+  return s.trim().toLowerCase()
+}
+
+export async function computeGdvMatching(admin: ReturnType<typeof createAdminClient>): Promise<GdvMatchRow[]> {
+  const { data: rows } = await admin
+    .from('revenue_breakdown')
+    .select('id, project_id, item_name, amount, project:project_id(id, project_id, project_name, client_id)')
+    .eq('value_type', 'GDV')
+
+  const { data: gdvRows } = await admin
+    .from('gdv_controller')
+    .select('link_campaign, child_short_url, realized_nominal')
+
+  const byLinkCampaign = new Map<string, number>()
+  const byChildShortUrl = new Map<string, number>()
+  for (const g of gdvRows ?? []) {
+    const nominal = Number(g.realized_nominal || 0)
+    if (g.link_campaign) {
+      const key = normalize(g.link_campaign)
+      byLinkCampaign.set(key, (byLinkCampaign.get(key) || 0) + nominal)
+    }
+    if (g.child_short_url) {
+      const key = normalize(g.child_short_url)
+      byChildShortUrl.set(key, (byChildShortUrl.get(key) || 0) + nominal)
+    }
+  }
+
+  const clientIds = Array.from(new Set((rows ?? []).map((r) => (r.project as unknown as { client_id: string } | null)?.client_id).filter(Boolean))) as string[]
+  const { data: clients } = clientIds.length
+    ? await admin.from('client').select('id, brand_name').in('id', clientIds)
+    : { data: [] as { id: string; brand_name: string }[] }
+  const clientNameById = new Map((clients ?? []).map((c) => [c.id, c.brand_name]))
+
+  const result: GdvMatchRow[] = (rows ?? []).map((r) => {
+    const project = r.project as unknown as { id: string; project_id: string; project_name: string; client_id: string } | null
+    const linkCampaign = (r.item_name || '').trim()
+    const key = normalize(linkCampaign)
+
+    let realized = 0
+    let matchedBy: GdvMatchRow['matchedBy'] = 'none'
+    if (byLinkCampaign.has(key)) {
+      realized = byLinkCampaign.get(key)!
+      matchedBy = 'link_campaign'
+    } else if (byChildShortUrl.has(key)) {
+      realized = byChildShortUrl.get(key)!
+      matchedBy = 'child_short_url'
+    }
+
+    const claimed = Number(r.amount || 0)
+    let status: GdvMatchStatus
+    if (matchedBy === 'none') status = 'BELUM_SINKRON'
+    else if (claimed > realized) status = 'KLAIM_MELEBIHI'
+    else status = 'SINKRON'
+
+    return {
+      revenueBreakdownId: r.id,
+      projectId: project?.project_id || '-',
+      projectDbId: project?.id || '',
+      projectName: project?.project_name || '-',
+      clientBrandName: project ? clientNameById.get(project.client_id) || '-' : '-',
+      linkCampaign,
+      claimed,
+      realized,
+      status,
+      matchedBy,
+    }
+  })
+
+  return result.sort((a, b) => {
+    const order: Record<GdvMatchStatus, number> = { KLAIM_MELEBIHI: 0, BELUM_SINKRON: 1, SINKRON: 2 }
+    return order[a.status] - order[b.status]
+  })
+}
+
+File: src/app/gdv-matching/page.tsx
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { computeGdvMatching, type GdvMatchStatus } from '@/lib/gdv-matching'
+
+function rupiah(n: number) {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+const STATUS_STYLE: Record<GdvMatchStatus, string> = {
+  BELUM_SINKRON: 'bg-gray-100 text-gray-700',
+  KLAIM_MELEBIHI: 'bg-red-100 text-red-700',
+  SINKRON: 'bg-green-100 text-green-700',
+}
+
+const STATUS_LABEL: Record<GdvMatchStatus, string> = {
+  BELUM_SINKRON: 'Belum Sinkron',
+  KLAIM_MELEBIHI: 'Klaim Melebihi',
+  SINKRON: 'Sinkron',
+}
+
+export default async function GdvMatchingPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const rows = await computeGdvMatching(admin)
+
+  const counts = rows.reduce(
+    (acc, r) => ({ ...acc, [r.status]: acc[r.status] + 1 }),
+    { BELUM_SINKRON: 0, KLAIM_MELEBIHI: 0, SINKRON: 0 } as Record<GdvMatchStatus, number>
+  )
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">GDV Matching</h1>
+      <p className="mb-6 text-sm text-gray-500">
+        Rekonsiliasi klaim GDV di Revenue Breakdown project vs realisasi di GDV Controller. Matching berdasarkan Link Campaign, fallback ke Child Short URL.
+      </p>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        {(['KLAIM_MELEBIHI', 'BELUM_SINKRON', 'SINKRON'] as GdvMatchStatus[]).map((s) => (
+          <div key={s} className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{STATUS_LABEL[s]}</div>
+            <div className="mt-1 text-xl font-bold text-gray-900">{counts[s]}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Project</th>
+              <th className="px-4 py-3">Client</th>
+              <th className="px-4 py-3">Link Campaign</th>
+              <th className="px-4 py-3">Klaim</th>
+              <th className="px-4 py-3">Realized</th>
+              <th className="px-4 py-3">Selisih</th>
+              <th className="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((r) => (
+              <tr key={r.revenueBreakdownId}>
+                <td className="px-4 py-3 text-gray-900">
+                  {r.projectDbId ? <Link href={`/projects/${r.projectDbId}`} className="text-blue-600 hover:underline">{r.projectId}</Link> : r.projectId}
+                  <div className="text-xs text-gray-500">{r.projectName}</div>
+                </td>
+                <td className="px-4 py-3 text-gray-600">{r.clientBrandName}</td>
+                <td className="px-4 py-3 text-gray-600">{r.linkCampaign || '-'}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiah(r.claimed)}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiah(r.realized)}</td>
+                <td className={`px-4 py-3 ${r.realized - r.claimed < 0 ? 'text-red-600' : 'text-gray-700'}`}>{rupiah(r.realized - r.claimed)}</td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Belum ada data GDV untuk dicocokkan.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/sidebar-nav.tsx -- add GDV Matching to the "Operasional" group's items array, right after the GDV Controller entry:
+{ href: '/gdv-matching', label: 'GDV Matching' },
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add GDV Matching module: reconciliation report of claimed vs realized GDV" && git push
