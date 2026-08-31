@@ -248,6 +248,10 @@ select.ctrl { padding-right: 3.5px; }
   font-size: 8.4px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .cell.na { background: var(--chip); color: var(--muted); }
+.hm-avg-row th, .hm-avg-row td { border-top: 1.5px solid var(--line); padding-top: 3px; }
+.hm-avg { display: flex; flex-wrap: wrap; gap: 3.5px 8.8px; margin-top: 5.3px; font-size: 7.9px; color: var(--ink-2); }
+.hm-avg b { font-weight: 700; color: var(--ink); }
+.hm-avg-delta { font-weight: 700; color: var(--accent); }
 .scale { display: flex; align-items: center; gap: 4.4px; margin-top: 6.2px; font-size: 7.9px; color: var(--muted); font-weight: 600; }
 .scale div { display: flex; gap: 1.5px; }
 .scale i { width: 11.4px; height: 7px; border-radius: 1.5px; display: block; }
@@ -1062,25 +1066,69 @@ function renderRank(rows){
   host.appendChild(wrap);
 }
 
+/** Warna sel heatmap ABJ, diverging dari target T_ABJ (merah di bawah, biru di atas). */
+function heatColor_(abj){
+  var d = abj-T_ABJ;
+  var span = d<0 ? 12 : 5, st = Math.min(6, Math.max(0, Math.round(Math.min(1,Math.abs(d)/span)*6)));
+  return Math.abs(d)<0.35 ? '#eef1f6' : (d<0 ? RED[st] : BLUE[st]);
+}
+function heatTextColor_(bg){
+  var rr=parseInt(bg.substr(1,2),16), gg=parseInt(bg.substr(3,2),16), bb=parseInt(bg.substr(5,2),16);
+  return (0.299*rr+0.587*gg+0.114*bb)/255 > 0.62 ? '#10151f' : '#fff';
+}
+function heatCellEl_(abj){
+  if (abj==null) return E('div','cell na','—');
+  var bg = heatColor_(abj), cell = E('div','cell', nf(abj,1));
+  cell.style.background = bg; cell.style.color = heatTextColor_(bg);
+  return cell;
+}
+function deltaCellEl_(d){
+  if (d==null) return E('div','cell na','—');
+  var cell = E('div','cell delta', (d>=0?'+':'')+nf(d,1)+' pp');
+  cell.style.background = Math.abs(d)<0.35 ? '#eef1f6' : (d<0 ? '#fbe4e4' : '#dbe9fb');
+  cell.style.color = Math.abs(d)<0.35 ? '#10151f' : (d<0 ? '#ab2f2f' : '#184f95');
+  return cell;
+}
+function fmtDelta_(d){ return d==null ? '—' : (d>=0?'+':'')+nf(d,1)+' pp'; }
+
 function renderHeatmap(rows, ks){
   var hh = document.getElementById('heat'); clr(hh);
-  var cells = {}, rwk = [];
+  var cells = {}, rwk = [], monthRows = {};
   rows.forEach(function(r){
     if (!r[I_BLN]) return;
     var rw = RW[r[I_RW]], mk = r[I_THN]+'-'+('0'+r[I_BLN]).slice(-2);
     if (!cells[rw]){ cells[rw]={}; rwk.push(rw); }
     (cells[rw][mk] = cells[rw][mk] || []).push(r);
+    (monthRows[mk] = monthRows[mk] || []).push(r);
   });
   rwk.sort();
+  var hasDelta = ks.length > 1;
+  var deltaLabel = hasDelta ? (mlabel(ks[ks.length-1])+'−'+mlabel(ks[0])) : '';
+  function abjOf(g){ return g ? agg(g).abj : null; }
 
   if (TV.heat){
-    hh.appendChild(table('heat', {
-      head:['RW'].concat(ks.map(mlabel)),
-      rows: rwk.map(function(rw){
-        return [rw].concat(ks.map(function(mk){ var g=cells[rw][mk]; return g?nf(agg(g).abj,1):'—'; }));
-      }),
-      num: ks.map(function(_,i){ return i+1; })
-    }));
+    var head = ['RW'].concat(ks.map(mlabel));
+    if (hasDelta) head.push('Δ '+deltaLabel);
+    var bodyRows = rwk.map(function(rw){
+      var vals = ks.map(function(mk){ return abjOf(cells[rw][mk]); });
+      var out = [rw].concat(vals.map(function(v){ return v==null?'—':nf(v,1); }));
+      if (hasDelta) out.push(fmtDelta_(vals[vals.length-1]==null||vals[0]==null ? null : vals[vals.length-1]-vals[0]));
+      return out;
+    });
+    var numCols = ks.map(function(_,i){ return i+1; });
+    if (hasDelta) numCols.push(ks.length+1);
+    hh.appendChild(table('heat', { head:head, rows:bodyRows, num:numCols }));
+
+    // baris ringkasan di luar tabel (tidak ikut ter-sort) — rata-rata semua RW per bulan
+    var avgVals = ks.map(function(mk){ return abjOf(monthRows[mk]); });
+    var avgLine = E('div','hm-avg');
+    avgLine.appendChild(E('b',null,'Rata-rata semua RW:'));
+    ks.forEach(function(mk,i){ avgLine.appendChild(E('span',null, mlabel(mk)+' '+(avgVals[i]==null?'—':nf(avgVals[i],1)+'%'))); });
+    if (hasDelta){
+      var avgD = (avgVals[0]==null||avgVals[avgVals.length-1]==null) ? null : avgVals[avgVals.length-1]-avgVals[0];
+      avgLine.appendChild(E('span','hm-avg-delta', deltaLabel+': '+fmtDelta_(avgD)));
+    }
+    hh.appendChild(avgLine);
     return;
   }
   if (!rwk.length || !ks.length){ hh.appendChild(E('div','empty','Tidak ada data.')); return; }
@@ -1089,31 +1137,55 @@ function renderHeatmap(rows, ks){
   var thd = document.createElement('thead'), htr = document.createElement('tr');
   htr.appendChild(E('th',null,'RW'));
   ks.forEach(function(k){ htr.appendChild(E('th',null,mlabel(k))); });
+  if (hasDelta) htr.appendChild(E('th',null,'Δ '+deltaLabel));
   thd.appendChild(htr); tb.appendChild(thd);
   var bdy = document.createElement('tbody');
   rwk.forEach(function(rw){
     var tr = document.createElement('tr');
     tr.appendChild(E('th',null,rw.replace('RW ','')));
+    var vals = [];
     ks.forEach(function(mk){
-      var td = document.createElement('td'), g = cells[rw][mk], cell;
-      if (!g){ cell = E('div','cell na','—'); }
-      else {
-        var a = agg(g), d = a.abj-T_ABJ;
-        var span = d<0 ? 12 : 5, st = Math.min(6, Math.max(0, Math.round(Math.min(1,Math.abs(d)/span)*6)));
-        var bg = Math.abs(d)<0.35 ? '#eef1f6' : (d<0 ? RED[st] : BLUE[st]);
-        cell = E('div','cell', nf(a.abj,1));
-        cell.style.background = bg;
-        var rr=parseInt(bg.substr(1,2),16), gg=parseInt(bg.substr(3,2),16), bb=parseInt(bg.substr(5,2),16);
-        cell.style.color = (0.299*rr+0.587*gg+0.114*bb)/255 > 0.62 ? '#10151f' : '#fff';
+      var td = document.createElement('td'), g = cells[rw][mk], a = g?agg(g):null;
+      vals.push(a?a.abj:null);
+      var cell = heatCellEl_(a?a.abj:null);
+      if (a){
         cell.addEventListener('pointermove', function(e){
-          tip(rw+' · '+mlabel(mk), [{c:bg, v:pc(a.abj), n:'ABJ'},{v:nf(a.n), n:'diperiksa'},{v:nf(a.pos), n:'positif'}], e.clientX, e.clientY);
+          tip(rw+' · '+mlabel(mk), [{c:heatColor_(a.abj), v:pc(a.abj), n:'ABJ'},{v:nf(a.n), n:'diperiksa'},{v:nf(a.pos), n:'positif'}], e.clientX, e.clientY);
         });
         cell.addEventListener('pointerleave', untip);
       }
       td.appendChild(cell); tr.appendChild(td);
     });
+    if (hasDelta){
+      var td2 = document.createElement('td'), d = (vals[0]==null||vals[vals.length-1]==null) ? null : vals[vals.length-1]-vals[0];
+      td2.appendChild(deltaCellEl_(d));
+      tr.appendChild(td2);
+    }
     bdy.appendChild(tr);
   });
+
+  // baris rata-rata semua RW, per bulan (ABJ gabungan, bukan rata-rata dari rata-rata)
+  var avgTr = document.createElement('tr'); avgTr.className = 'hm-avg-row';
+  avgTr.appendChild(E('th',null,'Rata-rata'));
+  var avgVals = [];
+  ks.forEach(function(mk){
+    var td = document.createElement('td'), g = monthRows[mk], a = g?agg(g):null;
+    avgVals.push(a?a.abj:null);
+    var cell = heatCellEl_(a?a.abj:null);
+    if (a){
+      cell.addEventListener('pointermove', function(e){
+        tip('Rata-rata semua RW · '+mlabel(mk), [{c:heatColor_(a.abj), v:pc(a.abj), n:'ABJ'},{v:nf(a.n), n:'diperiksa'},{v:nf(a.pos), n:'positif'}], e.clientX, e.clientY);
+      });
+      cell.addEventListener('pointerleave', untip);
+    }
+    td.appendChild(cell); avgTr.appendChild(td);
+  });
+  if (hasDelta){
+    var td3 = document.createElement('td'), ad = (avgVals[0]==null||avgVals[avgVals.length-1]==null) ? null : avgVals[avgVals.length-1]-avgVals[0];
+    td3.appendChild(deltaCellEl_(ad));
+    avgTr.appendChild(td3);
+  }
+  bdy.appendChild(avgTr);
   tb.appendChild(bdy); box.appendChild(tb); hh.appendChild(box);
 
   var sl = E('div','scale');
