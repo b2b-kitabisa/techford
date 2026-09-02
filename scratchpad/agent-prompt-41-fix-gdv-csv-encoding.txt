@@ -1,0 +1,43 @@
+Fix the GDV Controller CSV upload again -- the error log now shows the header read as garbled bytes ("Header yang terbaca dari file: <garbled characters>c"). This means the uploaded file is NOT UTF-8 -- it's UTF-16 (common when a CSV is exported/saved as "Unicode Text" from Excel or certain Tableau export paths). Reading it with the plain `.text()` method assumes UTF-8 and corrupts every character. Fix: detect the encoding from the file's byte-order-mark (BOM) and decode accordingly before handing the text to the CSV parser.
+
+File: src/lib/parse-gdv-csv.ts -- find this function near the top:
+function stripBom(text: string) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
+}
+
+Right after it, ADD this new function:
+export async function readCsvFileText(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2))
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2))
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3))
+  }
+  // No recognizable BOM -- assume plain UTF-8 (the common case for real CSV exports).
+  return new TextDecoder('utf-8').decode(bytes)
+}
+
+(Keep everything else in the file exactly as-is: parseGdvCsv, normalize, stripBom, REQUIRED_COLUMNS all stay unchanged.)
+
+File: src/app/gdv-controller/actions.ts -- change the import line:
+import { parseGdvCsv } from '@/lib/parse-gdv-csv'
+to:
+import { parseGdvCsv, readCsvFileText } from '@/lib/parse-gdv-csv'
+
+Then find these two lines:
+  const brandText = await brandFile.text()
+  const notBrandText = await notBrandFile.text()
+
+Replace them with:
+  const brandText = await readCsvFileText(brandFile)
+  const notBrandText = await readCsvFileText(notBrandFile)
+
+After all files are updated, commit and push: git add . && git commit -m "Fix GDV CSV upload: detect and decode UTF-16 encoded files via BOM instead of assuming UTF-8" && git push
+
+If the upload still fails after this, the error message will again show the raw headers found -- please copy that exact text back so we can see what's still wrong.
