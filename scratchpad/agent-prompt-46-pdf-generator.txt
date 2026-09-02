@@ -1,0 +1,567 @@
+Add a PDF generator for COR and Quotation documents to this Next.js + Supabase app. Uses @react-pdf/renderer (pure Node/React PDF rendering, no headless browser needed -- works fine on Vercel serverless). Generated PDFs are uploaded to the private Supabase Storage "documents" bucket (already set up) using the existing src/lib/storage.ts helpers, at the path `<Client_ID>-<Brand_Name>/<Project_ID>/<file_name>.pdf` -- same folder-per-client/folder-per-project convention the old Google Drive version used, just as a storage path prefix instead of real folders. Downloading always goes through a route that mints a fresh short-lived signed URL (the bucket is private, so there's no permanent public link).
+
+First install the PDF library: run `npm install @react-pdf/renderer` in the terminal.
+
+STEP 1 -- Run this SQL in the Supabase SQL Editor (this is a database change, do it directly in the Supabase dashboard, NOT through the Codespace Agent):
+alter table cor_header add column if not exists pdf_storage_path text;
+alter table cor_header add column if not exists pdf_generated_at timestamptz;
+alter table quotation_header add column if not exists pdf_storage_path text;
+alter table quotation_header add column if not exists pdf_generated_at timestamptz;
+
+STEP 2 -- Now paste the rest of this into the Codespace Agent to create/update the code files.
+
+File: src/lib/sanitize-name.ts (NEW FILE)
+// Matches the old Google Drive folder-name sanitizer: strip characters that
+// are illegal in file/folder names, collapse whitespace, trim.
+export function sanitizeName(name: string): string {
+  return name
+    .replace(/[/\\:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+File: src/lib/pdf/format.ts (NEW FILE)
+export function rupiah(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return '-'
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export function percent(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return '-'
+  return (Math.round(n * 10000) / 100).toString() + '%'
+}
+
+File: src/lib/pdf/cor-pdf.tsx (NEW FILE)
+import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
+import { rupiah } from './format'
+
+const styles = StyleSheet.create({
+  page: { padding: 32, fontSize: 9, fontFamily: 'Helvetica', color: '#111827' },
+  title: { fontSize: 16, fontWeight: 700, marginBottom: 2 },
+  subtitle: { fontSize: 9, color: '#6b7280', marginBottom: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 6 },
+  table: { borderWidth: 1, borderColor: '#e5e7eb' },
+  row: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  rowLast: { flexDirection: 'row' },
+  headerRow: { flexDirection: 'row', backgroundColor: '#f9fafb', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  cell: { padding: 5, borderRightWidth: 1, borderRightColor: '#e5e7eb' },
+  cellLast: { padding: 5 },
+  headerCell: { padding: 5, fontWeight: 700, borderRightWidth: 1, borderRightColor: '#e5e7eb' },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  summaryLabel: { color: '#4b5563' },
+  summaryValueEmph: { fontWeight: 700 },
+})
+
+type FundRowVM = { fund_type: string; is_zakat: boolean; gdv: number; calc: { pf: number; tf: number; af: number; adm: number; total: number } }
+type CostVM = { row_role: string; cost_group: string; keterangan: string | null; kategori: string | null; tipe: string | null; harga: number; qty: number; periode: number }
+type MarginComponentVM = { component: string; percentage: number }
+
+export function CorPdfDocument(props: {
+  docId: string
+  clientName: string
+  projectName: string
+  vendorName: string
+  corMethod: string
+  isViaSalset: boolean
+  fundRows: FundRowVM[]
+  costs: CostVM[]
+  marginComponents: MarginComponentVM[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  result: any
+}) {
+  const { docId, clientName, projectName, vendorName, corMethod, isViaSalset, fundRows, costs, marginComponents, result } = props
+  const totalImplementationFund = fundRows.reduce((sum, r) => sum + r.calc.total, 0)
+
+  const gdRows: [string, string][] = corMethod === 'GROSS_DOWN' && result
+    ? [
+        ['Total Dana Masuk', rupiah(result.totalMasuk)],
+        ...(isViaSalset ? [['Fee SALSET', rupiah(result.salFee)] as [string, string], ['Sisa Dana', rupiah(result.sisaDana)] as [string, string]] : []),
+        ['Cash Gross', rupiah(result.cashGross)],
+        ['PPN', rupiah(result.ppnGd)],
+        ['PPh 23', rupiah(result.pph23)],
+        ['Cash Net', rupiah(result.cashNet)],
+        ['Margin/Profit (Rencana)', rupiah(result.profit)],
+        ['Available Cost', rupiah(result.availCost)],
+        ['Total Biaya SAL', rupiah(result.totalSal)],
+        ['Total Biaya Vendor', rupiah(result.totalBaa)],
+        ['DPP', rupiah(result.dpp)],
+        ['PPN 11%', rupiah(result.ppn11)],
+        ['PPh (SPP)', rupiah(result.pphSpp)],
+        ['Neto', rupiah(result.neto)],
+        ['Profit Aktual', rupiah(result.pmProfit)],
+      ]
+    : corMethod === 'GROSS_UP' && result
+    ? [
+        ...(isViaSalset ? [['SAL (Gross Up)', rupiah(result.salGu)] as [string, string]] : []),
+        ['Margin (Gross Up)', rupiah(result.guMargin)],
+        ['PPh (Gross Up)', rupiah(result.guPph)],
+        ['PPN (Gross Up)', rupiah(result.guPpn)],
+        ['Total Hasil Gross Up', rupiah(result.totalHasilGu)],
+        ['Admin Fee', rupiah(result.guAdmin)],
+        ['Nominal Final (harus diminta ke Client)', rupiah(result.guFinal)],
+        ['Profit (Gross Up)', rupiah(result.guProfit)],
+      ]
+    : []
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.title}>Cost Operational Report</Text>
+        <Text style={styles.subtitle}>
+          {docId} · {clientName} · {projectName} · Vendor: {vendorName} · Metode: {corMethod}
+        </Text>
+
+        <Text style={styles.sectionTitle}>Dana Masuk</Text>
+        <View style={styles.table}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.headerCell, { width: '14%' }]}>Tipe</Text>
+            <Text style={[styles.headerCell, { width: '16%' }]}>Nominal</Text>
+            <Text style={[styles.headerCell, { width: '14%' }]}>Platform Fee</Text>
+            <Text style={[styles.headerCell, { width: '14%' }]}>Tech Fee</Text>
+            <Text style={[styles.headerCell, { width: '14%' }]}>Admin Fee</Text>
+            <Text style={[styles.headerCell, { width: '28%' }]}>Implementation Fund</Text>
+          </View>
+          {fundRows.map((r, i) => (
+            <View key={i} style={i === fundRows.length - 1 ? styles.rowLast : styles.row}>
+              <Text style={[styles.cell, { width: '14%' }]}>{r.fund_type}{r.is_zakat ? ' (Zakat)' : ''}</Text>
+              <Text style={[styles.cell, { width: '16%' }]}>{rupiah(r.gdv)}</Text>
+              <Text style={[styles.cell, { width: '14%' }]}>{rupiah(r.calc.pf)}</Text>
+              <Text style={[styles.cell, { width: '14%' }]}>{rupiah(r.calc.tf)}</Text>
+              <Text style={[styles.cell, { width: '14%' }]}>{rupiah(r.calc.adm)}</Text>
+              <Text style={[styles.cellLast, { width: '28%' }]}>{rupiah(r.calc.total)}</Text>
+            </View>
+          ))}
+          {fundRows.length === 0 && <Text style={{ padding: 6, color: '#9ca3af' }}>Belum ada dana masuk.</Text>}
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
+          <Text style={{ fontWeight: 700 }}>Total Implementation Fund: {rupiah(totalImplementationFund)}</Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>Biaya</Text>
+        <View style={styles.table}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.headerCell, { width: '14%' }]}>Kelompok</Text>
+            <Text style={[styles.headerCell, { width: '30%' }]}>Keterangan</Text>
+            <Text style={[styles.headerCell, { width: '20%' }]}>Kategori / Tipe</Text>
+            <Text style={[styles.headerCell, { width: '18%' }]}>Harga x Qty x Periode</Text>
+            <Text style={[styles.headerCell, { width: '18%' }]}>Total</Text>
+          </View>
+          {costs.map((c, i) => (
+            <View key={i} style={i === costs.length - 1 ? styles.rowLast : styles.row}>
+              <Text style={[styles.cell, { width: '14%' }]}>{c.cost_group}</Text>
+              <Text style={[styles.cell, { width: '30%' }]}>{c.keterangan || '-'}</Text>
+              <Text style={[styles.cell, { width: '20%' }]}>{c.kategori || '-'} / {c.tipe || '-'}</Text>
+              <Text style={[styles.cell, { width: '18%' }]}>{rupiah(c.harga)} x {c.qty} x {c.periode}</Text>
+              <Text style={[styles.cellLast, { width: '18%' }]}>{c.row_role === 'ITEM' ? '-' : rupiah(c.harga * c.qty * c.periode)}</Text>
+            </View>
+          ))}
+          {costs.length === 0 && <Text style={{ padding: 6, color: '#9ca3af' }}>Belum ada biaya.</Text>}
+        </View>
+
+        <Text style={styles.sectionTitle}>Default Margin</Text>
+        {marginComponents.map((m) => (
+          <View key={m.component} style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{m.component}</Text>
+            <Text>{m.percentage}%</Text>
+          </View>
+        ))}
+
+        <Text style={styles.sectionTitle}>Ringkasan Perhitungan ({corMethod === 'GROSS_DOWN' ? 'Gross Down' : 'Gross Up'})</Text>
+        {gdRows.map(([label, value], i) => (
+          <View key={i} style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{label}</Text>
+            <Text style={styles.summaryValueEmph}>{value}</Text>
+          </View>
+        ))}
+
+        <Text style={{ marginTop: 24, fontSize: 7, color: '#9ca3af' }}>
+          Dokumen ini dibuat otomatis oleh Techford pada {new Date().toLocaleString('id-ID')}.
+        </Text>
+      </Page>
+    </Document>
+  )
+}
+
+File: src/lib/pdf/quotation-pdf.tsx (NEW FILE)
+import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
+import { rupiah } from './format'
+
+const styles = StyleSheet.create({
+  page: { padding: 32, fontSize: 9, fontFamily: 'Helvetica', color: '#111827' },
+  title: { fontSize: 16, fontWeight: 700, marginBottom: 2 },
+  subtitle: { fontSize: 9, color: '#6b7280', marginBottom: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: 700, marginTop: 16, marginBottom: 6 },
+  paragraph: { marginBottom: 10, lineHeight: 1.4 },
+  table: { borderWidth: 1, borderColor: '#e5e7eb' },
+  row: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  rowLast: { flexDirection: 'row' },
+  headerRow: { flexDirection: 'row', backgroundColor: '#f9fafb', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  cell: { padding: 5, borderRightWidth: 1, borderRightColor: '#e5e7eb' },
+  cellLast: { padding: 5 },
+  headerCell: { padding: 5, fontWeight: 700, borderRightWidth: 1, borderRightColor: '#e5e7eb' },
+  signatureBlock: { marginTop: 'auto', paddingTop: 40, flexDirection: 'row', justifyContent: 'space-between' },
+  signatureCol: { width: '45%' },
+  signatureLine: { marginTop: 50, borderTopWidth: 1, borderTopColor: '#111827', paddingTop: 4 },
+})
+
+type ItemVM = { category_label: string | null; item_label: string | null; row_role: string; value: number | null; qty: number | null; remarks_detail: string | null }
+
+export function QuotationPdfDocument(props: {
+  docId: string
+  quotationNumber: string | null
+  entityCode: string
+  clientName: string
+  projectName: string
+  headName: string | null
+  titleName: string | null
+  serviceName: string | null
+  picName: string | null
+  validDays: number | null
+  firstStatement: string | null
+  importantRemarks: string | null
+  agencyFeeRate: number | null
+  hideAgencyFee: boolean
+  singleBoxPrice: boolean
+  items: ItemVM[]
+  total: number
+}) {
+  const {
+    docId, quotationNumber, entityCode, clientName, projectName, headName, titleName, serviceName,
+    picName, validDays, firstStatement, importantRemarks, agencyFeeRate, hideAgencyFee, singleBoxPrice,
+    items, total,
+  } = props
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.title}>{entityCode === 'KAI' ? 'Quotation' : 'Donation Commitment Letter'}</Text>
+        <Text style={styles.subtitle}>
+          {quotationNumber || docId} · {clientName} · {projectName} · Entity: {entityCode}
+        </Text>
+
+        {(headName || titleName || serviceName || picName) && (
+          <View style={{ marginBottom: 12 }}>
+            {headName && <Text>{headName}</Text>}
+            {titleName && <Text style={{ fontWeight: 700 }}>{titleName}</Text>}
+            {serviceName && <Text>{serviceName}</Text>}
+            {picName && <Text style={{ color: '#6b7280', marginTop: 4 }}>PIC: {picName}</Text>}
+            {validDays ? <Text style={{ color: '#6b7280' }}>Berlaku {validDays} hari sejak diterbitkan</Text> : null}
+          </View>
+        )}
+
+        {firstStatement && <Text style={styles.paragraph}>{firstStatement}</Text>}
+
+        <Text style={styles.sectionTitle}>Rincian</Text>
+        {singleBoxPrice ? (
+          <View style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: 700 }}>{rupiah(total)}</Text>
+          </View>
+        ) : (
+          <View style={styles.table}>
+            <View style={styles.headerRow}>
+              <Text style={[styles.headerCell, { width: '22%' }]}>Kategori</Text>
+              <Text style={[styles.headerCell, { width: '30%' }]}>Item</Text>
+              <Text style={[styles.headerCell, { width: '10%' }]}>Qty</Text>
+              <Text style={[styles.headerCell, { width: '18%' }]}>Harga</Text>
+              <Text style={[styles.headerCell, { width: '20%' }]}>Keterangan</Text>
+            </View>
+            {items.map((it, i) => (
+              <View key={i} style={i === items.length - 1 ? styles.rowLast : styles.row}>
+                <Text style={[styles.cell, { width: '22%' }]}>{it.category_label || '-'}</Text>
+                <Text style={[styles.cell, { width: '30%' }]}>{it.item_label || '-'}</Text>
+                <Text style={[styles.cell, { width: '10%' }]}>{it.row_role === 'ITEM' ? '-' : it.qty}</Text>
+                <Text style={[styles.cell, { width: '18%' }]}>{it.row_role === 'ITEM' ? '-' : rupiah(it.value)}</Text>
+                <Text style={[styles.cellLast, { width: '20%' }]}>{it.remarks_detail || '-'}</Text>
+              </View>
+            ))}
+            {items.length === 0 && <Text style={{ padding: 6, color: '#9ca3af' }}>Belum ada item.</Text>}
+          </View>
+        )}
+        {!singleBoxPrice && (
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
+            <Text style={{ fontWeight: 700 }}>Total: {rupiah(total)}</Text>
+          </View>
+        )}
+
+        {entityCode === 'KAI' && !hideAgencyFee && agencyFeeRate ? (
+          <Text style={{ marginTop: 8, color: '#4b5563' }}>Agency Fee: {agencyFeeRate}%</Text>
+        ) : null}
+
+        {importantRemarks && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={styles.sectionTitle}>Catatan Penting</Text>
+            <Text style={styles.paragraph}>{importantRemarks}</Text>
+          </View>
+        )}
+
+        <View style={styles.signatureBlock}>
+          <View style={styles.signatureCol}>
+            <Text>Disiapkan oleh,</Text>
+            <Text style={styles.signatureLine}>Techford / B2B Kitabisa</Text>
+          </View>
+          <View style={styles.signatureCol}>
+            <Text>Disetujui oleh,</Text>
+            <Text style={styles.signatureLine}>{clientName}</Text>
+          </View>
+        </View>
+      </Page>
+    </Document>
+  )
+}
+
+File: src/app/documents/cor/[id]/actions.ts -- add these imports at the top (alongside the existing ones):
+import { renderToBuffer } from '@react-pdf/renderer'
+import { CorPdfDocument } from '@/lib/pdf/cor-pdf'
+import { sanitizeName } from '@/lib/sanitize-name'
+import { uploadDocumentFile } from '@/lib/storage'
+import { logAudit } from '@/lib/audit-log'
+
+Then ADD this new function at the end of the file (keep every existing function in the file unchanged):
+export async function generateCorPdf(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa generate PDF.')
+
+  const docId = formData.get('doc_id') as string
+  const admin = createAdminClient()
+
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', docId).single()
+  if (!doc) throw new Error('Dokumen tidak ditemukan.')
+
+  const { header, vendor, fundRows, costs, marginComponents, result } = await loadCorComputation(admin, docId)
+  if (!header) throw new Error('COR header tidak ditemukan.')
+
+  let clientName = '-'
+  let projectName = '-'
+  let folderPrefix = '_unlinked'
+
+  if (doc.project_id) {
+    const { data: project } = await admin.from('project').select('project_id, project_name, client_id').eq('id', doc.project_id).single()
+    if (project) {
+      projectName = project.project_name
+      const { data: client } = await admin.from('client').select('client_id, brand_name').eq('id', project.client_id).single()
+      const clientFolder = client ? sanitizeName(`${client.client_id}-${client.brand_name}`) : 'unknown-client'
+      clientName = client?.brand_name || '-'
+      folderPrefix = `${clientFolder}/${sanitizeName(project.project_id)}`
+    }
+  }
+
+  const pdfBuffer = await renderToBuffer(
+    CorPdfDocument({
+      docId: doc.doc_id,
+      clientName,
+      projectName,
+      vendorName: (vendor as { entity_name?: string } | null)?.entity_name ?? '-',
+      corMethod: header.cor_method,
+      isViaSalset: header.is_via_salset,
+      fundRows,
+      costs,
+      marginComponents,
+      result,
+    })
+  )
+
+  const fileName = `COR - ${doc.doc_id}.pdf`
+  const path = `${folderPrefix}/${fileName}`
+  await uploadDocumentFile(admin, path, pdfBuffer, 'application/pdf')
+
+  await admin.from('cor_header').update({ pdf_storage_path: path, pdf_generated_at: new Date().toISOString() }).eq('doc_id', docId)
+
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'GENERATE_COR_PDF', entityType: 'cor_header', entityId: docId })
+
+  revalidatePath(`/documents/cor/${docId}`)
+}
+
+File: src/app/api/documents/cor/[docId]/pdf/route.ts (NEW FILE)
+import { NextResponse } from 'next/server'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getDocumentSignedUrl } from '@/lib/storage'
+
+export async function GET(_req: Request, { params }: { params: Promise<{ docId: string }> }) {
+  const { docId } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) return NextResponse.redirect(new URL('/login', _req.url))
+
+  const admin = createAdminClient()
+  const { data: header } = await admin.from('cor_header').select('pdf_storage_path').eq('doc_id', docId).single()
+  if (!header?.pdf_storage_path) {
+    return new NextResponse('PDF belum pernah di-generate untuk dokumen ini.', { status: 404 })
+  }
+
+  const url = await getDocumentSignedUrl(admin, header.pdf_storage_path, 300)
+  return NextResponse.redirect(url)
+}
+
+File: src/app/documents/cor/[id]/page.tsx -- add `generateCorPdf` to the import from './actions' (so the import line becomes: `import { addFund, removeFund, addCost, removeCost, setMarginComponent, saveDraft, convertToGrossDown, requestApproval, generateCorPdf } from './actions'`).
+
+Then find this block near the top of the file:
+        {canWrite && (
+          <div className="flex gap-2">
+            {header?.cor_method === 'GROSS_UP' && (
+              <form action={convertToGrossDown}>
+                <input type="hidden" name="doc_id" value={id} />
+                <button type="submit" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">
+                  Convert ke Gross Down (satu arah)
+                </button>
+              </form>
+            )}
+            <form action={saveDraft}>
+              <input type="hidden" name="doc_id" value={id} />
+              <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                Simpan Draft
+              </button>
+            </form>
+          </div>
+        )}
+
+Replace it with (adds a Generate/Update PDF button and, once one exists, a Download PDF link):
+        {canWrite && (
+          <div className="flex gap-2">
+            {header?.cor_method === 'GROSS_UP' && (
+              <form action={convertToGrossDown}>
+                <input type="hidden" name="doc_id" value={id} />
+                <button type="submit" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100">
+                  Convert ke Gross Down (satu arah)
+                </button>
+              </form>
+            )}
+            <form action={saveDraft}>
+              <input type="hidden" name="doc_id" value={id} />
+              <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                Simpan Draft
+              </button>
+            </form>
+            <form action={generateCorPdf}>
+              <input type="hidden" name="doc_id" value={id} />
+              <button type="submit" className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                {header?.pdf_generated_at ? 'Update PDF' : 'Generate PDF'}
+              </button>
+            </form>
+            {header?.pdf_generated_at && (
+              <a href={`/api/documents/cor/${id}/pdf`} target="_blank" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
+                Download PDF
+              </a>
+            )}
+          </div>
+        )}
+
+File: src/app/documents/quotation/[id]/actions.ts -- add these imports at the top (alongside the existing ones):
+import { renderToBuffer } from '@react-pdf/renderer'
+import { QuotationPdfDocument } from '@/lib/pdf/quotation-pdf'
+import { sanitizeName } from '@/lib/sanitize-name'
+import { uploadDocumentFile } from '@/lib/storage'
+import { logAudit } from '@/lib/audit-log'
+
+Then ADD this new function at the end of the file (keep every existing function in the file unchanged):
+export async function generateQuotationPdf(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Operation') throw new Error('Role Operation tidak bisa generate PDF.')
+
+  const docId = formData.get('doc_id') as string
+  const admin = createAdminClient()
+
+  const { data: doc } = await admin.from('document_pipeline').select('*').eq('id', docId).single()
+  if (!doc) throw new Error('Dokumen tidak ditemukan.')
+  const { data: header } = await admin.from('quotation_header').select('*').eq('doc_id', docId).single()
+  if (!header) throw new Error('Quotation header tidak ditemukan.')
+  const { data: items } = await admin.from('quotation_item').select('*').eq('doc_id', docId).order('item_sort_order')
+
+  let clientName = '-'
+  let projectName = '-'
+  let folderPrefix = '_unlinked'
+
+  if (doc.project_id) {
+    const { data: project } = await admin.from('project').select('project_id, project_name, client_id').eq('id', doc.project_id).single()
+    if (project) {
+      projectName = project.project_name
+      const { data: client } = await admin.from('client').select('client_id, brand_name').eq('id', project.client_id).single()
+      const clientFolder = client ? sanitizeName(`${client.client_id}-${client.brand_name}`) : 'unknown-client'
+      clientName = client?.brand_name || '-'
+      folderPrefix = `${clientFolder}/${sanitizeName(project.project_id)}`
+    }
+  }
+
+  const total = (items ?? []).reduce((sum, i) => sum + Number(i.value || 0) * Number(i.qty || 0), 0)
+
+  const pdfBuffer = await renderToBuffer(
+    QuotationPdfDocument({
+      docId: doc.doc_id,
+      quotationNumber: header.quotation_number,
+      entityCode: header.entity_code,
+      clientName,
+      projectName,
+      headName: header.head_name,
+      titleName: header.title_name,
+      serviceName: header.service_name,
+      picName: header.pic_name,
+      validDays: header.valid_days,
+      firstStatement: header.first_statement,
+      importantRemarks: header.important_remarks,
+      agencyFeeRate: header.agency_fee_rate,
+      hideAgencyFee: header.hide_agency_fee,
+      singleBoxPrice: header.single_box_price,
+      items: items ?? [],
+      total,
+    })
+  )
+
+  const fileName = header.entity_code === 'KAI' ? `Quotation - ${doc.doc_id}.pdf` : `Donation Commitment Letter - ${doc.doc_id}.pdf`
+  const path = `${folderPrefix}/${fileName}`
+  await uploadDocumentFile(admin, path, pdfBuffer, 'application/pdf')
+
+  await admin.from('quotation_header').update({ pdf_storage_path: path, pdf_generated_at: new Date().toISOString() }).eq('doc_id', docId)
+
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'GENERATE_QUOTATION_PDF', entityType: 'quotation_header', entityId: docId })
+
+  revalidatePath(`/documents/quotation/${docId}`)
+}
+
+File: src/app/api/documents/quotation/[docId]/pdf/route.ts (NEW FILE)
+import { NextResponse } from 'next/server'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getDocumentSignedUrl } from '@/lib/storage'
+
+export async function GET(_req: Request, { params }: { params: Promise<{ docId: string }> }) {
+  const { docId } = await params
+  const employee = await getCurrentEmployee()
+  if (!employee) return NextResponse.redirect(new URL('/login', _req.url))
+
+  const admin = createAdminClient()
+  const { data: header } = await admin.from('quotation_header').select('pdf_storage_path').eq('doc_id', docId).single()
+  if (!header?.pdf_storage_path) {
+    return new NextResponse('PDF belum pernah di-generate untuk dokumen ini.', { status: 404 })
+  }
+
+  const url = await getDocumentSignedUrl(admin, header.pdf_storage_path, 300)
+  return NextResponse.redirect(url)
+}
+
+File: src/app/documents/quotation/[id]/page.tsx -- add `generateQuotationPdf` to the import from './actions' (so the import line becomes: `import { saveQuotationDraft, addQuotationItem, removeQuotationItem, requestQuotationApproval, markSigned, requestRevisionAfterApproval, markQuotationLoss, generateQuotationPdf } from './actions'`).
+
+Then find the `<h1>` line near the top:
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">Quotation: {header?.quotation_number}</h1>
+      <p className="mb-6 text-sm text-gray-500">{doc.doc_id} · Entity: {header?.entity_code} · Status: {doc.status}</p>
+
+Replace it with (adds a PDF action row right after the existing subtitle line, wrapped in `canWrite`):
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">Quotation: {header?.quotation_number}</h1>
+      <p className="mb-3 text-sm text-gray-500">{doc.doc_id} · Entity: {header?.entity_code} · Status: {doc.status}</p>
+      {canWrite && (
+        <div className="mb-6 flex gap-2">
+          <form action={generateQuotationPdf}>
+            <input type="hidden" name="doc_id" value={id} />
+            <button type="submit" className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              {header?.pdf_generated_at ? 'Update PDF' : 'Generate PDF'}
+            </button>
+          </form>
+          {header?.pdf_generated_at && (
+            <a href={`/api/documents/quotation/${id}/pdf`} target="_blank" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
+              Download PDF
+            </a>
+          )}
+        </div>
+      )}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add PDF generator for COR and Quotation using react-pdf, stored in Supabase Storage" && git push
