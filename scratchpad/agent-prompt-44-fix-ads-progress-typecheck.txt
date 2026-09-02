@@ -1,0 +1,22 @@
+Fix a TypeScript build error blocking deployment: "src/lib/ads-progress-latest.ts(10,58): error TS2537: Type 'any[] | null' has no matching index signature for type 'number'." This is because `data` from the Supabase query can be `null`, so `(typeof data)[number]` isn't valid -- need `NonNullable<typeof data>[number]` instead.
+
+File: src/lib/ads-progress-latest.ts -- REPLACE THE WHOLE FILE with:
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function getLatestAdsProgressSnapshots(admin: ReturnType<typeof createAdminClient>) {
+  const { data } = await admin
+    .from('ads_sponsorship_progress')
+    .select('*')
+    .order('campaign_id', { ascending: true })
+    .order('snapshot_at', { ascending: false })
+
+  const latestByCampaign = new Map<string, NonNullable<typeof data>[number]>()
+  for (const row of data ?? []) {
+    if (!latestByCampaign.has(row.campaign_id)) {
+      latestByCampaign.set(row.campaign_id, row)
+    }
+  }
+  return Array.from(latestByCampaign.values())
+}
+
+After the file is updated, commit and push: git add . && git commit -m "Fix TypeScript build error in ads-progress-latest.ts (NonNullable indexing)" && git push
