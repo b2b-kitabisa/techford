@@ -1,0 +1,90 @@
+Fix a bug in the GDV Controller CSV upload: it always fails with "Kolom wajib tidak ditemukan di CSV" listing ALL 14 columns as missing, even for a valid Tableau export. Root cause: Tableau CSV exports often start with a UTF-8 BOM character and/or use a different delimiter (semicolon) or have quoted/padded header names -- any of these breaks every single header match at once. Make the parser robust to all of these, and make the error message show the raw headers it actually found so this is easy to diagnose in the future.
+
+File: src/lib/parse-gdv-csv.ts -- REPLACE THE WHOLE FILE with:
+import Papa from 'papaparse'
+
+// Canonical keys we need, matched against normalized (lowercase, spaces/
+// underscores stripped) CSV headers. Tableau exports can vary slightly in
+// header wording, so this is deliberately forgiving on formatting but
+// strict on which columns must exist.
+const REQUIRED_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'campaigner_name', aliases: ['campaignername', 'campaigner_name'] },
+  { key: 'campaigner_id', aliases: ['campaignerid', 'campaigner_id'] },
+  { key: 'tableau_project_id', aliases: ['projectid', 'project_id', 'tableauprojectid'] },
+  { key: 'link_campaign', aliases: ['linkcampaign', 'link_campaign'] },
+  { key: 'fundraiser_name', aliases: ['fundraisername', 'fundraiser_name'] },
+  { key: 'child_id', aliases: ['childid', 'child_id'] },
+  { key: 'child_short_url', aliases: ['childshorturl', 'child_short_url', 'shorturl'] },
+  { key: 'project_launch_year', aliases: ['projectlaunchyear', 'launchyear', 'project_launch_year'] },
+  { key: 'project_status', aliases: ['projectstatus', 'project_status'] },
+  { key: 'main_source', aliases: ['mainsource', 'main_source'] },
+  { key: 'realized_nominal', aliases: ['realizednominal', 'realized_nominal', 'realizedgdv'] },
+  { key: 'platform_fee', aliases: ['platformfee', 'platform_fee'] },
+  { key: 'subscription_fee', aliases: ['subscriptionfee', 'subscription_fee'] },
+  { key: 'bank_charge_fee', aliases: ['bankchargefee', 'bank_charge_fee', 'bankfee'] },
+]
+
+function normalize(s: string) {
+  return s
+    .replace(/^﻿/, '') // strip BOM if it landed inside a header value
+    .trim()
+    .replace(/^["']|["']$/g, '') // strip stray wrapping quotes
+    .toLowerCase()
+    .replace(/[\s_]+/g, '')
+}
+
+function stripBom(text: string) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
+}
+
+export function parseGdvCsv(csvText: string) {
+  const cleanText = stripBom(csvText)
+  const result = Papa.parse<Record<string, string>>(cleanText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim(),
+  })
+  const rawHeaders = result.meta.fields || []
+  const normalizedToRaw = new Map(rawHeaders.map((h) => [normalize(h), h]))
+
+  const missing: string[] = []
+  const columnMap: Record<string, string> = {}
+  for (const col of REQUIRED_COLUMNS) {
+    const found = col.aliases.map(normalize).find((a) => normalizedToRaw.has(a))
+    if (!found) {
+      missing.push(col.key)
+    } else {
+      columnMap[col.key] = normalizedToRaw.get(found)!
+    }
+  }
+
+  if (missing.length > 0) {
+    const foundHeadersText = rawHeaders.length > 0 ? rawHeaders.join(', ') : '(tidak ada header terbaca sama sekali -- cek delimiter file, harus koma)'
+    throw new Error(
+      `Kolom wajib tidak ditemukan di CSV: ${missing.join(', ')}. Header yang terbaca dari file: ${foundHeadersText}`
+    )
+  }
+
+  const rows = result.data.map((row) => ({
+    campaigner_name: row[columnMap.campaigner_name] || null,
+    campaigner_id: row[columnMap.campaigner_id] || null,
+    tableau_project_id: row[columnMap.tableau_project_id] || null,
+    link_campaign: row[columnMap.link_campaign] || '',
+    fundraiser_name: row[columnMap.fundraiser_name] || null,
+    child_id: row[columnMap.child_id] || null,
+    child_short_url: row[columnMap.child_short_url] || null,
+    project_launch_year: row[columnMap.project_launch_year] ? Number(row[columnMap.project_launch_year]) : null,
+    project_status: row[columnMap.project_status] || null,
+    main_source: row[columnMap.main_source] || null,
+    realized_nominal: row[columnMap.realized_nominal] ? Number(row[columnMap.realized_nominal].replace(/[^0-9.-]/g, '')) : null,
+    platform_fee: row[columnMap.platform_fee] ? Number(row[columnMap.platform_fee].replace(/[^0-9.-]/g, '')) : null,
+    subscription_fee: row[columnMap.subscription_fee] ? Number(row[columnMap.subscription_fee].replace(/[^0-9.-]/g, '')) : null,
+    bank_charge_fee: row[columnMap.bank_charge_fee] ? Number(row[columnMap.bank_charge_fee].replace(/[^0-9.-]/g, '')) : null,
+  }))
+
+  return rows.filter((r) => r.link_campaign.trim() !== '')
+}
+
+After the file is updated, commit and push: git add . && git commit -m "Fix GDV CSV parser: strip BOM, trim headers, show raw headers found on error" && git push
+
+If after this fix the upload STILL fails with "Kolom wajib tidak ditemukan" -- the error message will now show the actual raw headers found in the file. Please copy that exact header list back so the column aliases can be adjusted to match the real Tableau export wording.
