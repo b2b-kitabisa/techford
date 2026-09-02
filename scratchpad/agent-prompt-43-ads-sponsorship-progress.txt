@@ -1,0 +1,387 @@
+Add the Ads Sponsorship Progress module to this Next.js + Supabase app -- upload one or more CSV files at once (one per client account export from Tableau), APPEND-ONLY (never delete old data, unlike GDV Controller's replace-all), one upload_log row PER FILE. Empty numeric cells must be stored as NULL, never 0 -- an empty Active_Wallet_Amount means "no data yet", not "Rp0 available to disburse", and turning that into 0 could trigger a wrong disbursement decision. The read page shows only the latest snapshot per campaign_id (DISTINCT ON campaign_id ordered by snapshot_at desc).
+
+File: src/lib/parse-uang.ts (NEW FILE) -- a tolerant Indonesian/international currency-string parser.
+export function parseUang(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw
+
+  let s = raw.trim()
+  if (s === '') return null
+
+  let negative = false
+  if (/^\(.*\)$/.test(s)) {
+    negative = true
+    s = s.slice(1, -1)
+  }
+  if (s.startsWith('-')) {
+    negative = true
+    s = s.slice(1)
+  }
+
+  s = s.replace(/^rp\.?\s*/i, '').trim()
+  s = s.replace(/,-$/, '').trim() // trailing ",-" means whole rupiah, not negative
+  if (s === '') return null
+
+  const dotCount = (s.match(/\./g) || []).length
+  const commaCount = (s.match(/,/g) || []).length
+
+  let integerPart = s
+  let decimalPart = ''
+
+  function isDecimalTail(tail: string, sepCount: number) {
+    return sepCount === 1 && /^\d{1,2}$/.test(tail)
+  }
+
+  if (dotCount > 0 && commaCount > 0) {
+    const lastDot = s.lastIndexOf('.')
+    const lastComma = s.lastIndexOf(',')
+    if (lastDot > lastComma) {
+      const tail = s.slice(lastDot + 1)
+      if (isDecimalTail(tail, dotCount)) {
+        integerPart = s.slice(0, lastDot).replace(/,/g, '')
+        decimalPart = tail
+      } else {
+        integerPart = s.replace(/[.,]/g, '')
+      }
+    } else {
+      const tail = s.slice(lastComma + 1)
+      if (isDecimalTail(tail, commaCount)) {
+        integerPart = s.slice(0, lastComma).replace(/\./g, '')
+        decimalPart = tail
+      } else {
+        integerPart = s.replace(/[.,]/g, '')
+      }
+    }
+  } else if (dotCount > 0) {
+    const lastDot = s.lastIndexOf('.')
+    const tail = s.slice(lastDot + 1)
+    if (isDecimalTail(tail, dotCount)) {
+      integerPart = s.slice(0, lastDot)
+      decimalPart = tail
+    } else {
+      integerPart = s.replace(/\./g, '')
+    }
+  } else if (commaCount > 0) {
+    const lastComma = s.lastIndexOf(',')
+    const tail = s.slice(lastComma + 1)
+    if (isDecimalTail(tail, commaCount)) {
+      integerPart = s.slice(0, lastComma)
+      decimalPart = tail
+    } else {
+      integerPart = s.replace(/,/g, '')
+    }
+  }
+
+  const cleanInt = integerPart.replace(/\D/g, '')
+  const numStr = cleanInt + (decimalPart ? '.' + decimalPart : '')
+  if (numStr === '' || numStr === '.') return null
+
+  const value = Number(numStr)
+  if (Number.isNaN(value)) return null
+  return negative ? -value : value
+}
+
+File: src/lib/parse-ads-progress-csv.ts (NEW FILE)
+import Papa from 'papaparse'
+import { parseUang } from '@/lib/parse-uang'
+
+// account_name and campaign_id must exist as columns (campaign_id is NOT NULL
+// in the database). The other columns are optional -- if a column isn't
+// present at all in the file, every row just gets null for it.
+const REQUIRED_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'account_name', aliases: ['accountname', 'account_name'] },
+  { key: 'campaign_id', aliases: ['campaignid', 'campaign_id'] },
+]
+
+const OPTIONAL_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'short_url', aliases: ['shorturl', 'short_url'] },
+  { key: 'current_gdv', aliases: ['currentgdv', 'current_gdv', 'gdv'] },
+  { key: 'current_ndv', aliases: ['currentndv', 'current_ndv', 'ndv'] },
+  { key: 'active_wallet_amount', aliases: ['activewalletamount', 'active_wallet_amount', 'activewallet', 'wallet'] },
+  { key: 'project_status', aliases: ['projectstatus', 'project_status'] },
+]
+
+function normalize(s: string) {
+  return s.trim().replace(/^["']|["']$/g, '').toLowerCase().replace(/[\s_]+/g, '')
+}
+
+export type ParsedAdsProgressRow = {
+  account_name: string
+  short_url: string | null
+  campaign_id: string
+  current_gdv: number | null
+  current_ndv: number | null
+  active_wallet_amount: number | null
+  project_status: string | null
+}
+
+export function parseAdsProgressCsv(csvText: string): { rows: ParsedAdsProgressRow[]; skippedCount: number; accountNames: string[] } {
+  const result = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim(),
+  })
+  const rawHeaders = result.meta.fields || []
+  const normalizedToRaw = new Map(rawHeaders.map((h) => [normalize(h), h]))
+
+  const missing: string[] = []
+  const columnMap: Record<string, string> = {}
+  for (const col of [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS]) {
+    const found = col.aliases.map(normalize).find((a) => normalizedToRaw.has(a))
+    if (found) columnMap[col.key] = normalizedToRaw.get(found)!
+  }
+  for (const col of REQUIRED_COLUMNS) {
+    if (!columnMap[col.key]) missing.push(col.key)
+  }
+
+  if (missing.length > 0) {
+    const foundHeadersText = rawHeaders.length > 0 ? rawHeaders.join(', ') : '(tidak ada header terbaca sama sekali)'
+    throw new Error(`Kolom wajib tidak ditemukan di CSV: ${missing.join(', ')}. Header yang terbaca dari file: ${foundHeadersText}`)
+  }
+
+  let skippedCount = 0
+  const accountNamesSet = new Set<string>()
+
+  const rows: ParsedAdsProgressRow[] = []
+  for (const row of result.data) {
+    const accountName = (row[columnMap.account_name] || '').trim()
+    const campaignId = (row[columnMap.campaign_id] || '').trim()
+
+    // campaign_id is NOT NULL in the database, and a row without an account
+    // name can't be attributed to anyone -- skip and count both cases.
+    if (!campaignId || !accountName) {
+      skippedCount++
+      continue
+    }
+
+    if (accountName) accountNamesSet.add(accountName)
+
+    rows.push({
+      account_name: accountName,
+      short_url: columnMap.short_url ? (row[columnMap.short_url] || '').trim() || null : null,
+      campaign_id: campaignId,
+      current_gdv: columnMap.current_gdv ? parseUang(row[columnMap.current_gdv]) : null,
+      current_ndv: columnMap.current_ndv ? parseUang(row[columnMap.current_ndv]) : null,
+      active_wallet_amount: columnMap.active_wallet_amount ? parseUang(row[columnMap.active_wallet_amount]) : null,
+      project_status: columnMap.project_status ? (row[columnMap.project_status] || '').trim() || null : null,
+    })
+  }
+
+  return { rows, skippedCount, accountNames: Array.from(accountNamesSet) }
+}
+
+File: src/app/ads-sponsorship-progress/actions.ts (NEW FILE)
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { readCsvFileText } from '@/lib/parse-gdv-csv'
+import { parseAdsProgressCsv } from '@/lib/parse-ads-progress-csv'
+import { logAudit } from '@/lib/audit-log'
+
+export async function uploadAdsProgressCsv(formData: FormData) {
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Belum login.')
+  if (employee.role === 'Consultant' || employee.role === 'Head of B2B') {
+    throw new Error('Role ini tidak bisa upload Ads Sponsorship Progress.')
+  }
+
+  const files = formData.getAll('files') as File[]
+  const realFiles = files.filter((f) => f && f.size > 0)
+  if (realFiles.length === 0) throw new Error('Pilih minimal satu file CSV.')
+
+  const admin = createAdminClient()
+  const now = new Date().toISOString()
+
+  const fileResults: { fileName: string; ok: boolean; rowCount?: number; skippedCount?: number; error?: string }[] = []
+
+  for (const file of realFiles) {
+    try {
+      const text = await readCsvFileText(file)
+      const { rows, skippedCount, accountNames } = parseAdsProgressCsv(text)
+
+      const { data: log, error: logErr } = await admin
+        .from('ads_sponsorship_progress_upload_log')
+        .insert({
+          uploaded_by: employee.name,
+          file_name: file.name,
+          account_names: accountNames,
+          row_count: rows.length,
+          skipped_count: skippedCount,
+        })
+        .select()
+        .single()
+      if (logErr) throw new Error(logErr.message)
+
+      if (rows.length > 0) {
+        const { error: insertErr } = await admin.from('ads_sponsorship_progress').insert(
+          rows.map((r) => ({ ...r, snapshot_at: now, upload_log_id: log?.id }))
+        )
+        if (insertErr) throw new Error(insertErr.message)
+      }
+
+      fileResults.push({ fileName: file.name, ok: true, rowCount: rows.length, skippedCount })
+    } catch (e) {
+      // A single bad file must not abort the whole batch -- report it and move on.
+      fileResults.push({ fileName: file.name, ok: false, error: e instanceof Error ? e.message : 'Gagal parsing file.' })
+    }
+  }
+
+  await logAudit(admin, {
+    actorUserId: employee.auth_user_id,
+    actorEmail: employee.email,
+    action: 'UPLOAD_ADS_SPONSORSHIP_PROGRESS',
+    entityType: 'ads_sponsorship_progress_upload_log',
+    diff: { fileResults },
+  })
+
+  revalidatePath('/ads-sponsorship-progress')
+
+  const failed = fileResults.filter((f) => !f.ok)
+  if (failed.length > 0) {
+    throw new Error(
+      `${fileResults.length - failed.length}/${fileResults.length} file berhasil diupload. File gagal: ` +
+        failed.map((f) => `${f.fileName} (${f.error})`).join('; ')
+    )
+  }
+}
+
+File: src/lib/ads-progress-latest.ts (NEW FILE)
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export async function getLatestAdsProgressSnapshots(admin: ReturnType<typeof createAdminClient>) {
+  const { data } = await admin
+    .from('ads_sponsorship_progress')
+    .select('*')
+    .order('campaign_id', { ascending: true })
+    .order('snapshot_at', { ascending: false })
+
+  const latestByCampaign = new Map<string, (typeof data)[number]>()
+  for (const row of data ?? []) {
+    if (!latestByCampaign.has(row.campaign_id)) {
+      latestByCampaign.set(row.campaign_id, row)
+    }
+  }
+  return Array.from(latestByCampaign.values())
+}
+
+File: src/app/ads-sponsorship-progress/page.tsx (NEW FILE)
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getLatestAdsProgressSnapshots } from '@/lib/ads-progress-latest'
+import { uploadAdsProgressCsv } from './actions'
+
+function rupiahOrNull(n: number | null) {
+  return n === null || n === undefined ? 'Belum ada data' : 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+export default async function AdsSponsorshipProgressPage() {
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const latestRows = await getLatestAdsProgressSnapshots(admin)
+  const { data: recentLogs } = await admin
+    .from('ads_sponsorship_progress_upload_log')
+    .select('*')
+    .order('uploaded_at', { ascending: false })
+    .limit(10)
+
+  const canWrite = employee.role !== 'Consultant' && employee.role !== 'Head of B2B'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">Ads Sponsorship Progress</h1>
+      <p className="mb-6 max-w-2xl text-sm text-gray-500">
+        Snapshot terbaru per campaign. Upload bersifat APPEND-ONLY (riwayat lama tidak pernah dihapus) -- Active Wallet Amount yang menurun antar snapshot berarti ada pencairan.
+      </p>
+
+      {canWrite && (
+        <form action={uploadAdsProgressCsv} className="mb-8 max-w-xl space-y-3 rounded-lg border bg-white p-4 shadow-sm" encType="multipart/form-data">
+          <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Bisa pilih beberapa file CSV sekaligus (satu file per akun klien dari Tableau). Data lama tidak akan dihapus/ditimpa.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">File CSV (bisa lebih dari satu) *</label>
+            <input type="file" name="files" accept=".csv" required multiple className="w-full text-sm" />
+          </div>
+          <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Upload</button>
+        </form>
+      )}
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Snapshot Terbaru per Campaign</h2>
+      <div className="mb-8 overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Account</th>
+              <th className="px-4 py-3">Campaign ID</th>
+              <th className="px-4 py-3">Short URL</th>
+              <th className="px-4 py-3">Current GDV</th>
+              <th className="px-4 py-3">Current NDV</th>
+              <th className="px-4 py-3">Active Wallet</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Snapshot</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {latestRows.map((r) => (
+              <tr key={r.id}>
+                <td className="px-4 py-3 text-gray-900">{r.account_name}</td>
+                <td className="px-4 py-3 text-gray-600">{r.campaign_id}</td>
+                <td className="px-4 py-3 text-gray-600">{r.short_url || '-'}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiahOrNull(r.current_gdv)}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiahOrNull(r.current_ndv)}</td>
+                <td className="px-4 py-3 text-gray-700">{rupiahOrNull(r.active_wallet_amount)}</td>
+                <td className="px-4 py-3 text-gray-600">{r.project_status || '-'}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-gray-500">{new Date(r.snapshot_at).toLocaleString('id-ID')}</td>
+              </tr>
+            ))}
+            {latestRows.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Belum ada data.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-gray-900">Riwayat Upload Terakhir</h2>
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Waktu</th>
+              <th className="px-4 py-3">Oleh</th>
+              <th className="px-4 py-3">File</th>
+              <th className="px-4 py-3">Akun</th>
+              <th className="px-4 py-3">Baris Masuk</th>
+              <th className="px-4 py-3">Dilewati</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(recentLogs ?? []).map((log) => (
+              <tr key={log.id}>
+                <td className="px-4 py-3 whitespace-nowrap text-gray-600">{new Date(log.uploaded_at).toLocaleString('id-ID')}</td>
+                <td className="px-4 py-3 text-gray-600">{log.uploaded_by || '-'}</td>
+                <td className="px-4 py-3 text-gray-900">{log.file_name}</td>
+                <td className="px-4 py-3 text-gray-600">{(log.account_names || []).join(', ') || '-'}</td>
+                <td className="px-4 py-3 text-gray-700">{log.row_count}</td>
+                <td className="px-4 py-3 text-gray-700">{log.skipped_count}</td>
+              </tr>
+            ))}
+            {(recentLogs ?? []).length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Belum pernah upload.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </AppShell>
+  )
+}
+
+File: src/components/sidebar-nav.tsx -- add Ads Sponsorship Progress to the "Operasional" group's items array, right after the GDV Matching entry:
+{ href: '/ads-sponsorship-progress', label: 'Ads Sponsorship Progress' },
+
+After all files are created/updated, commit and push: git add . && git commit -m "Add Ads Sponsorship Progress module: append-only multi-file CSV upload, latest-snapshot-per-campaign view" && git push
