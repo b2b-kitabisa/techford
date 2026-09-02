@@ -1,0 +1,43 @@
+Fix the GDV Controller CSV column matching -- the encoding fix worked (headers now read correctly), but 4 of the 14 required columns use wording in the real Tableau export that isn't in the alias list yet, so they still show as "missing": link_campaign (real header is "short_url"), project_launch_year (real header is "Year of Project Launched"), project_status (real header is "project_statuses"), realized_nominal (real header is "Gdv").
+
+File: src/lib/parse-gdv-csv.ts -- find the REQUIRED_COLUMNS array:
+const REQUIRED_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'campaigner_name', aliases: ['campaignername', 'campaigner_name'] },
+  { key: 'campaigner_id', aliases: ['campaignerid', 'campaigner_id'] },
+  { key: 'tableau_project_id', aliases: ['projectid', 'project_id', 'tableauprojectid'] },
+  { key: 'link_campaign', aliases: ['linkcampaign', 'link_campaign'] },
+  { key: 'fundraiser_name', aliases: ['fundraisername', 'fundraiser_name'] },
+  { key: 'child_id', aliases: ['childid', 'child_id'] },
+  { key: 'child_short_url', aliases: ['childshorturl', 'child_short_url', 'shorturl'] },
+  { key: 'project_launch_year', aliases: ['projectlaunchyear', 'launchyear', 'project_launch_year'] },
+  { key: 'project_status', aliases: ['projectstatus', 'project_status'] },
+  { key: 'main_source', aliases: ['mainsource', 'main_source'] },
+  { key: 'realized_nominal', aliases: ['realizednominal', 'realized_nominal', 'realizedgdv'] },
+  { key: 'platform_fee', aliases: ['platformfee', 'platform_fee'] },
+  { key: 'subscription_fee', aliases: ['subscriptionfee', 'subscription_fee'] },
+  { key: 'bank_charge_fee', aliases: ['bankchargefee', 'bank_charge_fee', 'bankfee'] },
+]
+
+REPLACE it with (added the real Tableau header wordings as extra aliases -- keep all the old aliases too so nothing regresses if a future export changes wording back):
+const REQUIRED_COLUMNS: { key: string; aliases: string[] }[] = [
+  { key: 'campaigner_name', aliases: ['campaignername', 'campaigner_name'] },
+  { key: 'campaigner_id', aliases: ['campaignerid', 'campaigner_id'] },
+  { key: 'tableau_project_id', aliases: ['projectid', 'project_id', 'tableauprojectid'] },
+  { key: 'link_campaign', aliases: ['linkcampaign', 'link_campaign', 'shorturl', 'short_url'] },
+  { key: 'fundraiser_name', aliases: ['fundraisername', 'fundraiser_name'] },
+  { key: 'child_id', aliases: ['childid', 'child_id'] },
+  { key: 'child_short_url', aliases: ['childshorturl', 'child_short_url'] },
+  { key: 'project_launch_year', aliases: ['projectlaunchyear', 'launchyear', 'project_launch_year', 'yearofprojectlaunched', 'year_of_project_launched'] },
+  { key: 'project_status', aliases: ['projectstatus', 'project_status', 'projectstatuses', 'project_statuses'] },
+  { key: 'main_source', aliases: ['mainsource', 'main_source'] },
+  { key: 'realized_nominal', aliases: ['realizednominal', 'realized_nominal', 'realizedgdv', 'gdv'] },
+  { key: 'platform_fee', aliases: ['platformfee', 'platform_fee'] },
+  { key: 'subscription_fee', aliases: ['subscriptionfee', 'subscription_fee'] },
+  { key: 'bank_charge_fee', aliases: ['bankchargefee', 'bank_charge_fee', 'bankfee'] },
+]
+
+Important: notice `child_short_url`'s alias list had a generic `'shorturl'` entry removed -- that generic alias used to collide with the real "short_url" column (which is actually the link_campaign column, not the child short url column). Make sure the final file has `child_short_url` aliases as exactly `['childshorturl', 'child_short_url']` (no bare `'shorturl'`), otherwise link_campaign and child_short_url could both try to bind to the same "short_url" column.
+
+(Keep everything else in the file -- normalize, stripBom, readCsvFileText, parseGdvCsv -- unchanged.)
+
+After the file is updated, commit and push: git add . && git commit -m "Fix GDV CSV column aliases to match real Tableau export header wording (short_url, Year of Project Launched, project_statuses, Gdv)" && git push
