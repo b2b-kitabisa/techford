@@ -1,0 +1,176 @@
+Add a Typeform webhook endpoint to this Next.js + Supabase app that receives new Lead submissions in real time and inserts them directly into the `lead` table -- replacing the old Typeform -> Google Sheets -> IMPORTRANGE flow for this one path (the existing Sheets connection on the Typeform form is untouched and keeps working independently). Security: verifies Typeform's HMAC-SHA256 request signature so nobody else can POST fake leads to this endpoint. Idempotency: Typeform can redeliver the same submission on retry, so a unique `typeform_response_id` column prevents duplicate inserts.
+
+STEP 1 -- Run this SQL in the Supabase SQL Editor (do this directly in the Supabase dashboard, NOT through the Codespace Agent):
+alter table lead add column if not exists typeform_response_id text unique;
+
+STEP 2 -- Add an environment variable:
+- In Vercel: Project Settings -> Environment Variables -> add `TYPEFORM_WEBHOOK_SECRET` = the exact Secret string you set in Typeform's webhook config (Production + Preview + Development, whichever environments you use)
+- In the Codespace: add the same line to `.env.local`: `TYPEFORM_WEBHOOK_SECRET=<same secret>` (needed for local testing; production reads it from Vercel's env vars, not this file)
+
+STEP 3 -- Now paste the rest of this into the Codespace Agent to create the code file.
+
+File: src/app/api/webhooks/typeform/route.ts (NEW FILE)
+import { NextResponse } from 'next/server'
+import crypto from 'crypto'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+// The 7 real Typeform questions are matched by a keyword found inside their
+// title (case-insensitive `includes`), not by field ID -- Typeform field IDs
+// are internal random strings that would break if the form is ever rebuilt.
+// Matching by a stable keyword phrase from the question text is more robust
+// for a non-technical form owner to maintain.
+const QUESTION_KEYWORDS: Record<string, string> = {
+  firstName: 'first name',
+  lastName: 'last name',
+  entityType: 'jenis organisasi',
+  entityName: 'nama organisasi',
+  priorityNotes: 'kebutuhan',
+  detailInterest: 'prioritas',
+  phone: 'phone',
+  email: 'email',
+}
+
+const ALLOWED_ENTITY_TYPES = ['Perusahaan', 'Institusi Sosial', 'Institusi Grants', 'Other']
+
+type TypeformField = { id: string; title: string; type: string }
+type TypeformAnswer = {
+  field: { id: string; type: string }
+  type: string
+  text?: string
+  email?: string
+  phone_number?: string
+  number?: number
+  boolean?: boolean
+  date?: string
+  choice?: { label: string }
+  choices?: { labels: string[] }
+}
+
+function answerValue(a: TypeformAnswer): string {
+  if (a.text) return a.text
+  if (a.email) return a.email
+  if (a.phone_number) return a.phone_number
+  if (a.choice) return a.choice.label
+  if (a.choices?.labels?.length) return a.choices.labels.join(', ')
+  if (a.number !== undefined) return String(a.number)
+  if (a.boolean !== undefined) return String(a.boolean)
+  if (a.date) return a.date
+  return ''
+}
+
+function findAnswerByKeyword(answers: TypeformAnswer[], fieldTitleById: Map<string, string>, keyword: string): string {
+  for (const a of answers) {
+    const title = (fieldTitleById.get(a.field.id) || '').toLowerCase()
+    if (title.includes(keyword)) return answerValue(a).trim()
+  }
+  return ''
+}
+
+function verifySignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
+  if (!signatureHeader) return false
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('base64')
+  const a = Buffer.from(signatureHeader)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
+}
+
+export async function POST(request: Request) {
+  const secret = process.env.TYPEFORM_WEBHOOK_SECRET
+  if (!secret) {
+    console.error('TYPEFORM_WEBHOOK_SECRET belum di-set.')
+    return NextResponse.json({ error: 'Server misconfigured.' }, { status: 500 })
+  }
+
+  const rawBody = await request.text()
+  const signature = request.headers.get('typeform-signature')
+  if (!verifySignature(rawBody, signature, secret)) {
+    return NextResponse.json({ error: 'Invalid signature.' }, { status: 401 })
+  }
+
+  const payload = JSON.parse(rawBody)
+  const formResponse = payload.form_response
+  if (!formResponse) {
+    return NextResponse.json({ error: 'Payload tidak berisi form_response.' }, { status: 400 })
+  }
+
+  const fields: TypeformField[] = formResponse.definition?.fields ?? []
+  const fieldTitleById = new Map(fields.map((f) => [f.id, f.title]))
+  const answers: TypeformAnswer[] = formResponse.answers ?? []
+  const hidden: Record<string, string> = formResponse.hidden ?? {}
+
+  const firstName = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.firstName)
+  const lastName = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.lastName)
+  const entityTypeRaw = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.entityType)
+  const entityNameRaw = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.entityName)
+  const priorityNotes = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.priorityNotes)
+  const detailInterest = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.detailInterest)
+  const phone = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.phone)
+  const email = findAnswerByKeyword(answers, fieldTitleById, QUESTION_KEYWORDS.email)
+
+  const picName = [firstName, lastName].filter(Boolean).join(' ').trim() || null
+  // entity_name is NOT NULL in the database -- fall back rather than crash
+  // the webhook (a 500 here would make Typeform keep retrying forever).
+  const entityName = entityNameRaw || picName || 'Unknown Lead'
+
+  let entityType: string | null = null
+  let entityTypeOther: string | null = null
+  const matchedEnum = ALLOWED_ENTITY_TYPES.find((v) => v.toLowerCase() === entityTypeRaw.toLowerCase())
+  if (matchedEnum) {
+    entityType = matchedEnum
+  } else if (entityTypeRaw) {
+    entityType = 'Other'
+    entityTypeOther = entityTypeRaw
+  }
+
+  const responseId: string | undefined = formResponse.token
+  const submittedAt: string = formResponse.submitted_at || new Date().toISOString()
+
+  const admin = createAdminClient()
+
+  if (responseId) {
+    const { data: existing } = await admin.from('lead').select('id').eq('typeform_response_id', responseId).maybeSingle()
+    if (existing) {
+      // Already processed this exact submission (Typeform retry) -- ack without duplicating.
+      return NextResponse.json({ ok: true, deduped: true })
+    }
+  }
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `LEAD_${year}` })
+  if (seqErr) {
+    console.error('Gagal generate Inbound ID:', seqErr.message)
+    return NextResponse.json({ error: seqErr.message }, { status: 500 })
+  }
+  const inboundId = `INB${year}-${String(seqValue).padStart(5, '0')}`
+
+  const { error: insertErr } = await admin.from('lead').insert({
+    inbound_id: inboundId,
+    submitted_at: submittedAt,
+    status: 'New Leads',
+    entity_name: entityName,
+    entity_type: entityType,
+    entity_type_other: entityTypeOther,
+    pic_name: picName,
+    email: email || null,
+    phone: phone || null,
+    detail_interest: detailInterest || null,
+    priority_notes: priorityNotes || null,
+    utm_source: hidden.utm_source || null,
+    utm_medium: hidden.utm_medium || null,
+    utm_campaign: hidden.utm_campaign || null,
+    source_token: hidden.token || null,
+    typeform_response_id: responseId || null,
+  })
+
+  if (insertErr) {
+    console.error('Gagal insert Lead dari Typeform webhook:', insertErr.message)
+    return NextResponse.json({ error: insertErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, inbound_id: inboundId })
+}
+
+After the file is created, commit and push: git add . && git commit -m "Add Typeform webhook: real-time Lead capture, signature-verified, idempotent" && git push
+
+STEP 4 -- Test after deploy: in Typeform's webhook settings there's usually a "Send test request" / you can also just submit the form for real once. Then check the `/leads` page in the app -- a new Lead should appear within seconds. If a question doesn't map correctly (e.g. Priority Notes / Detail Interest end up swapped, or Entity Type comes back empty), tell me exactly what showed up wrong and I'll adjust the keyword matching.
