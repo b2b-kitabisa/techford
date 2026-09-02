@@ -1,0 +1,47 @@
+Add a Storage helper module to this Next.js + Supabase app -- foundation for storing generated PDFs (COR, Quotation) and future file uploads in a private Supabase Storage bucket named "documents". This does not add any UI yet, just the reusable upload/signed-URL functions that future features (PDF generator, attachments) will build on.
+
+File: src/lib/storage.ts (NEW FILE)
+import { createAdminClient } from '@/lib/supabase/admin'
+
+const BUCKET = 'documents'
+
+/**
+ * Uploads (or overwrites) a file at the given path inside the private
+ * "documents" bucket. Path convention: `<client_id>/<project_id>/<file_name>`
+ * for project-scoped documents, so files stay organized the same way the
+ * old Google Drive folder structure did (Client > Project).
+ */
+export async function uploadDocumentFile(
+  admin: ReturnType<typeof createAdminClient>,
+  path: string,
+  file: Blob | Buffer | ArrayBuffer,
+  contentType: string
+) {
+  const { error } = await admin.storage.from(BUCKET).upload(path, file, {
+    contentType,
+    upsert: true,
+  })
+  if (error) throw new Error(`Gagal upload file ke storage: ${error.message}`)
+  return path
+}
+
+/**
+ * The bucket is private, so files are never served by a plain public URL.
+ * This generates a time-limited signed URL instead (default 1 hour).
+ */
+export async function getDocumentSignedUrl(
+  admin: ReturnType<typeof createAdminClient>,
+  path: string,
+  expiresInSeconds = 3600
+) {
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, expiresInSeconds)
+  if (error) throw new Error(`Gagal membuat signed URL: ${error.message}`)
+  return data.signedUrl
+}
+
+export async function deleteDocumentFile(admin: ReturnType<typeof createAdminClient>, path: string) {
+  const { error } = await admin.storage.from(BUCKET).remove([path])
+  if (error) throw new Error(`Gagal menghapus file: ${error.message}`)
+}
+
+After the file is created, commit and push: git add . && git commit -m "Add Supabase Storage helper module (upload, signed URL, delete) for the private documents bucket" && git push
