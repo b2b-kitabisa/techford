@@ -1,0 +1,1168 @@
+Confirm first: Lead Capturing's search/filter bar is ALREADY above the stat cards (that was done in the previous prompt) -- no change needed there, just verify after deploying this prompt.
+
+Now redesign Client Monitoring to match a detailed reference UI, reusing the same interaction patterns already built for Lead Capturing (client-side instant multi-select filtering via stat cards, pagination with page-size selector, a right-side drawer with keyboard left/right navigation and its own scroll lock, copy-to-clipboard buttons, spinner/disabled buttons while pending). Client Monitoring adds its own concepts on top: a 6-point "completeness" checklist per client (Brand Name, Entity Name, Head Office, Entity Type, Client Source, at least 1 PIC), a per-client project/GDV/Service Revenue rollup, inline edit-in-drawer (auto-opened in edit mode for incomplete clients), and a PIC card with WhatsApp link and inline edit.
+
+File: src/lib/client-completeness.ts (NEW FILE)
+export type CompletenessItem = { key: string; label: string; ok: boolean }
+
+export function getCompletenessChecklist(
+  client: { brand_name: string | null; entity_name: string | null; head_office: string | null; entity_type: string | null; client_source: string | null },
+  picCount: number
+): CompletenessItem[] {
+  return [
+    { key: 'brand_name', label: 'Brand Name', ok: !!client.brand_name },
+    { key: 'entity_name', label: 'Entity Name', ok: !!client.entity_name },
+    { key: 'head_office', label: 'Head Office', ok: !!client.head_office },
+    { key: 'entity_type', label: 'Entity Type', ok: !!client.entity_type },
+    { key: 'client_source', label: 'Client Source', ok: !!client.client_source },
+    { key: 'pic', label: `PIC (${picCount})`, ok: picCount > 0 },
+  ]
+}
+
+export function isChecklistComplete(items: CompletenessItem[]): boolean {
+  return items.every((i) => i.ok)
+}
+
+File: src/lib/client-stats.ts (NEW FILE)
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getCompletenessChecklist, isChecklistComplete } from './client-completeness'
+
+export type ClientStats = {
+  incompleteCount: number
+  totalCount: number
+  incompletePct: number
+  inboundCount: number
+  inboundPct: number
+  outboundCount: number
+  outboundPct: number
+  referralCount: number
+  referralPct: number
+}
+
+export async function getClientStats(admin: ReturnType<typeof createAdminClient>): Promise<ClientStats> {
+  const { data: clients } = await admin.from('client').select('id, brand_name, entity_name, head_office, entity_type, client_source')
+  const { data: pics } = await admin.from('pic_client').select('client_id')
+
+  const picCountByClient = new Map<string, number>()
+  for (const p of pics ?? []) picCountByClient.set(p.client_id, (picCountByClient.get(p.client_id) || 0) + 1)
+
+  const all = clients ?? []
+  const totalCount = all.length
+  let incompleteCount = 0
+  let inboundCount = 0
+  let outboundCount = 0
+  let referralCount = 0
+
+  for (const c of all) {
+    const checklist = getCompletenessChecklist(c, picCountByClient.get(c.id) || 0)
+    if (!isChecklistComplete(checklist)) incompleteCount++
+    if (c.client_source === 'Inbound') inboundCount++
+    else if (c.client_source === 'Outbound') outboundCount++
+    else if (c.client_source === 'Referral') referralCount++
+  }
+
+  const pct = (n: number) => (totalCount > 0 ? Math.round((n / totalCount) * 1000) / 10 : 0)
+
+  return {
+    incompleteCount,
+    totalCount,
+    incompletePct: pct(incompleteCount),
+    inboundCount,
+    inboundPct: pct(inboundCount),
+    outboundCount,
+    outboundPct: pct(outboundCount),
+    referralCount,
+    referralPct: pct(referralCount),
+  }
+}
+
+File: src/lib/client-project-summary.ts (NEW FILE)
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export type ClientProjectSummary = {
+  totalProjects: number
+  draftProjects: number
+  totalGdv: number
+  totalServiceRevenue: number
+}
+
+export async function getProjectSummaryByClient(admin: ReturnType<typeof createAdminClient>): Promise<Map<string, ClientProjectSummary>> {
+  const { data: projects } = await admin.from('project').select('client_id, is_draft, total_gdv, total_service_revenue')
+  const map = new Map<string, ClientProjectSummary>()
+  for (const p of projects ?? []) {
+    const entry = map.get(p.client_id) || { totalProjects: 0, draftProjects: 0, totalGdv: 0, totalServiceRevenue: 0 }
+    if (p.is_draft) entry.draftProjects++
+    else entry.totalProjects++
+    entry.totalGdv += Number(p.total_gdv || 0)
+    entry.totalServiceRevenue += Number(p.total_service_revenue || 0)
+    map.set(p.client_id, entry)
+  }
+  return map
+}
+
+File: src/components/app-shell.tsx -- REPLACE THE WHOLE FILE with (adds an optional `action` slot to `breadcrumb`, rendered on the right side of the top bar -- every existing page that doesn't pass `action` is unaffected):
+import { SidebarNav } from './sidebar-nav'
+
+export function AppShell({
+  employeeName,
+  employeeRole,
+  breadcrumb,
+  children,
+}: {
+  employeeName: string
+  employeeRole: string
+  breadcrumb?: { section: string; page: string; action?: React.ReactNode }
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+        <div className="flex h-16 items-center border-b border-slate-200 px-5">
+          <span className="text-lg font-bold tracking-tight text-slate-900">Techford</span>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 py-5">
+          <SidebarNav />
+        </div>
+        <div className="border-t border-slate-200 p-4">
+          <div className="mb-2">
+            <div className="truncate text-sm font-medium text-slate-900">{employeeName}</div>
+            <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {employeeRole}
+            </span>
+          </div>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              Logout
+            </button>
+          </form>
+        </div>
+      </aside>
+      <div className="flex min-h-screen flex-1 flex-col overflow-hidden">
+        {breadcrumb && (
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+            <div>
+              <span className="text-sm font-medium text-slate-400">{breadcrumb.section}</span>
+              <span className="mx-2 text-slate-300">&rsaquo;</span>
+              <span className="text-sm font-semibold text-slate-900">{breadcrumb.page}</span>
+            </div>
+            {breadcrumb.action}
+          </div>
+        )}
+        <main className="flex-1 overflow-y-auto">
+          <div className="w-full px-6 py-6 lg:px-10 lg:py-8">{children}</div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+File: src/app/clients/actions.ts -- ADD these two new functions to the existing file (keep createClient, updateClient, addPic, removePic, setPrimaryPic exactly as they are):
+
+export async function updatePic(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+  const clientId = formData.get('client_id') as string
+  const picName = ((formData.get('pic_name') as string) || '').trim()
+  if (!picName) throw new Error('Nama PIC wajib diisi.')
+
+  const { error } = await admin
+    .from('pic_client')
+    .update({
+      pic_name: picName,
+      title: (formData.get('title') as string) || null,
+      email: (formData.get('email') as string) || null,
+      phone: (formData.get('phone') as string) || null,
+    })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/clients`)
+  revalidatePath(`/clients/${clientId}`)
+}
+
+export async function deleteClient(formData: FormData) {
+  await requireWriteAccess()
+  const admin = createAdminClient()
+  const id = formData.get('id') as string
+
+  const { count } = await admin.from('project').select('id', { count: 'exact', head: true }).eq('client_id', id)
+  if ((count ?? 0) > 0) {
+    throw new Error('Client tidak bisa dihapus karena masih punya Project terkait. Pindahkan atau hapus Project-nya dulu.')
+  }
+
+  const { error } = await admin.from('client').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/clients')
+}
+
+File: src/app/clients/[id]/pic-modal.tsx -- find this line:
+export function AddPicModal({ clientId }: { clientId: string }) {
+
+Replace it with (adds an optional callback fired after a successful add, so the drawer can refresh its data):
+export function AddPicModal({ clientId, onAdded }: { clientId: string; onAdded?: () => void }) {
+
+Then find this block inside the same file:
+    startTransition(async () => {
+      try {
+        await addPic(formData)
+        dialogRef.current?.close()
+        ;(dialogRef.current?.querySelector('form') as HTMLFormElement | null)?.reset()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menambahkan PIC.')
+      }
+    })
+
+Replace it with:
+    startTransition(async () => {
+      try {
+        await addPic(formData)
+        dialogRef.current?.close()
+        ;(dialogRef.current?.querySelector('form') as HTMLFormElement | null)?.reset()
+        onAdded?.()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Gagal menambahkan PIC.')
+      }
+    })
+
+File: src/app/clients/page.tsx -- REPLACE THE WHOLE FILE with:
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getClientStats } from '@/lib/client-stats'
+import { getProjectSummaryByClient } from '@/lib/client-project-summary'
+import { ClientsBoard } from './clients-table'
+
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; entity_type?: string; industry?: string; from?: string; to?: string }>
+}) {
+  const sp = await searchParams
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const stats = await getClientStats(admin)
+  const projectSummaryMap = await getProjectSummaryByClient(admin)
+  const { data: masterData } = await admin.from('master_data').select('*')
+  const options = (cat: string) => (masterData ?? []).filter((m) => m.category === cat).map((m) => m.value as string)
+
+  let query = admin.from('client').select('*').order('created_at', { ascending: false })
+  if (sp.entity_type) query = query.eq('entity_type', sp.entity_type)
+  if (sp.industry) query = query.eq('industry', sp.industry)
+  if (sp.from) query = query.gte('created_at', sp.from)
+  if (sp.to) query = query.lte('created_at', `${sp.to}T23:59:59`)
+  if (sp.q) {
+    const q = `%${sp.q}%`
+    query = query.or(`brand_name.ilike.${q},entity_name.ilike.${q}`)
+  }
+  const { data: clients } = await query
+
+  const { data: pics } = await admin.from('pic_client').select('*').order('created_at')
+  const picsByClient = new Map<string, NonNullable<typeof pics>>()
+  for (const p of pics ?? []) {
+    const arr = picsByClient.get(p.client_id) || []
+    arr.push(p)
+    picsByClient.set(p.client_id, arr)
+  }
+
+  const clientsWithExtras = (clients ?? []).map((c) => ({
+    ...c,
+    pics: picsByClient.get(c.id) || [],
+    projectSummary: projectSummaryMap.get(c.id) || { totalProjects: 0, draftProjects: 0, totalGdv: 0, totalServiceRevenue: 0 },
+  }))
+
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell
+      employeeName={employee.name}
+      employeeRole={employee.role}
+      breadcrumb={{
+        section: 'Sales Module',
+        page: 'Client Monitoring',
+        action: canWrite ? (
+          <Link href="/clients/new" className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500">
+            + Add New Client
+          </Link>
+        ) : undefined,
+      }}
+    >
+      <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/clients" method="get">
+        <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Cari</label>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Cari brand, entitas..." className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Entity Type</label>
+          <select name="entity_type" defaultValue={sp.entity_type || ''} className="rounded-md border-gray-300 py-1 text-sm">
+            <option value="">All Entity Type</option>
+            {options('Entity_Type').map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Industry</label>
+          <select name="industry" defaultValue={sp.industry || ''} className="rounded-md border-gray-300 py-1 text-sm">
+            <option value="">All Industry</option>
+            {options('Industry').map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+          <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+          <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+          Terapkan
+        </button>
+        <a href="/clients" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset Filter
+        </a>
+      </form>
+
+      <ClientsBoard
+        clients={clientsWithExtras}
+        stats={stats}
+        canWrite={canWrite}
+        entityTypeOptions={options('Entity_Type')}
+        headOfficeOptions={options('Head_Office')}
+        industryOptions={options('Industry')}
+        clientSourceOptions={options('Client_Source')}
+      />
+    </AppShell>
+  )
+}
+
+File: src/app/clients/clients-table.tsx (NEW FILE)
+'use client'
+
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { updateClient, updatePic, removePic, setPrimaryPic, deleteClient } from './actions'
+import { AddPicModal } from './[id]/pic-modal'
+import { Spinner } from '@/components/submit-button'
+import { getCompletenessChecklist, isChecklistComplete, type CompletenessItem } from '@/lib/client-completeness'
+import type { ClientStats } from '@/lib/client-stats'
+import type { ClientProjectSummary } from '@/lib/client-project-summary'
+
+type Pic = { id: string; pic_name: string; title: string | null; email: string | null; phone: string | null; is_primary: boolean }
+
+type Client = {
+  id: string
+  client_id: string
+  brand_name: string
+  entity_name: string
+  entity_type: string | null
+  entity_type_other: string | null
+  head_office: string | null
+  website: string | null
+  industry: string | null
+  client_source: string | null
+  is_from_lead: boolean
+  other_notes: string | null
+  created_by: string | null
+  created_at: string
+  last_updated: string
+  pics: Pic[]
+  projectSummary: ClientProjectSummary
+}
+
+const SOURCE_STYLES: Record<string, string> = {
+  Inbound: 'bg-blue-100 text-blue-700',
+  Outbound: 'bg-purple-100 text-purple-700',
+  Referral: 'bg-amber-100 text-amber-700',
+}
+
+const AVATAR_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500', 'bg-cyan-500']
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
+function colorFor(name: string): string {
+  let hash = 0
+  for (const c of name) hash += c.charCodeAt(0)
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function initials(name: string | null): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+}
+
+function rupiah(n: number): string {
+  return 'Rp ' + Math.round(n).toLocaleString('id-ID')
+}
+
+function pct(n: number, total: number): number {
+  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
+}
+
+function CopyIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!navigator.clipboard) return
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => {})
+  }
+  return (
+    <button onClick={handleCopy} title={copied ? 'Tersalin!' : 'Copy'} className="inline-flex shrink-0 items-center text-gray-400 hover:text-gray-700">
+      <CopyIcon />
+    </button>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  sublabel,
+  onClick,
+  active,
+}: {
+  label: string
+  value: React.ReactNode
+  sublabel?: React.ReactNode
+  onClick?: () => void
+  active?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={`h-full rounded-lg border bg-white p-3 text-left shadow-sm ${onClick ? 'cursor-pointer hover:border-gray-300 hover:shadow' : 'cursor-default'} ${active ? 'ring-2 ring-gray-900' : ''}`}
+    >
+      <p className="text-sm font-semibold text-gray-700">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
+      {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
+    </button>
+  )
+}
+
+export function ClientsBoard({
+  clients,
+  stats,
+  canWrite,
+  entityTypeOptions,
+  headOfficeOptions,
+  industryOptions,
+  clientSourceOptions,
+}: {
+  clients: Client[]
+  stats: ClientStats
+  canWrite: boolean
+  entityTypeOptions: string[]
+  headOfficeOptions: string[]
+  industryOptions: string[]
+  clientSourceOptions: string[]
+}) {
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set())
+  const [incompleteOnly, setIncompleteOnly] = useState(false)
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
+  function toggleSource(source: string) {
+    setSelectedSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      return next
+    })
+  }
+
+  const visibleClients = useMemo(() => {
+    return clients.filter((c) => {
+      if (selectedSources.size > 0 && !selectedSources.has(c.client_source || '')) return false
+      if (incompleteOnly) {
+        const checklist = getCompletenessChecklist(c, c.pics.length)
+        if (isChecklistComplete(checklist)) return false
+      }
+      return true
+    })
+  }, [clients, selectedSources, incompleteOnly])
+
+  useEffect(() => {
+    setPage(1)
+  }, [selectedSources, incompleteOnly, clients])
+
+  const totalPages = Math.max(1, Math.ceil(visibleClients.length / pageSize))
+  const clampedPage = Math.min(page, totalPages)
+  const startIdx = (clampedPage - 1) * pageSize
+  const pagedClients = visibleClients.slice(startIdx, startIdx + pageSize)
+
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-4 gap-3">
+        <StatCard
+          label="Incomplete Client"
+          value={
+            <>
+              {stats.incompleteCount}
+              <span className="text-base font-normal text-gray-400">/{stats.totalCount}</span>
+            </>
+          }
+          sublabel={
+            <span className="text-red-500">
+              client belum lengkap <span className="font-semibold">{stats.incompletePct}%</span>
+            </span>
+          }
+          onClick={() => setIncompleteOnly((v) => !v)}
+          active={incompleteOnly}
+        />
+        <StatCard
+          label="Inbound"
+          value={stats.inboundCount}
+          sublabel={`${stats.inboundPct}% · Inbound Client`}
+          onClick={() => toggleSource('Inbound')}
+          active={selectedSources.has('Inbound')}
+        />
+        <StatCard
+          label="Outbound"
+          value={stats.outboundCount}
+          sublabel={`${stats.outboundPct}% · Outbound Client`}
+          onClick={() => toggleSource('Outbound')}
+          active={selectedSources.has('Outbound')}
+        />
+        <StatCard
+          label="Referral"
+          value={stats.referralCount}
+          sublabel={`${stats.referralPct}% · Referral Client`}
+          onClick={() => toggleSource('Referral')}
+          active={selectedSources.has('Referral')}
+        />
+      </div>
+
+      {(selectedSources.size > 0 || incompleteOnly) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span>Filter aktif:</span>
+          {incompleteOnly && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">Incomplete</span>}
+          {Array.from(selectedSources).map((s) => (
+            <span key={s} className={`rounded-full px-2 py-0.5 font-medium ${SOURCE_STYLES[s] ?? 'bg-gray-100 text-gray-700'}`}>
+              {s}
+            </span>
+          ))}
+          <button
+            onClick={() => {
+              setSelectedSources(new Set())
+              setIncompleteOnly(false)
+            }}
+            className="text-blue-600 hover:underline"
+          >
+            Hapus semua filter
+          </button>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-100">
+            <tr>
+              <th className="px-4 py-2">Brand &amp; Entity</th>
+              <th className="px-4 py-2">Completed</th>
+              <th className="px-4 py-2">Source</th>
+              <th className="px-4 py-2">Contact</th>
+              <th className="px-4 py-2">Project</th>
+              <th className="px-4 py-2">Dibuat</th>
+              <th className="px-4 py-2">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {pagedClients.map((client, localIndex) => {
+              const globalIndex = startIdx + localIndex
+              const checklist = getCompletenessChecklist(client, client.pics.length)
+              const complete = isChecklistComplete(checklist)
+              const primaryPic = client.pics.find((p) => p.is_primary) || client.pics[0]
+              return (
+                <tr
+                  key={client.id}
+                  className={`cursor-pointer hover:bg-blue-50 ${!complete ? 'border-l-4 border-amber-400' : ''} ${localIndex % 2 === 1 ? 'bg-slate-50' : 'bg-white'}`}
+                  onClick={() => setActiveIndex(globalIndex)}
+                >
+                  <td className="px-4 py-2">
+                    <div className="font-medium text-gray-900">{client.brand_name}</div>
+                    <div className="text-xs text-gray-500">{client.client_id}</div>
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${complete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {complete ? 'COMPLETED' : 'INCOMPLETE'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {client.client_source && (
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_STYLES[client.client_source] ?? 'bg-gray-100 text-gray-700'}`}>
+                        {client.client_source.toUpperCase()}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-gray-600">
+                    <div>{primaryPic?.pic_name || '-'}</div>
+                    {primaryPic?.phone && (
+                      <div className="flex items-center gap-1 text-xs text-green-600" onClick={(e) => e.stopPropagation()}>
+                        <span>{primaryPic.phone.replace(/^\+/, '')}</span>
+                        <CopyButton text={primaryPic.phone.replace(/^\+/, '')} />
+                      </div>
+                    )}
+                    {primaryPic?.email && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400" onClick={(e) => e.stopPropagation()}>
+                        <span>{primaryPic.email}</span>
+                        <CopyButton text={primaryPic.email} />
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-gray-600">{client.projectSummary.totalProjects > 0 ? `${client.projectSummary.totalProjects} project` : '-'}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-gray-500">
+                    {new Date(client.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                    {!complete ? (
+                      <button onClick={() => setActiveIndex(globalIndex)} className="rounded-md border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100">
+                        Lengkapi &rsaquo;
+                      </button>
+                    ) : (
+                      <button onClick={() => setActiveIndex(globalIndex)} className="rounded-full border px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">
+                        &rsaquo;
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+            {pagedClients.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  Tidak ada Client yang cocok dengan filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-white px-4 py-2 text-xs text-gray-500">
+          <div className="flex items-center gap-2">
+            <span>
+              Menampilkan {visibleClients.length === 0 ? 0 : startIdx + 1}-{Math.min(startIdx + pageSize, visibleClients.length)} dari {visibleClients.length} data
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="rounded-md border-gray-300 py-1 text-xs"
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} / halaman
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button disabled={clampedPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-md border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40">
+              Sebelumnya
+            </button>
+            <span>
+              Halaman {clampedPage} / {totalPages}
+            </span>
+            <button
+              disabled={clampedPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-md border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {activeIndex !== null && visibleClients[activeIndex] && (
+        <ClientDrawer
+          client={visibleClients[activeIndex]}
+          index={activeIndex}
+          total={visibleClients.length}
+          canWrite={canWrite}
+          entityTypeOptions={entityTypeOptions}
+          headOfficeOptions={headOfficeOptions}
+          industryOptions={industryOptions}
+          clientSourceOptions={clientSourceOptions}
+          onClose={() => setActiveIndex(null)}
+          onNavigate={(i) => setActiveIndex(i)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ClientDrawer({
+  client,
+  index,
+  total,
+  canWrite,
+  entityTypeOptions,
+  headOfficeOptions,
+  industryOptions,
+  clientSourceOptions,
+  onClose,
+  onNavigate,
+}: {
+  client: Client
+  index: number
+  total: number
+  canWrite: boolean
+  entityTypeOptions: string[]
+  headOfficeOptions: string[]
+  industryOptions: string[]
+  clientSourceOptions: string[]
+  onClose: () => void
+  onNavigate: (i: number) => void
+}) {
+  const checklist = getCompletenessChecklist(client, client.pics.length)
+  const complete = isChecklistComplete(checklist)
+  const [isEditing, setIsEditing] = useState(!complete)
+  const [isPending, startTransition] = useTransition()
+  const [editingPicId, setEditingPicId] = useState<string | null>(null)
+  const router = useRouter()
+
+  useEffect(() => {
+    setIsEditing(!complete)
+    setEditingPicId(null)
+  }, [client.id, complete])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft' && index > 0) onNavigate(index - 1)
+      else if (e.key === 'ArrowRight' && index < total - 1) onNavigate(index + 1)
+      else if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [index, total, onNavigate, onClose])
+
+  function handleSave(formData: FormData) {
+    startTransition(async () => {
+      await updateClient(formData)
+      router.refresh()
+      setIsEditing(false)
+    })
+  }
+
+  function handleDelete(formData: FormData) {
+    if (!window.confirm(`Yakin mau hapus Client "${client.brand_name}"? Aksi ini tidak bisa dibatalkan.`)) return
+    startTransition(async () => {
+      try {
+        await deleteClient(formData)
+        router.refresh()
+        onClose()
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Gagal menghapus Client.')
+      }
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full flex-col bg-white shadow-xl sm:w-[40%] sm:min-w-[420px]">
+        <div className="shrink-0 bg-gray-900 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${complete ? 'bg-green-500/20 text-green-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                {complete ? 'COMPLETED' : 'INCOMPLETE'}
+              </span>
+              <span className="font-mono text-xs text-gray-400">{client.client_id}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button disabled={index <= 0} onClick={() => onNavigate(index - 1)} className="rounded-md px-2 py-1 text-gray-300 hover:bg-white/10 disabled:opacity-30">
+                &lsaquo;
+              </button>
+              <span className="text-xs text-gray-400">
+                {index + 1}/{total}
+              </span>
+              <button disabled={index >= total - 1} onClick={() => onNavigate(index + 1)} className="rounded-md px-2 py-1 text-gray-300 hover:bg-white/10 disabled:opacity-30">
+                &rsaquo;
+              </button>
+              <button onClick={onClose} className="ml-1 rounded-md px-2 py-1 text-lg leading-none text-gray-300 hover:bg-white/10">
+                &times;
+              </button>
+            </div>
+          </div>
+
+          <h2 className="mt-3 text-lg font-bold">{client.brand_name}</h2>
+          <p className="text-xs uppercase tracking-wide text-gray-400">{client.entity_name || 'Entity Name belum diisi'}</p>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {checklist.map((item: CompletenessItem) => (
+              <span
+                key={item.key}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${item.ok ? 'bg-green-500/20 text-green-300' : 'bg-amber-500/20 text-amber-300'}`}
+              >
+                {item.ok ? '✓' : '○'} {item.label}
+              </span>
+            ))}
+          </div>
+
+          {canWrite && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Link
+                href={`/projects/new?client_id=${client.id}`}
+                className="rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
+              >
+                Buat Project
+              </Link>
+              <form action={handleDelete}>
+                <input type="hidden" name="id" value={client.id} />
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-red-500 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isPending && <Spinner />} Hapus
+                </button>
+              </form>
+              <button
+                onClick={() => setIsEditing((v) => !v)}
+                className="ml-auto rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
+              >
+                {isEditing ? '✕ Tutup' : 'Edit Info'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ringkasan</p>
+          <div className="mb-5 grid grid-cols-3 gap-2">
+            <div className="rounded-md border bg-gray-50 p-2">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">Total Project</p>
+              <p className="text-sm font-bold text-gray-900">
+                {client.projectSummary.totalProjects}
+                {client.projectSummary.draftProjects > 0 && <span className="ml-1 text-xs font-normal text-gray-400">+{client.projectSummary.draftProjects} draft</span>}
+              </p>
+            </div>
+            <div className="rounded-md border bg-gray-50 p-2">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">GDV Value</p>
+              <p className="text-sm font-bold text-gray-900">
+                {client.projectSummary.totalProjects + client.projectSummary.draftProjects === 0 ? '-' : rupiah(client.projectSummary.totalGdv)}
+              </p>
+            </div>
+            <div className="rounded-md border bg-gray-50 p-2">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">Service Revenue</p>
+              <p className="text-sm font-bold text-gray-900">
+                {client.projectSummary.totalProjects + client.projectSummary.draftProjects === 0 ? '-' : rupiah(client.projectSummary.totalServiceRevenue)}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Client Information</p>
+
+            {isEditing && canWrite ? (
+              <form action={handleSave} className="space-y-3">
+                <input type="hidden" name="id" value={client.id} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Brand Name</label>
+                    <input name="brand_name" defaultValue={client.brand_name} className="w-full rounded-md border-gray-300 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+                    <input name="entity_name" defaultValue={client.entity_name} className="w-full rounded-md border-gray-300 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+                    <select name="head_office" defaultValue={client.head_office || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {headOfficeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+                    <select name="industry" defaultValue={client.industry || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {industryOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+                    <select name="entity_type" defaultValue={client.entity_type || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {entityTypeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Client Source {client.is_from_lead && '(terkunci, dari Lead)'}</label>
+                    <select
+                      name="client_source"
+                      defaultValue={client.client_source || ''}
+                      disabled={client.is_from_lead}
+                      className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100"
+                    >
+                      <option value="">- Pilih -</option>
+                      {clientSourceOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+                  <input name="website" defaultValue={client.website || ''} className="w-full rounded-md border-gray-300 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+                  <textarea name="other_notes" defaultValue={client.other_notes || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" />
+                </div>
+                <div className="flex justify-end gap-2 border-t pt-3">
+                  <button type="button" onClick={() => setIsEditing(false)} className="rounded-md border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isPending && <Spinner />} Save
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-400">Head Office</p>
+                  <p className="text-gray-800">{client.head_office || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Industry</p>
+                  <p className="text-gray-800">{client.industry || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Client Source</p>
+                  <p className="text-gray-800">{client.client_source || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Entity Type</p>
+                  <p className="text-gray-800">{client.entity_type === 'Other' ? client.entity_type_other || 'Other' : client.entity_type || '-'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400">Website</p>
+                  {client.website ? (
+                    <a href={client.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                      {client.website}
+                    </a>
+                  ) : (
+                    <p className="text-gray-800">-</p>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400">Riwayat</p>
+                  <p className="text-gray-600">
+                    Dibuat oleh <span className="font-medium text-gray-800">{client.created_by || '-'}</span> pada{' '}
+                    {new Date(client.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 border-t pt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">PIC Client</p>
+              {canWrite && <AddPicModal clientId={client.id} onAdded={() => router.refresh()} />}
+            </div>
+            <div className="space-y-2">
+              {client.pics.map((pic) => (
+                <PicCard key={pic.id} pic={pic} clientId={client.id} canWrite={canWrite} isEditing={editingPicId === pic.id} onEdit={() => setEditingPicId(pic.id)} onDoneEdit={() => setEditingPicId(null)} />
+              ))}
+              {client.pics.length === 0 && <p className="text-sm text-gray-400">Belum ada PIC.</p>}
+            </div>
+          </div>
+
+          {!isEditing && (
+            <div className="mt-4 border-t pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Other Notes</p>
+              <p className="text-sm text-gray-600">{client.other_notes || 'Belum ada catatan.'}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PicCard({
+  pic,
+  clientId,
+  canWrite,
+  isEditing,
+  onEdit,
+  onDoneEdit,
+}: {
+  pic: Pic
+  clientId: string
+  canWrite: boolean
+  isEditing: boolean
+  onEdit: () => void
+  onDoneEdit: () => void
+}) {
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  function handleUpdate(formData: FormData) {
+    startTransition(async () => {
+      await updatePic(formData)
+      router.refresh()
+      onDoneEdit()
+    })
+  }
+
+  function handleRemove(formData: FormData) {
+    startTransition(async () => {
+      await removePic(formData)
+      router.refresh()
+    })
+  }
+
+  function handleSetPrimary(formData: FormData) {
+    startTransition(async () => {
+      await setPrimaryPic(formData)
+      router.refresh()
+    })
+  }
+
+  if (isEditing) {
+    return (
+      <form action={handleUpdate} className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+        <input type="hidden" name="id" value={pic.id} />
+        <input type="hidden" name="client_id" value={clientId} />
+        <input name="pic_name" defaultValue={pic.pic_name} placeholder="Nama" className="w-full rounded-md border-gray-300 text-sm" />
+        <input name="title" defaultValue={pic.title || ''} placeholder="Title" className="w-full rounded-md border-gray-300 text-sm" />
+        <input name="email" defaultValue={pic.email || ''} placeholder="Email" className="w-full rounded-md border-gray-300 text-sm" />
+        <input name="phone" defaultValue={pic.phone || ''} placeholder="Phone" className="w-full rounded-md border-gray-300 text-sm" />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onDoneEdit} className="rounded-md border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-white">
+            Batal
+          </button>
+          <button type="submit" disabled={isPending} className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+            {isPending && <Spinner />} Simpan
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+      {pic.is_primary && <span className="mb-2 inline-block rounded-full border border-blue-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-700">PIC UTAMA</span>}
+      <div className="flex items-start gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${colorFor(pic.pic_name)}`}>{initials(pic.pic_name)}</div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-900">{pic.pic_name}</p>
+          {pic.title && <p className="truncate text-xs text-gray-500">{pic.title}</p>}
+          {pic.email && (
+            <div className="flex items-center gap-1 text-xs text-gray-600">
+              <span className="truncate">{pic.email}</span>
+              <CopyButton text={pic.email} />
+            </div>
+          )}
+          {pic.phone && (
+            <div className="flex items-center gap-1 text-xs text-gray-600">
+              <span>{pic.phone.replace(/^\+/, '')}</span>
+              <CopyButton text={pic.phone.replace(/^\+/, '')} />
+            </div>
+          )}
+        </div>
+      </div>
+      {canWrite && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button onClick={onEdit} className="rounded-md border px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white">
+            Edit
+          </button>
+          {pic.phone && (
+            <a
+              href={`https://wa.me/${pic.phone.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-green-300 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100"
+            >
+              WhatsApp
+            </a>
+          )}
+          {!pic.is_primary && (
+            <form action={handleSetPrimary}>
+              <input type="hidden" name="id" value={pic.id} />
+              <input type="hidden" name="client_id" value={clientId} />
+              <button type="submit" className="rounded-md border px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50">
+                Jadikan Primary
+              </button>
+            </form>
+          )}
+          <form action={handleRemove}>
+            <input type="hidden" name="id" value={pic.id} />
+            <input type="hidden" name="client_id" value={clientId} />
+            <button type="submit" className="rounded-md border px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">
+              Hapus
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
+Note: the "Buat Project" button links to `/projects/new?client_id=${client.id}`. Check whether src/app/projects/new/page.tsx already reads a `client_id` search param to preselect the client in its form; if it doesn't, that's fine for now (the link still works, the user just picks the client manually on that page) -- do NOT modify the Project creation flow as part of this task, that's out of scope here.
+
+After all files are created/updated, commit and push: git add . && git commit -m "Redesign Client Monitoring to match reference UI: completeness tracking, project/GDV rollup, drawer with inline edit and PIC management, instant multi-select filters, pagination" && git push
