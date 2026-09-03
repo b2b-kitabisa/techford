@@ -1,0 +1,694 @@
+Three fixes:
+(A) Correct the section order in BOTH Lead Capturing and Client Monitoring -- stat cards must come FIRST, then the search/filter bar BELOW them, then the table. (The previous prompt put the filter bar above the stat cards by mistake.)
+(B) In Client Monitoring, "+ Add New Client" must behave exactly like the "Lengkapi" flow for an incomplete client -- it opens the SAME right-side drawer, in edit mode, so the user fills the form right there instead of navigating to a separate page.
+(C) Every input/select/textarea in the Client edit/create form gets a light background fill and a real placeholder so it's visually obvious which fields still need to be filled in.
+
+File: src/app/leads/leads-table.tsx -- find the `LeadsBoard` function signature:
+export function LeadsBoard({ leads, stats, canWrite }: { leads: Lead[]; stats: LeadStats; canWrite: boolean }) {
+
+Replace it with (adds a `filterBar` slot):
+export function LeadsBoard({
+  leads,
+  stats,
+  canWrite,
+  filterBar,
+}: {
+  leads: Lead[]
+  stats: LeadStats
+  canWrite: boolean
+  filterBar?: React.ReactNode
+}) {
+
+Then find this block (the "Filter aktif" chip row, right after the stat-card grid's closing `</div>`):
+      {selectedStatuses.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span>Filter aktif:</span>
+          {Array.from(selectedStatuses).map((s) => (
+            <span key={s} className={`rounded-full px-2 py-0.5 font-medium ${STATUS_STYLES[s] ?? 'bg-gray-100 text-gray-700'}`}>
+              {s}
+            </span>
+          ))}
+          <button onClick={() => setSelectedStatuses(new Set())} className="text-blue-600 hover:underline">
+            Hapus semua filter
+          </button>
+        </div>
+      )}
+
+Right AFTER that whole block (still before the bulk-action bar), ADD:
+      {filterBar}
+
+File: src/app/leads/page.tsx -- find this block near the top of the returned JSX:
+      <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/leads" method="get">
+        <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Cari</label>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Cari entitas, PIC, email, telepon..." className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+          <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+          <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+          Terapkan
+        </button>
+        <a href="/leads" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset Filter
+        </a>
+      </form>
+
+      <LeadsBoard leads={leadsWithDuplicates} stats={stats} canWrite={canWrite} />
+
+Replace that WHOLE block with (moves the form into a variable and passes it into `LeadsBoard` as `filterBar`, so it renders below the stat cards instead of above them):
+      <LeadsBoard
+        leads={leadsWithDuplicates}
+        stats={stats}
+        canWrite={canWrite}
+        filterBar={
+          <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/leads" method="get">
+            <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Cari</label>
+              <input name="q" defaultValue={sp.q || ''} placeholder="Cari entitas, PIC, email, telepon..." className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+              <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+              <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+              Terapkan
+            </button>
+            <a href="/leads" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Reset Filter
+            </a>
+          </form>
+        }
+      />
+
+File: src/app/clients/actions.ts -- ADD this new function to the existing file (keep every other function unchanged):
+
+export async function createClientInline(formData: FormData) {
+  const employee = await requireWriteAccess()
+  const admin = createAdminClient()
+
+  const brandName = ((formData.get('brand_name') as string) || '').trim()
+  if (!brandName) throw new Error('Brand Name wajib diisi.')
+
+  const year = new Date().getFullYear() % 100
+  const { data: seqValue, error: seqErr } = await admin.rpc('next_sequence', { seq_key: `CLIENT_${year}` })
+  if (seqErr) throw new Error(seqErr.message)
+  const clientId = `CL${year}-${String(seqValue).padStart(5, '0')}`
+
+  const { data: client, error } = await admin
+    .from('client')
+    .insert({
+      client_id: clientId,
+      brand_name: brandName.toUpperCase(),
+      entity_name: ((formData.get('entity_name') as string) || '').toUpperCase(),
+      entity_type: (formData.get('entity_type') as string) || null,
+      head_office: (formData.get('head_office') as string) || null,
+      website: (formData.get('website') as string) || null,
+      industry: (formData.get('industry') as string) || null,
+      client_source: (formData.get('client_source') as string) || null,
+      is_from_lead: false,
+      other_notes: (formData.get('other_notes') as string) || null,
+      created_by: employee.name,
+    })
+    .select()
+    .single()
+  if (error || !client) throw new Error(error?.message || 'Gagal membuat Client.')
+
+  await logAudit(admin, { actorUserId: employee.auth_user_id, actorEmail: employee.email, action: 'CREATE_CLIENT', entityType: 'client', entityId: client.id })
+
+  revalidatePath('/clients')
+}
+
+(Note: unlike `createClient`, this one does NOT require `client_source` and does NOT redirect -- it's meant to be called from the inline drawer, where a client can be saved as a deliberately incomplete draft and finished later, which is the whole point of the "Incomplete Client" tracking. Leave `createClient` and the `/clients/new` page exactly as they are; they're independent and still work.)
+
+File: src/app/clients/page.tsx -- REPLACE THE WHOLE FILE with:
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getClientStats } from '@/lib/client-stats'
+import { getProjectSummaryByClient } from '@/lib/client-project-summary'
+import { ClientsBoard } from './clients-table'
+
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; entity_type?: string; industry?: string; from?: string; to?: string }>
+}) {
+  const sp = await searchParams
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const stats = await getClientStats(admin)
+  const projectSummaryMap = await getProjectSummaryByClient(admin)
+  const { data: masterData } = await admin.from('master_data').select('*')
+  const options = (cat: string) => (masterData ?? []).filter((m) => m.category === cat).map((m) => m.value as string)
+
+  let query = admin.from('client').select('*').order('created_at', { ascending: false })
+  if (sp.entity_type) query = query.eq('entity_type', sp.entity_type)
+  if (sp.industry) query = query.eq('industry', sp.industry)
+  if (sp.from) query = query.gte('created_at', sp.from)
+  if (sp.to) query = query.lte('created_at', `${sp.to}T23:59:59`)
+  if (sp.q) {
+    const q = `%${sp.q}%`
+    query = query.or(`brand_name.ilike.${q},entity_name.ilike.${q}`)
+  }
+  const { data: clients } = await query
+
+  const { data: pics } = await admin.from('pic_client').select('*').order('created_at')
+  const picsByClient = new Map<string, NonNullable<typeof pics>>()
+  for (const p of pics ?? []) {
+    const arr = picsByClient.get(p.client_id) || []
+    arr.push(p)
+    picsByClient.set(p.client_id, arr)
+  }
+
+  const clientsWithExtras = (clients ?? []).map((c) => ({
+    ...c,
+    pics: picsByClient.get(c.id) || [],
+    projectSummary: projectSummaryMap.get(c.id) || { totalProjects: 0, draftProjects: 0, totalGdv: 0, totalServiceRevenue: 0 },
+  }))
+
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role} breadcrumb={{ section: 'Sales Module', page: 'Client Monitoring' }}>
+      <ClientsBoard
+        clients={clientsWithExtras}
+        stats={stats}
+        canWrite={canWrite}
+        entityTypeOptions={options('Entity_Type')}
+        headOfficeOptions={options('Head_Office')}
+        industryOptions={options('Industry')}
+        clientSourceOptions={options('Client_Source')}
+        filterBar={
+          <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/clients" method="get">
+            <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Cari</label>
+              <input name="q" defaultValue={sp.q || ''} placeholder="Cari brand, entitas..." className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Entity Type</label>
+              <select name="entity_type" defaultValue={sp.entity_type || ''} className="rounded-md border-gray-300 py-1 text-sm">
+                <option value="">All Entity Type</option>
+                {options('Entity_Type').map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Industry</label>
+              <select name="industry" defaultValue={sp.industry || ''} className="rounded-md border-gray-300 py-1 text-sm">
+                <option value="">All Industry</option>
+                {options('Industry').map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+              <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+              <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+            </div>
+            <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+              Terapkan
+            </button>
+            <a href="/clients" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Reset Filter
+            </a>
+          </form>
+        }
+      />
+    </AppShell>
+  )
+}
+
+(Note: the "+ Add New Client" button moves out of the AppShell top bar and into ClientsBoard itself in the next file below -- it needs to trigger client-side drawer state, which only a client component can do.)
+
+File: src/app/clients/clients-table.tsx -- apply these changes to the existing file:
+
+1) Find the import line for actions and replace it with (adds `createClientInline`):
+import { updateClient, updatePic, removePic, setPrimaryPic, deleteClient, createClientInline } from './actions'
+
+2) Find the `ClientsBoard` function signature:
+export function ClientsBoard({
+  clients,
+  stats,
+  canWrite,
+  entityTypeOptions,
+  headOfficeOptions,
+  industryOptions,
+  clientSourceOptions,
+}: {
+  clients: Client[]
+  stats: ClientStats
+  canWrite: boolean
+  entityTypeOptions: string[]
+  headOfficeOptions: string[]
+  industryOptions: string[]
+  clientSourceOptions: string[]
+}) {
+
+Replace it with (adds `filterBar`):
+export function ClientsBoard({
+  clients,
+  stats,
+  canWrite,
+  entityTypeOptions,
+  headOfficeOptions,
+  industryOptions,
+  clientSourceOptions,
+  filterBar,
+}: {
+  clients: Client[]
+  stats: ClientStats
+  canWrite: boolean
+  entityTypeOptions: string[]
+  headOfficeOptions: string[]
+  industryOptions: string[]
+  clientSourceOptions: string[]
+  filterBar?: React.ReactNode
+}) {
+
+3) Right after that opening line, ADD this new state (for the "+ Add New Client" drawer):
+  const [showNewDrawer, setShowNewDrawer] = useState(false)
+
+4) Find the `<div className="mb-4 grid grid-cols-4 gap-3">` block that opens the stat cards, and change it to include an "+ Add New Client" button above it. Find:
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-4 gap-3">
+
+Replace with:
+  return (
+    <div>
+      {canWrite && (
+        <div className="mb-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowNewDrawer(true)}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+          >
+            + Add New Client
+          </button>
+        </div>
+      )}
+      <div className="mb-4 grid grid-cols-4 gap-3">
+
+5) Find this block (the "Filter aktif" chip row for Client Monitoring):
+      {(selectedSources.size > 0 || incompleteOnly) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span>Filter aktif:</span>
+          {incompleteOnly && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">Incomplete</span>}
+          {Array.from(selectedSources).map((s) => (
+            <span key={s} className={`rounded-full px-2 py-0.5 font-medium ${SOURCE_STYLES[s] ?? 'bg-gray-100 text-gray-700'}`}>
+              {s}
+            </span>
+          ))}
+          <button
+            onClick={() => {
+              setSelectedSources(new Set())
+              setIncompleteOnly(false)
+            }}
+            className="text-blue-600 hover:underline"
+          >
+            Hapus semua filter
+          </button>
+        </div>
+      )}
+
+Right AFTER that whole block (still before the table's outer `<div className="overflow-hidden rounded-lg border bg-white shadow-sm">`), ADD:
+      {filterBar}
+
+6) Find the end of the component, where the existing drawer is rendered:
+      {activeIndex !== null && visibleClients[activeIndex] && (
+        <ClientDrawer
+          client={visibleClients[activeIndex]}
+          index={activeIndex}
+          total={visibleClients.length}
+          canWrite={canWrite}
+          entityTypeOptions={entityTypeOptions}
+          headOfficeOptions={headOfficeOptions}
+          industryOptions={industryOptions}
+          clientSourceOptions={clientSourceOptions}
+          onClose={() => setActiveIndex(null)}
+          onNavigate={(i) => setActiveIndex(i)}
+        />
+      )}
+    </div>
+  )
+}
+
+Replace it with (adds the "new client" drawer instance, rendered instead of the normal one when `showNewDrawer` is true):
+      {activeIndex !== null && visibleClients[activeIndex] && (
+        <ClientDrawer
+          client={visibleClients[activeIndex]}
+          index={activeIndex}
+          total={visibleClients.length}
+          canWrite={canWrite}
+          entityTypeOptions={entityTypeOptions}
+          headOfficeOptions={headOfficeOptions}
+          industryOptions={industryOptions}
+          clientSourceOptions={clientSourceOptions}
+          onClose={() => setActiveIndex(null)}
+          onNavigate={(i) => setActiveIndex(i)}
+        />
+      )}
+
+      {showNewDrawer && (
+        <NewClientDrawer
+          entityTypeOptions={entityTypeOptions}
+          headOfficeOptions={headOfficeOptions}
+          industryOptions={industryOptions}
+          clientSourceOptions={clientSourceOptions}
+          onClose={() => setShowNewDrawer(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+7) ADD this brand-new component at the end of the file (after the existing `PicCard` function -- this is a separate, simpler drawer used only for creating a client, reusing the same visual language as `ClientDrawer` but without pager/PIC/delete/ringkasan since the client doesn't exist yet):
+
+const FIELD_CLASS = 'w-full rounded-md border-gray-300 bg-amber-50/60 text-sm placeholder:text-gray-400 focus:border-gray-900 focus:bg-white focus:ring-0'
+
+function NewClientDrawer({
+  entityTypeOptions,
+  headOfficeOptions,
+  industryOptions,
+  clientSourceOptions,
+  onClose,
+}: {
+  entityTypeOptions: string[]
+  headOfficeOptions: string[]
+  industryOptions: string[]
+  clientSourceOptions: string[]
+  onClose: () => void
+}) {
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  function handleCreate(formData: FormData) {
+    startTransition(async () => {
+      await createClientInline(formData)
+      router.refresh()
+      onClose()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full flex-col bg-white shadow-xl sm:w-[40%] sm:min-w-[420px]">
+        <div className="shrink-0 bg-gray-900 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">CLIENT BARU</span>
+            <button onClick={onClose} className="rounded-md px-2 py-1 text-lg leading-none text-gray-300 hover:bg-white/10">
+              &times;
+            </button>
+          </div>
+          <h2 className="mt-3 text-lg font-bold">Add New Client</h2>
+          <p className="text-xs text-gray-400">Client ID otomatis di-generate setelah disimpan. Field yang belum diisi bisa dilengkapi belakangan lewat tombol &quot;Lengkapi&quot;.</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <form action={handleCreate} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Brand Name *</label>
+                <input name="brand_name" required placeholder="Wajib diisi" className={FIELD_CLASS} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+                <input name="entity_name" placeholder="Belum diisi" className={FIELD_CLASS} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+                <select name="head_office" defaultValue="" className={FIELD_CLASS}>
+                  <option value="">Belum dipilih</option>
+                  {headOfficeOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+                <select name="industry" defaultValue="" className={FIELD_CLASS}>
+                  <option value="">Belum dipilih</option>
+                  {industryOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+                <select name="entity_type" defaultValue="" className={FIELD_CLASS}>
+                  <option value="">Belum dipilih</option>
+                  {entityTypeOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Client Source</label>
+                <select name="client_source" defaultValue="" className={FIELD_CLASS}>
+                  <option value="">Belum dipilih</option>
+                  {clientSourceOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+              <input name="website" placeholder="https://" className={FIELD_CLASS} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+              <textarea name="other_notes" rows={3} placeholder="Belum ada catatan -- tulis di sini kalau ada" className={FIELD_CLASS} />
+            </div>
+            <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              PIC bisa ditambahkan setelah Client ini disimpan -- buka lagi dari tabel Client Monitoring.
+            </p>
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <button type="button" onClick={onClose} className="rounded-md border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPending && <Spinner />} Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+8) Now apply the same "distinguishable field" treatment to the EXISTING edit form inside `ClientDrawer` (for editing an already-created client). Find this block inside `ClientDrawer`:
+              <form action={handleSave} className="space-y-3">
+                <input type="hidden" name="id" value={client.id} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Brand Name</label>
+                    <input name="brand_name" defaultValue={client.brand_name} className="w-full rounded-md border-gray-300 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+                    <input name="entity_name" defaultValue={client.entity_name} className="w-full rounded-md border-gray-300 text-sm" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+                    <select name="head_office" defaultValue={client.head_office || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {headOfficeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+                    <select name="industry" defaultValue={client.industry || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {industryOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+                    <select name="entity_type" defaultValue={client.entity_type || ''} className="w-full rounded-md border-gray-300 text-sm">
+                      <option value="">- Pilih -</option>
+                      {entityTypeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Client Source {client.is_from_lead && '(terkunci, dari Lead)'}</label>
+                    <select
+                      name="client_source"
+                      defaultValue={client.client_source || ''}
+                      disabled={client.is_from_lead}
+                      className="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100"
+                    >
+                      <option value="">- Pilih -</option>
+                      {clientSourceOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+                  <input name="website" defaultValue={client.website || ''} className="w-full rounded-md border-gray-300 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+                  <textarea name="other_notes" defaultValue={client.other_notes || ''} rows={2} className="w-full rounded-md border-gray-300 text-sm" />
+                </div>
+
+Replace that WHOLE block with (each field now gets a highlighted background + placeholder when it's still empty, using a small `fieldClass` helper that checks the current value -- filled fields look normal, empty ones stay visually flagged the same way the drawer header's completeness pills already do):
+              <form action={handleSave} className="space-y-3">
+                <input type="hidden" name="id" value={client.id} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Brand Name</label>
+                    <input
+                      name="brand_name"
+                      defaultValue={client.brand_name}
+                      placeholder="Wajib diisi"
+                      className={fieldClass(!!client.brand_name)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Name</label>
+                    <input
+                      name="entity_name"
+                      defaultValue={client.entity_name}
+                      placeholder="Belum diisi"
+                      className={fieldClass(!!client.entity_name)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Head Office</label>
+                    <select name="head_office" defaultValue={client.head_office || ''} className={fieldClass(!!client.head_office)}>
+                      <option value="">Belum dipilih</option>
+                      {headOfficeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Industry</label>
+                    <select name="industry" defaultValue={client.industry || ''} className={fieldClass(!!client.industry)}>
+                      <option value="">Belum dipilih</option>
+                      {industryOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Entity Type</label>
+                    <select name="entity_type" defaultValue={client.entity_type || ''} className={fieldClass(!!client.entity_type)}>
+                      <option value="">Belum dipilih</option>
+                      {entityTypeOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Client Source {client.is_from_lead && '(terkunci, dari Lead)'}</label>
+                    <select
+                      name="client_source"
+                      defaultValue={client.client_source || ''}
+                      disabled={client.is_from_lead}
+                      className={`${fieldClass(!!client.client_source)} disabled:bg-gray-100`}
+                    >
+                      <option value="">Belum dipilih</option>
+                      {clientSourceOptions.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Website</label>
+                  <input name="website" defaultValue={client.website || ''} placeholder="https://" className={fieldClass(!!client.website)} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Other Notes</label>
+                  <textarea
+                    name="other_notes"
+                    defaultValue={client.other_notes || ''}
+                    rows={2}
+                    placeholder="Belum ada catatan -- tulis di sini kalau ada"
+                    className={fieldClass(!!client.other_notes)}
+                  />
+                </div>
+
+9) Finally, ADD this small helper function near the top of the file, right after the `pct` function (used by the edit form above -- highlights an empty field with an amber tint, a normal field with a plain background):
+function fieldClass(filled: boolean): string {
+  return `w-full rounded-md border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-900 focus:ring-0 ${filled ? 'bg-white' : 'bg-amber-50/60'}`
+}
+
+After all files are updated, commit and push: git add . && git commit -m "Fix filter bar position (below stat cards in both Lead Capturing and Client Monitoring), add inline drawer-based client creation, highlight empty fields" && git push
