@@ -1,0 +1,807 @@
+Fourth polish pass on Lead Capturing: instant multi-select status filtering via the stat cards (no page navigation delay, and more than one status can be active at once), pagination with a page-size ("entries") selector, and a reusable loading-state component (spinner + auto-disable) that prevents double-clicks -- applied fully throughout the Lead Capturing module here, and ready to reuse elsewhere afterward.
+
+Root cause of the "jeda" (delay): the stat cards were plain `<Link href="/leads?status=...">` elements, so every click triggered a full server round-trip (Next.js re-running the page on the server) just to change which rows show below. Status filtering is switched to pure client-side state instead -- the leads for the current search/date range are already sitting in the browser, so toggling a status card just re-filters an in-memory array, which is instant, and multiple cards can now be toggled on at once (OR logic: shows leads matching ANY selected status). The text/date search bar stays server-side as before since it needs a real database query.
+
+File: src/components/submit-button.tsx (NEW FILE)
+'use client'
+
+import { useFormStatus } from 'react-dom'
+
+export function Spinner({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+    </svg>
+  )
+}
+
+// Drop-in replacement for a plain `<button type="submit">` inside any
+// `<form action={someServerAction}>` -- automatically shows a spinner and
+// disables itself while that specific form is submitting, using React's
+// useFormStatus (must be rendered as a CHILD of the <form>, not the same
+// component that renders the <form> itself).
+export function SubmitButton({
+  children,
+  pendingText = 'Memproses...',
+  className = '',
+}: {
+  children: React.ReactNode
+  pendingText?: string
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className={`inline-flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+    >
+      {pending && <Spinner />}
+      {pending ? pendingText : children}
+    </button>
+  )
+}
+
+File: src/app/leads/page.tsx -- REPLACE THE WHOLE FILE with:
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getLeadStats } from '@/lib/lead-stats'
+import { getDuplicateMap } from '@/lib/lead-duplicates'
+import { LeadsBoard } from './leads-table'
+
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; from?: string; to?: string }>
+}) {
+  const sp = await searchParams
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const stats = await getLeadStats(admin)
+  const duplicateMap = await getDuplicateMap(admin)
+
+  let query = admin.from('lead').select('*').order('submitted_at', { ascending: false })
+  if (sp.from) query = query.gte('submitted_at', sp.from)
+  if (sp.to) query = query.lte('submitted_at', `${sp.to}T23:59:59`)
+  if (sp.q) {
+    const q = `%${sp.q}%`
+    query = query.or(`entity_name.ilike.${q},pic_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`)
+  }
+  const { data: leads } = await query
+
+  const leadsWithDuplicates = (leads ?? []).map((l) => ({ ...l, duplicates: duplicateMap.get(l.id) || [] }))
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role} breadcrumb={{ section: 'Sales Module', page: 'Lead Capturing' }}>
+      <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/leads" method="get">
+        <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Cari</label>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Cari entitas, PIC, email, telepon..." className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+          <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+          <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+          Terapkan
+        </button>
+        <a href="/leads" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset Filter
+        </a>
+      </form>
+
+      <LeadsBoard leads={leadsWithDuplicates} stats={stats} canWrite={canWrite} />
+    </AppShell>
+  )
+}
+
+(Note: the Status dropdown that used to be in this search form is gone -- status filtering now lives entirely in the clickable stat cards inside LeadsBoard, and supports multi-select which a single dropdown couldn't.)
+
+File: src/app/leads/leads-table.tsx -- REPLACE THE WHOLE FILE with:
+'use client'
+
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { updateLeadStatus, moveToClient, bulkUpdateLeadStatus } from './actions'
+import { Spinner } from '@/components/submit-button'
+import type { DuplicateRef } from '@/lib/lead-duplicates'
+import type { LeadStats } from '@/lib/lead-stats'
+
+type Lead = {
+  id: string
+  inbound_id: string
+  status: string
+  submitted_at: string
+  entity_name: string
+  entity_type: string | null
+  entity_type_other: string | null
+  pic_name: string | null
+  email: string | null
+  phone: string | null
+  detail_interest: string | null
+  priority_notes: string | null
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  other_notes: string | null
+  last_updated: string
+  duplicates: DuplicateRef[]
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  'New Leads': 'bg-blue-100 text-blue-700',
+  Contacted: 'bg-amber-100 text-amber-700',
+  Moved: 'bg-green-100 text-green-700',
+  Other: 'bg-gray-100 text-gray-700',
+  Spam: 'bg-red-100 text-red-700',
+}
+
+const STATUS_OPTIONS = ['New Leads', 'Contacted', 'Other', 'Spam']
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
+function daysAgo(dateStr: string): number {
+  return Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)))
+}
+
+function initials(name: string | null): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+}
+
+function formatPhone(phone: string): string {
+  return phone.replace(/^\+/, '')
+}
+
+function pct(n: number, total: number): number {
+  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
+}
+
+function CopyIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!navigator.clipboard) return
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => {})
+  }
+  return (
+    <button onClick={handleCopy} title={copied ? 'Tersalin!' : 'Copy'} className="inline-flex shrink-0 items-center text-gray-400 hover:text-gray-700">
+      <CopyIcon />
+    </button>
+  )
+}
+
+function DuplicateBadge({ count }: { count: number }) {
+  return (
+    <span
+      title={`${count} potensi duplikat (email/telepon sama)`}
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700"
+    >
+      <CopyIcon />
+      {count}
+    </span>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  sublabel,
+  tone,
+  onClick,
+  active,
+}: {
+  label: string
+  value: number | string
+  sublabel?: string
+  tone: 'blue' | 'amber' | 'green' | 'gray' | 'red'
+  onClick?: () => void
+  active?: boolean
+}) {
+  const toneClass: Record<string, string> = {
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+    green: 'text-green-700',
+    gray: 'text-gray-700',
+    red: 'text-red-700',
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={`h-full rounded-lg border bg-white p-2 text-left shadow-sm ${onClick ? 'cursor-pointer hover:border-gray-300 hover:shadow' : 'cursor-default'} ${active ? 'ring-2 ring-gray-900' : ''}`}
+    >
+      <p className={`text-xs font-semibold uppercase tracking-wide ${toneClass[tone]}`}>{label}</p>
+      <p className="text-lg font-bold text-gray-900">{value}</p>
+      {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
+    </button>
+  )
+}
+
+export function LeadsBoard({ leads, stats, canWrite }: { leads: Lead[]; stats: LeadStats; canWrite: boolean }) {
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  function toggleStatusFilter(status: string) {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return next
+    })
+  }
+
+  const visibleLeads = useMemo(
+    () => (selectedStatuses.size === 0 ? leads : leads.filter((l) => selectedStatuses.has(l.status))),
+    [leads, selectedStatuses]
+  )
+
+  // Reset to page 1 whenever the filtered set changes so the user never
+  // lands on a page that no longer has any rows.
+  useEffect(() => {
+    setPage(1)
+  }, [selectedStatuses, leads])
+
+  const totalPages = Math.max(1, Math.ceil(visibleLeads.length / pageSize))
+  const clampedPage = Math.min(page, totalPages)
+  const startIdx = (clampedPage - 1) * pageSize
+  const pagedLeads = visibleLeads.slice(startIdx, startIdx + pageSize)
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllOnPage() {
+    setSelected((prev) => {
+      const pageIds = pagedLeads.map((l) => l.id)
+      const allSelected = pageIds.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) pageIds.forEach((id) => next.delete(id))
+      else pageIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  function runBulk(status: string) {
+    startTransition(async () => {
+      await bulkUpdateLeadStatus(Array.from(selected), status)
+      setSelected(new Set())
+      router.refresh()
+    })
+  }
+
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-4 gap-3">
+        <div className="col-span-3 grid grid-cols-3 grid-rows-2 gap-3">
+          <StatCard
+            label="New Leads"
+            value={stats.newLeads}
+            sublabel={`${pct(stats.newLeads, stats.totalAll)}% dari Total Leads`}
+            tone="blue"
+            onClick={() => toggleStatusFilter('New Leads')}
+            active={selectedStatuses.has('New Leads')}
+          />
+          <StatCard
+            label="Contacted"
+            value={stats.contacted}
+            sublabel={`${pct(stats.contacted, stats.totalAll)}% dari Total Leads`}
+            tone="amber"
+            onClick={() => toggleStatusFilter('Contacted')}
+            active={selectedStatuses.has('Contacted')}
+          />
+          <StatCard
+            label="Moved"
+            value={stats.moved}
+            sublabel={`${pct(stats.moved, stats.totalAll)}% dari Total Leads`}
+            tone="green"
+            onClick={() => toggleStatusFilter('Moved')}
+            active={selectedStatuses.has('Moved')}
+          />
+          <StatCard
+            label="Other"
+            value={stats.other}
+            sublabel={`${pct(stats.other, stats.totalAll)}% dari Total Leads`}
+            tone="gray"
+            onClick={() => toggleStatusFilter('Other')}
+            active={selectedStatuses.has('Other')}
+          />
+          <StatCard
+            label="Spam"
+            value={stats.spam}
+            sublabel={`${pct(stats.spam, stats.totalAll)}% dari total termasuk spam`}
+            tone="red"
+            onClick={() => toggleStatusFilter('Spam')}
+            active={selectedStatuses.has('Spam')}
+          />
+          <StatCard label="Total Leads" value={stats.totalExcludingSpam} sublabel="tanpa Spam" tone="gray" />
+        </div>
+
+        <div className="flex h-full flex-col justify-between rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Inbound Health</p>
+            <p className="text-xs text-blue-500">Moved / Total Leads</p>
+            <p className="mt-1 text-2xl font-bold text-blue-900">{stats.inboundHealthPct}%</p>
+          </div>
+          <div className="space-y-1.5 border-t border-blue-200 pt-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-blue-600">Didiamkan &gt;7 hari</span>
+              <span className="font-semibold text-blue-900">{stats.stalledOver7Days}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-blue-600">Porsi spam</span>
+              <span className="font-semibold text-blue-900">{stats.spamPortionPct}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-red-500">Potensi duplikat</span>
+              <span className="font-semibold text-red-600">{stats.duplicatePotentialCount}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {selectedStatuses.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span>Filter aktif:</span>
+          {Array.from(selectedStatuses).map((s) => (
+            <span key={s} className={`rounded-full px-2 py-0.5 font-medium ${STATUS_STYLES[s] ?? 'bg-gray-100 text-gray-700'}`}>
+              {s}
+            </span>
+          ))}
+          <button onClick={() => setSelectedStatuses(new Set())} className="text-blue-600 hover:underline">
+            Hapus semua filter
+          </button>
+        </div>
+      )}
+
+      {canWrite && selected.size > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-lg bg-gray-900 px-4 py-2 text-sm text-white">
+          <span>{selected.size} lead dipilih</span>
+          <div className="flex gap-2">
+            <button disabled={isPending} onClick={() => runBulk('Contacted')} className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50">
+              {isPending && <Spinner />} Tandai Contacted
+            </button>
+            <button disabled={isPending} onClick={() => runBulk('Other')} className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50">
+              {isPending && <Spinner />} Tandai Other
+            </button>
+            <button disabled={isPending} onClick={() => runBulk('Spam')} className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50">
+              {isPending && <Spinner />} Tandai Spam
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-100">
+            <tr>
+              <th className="w-10 px-4 py-2">
+                {canWrite && (
+                  <input
+                    type="checkbox"
+                    checked={pagedLeads.length > 0 && pagedLeads.every((l) => selected.has(l.id))}
+                    onChange={toggleAllOnPage}
+                  />
+                )}
+              </th>
+              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2">Masuk</th>
+              <th className="px-4 py-2">Entity Name</th>
+              <th className="px-4 py-2">Kontak</th>
+              <th className="px-4 py-2">Prioritas</th>
+              <th className="px-4 py-2">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {pagedLeads.map((lead, localIndex) => {
+              const globalIndex = startIdx + localIndex
+              return (
+                <tr
+                  key={lead.id}
+                  className={`cursor-pointer hover:bg-blue-50 ${localIndex % 2 === 1 ? 'bg-slate-50' : 'bg-white'}`}
+                  onClick={() => setActiveIndex(globalIndex)}
+                >
+                  <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                    {canWrite && <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleOne(lead.id)} />}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[lead.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {lead.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-gray-600">
+                    {new Date(lead.submitted_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    <div className="text-xs text-gray-400">{daysAgo(lead.submitted_at)} hari</div>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-900">{lead.entity_name}</span>
+                      {lead.duplicates.length > 0 && <DuplicateBadge count={lead.duplicates.length} />}
+                    </div>
+                    <div className="text-xs text-gray-500">{lead.pic_name || '-'}</div>
+                  </td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {lead.phone && (
+                      <div className="flex items-center gap-1">
+                        <span>{formatPhone(lead.phone)}</span>
+                        <CopyButton text={formatPhone(lead.phone)} />
+                      </div>
+                    )}
+                    {lead.email && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <span>{lead.email}</span>
+                        <CopyButton text={lead.email} />
+                      </div>
+                    )}
+                    {!lead.phone && !lead.email && '-'}
+                  </td>
+                  <td className="max-w-[200px] truncate px-4 py-2 text-gray-600">{lead.priority_notes || lead.detail_interest || '-'}</td>
+                  <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setActiveIndex(globalIndex)} className="rounded-full border px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">
+                      &rsaquo;
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+            {pagedLeads.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  Tidak ada Lead yang cocok dengan filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-white px-4 py-2 text-xs text-gray-500">
+          <div className="flex items-center gap-2">
+            <span>
+              Menampilkan {visibleLeads.length === 0 ? 0 : startIdx + 1}-{Math.min(startIdx + pageSize, visibleLeads.length)} dari {visibleLeads.length} data
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="rounded-md border-gray-300 py-1 text-xs"
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} / halaman
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={clampedPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-md border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Sebelumnya
+            </button>
+            <span>
+              Halaman {clampedPage} / {totalPages}
+            </span>
+            <button
+              disabled={clampedPage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-md border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {activeIndex !== null && visibleLeads[activeIndex] && (
+        <LeadDrawer
+          lead={visibleLeads[activeIndex]}
+          index={activeIndex}
+          total={visibleLeads.length}
+          canWrite={canWrite}
+          onClose={() => setActiveIndex(null)}
+          onNavigate={(i) => setActiveIndex(i)}
+        />
+      )}
+    </div>
+  )
+}
+
+function LeadDrawer({
+  lead,
+  index,
+  total,
+  canWrite,
+  onClose,
+  onNavigate,
+}: {
+  lead: Lead
+  index: number
+  total: number
+  canWrite: boolean
+  onClose: () => void
+  onNavigate: (i: number) => void
+}) {
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft' && index > 0) onNavigate(index - 1)
+      else if (e.key === 'ArrowRight' && index < total - 1) onNavigate(index + 1)
+      else if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [index, total, onNavigate, onClose])
+
+  function handleStatusChange(formData: FormData) {
+    startTransition(async () => {
+      await updateLeadStatus(formData)
+      router.refresh()
+    })
+  }
+
+  function handleMoveToClient(formData: FormData) {
+    startTransition(async () => {
+      await moveToClient(formData)
+      router.refresh()
+      onClose()
+    })
+  }
+
+  const trafficTags = [
+    lead.utm_source && { label: 'source', value: lead.utm_source },
+    lead.utm_medium && { label: 'medium', value: lead.utm_medium },
+    lead.utm_campaign && { label: 'campaign', value: lead.utm_campaign },
+  ].filter(Boolean) as { label: string; value: string }[]
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full flex-col bg-white shadow-xl sm:w-[40%] sm:min-w-[420px]">
+        <div className="shrink-0 bg-gray-900 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[lead.status] ?? 'bg-white/10 text-white'}`}>{lead.status}</span>
+              <span className="font-mono text-xs text-gray-400">{lead.inbound_id}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={index <= 0}
+                onClick={() => onNavigate(index - 1)}
+                className="rounded-md px-2 py-1 text-gray-300 hover:bg-white/10 disabled:opacity-30"
+              >
+                &lsaquo;
+              </button>
+              <span className="text-xs text-gray-400">
+                {index + 1}/{total}
+              </span>
+              <button
+                disabled={index >= total - 1}
+                onClick={() => onNavigate(index + 1)}
+                className="rounded-md px-2 py-1 text-gray-300 hover:bg-white/10 disabled:opacity-30"
+              >
+                &rsaquo;
+              </button>
+              <button onClick={onClose} className="ml-1 rounded-md px-2 py-1 text-lg leading-none text-gray-300 hover:bg-white/10">
+                &times;
+              </button>
+            </div>
+          </div>
+
+          <h2 className="mt-3 text-lg font-bold">{lead.entity_name}</h2>
+          <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-gray-200">
+            {lead.entity_type === 'Other' ? lead.entity_type_other || 'Other' : lead.entity_type || '-'}
+          </span>
+
+          {canWrite && lead.status !== 'Moved' && (
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <form action={handleStatusChange} className="flex items-center gap-2">
+                <input type="hidden" name="id" value={lead.id} />
+                <select
+                  name="status"
+                  defaultValue={lead.status}
+                  className="rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-white"
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isPending && <Spinner />} Update
+                </button>
+              </form>
+              <form action={handleMoveToClient}>
+                <input type="hidden" name="lead_id" value={lead.id} />
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isPending && <Spinner />} &raquo; Move to Client
+                </button>
+              </form>
+            </div>
+          )}
+          {lead.status === 'Moved' && <p className="mt-4 text-xs italic text-gray-400">Terkunci (sudah jadi Client).</p>}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">
+              {initials(lead.pic_name)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-gray-900">{lead.pic_name || '-'}</p>
+              {lead.phone && (
+                <div className="flex items-center gap-1">
+                  <a href={`tel:${lead.phone}`} className="truncate text-xs text-blue-600 hover:underline">
+                    {formatPhone(lead.phone)}
+                  </a>
+                  <CopyButton text={formatPhone(lead.phone)} />
+                </div>
+              )}
+              {lead.email && (
+                <div className="flex items-center gap-1">
+                  <a href={`mailto:${lead.email}`} className="truncate text-xs text-blue-600 hover:underline">
+                    {lead.email}
+                  </a>
+                  <CopyButton text={lead.email} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {lead.duplicates.length > 0 && (
+            <div className="mb-4">
+              <DuplicateSection duplicates={lead.duplicates} onDone={() => router.refresh()} />
+            </div>
+          )}
+
+          <div className="border-t pt-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Interest</p>
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-gray-500">Kebutuhan</p>
+              <p className="mt-0.5 text-sm text-gray-800">{lead.detail_interest || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500">Prioritas</p>
+              <p className="mt-0.5 text-sm text-gray-800">{lead.priority_notes || '-'}</p>
+            </div>
+          </div>
+
+          {trafficTags.length > 0 && (
+            <div className="mt-4 border-t pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Sumber Trafik</p>
+              <div className="flex flex-wrap gap-2">
+                {trafficTags.map((t) => (
+                  <span key={t.label} className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600">
+                    {t.label} <span className="font-semibold text-gray-800">{t.value}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 border-t pt-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Other Notes</p>
+            <p className="text-sm text-gray-600">{lead.other_notes || 'Belum ada catatan.'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DuplicateSection({ duplicates, onDone }: { duplicates: DuplicateRef[]; onDone: () => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(duplicates.map((d) => d.id)))
+  const [bulkStatus, setBulkStatus] = useState('Spam')
+  const [isPending, startTransition] = useTransition()
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function applyBulk() {
+    startTransition(async () => {
+      await bulkUpdateLeadStatus(Array.from(selected), bulkStatus)
+      onDone()
+    })
+  }
+
+  return (
+    <details className="rounded-md border border-orange-200 bg-orange-50" open>
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700">
+        Potensi Duplikat ({duplicates.length})
+      </summary>
+      <div className="space-y-2 border-t border-orange-200 px-3 py-2">
+        {duplicates.map((d) => (
+          <label key={d.id} className="flex items-center gap-2 text-xs text-gray-700">
+            <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
+            <span className="flex-1 truncate">
+              {d.entity_name} <span className="text-gray-400">({d.inbound_id})</span>
+            </span>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[d.status] ?? 'bg-gray-100 text-gray-700'}`}>{d.status}</span>
+            <span className="text-[10px] text-gray-400">via {d.matched_by === 'email' ? 'Email' : 'Phone'}</span>
+          </label>
+        ))}
+        <div className="flex items-center gap-2 pt-2">
+          <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="rounded-md border-gray-300 text-xs">
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyBulk}
+            disabled={isPending || selected.size === 0}
+            className="inline-flex items-center gap-1.5 rounded-md bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPending && <Spinner />} Update {selected.size} Data Terpilih
+          </button>
+        </div>
+      </div>
+    </details>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Lead Capturing polish round 4: instant multi-select status filter, pagination with page-size selector, reusable spinner/disable loading state" && git push
