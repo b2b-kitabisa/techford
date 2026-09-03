@@ -1,0 +1,230 @@
+Second polish pass on the Lead Capturing page in this Next.js + Supabase app: shorter stat cards (height only, keep width), a shorter search/filter bar, a wider drawer (40% of viewport width instead of a fixed max-width), zebra-striped table rows with a darker readable table header, the 5 status stat cards (New Leads/Contacted/Moved/Other/Spam) clickable as status filters, and left/right arrow-key navigation between leads while the drawer is open.
+
+File: src/app/leads/page.tsx -- REPLACE THE WHOLE FILE with:
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getLeadStats } from '@/lib/lead-stats'
+import { LeadsTable } from './leads-table'
+
+const STATUS_OPTIONS = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam']
+
+function pct(n: number, total: number): number {
+  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
+}
+
+function buildHref(status: string, currentStatus: string | undefined): string {
+  // Clicking an already-active card clears the filter instead of re-applying it.
+  return currentStatus === status ? '/leads' : `/leads?status=${encodeURIComponent(status)}`
+}
+
+function StatCard({
+  label,
+  value,
+  sublabel,
+  tone,
+  href,
+  active,
+}: {
+  label: string
+  value: number | string
+  sublabel?: string
+  tone: 'blue' | 'amber' | 'green' | 'gray' | 'red'
+  href?: string
+  active?: boolean
+}) {
+  const toneClass: Record<string, string> = {
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+    green: 'text-green-700',
+    gray: 'text-gray-700',
+    red: 'text-red-700',
+  }
+  const card = (
+    <div className={`rounded-lg border bg-white p-2 shadow-sm ${href ? 'cursor-pointer hover:border-gray-300 hover:shadow' : ''} ${active ? 'ring-2 ring-gray-900' : ''}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${toneClass[tone]}`}>{label}</p>
+      <p className="text-lg font-bold text-gray-900">{value}</p>
+      {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
+    </div>
+  )
+  return href ? <Link href={href}>{card}</Link> : card
+}
+
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; from?: string; to?: string }>
+}) {
+  const sp = await searchParams
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const stats = await getLeadStats(admin)
+
+  let query = admin.from('lead').select('*').order('submitted_at', { ascending: false })
+  if (sp.status) query = query.eq('status', sp.status)
+  if (sp.from) query = query.gte('submitted_at', sp.from)
+  if (sp.to) query = query.lte('submitted_at', `${sp.to}T23:59:59`)
+  if (sp.q) {
+    const q = `%${sp.q}%`
+    query = query.or(`entity_name.ilike.${q},pic_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`)
+  }
+  const { data: leads } = await query
+
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role} breadcrumb={{ section: 'Sales Module', page: 'Lead Capturing' }}>
+      <div className="mb-4 grid grid-cols-4 grid-rows-2 gap-3">
+        <StatCard
+          label="New Leads"
+          value={stats.newLeads}
+          sublabel={`${pct(stats.newLeads, stats.totalAll)}% dari Total Leads`}
+          tone="blue"
+          href={buildHref('New Leads', sp.status)}
+          active={sp.status === 'New Leads'}
+        />
+        <StatCard
+          label="Contacted"
+          value={stats.contacted}
+          sublabel={`${pct(stats.contacted, stats.totalAll)}% dari Total Leads`}
+          tone="amber"
+          href={buildHref('Contacted', sp.status)}
+          active={sp.status === 'Contacted'}
+        />
+        <StatCard
+          label="Moved"
+          value={stats.moved}
+          sublabel={`${pct(stats.moved, stats.totalAll)}% dari Total Leads`}
+          tone="green"
+          href={buildHref('Moved', sp.status)}
+          active={sp.status === 'Moved'}
+        />
+
+        <div className="row-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Inbound Health</p>
+          <p className="text-xs text-blue-500">Moved / Total Leads</p>
+          <p className="mt-1 text-2xl font-bold text-blue-900">{stats.inboundHealthPct}%</p>
+          <div className="mt-3 space-y-1.5 border-t border-blue-200 pt-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-blue-600">Didiamkan &gt;7 hari</span>
+              <span className="font-semibold text-blue-900">{stats.stalledOver7Days}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-blue-600">Porsi spam</span>
+              <span className="font-semibold text-blue-900">{stats.spamPortionPct}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-red-500">Potensi duplikat</span>
+              <span className="font-semibold text-red-600">{stats.duplicatePotentialCount}</span>
+            </div>
+          </div>
+        </div>
+
+        <StatCard
+          label="Other"
+          value={stats.other}
+          sublabel={`${pct(stats.other, stats.totalAll)}% dari Total Leads`}
+          tone="gray"
+          href={buildHref('Other', sp.status)}
+          active={sp.status === 'Other'}
+        />
+        <StatCard
+          label="Spam"
+          value={stats.spam}
+          sublabel={`${pct(stats.spam, stats.totalAll)}% dari total termasuk spam`}
+          tone="red"
+          href={buildHref('Spam', sp.status)}
+          active={sp.status === 'Spam'}
+        />
+        <StatCard label="Total Leads" value={stats.totalExcludingSpam} sublabel="tanpa Spam" tone="gray" />
+      </div>
+
+      <form className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border bg-white p-2 shadow-sm" action="/leads" method="get">
+        <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Cari</label>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Cari entitas, PIC, email, telepon..." className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Status</label>
+          <select name="status" defaultValue={sp.status || ''} className="rounded-md border-gray-300 py-1 text-sm">
+            <option value="">All Status</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+          <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+          <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 py-1 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800">
+          Terapkan
+        </button>
+        <a href="/leads" className="rounded-md border px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset Filter
+        </a>
+      </form>
+
+      <LeadsTable leads={leads ?? []} canWrite={canWrite} />
+    </AppShell>
+  )
+}
+
+File: src/app/leads/leads-table.tsx -- apply these targeted changes to the existing file:
+
+1) Find the table header row:
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+
+Replace with (darker background, readable light text):
+          <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-100">
+
+2) Find the table body:
+          <tbody className="divide-y">
+            {leads.map((lead, index) => (
+              <tr key={lead.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setActiveIndex(index)}>
+
+Replace with (zebra striping, hover still visible over both stripe colors):
+          <tbody className="divide-y">
+            {leads.map((lead, index) => (
+              <tr
+                key={lead.id}
+                className={`cursor-pointer hover:bg-blue-50 ${index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}`}
+                onClick={() => setActiveIndex(index)}
+              >
+
+3) Find the drawer's outer width class:
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-white shadow-xl">
+
+Replace with (40% of viewport on larger screens, full width on mobile so it stays usable there):
+      <div className="relative z-10 flex h-full w-full flex-col bg-white shadow-xl sm:w-[40%] sm:min-w-[420px]">
+
+4) Find the `LeadDrawer` function's body scroll-lock `useEffect` block:
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+Right after that `useEffect` block, ADD this second `useEffect` for keyboard navigation (left/right arrows move between leads, Escape closes):
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft' && index > 0) onNavigate(index - 1)
+      else if (e.key === 'ArrowRight' && index < total - 1) onNavigate(index + 1)
+      else if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [index, total, onNavigate, onClose])
+
+After all files are updated, commit and push: git add . && git commit -m "Lead Capturing polish round 2: shorter stat/filter cards, wider drawer, zebra table rows, clickable stat filters, keyboard drawer navigation" && git push
