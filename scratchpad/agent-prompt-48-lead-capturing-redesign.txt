@@ -1,0 +1,484 @@
+Redesign the Lead Capturing page in this Next.js + Supabase app to match a richer reference UI: a stat-cards summary row, an "Inbound Health" panel (with stale-lead and duplicate-detection signals), a search+filter bar (text search, status filter, date range), and a right-side drawer for viewing/acting on one Lead (replacing the old always-visible inline action forms per row). The table itself is simplified to 7 columns: checkbox, Status, Masuk (date), Entity Name (+ PIC as subtext), Kontak (phone + email), Prioritas, Action. Checkboxes enable a bulk-action bar (mark Contacted / Other / Spam for multiple leads at once).
+
+File: src/lib/lead-stats.ts (NEW FILE)
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export type LeadStats = {
+  newLeads: number
+  contacted: number
+  moved: number
+  other: number
+  spam: number
+  totalAll: number
+  totalExcludingSpam: number
+  inboundHealthPct: number
+  spamPortionPct: number
+  stalledOver7Days: number
+  duplicatePotentialCount: number
+}
+
+export async function getLeadStats(admin: ReturnType<typeof createAdminClient>): Promise<LeadStats> {
+  const { data: rows } = await admin.from('lead').select('id, status, email, phone, last_updated')
+  const all = rows ?? []
+
+  const newLeads = all.filter((l) => l.status === 'New Leads').length
+  const contacted = all.filter((l) => l.status === 'Contacted').length
+  const moved = all.filter((l) => l.status === 'Moved').length
+  const other = all.filter((l) => l.status === 'Other').length
+  const spam = all.filter((l) => l.status === 'Spam').length
+  const totalAll = all.length
+  const totalExcludingSpam = totalAll - spam
+
+  const inboundHealthPct = totalExcludingSpam > 0 ? Math.round((moved / totalExcludingSpam) * 1000) / 10 : 0
+  const spamPortionPct = totalAll > 0 ? Math.round((spam / totalAll) * 1000) / 10 : 0
+
+  const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const stalledOver7Days = all.filter(
+    (l) => (l.status === 'New Leads' || l.status === 'Contacted') && new Date(l.last_updated).getTime() < sevenDaysAgoMs
+  ).length
+
+  // Duplicate detection: any lead whose email OR phone (normalized) is shared
+  // with at least one other lead in the whole dataset.
+  const emailCounts = new Map<string, number>()
+  const phoneCounts = new Map<string, number>()
+  for (const l of all) {
+    if (l.email) {
+      const key = l.email.trim().toLowerCase()
+      emailCounts.set(key, (emailCounts.get(key) || 0) + 1)
+    }
+    if (l.phone) {
+      const key = l.phone.replace(/\D/g, '')
+      if (key) phoneCounts.set(key, (phoneCounts.get(key) || 0) + 1)
+    }
+  }
+  let duplicatePotentialCount = 0
+  for (const l of all) {
+    const emailDup = l.email ? (emailCounts.get(l.email.trim().toLowerCase()) || 0) > 1 : false
+    const phoneDup = l.phone ? (phoneCounts.get(l.phone.replace(/\D/g, '')) || 0) > 1 : false
+    if (emailDup || phoneDup) duplicatePotentialCount++
+  }
+
+  return { newLeads, contacted, moved, other, spam, totalAll, totalExcludingSpam, inboundHealthPct, spamPortionPct, stalledOver7Days, duplicatePotentialCount }
+}
+
+File: src/app/leads/actions.ts -- ADD this new function to the existing file (keep addLead, updateLeadStatus, moveToClient exactly as they are):
+
+export async function bulkUpdateLeadStatus(ids: string[], status: string) {
+  await requireWriteAccess()
+  const allowed = ['Contacted', 'Other', 'Spam']
+  if (!allowed.includes(status)) throw new Error('Status massal tidak valid.')
+  if (ids.length === 0) return
+
+  const admin = createAdminClient()
+  const { data: current } = await admin.from('lead').select('id, status').in('id', ids)
+  // Moved leads are locked -- silently skip them rather than failing the whole batch.
+  const updatableIds = (current ?? []).filter((l) => l.status !== 'Moved').map((l) => l.id)
+  if (updatableIds.length === 0) return
+
+  const { error } = await admin.from('lead').update({ status, last_updated: new Date().toISOString() }).in('id', updatableIds)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/leads')
+}
+
+Add `'use server'` note: this file already starts with `'use server'` at the top, so no change needed there -- just append the function above.
+
+File: src/app/leads/leads-table.tsx (NEW FILE)
+'use client'
+
+import { useState, useTransition } from 'react'
+import { updateLeadStatus, moveToClient, bulkUpdateLeadStatus } from './actions'
+
+type Lead = {
+  id: string
+  inbound_id: string
+  status: string
+  submitted_at: string
+  entity_name: string
+  entity_type: string | null
+  entity_type_other: string | null
+  pic_name: string | null
+  email: string | null
+  phone: string | null
+  detail_interest: string | null
+  priority_notes: string | null
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  last_updated: string
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  'New Leads': 'bg-blue-100 text-blue-700',
+  Contacted: 'bg-amber-100 text-amber-700',
+  Moved: 'bg-green-100 text-green-700',
+  Other: 'bg-gray-100 text-gray-700',
+  Spam: 'bg-red-100 text-red-700',
+}
+
+function daysAgo(dateStr: string): number {
+  return Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)))
+}
+
+export function LeadsTable({ leads, canWrite }: { leads: Lead[]; canWrite: boolean }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [activeLead, setActiveLead] = useState<Lead | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelected((prev) => (prev.size === leads.length ? new Set() : new Set(leads.map((l) => l.id))))
+  }
+
+  function runBulk(status: string) {
+    startTransition(async () => {
+      await bulkUpdateLeadStatus(Array.from(selected), status)
+      setSelected(new Set())
+    })
+  }
+
+  return (
+    <div>
+      {canWrite && selected.size > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-lg bg-gray-900 px-4 py-2 text-sm text-white">
+          <span>{selected.size} lead dipilih</span>
+          <div className="flex gap-2">
+            <button disabled={isPending} onClick={() => runBulk('Contacted')} className="rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:opacity-50">
+              Tandai Contacted
+            </button>
+            <button disabled={isPending} onClick={() => runBulk('Other')} className="rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:opacity-50">
+              Tandai Other
+            </button>
+            <button disabled={isPending} onClick={() => runBulk('Spam')} className="rounded-md bg-white/10 px-3 py-1 hover:bg-white/20 disabled:opacity-50">
+              Tandai Spam
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="w-10 px-4 py-3">
+                {canWrite && (
+                  <input type="checkbox" checked={leads.length > 0 && selected.size === leads.length} onChange={toggleAll} />
+                )}
+              </th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Masuk</th>
+              <th className="px-4 py-3">Entity Name</th>
+              <th className="px-4 py-3">Kontak</th>
+              <th className="px-4 py-3">Prioritas</th>
+              <th className="px-4 py-3">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {leads.map((lead) => (
+              <tr key={lead.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setActiveLead(lead)}>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  {canWrite && <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleOne(lead.id)} />}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[lead.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                    {lead.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                  {new Date(lead.submitted_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  <div className="text-xs text-gray-400">{daysAgo(lead.submitted_at)} hari</div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="font-medium text-gray-900">{lead.entity_name}</div>
+                  <div className="text-xs text-gray-500">{lead.pic_name || '-'}</div>
+                </td>
+                <td className="px-4 py-3 text-gray-600">
+                  <div>{lead.phone || '-'}</div>
+                  <div className="text-xs text-gray-400">{lead.email || '-'}</div>
+                </td>
+                <td className="max-w-[200px] truncate px-4 py-3 text-gray-600">{lead.priority_notes || lead.detail_interest || '-'}</td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setActiveLead(lead)} className="rounded-full border px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">
+                    &rsaquo;
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {leads.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  Tidak ada Lead yang cocok dengan filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {activeLead && <LeadDrawer lead={activeLead} canWrite={canWrite} onClose={() => setActiveLead(null)} />}
+    </div>
+  )
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</dt>
+      <dd className="mt-0.5 text-gray-800">{value}</dd>
+    </div>
+  )
+}
+
+function LeadDrawer({ lead, canWrite, onClose }: { lead: Lead; canWrite: boolean; onClose: () => void }) {
+  const [isPending, startTransition] = useTransition()
+  const statusOptions = ['New Leads', 'Contacted', 'Other', 'Spam']
+
+  function handleStatusChange(formData: FormData) {
+    startTransition(async () => {
+      await updateLeadStatus(formData)
+      onClose()
+    })
+  }
+
+  function handleMoveToClient(formData: FormData) {
+    startTransition(async () => {
+      await moveToClient(formData)
+      onClose()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative z-10 h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <p className="font-mono text-xs text-gray-400">{lead.inbound_id}</p>
+            <h2 className="text-lg font-bold text-gray-900">{lead.entity_name}</h2>
+          </div>
+          <button onClick={onClose} className="text-xl leading-none text-gray-400 hover:text-gray-700">
+            &times;
+          </button>
+        </div>
+
+        <span className={`mb-4 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[lead.status] ?? 'bg-gray-100 text-gray-700'}`}>
+          {lead.status}
+        </span>
+
+        <dl className="mb-6 space-y-3 text-sm">
+          <Row label="Entity Type" value={lead.entity_type === 'Other' ? lead.entity_type_other || 'Other' : lead.entity_type || '-'} />
+          <Row label="PIC" value={lead.pic_name || '-'} />
+          <Row label="Email" value={lead.email || '-'} />
+          <Row label="Phone" value={lead.phone || '-'} />
+          <Row label="Detail Interest" value={lead.detail_interest || '-'} />
+          <Row label="Priority Notes" value={lead.priority_notes || '-'} />
+          <Row label="UTM Source / Medium / Campaign" value={[lead.utm_source, lead.utm_medium, lead.utm_campaign].filter(Boolean).join(' / ') || '-'} />
+          <Row label="Masuk" value={new Date(lead.submitted_at).toLocaleString('id-ID')} />
+        </dl>
+
+        {canWrite && lead.status !== 'Moved' && (
+          <div className="space-y-3 border-t pt-4">
+            <form action={handleStatusChange} className="flex items-center gap-2">
+              <input type="hidden" name="id" value={lead.id} />
+              <select name="status" defaultValue={lead.status} className="flex-1 rounded-md border-gray-300 text-sm">
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" disabled={isPending} className="rounded-md bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+                Ubah
+              </button>
+            </form>
+            <form action={handleMoveToClient}>
+              <input type="hidden" name="lead_id" value={lead.id} />
+              <button type="submit" disabled={isPending} className="w-full rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                Move to Client
+              </button>
+            </form>
+          </div>
+        )}
+        {lead.status === 'Moved' && <p className="border-t pt-4 text-xs italic text-gray-400">Terkunci (sudah jadi Client).</p>}
+      </div>
+    </div>
+  )
+}
+
+File: src/app/leads/page.tsx -- REPLACE THE WHOLE FILE with:
+import { redirect } from 'next/navigation'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { AppShell } from '@/components/app-shell'
+import { getLeadStats } from '@/lib/lead-stats'
+import { addLead } from './actions'
+import { LeadsTable } from './leads-table'
+
+const STATUS_OPTIONS = ['New Leads', 'Contacted', 'Moved', 'Other', 'Spam']
+
+function pct(n: number, total: number): number {
+  return total > 0 ? Math.round((n / total) * 1000) / 10 : 0
+}
+
+function StatCard({ label, value, sublabel, tone }: { label: string; value: number | string; sublabel?: string; tone: 'blue' | 'amber' | 'green' | 'gray' | 'red' }) {
+  const toneClass: Record<string, string> = {
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+    green: 'text-green-700',
+    gray: 'text-gray-700',
+    red: 'text-red-700',
+  }
+  return (
+    <div className="rounded-lg border bg-white p-4 shadow-sm">
+      <p className={`text-xs font-semibold uppercase tracking-wide ${toneClass[tone]}`}>{label}</p>
+      <p className="mt-1 text-xl font-bold text-gray-900">{value}</p>
+      {sublabel && <p className="mt-0.5 text-xs text-gray-400">{sublabel}</p>}
+    </div>
+  )
+}
+
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; from?: string; to?: string }>
+}) {
+  const sp = await searchParams
+  const employee = await getCurrentEmployee()
+  if (!employee) redirect('/login')
+
+  const admin = createAdminClient()
+  const stats = await getLeadStats(admin)
+
+  let query = admin.from('lead').select('*').order('submitted_at', { ascending: false })
+  if (sp.status) query = query.eq('status', sp.status)
+  if (sp.from) query = query.gte('submitted_at', sp.from)
+  if (sp.to) query = query.lte('submitted_at', `${sp.to}T23:59:59`)
+  if (sp.q) {
+    const q = `%${sp.q}%`
+    query = query.or(`entity_name.ilike.${q},pic_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`)
+  }
+  const { data: leads } = await query
+
+  const canWrite = employee.role !== 'Operation'
+
+  return (
+    <AppShell employeeName={employee.name} employeeRole={employee.role}>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">Sales Module</p>
+      <h1 className="mb-6 text-2xl font-bold text-gray-900">Lead Capturing</h1>
+
+      <div className="mb-4 grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard label="New Leads" value={stats.newLeads} sublabel={`${pct(stats.newLeads, stats.totalAll)}% dari Total Leads`} tone="blue" />
+        <StatCard label="Contacted" value={stats.contacted} sublabel={`${pct(stats.contacted, stats.totalAll)}% dari Total Leads`} tone="amber" />
+        <StatCard label="Moved" value={stats.moved} sublabel={`${pct(stats.moved, stats.totalAll)}% dari Total Leads`} tone="green" />
+        <StatCard label="Other" value={stats.other} sublabel={`${pct(stats.other, stats.totalAll)}% dari Total Leads`} tone="gray" />
+        <StatCard label="Spam" value={stats.spam} sublabel={`${pct(stats.spam, stats.totalAll)}% dari total termasuk spam`} tone="red" />
+        <StatCard label="Total Leads" value={stats.totalExcludingSpam} sublabel="tanpa Spam" tone="gray" />
+      </div>
+
+      <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Inbound Health</p>
+            <p className="text-2xl font-bold text-blue-900">{stats.inboundHealthPct}%</p>
+            <p className="text-xs text-blue-700">Moved / Total Leads</p>
+          </div>
+          <div className="flex gap-8 text-sm">
+            <div>
+              <p className="text-xs text-blue-600">Didiamkan &gt;7 hari</p>
+              <p className="font-semibold text-blue-900">{stats.stalledOver7Days}</p>
+            </div>
+            <div>
+              <p className="text-xs text-blue-600">Porsi spam</p>
+              <p className="font-semibold text-blue-900">{stats.spamPortionPct}%</p>
+            </div>
+            <div>
+              <p className="text-xs text-red-500">Potensi duplikat</p>
+              <p className="font-semibold text-red-600">{stats.duplicatePotentialCount}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {canWrite && (
+        <details className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
+          <summary className="cursor-pointer text-sm font-medium text-gray-700">+ Tambah Lead Manual</summary>
+          <form action={addLead} className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Entity Name *</label>
+              <input name="entity_name" required className="rounded-md border-gray-300 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Entity Type</label>
+              <select name="entity_type" defaultValue="" className="rounded-md border-gray-300 text-sm">
+                <option value="">-</option>
+                <option value="Perusahaan">Perusahaan</option>
+                <option value="Institusi Sosial">Institusi Sosial</option>
+                <option value="Institusi Grants">Institusi Grants</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">PIC Name</label>
+              <input name="pic_name" className="rounded-md border-gray-300 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Email</label>
+              <input name="email" type="email" className="rounded-md border-gray-300 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Phone</label>
+              <input name="phone" className="rounded-md border-gray-300 text-sm" />
+            </div>
+            <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+              Tambah Lead
+            </button>
+          </form>
+        </details>
+      )}
+
+      <form className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4 shadow-sm" action="/leads" method="get">
+        <div className="flex min-w-[220px] flex-1 flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Cari</label>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Cari entitas, PIC, email, telepon..." className="rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Status</label>
+          <select name="status" defaultValue={sp.status || ''} className="rounded-md border-gray-300 text-sm">
+            <option value="">All Status</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Dari Tanggal</label>
+          <input type="date" name="from" defaultValue={sp.from || ''} className="rounded-md border-gray-300 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Sampai Tanggal</label>
+          <input type="date" name="to" defaultValue={sp.to || ''} className="rounded-md border-gray-300 text-sm" />
+        </div>
+        <button type="submit" className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+          Terapkan
+        </button>
+        <a href="/leads" className="rounded-md border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Reset Filter
+        </a>
+      </form>
+
+      <LeadsTable leads={leads ?? []} canWrite={canWrite} />
+    </AppShell>
+  )
+}
+
+After all files are created/updated, commit and push: git add . && git commit -m "Redesign Lead Capturing: stat cards, Inbound Health panel, search/filter, drawer detail, bulk actions" && git push
