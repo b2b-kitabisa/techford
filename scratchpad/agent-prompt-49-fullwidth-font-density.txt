@@ -1,0 +1,28 @@
+Fix two global layout issues affecting every page in this Next.js + Supabase app: (1) page content is capped at max-w-5xl and centered, wasting a lot of horizontal space on wide screens instead of using the full width, and (2) the default browser font-size makes the whole UI feel larger/less dense than intended. Both changes apply automatically to every existing page since they live in the shared layout files -- no per-page changes needed.
+
+File: src/app/globals.css -- find this block:
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+Right after it, ADD this rule (keep everything else in the file unchanged):
+/* Slightly denser base scale so the whole UI reads more compact at 100%
+   browser zoom, closer to the density of the reference design. This scales
+   every Tailwind rem-based size (text-sm, p-4, etc.) down proportionally
+   since they're all defined in rem, not px. */
+html {
+  font-size: 87.5%;
+}
+
+File: src/components/app-shell.tsx -- find this line:
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl px-8 py-8">{children}</div>
+      </main>
+
+Replace it with (removes the max-width cap so content fills the available width, keeps comfortable padding):
+      <main className="flex-1 overflow-y-auto">
+        <div className="w-full px-6 py-6 lg:px-10 lg:py-8">{children}</div>
+      </main>
+
+After both files are updated, commit and push: git add . && git commit -m "Make page content full-width and slightly denser (smaller base font-size) across the whole app" && git push
