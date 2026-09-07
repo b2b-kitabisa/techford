@@ -36,13 +36,54 @@ var COLUMN_KEYS = [
 var FALLBACK_ORDER = ['no','tanggal','nama','alamat','rt','cDiperiksa','cPositif',
   'cNegatif','kode','bgnNegatif','m3','larva','foto'];
 
+var MD_KOTA_DEFAULT = 'Bekasi';
+
+/**
+ * Legenda kode container pada formulir Bekasi.
+ *
+ * PENTING: penomoran ini BERBEDA ARTI dengan formulir Tangerang (di sana
+ * 1 = tampungan dispenser, 8 = ember/bak mandi). Karena itu Master Data
+ * menyimpan NAMA container hasil terjemahan, bukan cuma angkanya — supaya
+ * saat kedua wilayah digabung dalam satu dashboard, "kode 8" tidak salah
+ * dijumlahkan jadi satu jenis.
+ */
+var MD_CONTAINER_LABELS = {
+  1: 'Bak mandi',
+  2: 'Penampungan air bersih',
+  3: 'Tanaman/vas — dalam rumah',
+  4: 'Aquarium',
+  5: 'Perangkap semut',
+  6: 'Dispenser',
+  7: 'Pembuangan air kulkas & AC',
+  8: 'Lain-lain (dalam rumah)',
+  9: 'Ban bekas',
+  10: 'Kolam ikan',
+  11: 'Tanaman/pot — luar rumah',
+  12: 'Kaleng/gelas/botol bekas',
+  13: 'Ember/gayung',
+  14: 'Pagar',
+  15: 'Pelepah pohon',
+  16: 'Meteran air',
+  17: 'Talang air',
+  18: 'Lain-lain (luar rumah)'
+};
+
+/**
+ * Susunan kolom Master Data — WAJIB sama persis dengan master wilayah lain
+ * (lihat pjb-apps-script-tangerang/MasterData.gs) supaya kedua wilayah bisa
+ * dibaca satu dashboard. Kolom "Pengelolaan Sampah" dan "Kerja Bakti (K3)"
+ * TIDAK dikumpulkan di formulir Bekasi, jadi dibiarkan KOSONG — bukan 0 —
+ * agar "tidak dikumpulkan" tidak tertukar dengan "sudah dicek, hasilnya tidak".
+ */
 var MASTER_HEADERS = [
-  'RW', 'Kelurahan', 'Nama Kader', 'Bulan', 'Tahun',
+  'Kota/Kabupaten', 'Kelurahan', 'RW', 'Nama Kader', 'Bulan', 'Tahun',
   'No Urut (asal form)', 'Tanggal Pemantauan', 'Tanggal Mentah (asli)',
   'Nama Pemilik Rumah/Bangunan', 'Alamat (Jalan/Blok/No)', 'RT',
   'Jumlah Container Diperiksa', 'Jumlah Container Positif (+)', 'Jumlah Container Negatif (-)',
-  'Kode Jenis Container Positif Jentik', 'Bangunan Negatif (-) Jentik',
-  'Tindakan 3M (0/1)', 'Tindakan Larvasidasi (0/1)',
+  'Kode Jenis Container Positif Jentik', 'Jenis Container Positif (nama)',
+  'Bangunan Negatif (-) Jentik',
+  'Tindakan 3M/4M+ (0/1)', 'Tindakan Larvasidasi (0/1)',
+  'Pengelolaan Sampah (0/1)', 'Kerja Bakti (K3) (0/1)',
   'Status Foto', 'Link Foto',
   'Sheet Asal', 'Baris Sumber', 'Catatan Kualitas Data'
 ];
@@ -99,9 +140,17 @@ function verifyMasterData() {
   if (!master) { SpreadsheetApp.getUi().alert('Tab "' + MD_SHEET_NAME + '" belum ada. Jalankan Build dulu.'); return; }
 
   var mv = master.getDataRange().getValues();
+  // Kolom dicari lewat NAMA header, bukan posisi: susunan kolom Master Data
+  // pernah berubah (kolom Kota/Kabupaten ditambahkan di depan).
+  var iRw = mv.length ? mv[0].indexOf('RW') : -1;
+  if (iRw === -1) {
+    SpreadsheetApp.getUi().alert('Kolom "RW" tidak ditemukan di Master Data. Jalankan Build ulang.');
+    return;
+  }
+
   var countByRw = {};
   for (var r = 1; r < mv.length; r++) {
-    var rw = String(mv[r][0] || '').trim();
+    var rw = String(mv[r][iRw] || '').trim();
     if (rw) countByRw[rw] = (countByRw[rw] || 0) + 1;
   }
 
@@ -304,9 +353,10 @@ function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, tglA
   if (foto.status === 'Ada foto') issues.fotoAda++;
 
   return [
+    MD_KOTA_DEFAULT,
+    mdTitleCase_(meta.kelurahan),
     meta.rw,
-    meta.kelurahan,
-    meta.kader,
+    mdTitleCase_(meta.kader),
     meta.bulan,
     meta.tahun ? Number(meta.tahun) : '',
     no,
@@ -319,9 +369,12 @@ function buildRecord_(sheetName, gid, ssId, meta, no, row, cols, sourceRow, tglA
     numOrBlank_(row[cols.cPositif]),
     numOrBlank_(row[cols.cNegatif]),
     cellText_(row[cols.kode]),
+    mdContainerNames_(row[cols.kode]),
     numOrBlank_(row[cols.bgnNegatif]),
     numOrBlank_(row[cols.m3]),
     numOrBlank_(row[cols.larva]),
+    '',   // Pengelolaan Sampah — tidak ada di formulir Bekasi
+    '',   // Kerja Bakti (K3)   — tidak ada di formulir Bekasi
     foto.status,
     foto.link,
     sheetName,
@@ -438,6 +491,54 @@ function writeMasterSheet_(ss, records) {
 }
 
 // ---------------------------------------------------------------- helpers
+
+/**
+ * Terjemahkan isi kolom kode jadi nama container, mengikuti legenda formulir
+ * Bekasi. Isian kader beragam: "0" / kosong, "8", "2,7,13", "18(Galon)",
+ * "11,12,13,7,18(kandang burung)". Keterangan bebasnya ikut disimpan supaya
+ * isian "lain-lain" tidak hilang.
+ */
+function mdContainerNames_(raw) {
+  var s = cellText_(raw);
+  if (!s) return '';
+
+  var codes = (s.match(/\d+/g) || []).map(Number).filter(function (n) { return n >= 1 && n <= 99; });
+  var extra = s.replace(/[0-9]+/g, ' ')
+               .replace(/\(sebutkan\)/ig, ' ')
+               .replace(/[.,()\/\-]+/g, ' ')
+               .replace(/\s+/g, ' ')
+               .trim();
+
+  if (!codes.length) return extra ? extra : '';
+
+  var seen = {}, names = [];
+  codes.forEach(function (c) {
+    if (seen[c]) return;
+    seen[c] = true;
+    names.push(MD_CONTAINER_LABELS[c] || ('Kode ' + c));
+  });
+
+  var joined = names.join(', ');
+  // Keterangan bebas yang cuma mengulang nama labelnya (mis. kode 8 ditulis
+  // "8 ( ember)") tidak ditempel — kalau ditempel, "Ember/bak mandi (ember)"
+  // akan terhitung sebagai jenis yang berbeda dari "Ember/bak mandi".
+  if (extra && joined.toLowerCase().indexOf(extra.toLowerCase()) !== -1) extra = '';
+
+  return extra ? joined + ' (' + extra + ')' : joined;
+}
+
+/**
+ * Nama kader/kelurahan ditulis campur (mis. "SITI ROHANI") — disamakan supaya
+ * satu orang tidak terpecah dua kategori dan tampilannya seragam dengan data
+ * wilayah lain di dashboard gabungan.
+ */
+function mdTitleCase_(s) {
+  var t = String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
+  if (!t || t === 'Tidak Diketahui') return t;
+  return t.toLowerCase().replace(/(^|[\s'\-\/])([a-z])/g, function (all, sep, ch) {
+    return sep + ch.toUpperCase();
+  });
+}
 
 function mdNormalizeRw_(raw) {
   var m = String(raw || '').match(/(\d{1,2})/);

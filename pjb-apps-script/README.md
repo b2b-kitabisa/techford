@@ -12,6 +12,14 @@ Nama yang dulu bentrok (`onOpen`, `MASTER_SHEET_NAME`, `BULAN_ORDER`,
 
 Spreadsheet: `1BMrkteaPD-iSNLJ95872MJLJuimr4EjvZcjAd1OASuY`
 
+**Dashboard di sini membaca DUA wilayah sekaligus:** tab `Master Data`
+spreadsheet ini (Bekasi / Kaliabang Tengah) **dan** tab `Master Data`
+spreadsheet Tangerang (`1nJVy-m1L1Iw5DrtAIVDK_k3yWGg5SE8mtIpr86pqFmk`).
+Daftar sumbernya ada di `DD_EXTRA_SOURCES` pada baris awal `DashboardData.gs` —
+untuk menambah wilayah lain, cukup tambahkan satu baris di sana. Script
+pembangun Master Data Tangerang ada di folder `pjb-apps-script-tangerang/`
+dan dipasang di spreadsheet Tangerang, bukan di sini.
+
 ## Isi project — harus persis 4 file + manifest
 
 | Nama file di Apps Script | Jenis | Isinya |
@@ -70,6 +78,13 @@ Klik ikon **⚙ Project Settings** (gerigi, di panel kiri) → centang
 Kembali ke **Editor** (ikon `<>`), sekarang ada file `appsscript.json`.
 Klik, timpa isinya dengan isi `appsscript.json` di folder ini.
 
+> **Wajib untuk versi gabungan.** Manifest sekarang menyebut `oauthScopes`
+> secara eksplisit (`spreadsheets` + `script.container.ui`). Tanpa itu Apps
+> Script bisa hanya memberi izin "spreadsheet ini saja", dan pembacaan
+> spreadsheet Tangerang akan ditolak. Karena izinnya berubah, saat pertama kali
+> menjalankan menu setelah pembaruan ini Google akan **meminta izin lagi** —
+> itu normal, terima seperti biasa.
+
 ### Langkah 6 — Simpan
 
 Klik ikon **💾 Save** (atau Ctrl+S / Cmd+S). Pastikan tidak ada tanda error merah.
@@ -124,6 +139,19 @@ Untuk dashboard sebagai halaman web sendiri:
 
 > Setelah menjalankan Build ulang, klik **Bersihkan Cache Dashboard** supaya
 > dashboard membaca data terbaru (hasil baca sheet di-cache 15 menit).
+> Ini juga berlaku kalau yang di-build ulang adalah Master Data **Tangerang**.
+
+### 4. Kalau satu wilayah tidak terbaca
+
+Dashboard tidak pernah gagal total gara-gara satu sumber. Kalau spreadsheet
+wilayah lain tidak bisa dibuka atau tab `Master Data`-nya belum dibangun,
+dashboard tetap tampil dengan data yang ada dan memunculkan **spanduk merah
+"⚠ Data belum lengkap"** di bawah baris filter yang menyebut wilayah mana dan
+sebabnya. Penyebab yang lazim:
+
+- akun yang membuka dashboard belum punya akses baca ke spreadsheet wilayah itu;
+- tab `Master Data` di spreadsheet itu belum pernah dibangun;
+- izin script belum diperbarui — lihat catatan di Langkah 5.
 
 ---
 
@@ -140,14 +168,37 @@ Untuk dashboard sebagai halaman web sendiri:
 
 ---
 
-## Kolom Master Data (23)
+## Kolom Master Data (27)
 
-`RW · Kelurahan · Nama Kader · Bulan · Tahun · No Urut (asal form) · Tanggal
-Pemantauan · Tanggal Mentah (asli) · Nama Pemilik Rumah/Bangunan · Alamat
-(Jalan/Blok/No) · RT · Jumlah Container Diperiksa · Jumlah Container Positif (+) ·
-Jumlah Container Negatif (-) · Kode Jenis Container Positif Jentik · Bangunan
-Negatif (-) Jentik · Tindakan 3M (0/1) · Tindakan Larvasidasi (0/1) · Status Foto ·
-Link Foto · Sheet Asal · Baris Sumber · Catatan Kualitas Data`
+Susunannya **wajib sama** dengan master wilayah lain supaya bisa dibaca satu
+dashboard:
+
+`Kota/Kabupaten · Kelurahan · RW · Nama Kader · Bulan · Tahun · No Urut (asal
+form) · Tanggal Pemantauan · Tanggal Mentah (asli) · Nama Pemilik
+Rumah/Bangunan · Alamat (Jalan/Blok/No) · RT · Jumlah Container Diperiksa ·
+Jumlah Container Positif (+) · Jumlah Container Negatif (-) · Kode Jenis
+Container Positif Jentik · Jenis Container Positif (nama) · Bangunan Negatif (-)
+Jentik · Tindakan 3M/4M+ (0/1) · Tindakan Larvasidasi (0/1) · Pengelolaan Sampah
+(0/1) · Kerja Bakti (K3) (0/1) · Status Foto · Link Foto · Sheet Asal · Baris
+Sumber · Catatan Kualitas Data`
+
+Tiga hal yang berubah demi penggabungan wilayah:
+
+1. **`Kota/Kabupaten`** ditambahkan di depan (`Bekasi`), dan di dashboard nomor
+   RW selalu dipasangkan dengannya — RW 01 Bekasi dan RW 01 Tangerang adalah dua
+   RW berbeda dan tidak boleh dijumlahkan jadi satu.
+2. **`Jenis Container Positif (nama)`** — kode container **berbeda arti antar
+   wilayah** (`8` = "lain-lain dalam rumah" di Bekasi, tapi "ember/bak mandi" di
+   Tangerang). Dashboard menjumlahkan kolom nama ini, bukan angka kodenya.
+3. **`Pengelolaan Sampah` dan `Kerja Bakti (K3)`** hanya ada di formulir
+   Tangerang, jadi untuk baris Bekasi kolom ini **dibiarkan kosong** — bukan 0 —
+   supaya "tidak dikumpulkan" tidak terhitung sebagai "sudah dicek, hasilnya
+   tidak". Kartu *Sampah & K3* di dashboard hanya memakai baris yang formulirnya
+   memang menanyakan hal itu sebagai penyebut.
+
+Nama kader dan kelurahan disamakan kapitalisasinya (`SITI ROHANI` → `Siti
+Rohani`) supaya satu orang tidak terpecah jadi dua kategori dan tampilannya
+seragam dengan data wilayah lain.
 
 ## Masalah data yang ditangani otomatis
 

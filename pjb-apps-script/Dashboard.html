@@ -94,6 +94,11 @@ body {
 select.ctrl { padding-right: 3.5px; }
 .sep { width: 1px; height: 15.8px; background: var(--line); margin: 0 2px; }
 .count { margin-left: auto; font-size: 9.7px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.src-warn {
+  flex-basis: 100%; font-size: 8.8px; font-weight: 600; line-height: 1.35;
+  color: #8a2f2f; background: #fdf0f0; border: 1px solid #f4cfcf;
+  border-radius: 4.4px; padding: 3.5px 6.2px;
+}
 
 /* dropdown multi-pilih */
 .ms { position: relative; }
@@ -153,7 +158,7 @@ select.ctrl { padding-right: 3.5px; }
 /* ============================================================ cards */
 .band { display: grid; gap: 7px; min-height: 0; }
 .band.a { grid-template-columns: 1fr 1fr 1.3fr 1.25fr; }
-.band.b { grid-template-columns: 1fr .82fr .95fr 2.15fr; }
+.band.b { grid-template-columns: 1fr .8fr .82fr .9fr 1.85fr; }
 
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
@@ -237,6 +242,16 @@ select.ctrl { padding-right: 3.5px; }
 
 .legend { display: flex; gap: 8.8px; margin-bottom: 5.3px; font-size: 8.4px; font-weight: 600; color: var(--ink-2); }
 .legend i { width: 7.9px; height: 7.9px; border-radius: 2px; display: inline-block; margin-right: 3.5px; vertical-align: -0.9px; }
+
+/* indikator persentase (sampah & kerja bakti) */
+.rates { display: flex; flex-direction: column; gap: 11px; }
+.rate { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; gap: 2.6px 5.3px; }
+.rate .rt-nm { grid-column: 1; font-size: 9.2px; font-weight: 700; color: var(--ink); }
+.rate .rt-vl { grid-column: 2; grid-row: 1; font-size: 12.3px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); }
+.rate .rt-trk { grid-column: 1 / -1; grid-row: 2; height: 7px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+.rate .rt-fil { height: 100%; background: var(--accent); border-radius: 999px; }
+.rate .rt-ft { grid-column: 1 / -1; grid-row: 3; font-size: 8.4px; color: var(--muted); font-weight: 600; }
+.rt-note { margin-top: 8.8px; font-size: 8.4px; line-height: 1.4; color: var(--muted); font-weight: 600; }
 
 /* heatmap */
 .hm table { border-collapse: separate; border-spacing: 2px; }
@@ -360,6 +375,7 @@ table.dt td.ell { max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
     <input class="ctrl" type="date" id="dFrom" aria-label="Tanggal mulai">
     <input class="ctrl" type="date" id="dTo" aria-label="Tanggal akhir">
     <span class="sep"></span>
+    <span id="msWil"></span>
     <span id="msRw"></span>
     <span id="msRt"></span>
     <span id="msKader"></span>
@@ -376,6 +392,7 @@ table.dt td.ell { max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
     </select>
     <button class="mini" id="btnReset" type="button">Reset</button>
     <span class="count" id="cnt"></span>
+    <div class="src-warn" id="srcWarn" hidden></div>
   </div>
 
   <div class="kpis" id="kpis"></div>
@@ -440,13 +457,24 @@ table.dt td.ell { max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
 
     <section class="card">
       <header>
-        <h2>Kepatuhan tindakan</h2>
+        <h2>Tindakan</h2>
         <div class="hdr-actions">
           <button class="mini" type="button" data-tv="act">Tabel</button>
           <button class="mini fs-btn" type="button" data-fs="act" title="Perbesar" aria-label="Perbesar">⤢</button>
         </div>
       </header>
       <div class="body" id="act"></div>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>Sampah &amp; K3</h2>
+        <div class="hdr-actions">
+          <button class="mini" type="button" data-tv="behav">Tabel</button>
+          <button class="mini fs-btn" type="button" data-fs="behav" title="Perbesar" aria-label="Perbesar">⤢</button>
+        </div>
+      </header>
+      <div class="body" id="behav"></div>
     </section>
 
     <section class="card">
@@ -489,17 +517,21 @@ table.dt td.ell { max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
 // ============================================================ state data
 // Diisi dari getDashboardPayload() — lihat DashboardData.gs. Bentuk baris:
 // [rwIdx, kaderIdx, rtIdx, bulan(1-12), tahun, tanggalISO, cDiperiksa, cPositif,
-//  cNegatif, bangunanNegatif(1=bebas), tindakan3M, tindakanLarvasidasi,
-//  kodeKontainer(array), namaPemilik, alamat, tanggalMentahAsli, statusFoto,
-//  linkFoto, catatanKualitasData]
+//  cNegatif, bangunanNegatif(1=bebas), tindakan3M/4M+, tindakanLarvasidasi,
+//  jenisKontainer(array index nama), namaPemilik, alamat, tanggalMentahAsli,
+//  statusFoto, linkFoto, catatanKualitasData, wilayahIdx, sampah, k3]
+//
+// sampah & k3 bernilai 1 (ya), 0 (tidak), atau -1 (tidak dikumpulkan di
+// formulir wilayah itu) — -1 sengaja dibedakan dari 0 supaya "belum pernah
+// ditanyakan" tidak terhitung sebagai "sudah dicek, hasilnya tidak".
 var DATA = null;
-var RW = [], KADER = [], RT = [], CONT = {};
+var RW = [], KADER = [], RT = [], CONT = [], WIL = [];
 var ROWS = [];
 var CURRENT_ROWS = [];
 
 var I_RW=0, I_KD=1, I_RT=2, I_BLN=3, I_THN=4, I_DT=5, I_CD=6, I_CP=7, I_CN=8,
     I_NEG=9, I_3M=10, I_LV=11, I_CODE=12, I_NM=13, I_AL=14, I_DTASLI=15,
-    I_FOTOST=16, I_FOTOLK=17, I_CATATAN=18;
+    I_FOTOST=16, I_FOTOLK=17, I_CATATAN=18, I_WIL=19, I_SMP=20, I_K3=21;
 
 var BLN = ['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 var T_ABJ = 95, T_CI = 5;
@@ -509,6 +541,29 @@ var RED  = ['#fbd9d9','#f4b3b3','#ec8c8c','#e26565','#d03b3b','#ab2f2f','#862424
 // ============================================================ util
 function nf(n,d){ return Number(n||0).toLocaleString('id-ID',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
 function pc(n){ return nf(n,1)+'%'; }
+/** 1 = Ya, 0 = Tidak, -1 = kolomnya tidak ada di formulir wilayah itu. */
+function flagText_(v){ return v===1 ? 'Ya' : (v===0 ? 'Tidak' : '—'); }
+
+/**
+ * Label RW untuk kolom sempit (chart peringkat & heatmap). Nama RW di data
+ * sudah memuat wilayah ("Bekasi RW 08") supaya RW bernomor sama di dua wilayah
+ * tidak pernah tergabung jadi satu agregat. Tapi nama panjang itu tidak muat
+ * di kolom label: kalau cakupan filter cuma SATU wilayah, nama wilayahnya
+ * hanya pengulangan dan dibuang; kalau lebih dari satu, dipakai kode 3 huruf.
+ * Nama utuhnya tetap muncul di tooltip dan di semua tampilan tabel.
+ */
+var RW_MULTI = false;
+/** "Bekasi RW 04" -> "RW 04" — dipakai di tabel yang sudah punya kolom Wilayah
+ *  sendiri, supaya nama wilayahnya tidak tertulis dua kali dalam satu baris. */
+function rwPlain(nm){
+  var m = String(nm == null ? '' : nm).match(/RW\s*(\d+)\s*$/i);
+  return m ? 'RW ' + m[1] : String(nm == null ? '' : nm);
+}
+function rwShort(nm){
+  var m = String(nm == null ? '' : nm).match(/^(.*?)\s*RW\s*(\d+)$/i);
+  if (!m) return String(nm == null ? '' : nm);
+  return RW_MULTI ? (m[1].slice(0, 3).toUpperCase() + ' ' + m[2]) : m[2];
+}
 function E(t,c,x){ var n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=String(x); return n; }
 function S(t,a){ var n=document.createElementNS('http://www.w3.org/2000/svg',t); for(var k in a) if(a[k]!=null) n.setAttribute(k,a[k]); return n; }
 function clr(n){ while(n.firstChild) n.removeChild(n.firstChild); }
@@ -562,8 +617,9 @@ function onError(err){
 }
 function onData(payload){
   DATA = payload;
-  RW = payload.rwList; KADER = payload.kaderList; RT = payload.rtList; CONT = payload.containerLabels;
-  ROWS = payload.rows;
+  RW = payload.rwList || []; KADER = payload.kaderList || []; RT = payload.rtList || [];
+  CONT = payload.containerList || []; WIL = payload.wilayahList || [];
+  ROWS = payload.rows || [];
 
   document.getElementById('loadingScreen').hidden = true;
   document.getElementById('cockpit').hidden = false;
@@ -579,11 +635,13 @@ function stamp(){
   ROWS.forEach(function(r){ if (r[I_BLN]) months[r[I_THN]+'-'+r[I_BLN]] = 1; });
   var mk = Object.keys(months).sort();
   var span = mk.length ? (BLN[+mk[0].split('-')[1]] + '–' + BLN[+mk[mk.length-1].split('-')[1]] + ' ' + mk[mk.length-1].split('-')[0]) : '—';
-  document.getElementById('scopeLine').textContent = RW.length + ' RW · ' + span + ' · ' + nf(ROWS.length) + ' baris';
+  var wil = WIL.length > 1 ? (WIL.length + ' wilayah · ') : (WIL.length === 1 ? WIL[0] + ' · ' : '');
+  document.getElementById('scopeLine').textContent =
+    wil + RW.length + ' RW · ' + span + ' · ' + nf(ROWS.length) + ' baris';
 }
 
 // ============================================================ filter UI
-var F = { from:'', to:'', preset:'all', rw:new Set(), rt:new Set(), kd:new Set(), stat:'all', act:'all' };
+var F = { from:'', to:'', preset:'all', wil:new Set(), rw:new Set(), rt:new Set(), kd:new Set(), stat:'all', act:'all' };
 var TV = {};
 var SORT = {};
 var TAB = 'follow';
@@ -632,6 +690,7 @@ document.addEventListener('click', function(){ document.querySelectorAll('.ms-po
 
 var boundOnce = false;
 function buildFilters(){
+  MS.wil = multi('msWil','Wilayah', WIL, F.wil);
   MS.rw = multi('msRw','RW', RW, F.rw);
   MS.rt = multi('msRt','RT', RT, F.rt);
   MS.kd = multi('msKader','Kader', KADER, F.kd);
@@ -649,7 +708,7 @@ function buildFilters(){
   document.getElementById('btnReset').addEventListener('click', function(){
     F.stat='all'; F.act='all';
     document.getElementById('fStat').value='all'; document.getElementById('fAct').value='all';
-    MS.rw.reset(); MS.rt.reset(); MS.kd.reset();
+    MS.wil.reset(); MS.rw.reset(); MS.rt.reset(); MS.kd.reset();
     preset('all');
   });
   document.getElementById('btnReload').addEventListener('click', function(){ boot(true); });
@@ -743,8 +802,10 @@ function segSync(){
 
 // ============================================================ agregasi
 function slice(){
+  var aW = F.wil.size===WIL.length;
   var aR = F.rw.size===RW.length, aT = F.rt.size===RT.length, aK = F.kd.size===KADER.length;
   return ROWS.filter(function(r){
+    if (!aW && !F.wil.has(r[I_WIL])) return false;
     if (!aR && !F.rw.has(r[I_RW])) return false;
     if (!aT && !F.rt.has(r[I_RT])) return false;
     if (!aK && !F.kd.has(r[I_KD])) return false;
@@ -952,6 +1013,9 @@ function draw(){
   if (!DATA) return;
   var rows = slice(), t = agg(rows);
   CURRENT_ROWS = rows;
+  var wilSeen = {};
+  rows.forEach(function(r){ wilSeen[r[I_WIL]] = 1; });
+  RW_MULTI = Object.keys(wilSeen).length > 1;
   document.getElementById('cnt').textContent = nf(rows.length)+' baris';
 
   renderKpis(t);
@@ -967,6 +1031,7 @@ function draw(){
   renderHeatmap(rows, ks);
   renderContainers(rows);
   renderActions(rows);
+  renderBehavior(rows);
   renderDaily(rows);
   renderList(rows);
 }
@@ -1001,9 +1066,24 @@ function renderQualityNotice(){
   // Catatan kualitas data ditaruh sebagai title (tooltip native) di scope
   // line supaya tidak menyita baris layar tambahan pada kokpit satu layar.
   var bits = [];
+  (DATA.sources || []).forEach(function(s){
+    if (!s.ok) bits.push('⚠ Sumber "' + s.label + '" tidak terbaca: ' + s.error);
+    else if (s.warn) bits.push('⚠ Sumber "' + s.label + '": ' + s.warn);
+  });
   if (q.catatan) bits.push(q.catatan + ' baris punya catatan kualitas data (lihat kolom Catatan di Master Data)');
   if (q.tanggalKosong) bits.push(q.tanggalKosong + ' baris tanpa tanggal valid');
   host.title = bits.join(' · ') || 'Tidak ada catatan kualitas data.';
+
+  // Sumber yang gagal dibaca harus terlihat tanpa perlu hover — kalau satu
+  // wilayah hilang dari angka, itu tidak boleh diam-diam.
+  var bad = (DATA.sources || []).filter(function(s){ return !s.ok; });
+  var box = document.getElementById('srcWarn');
+  if (!bad.length){ box.hidden = true; clr(box); return; }
+  box.hidden = false; clr(box);
+  box.appendChild(E('b',null,'⚠ Data belum lengkap: '));
+  box.appendChild(document.createTextNode(bad.map(function(s){
+    return s.label + ' — ' + s.error;
+  }).join(' · ')));
 }
 
 function renderRank(rows){
@@ -1031,7 +1111,8 @@ function renderRank(rows){
   host.appendChild(lg);
 
   var mx = Math.max(2, Math.ceil(Math.max.apply(null, items.map(function(i){ return Math.abs(i.abj-T_ABJ); }))));
-  var ax = E('div','axrow'); ax.style.gridTemplateColumns = '38px 1fr 62px';
+  var lw = RW_MULTI ? 52 : 38;
+  var ax = E('div','axrow'); ax.style.gridTemplateColumns = lw+'px 1fr 62px';
   ax.appendChild(E('div'));
   var sc = E('div','sc');
   sc.appendChild(E('span','l','−'+mx)); sc.appendChild(E('span','c','target 95%')); sc.appendChild(E('span','r','+'+mx));
@@ -1041,8 +1122,8 @@ function renderRank(rows){
   var wrap = E('div','rows');
   items.forEach(function(it){
     var dev = it.abj - T_ABJ, w = Math.abs(dev)/mx*50;
-    var row = E('div','brow'); row.style.gridTemplateColumns = '38px 1fr 62px';
-    row.appendChild(E('div','nm', it.nm.replace('RW ','')));
+    var row = E('div','brow'); row.style.gridTemplateColumns = lw+'px 1fr 62px';
+    row.appendChild(E('div','nm', rwShort(it.nm)));
     var trk = E('div','trk'), fil = E('div','fil'+(dev<0?' low':''));
     if (dev>=0){ fil.style.left='50%'; fil.style.borderRadius='0 3px 3px 0'; }
     else { fil.style.left=(50-w)+'%'; fil.style.borderRadius='3px 0 0 3px'; }
@@ -1142,7 +1223,7 @@ function renderHeatmap(rows, ks){
   var bdy = document.createElement('tbody');
   rwk.forEach(function(rw){
     var tr = document.createElement('tr');
-    tr.appendChild(E('th',null,rw.replace('RW ','')));
+    tr.appendChild(E('th',null,rwShort(rw)));
     var vals = [];
     ks.forEach(function(mk){
       var td = document.createElement('td'), g = cells[rw][mk], a = g?agg(g):null;
@@ -1216,9 +1297,71 @@ function renderActions(rows){
     var a=r[I_3M]===1, b=r[I_LV]===1;
     if (a&&b) q.b++; else if (a) q.m++; else if (b) q.l++; else q.n++;
   });
-  var ai = [{name:'3M saja',v:q.m},{name:'3M + larvasidasi',v:q.b},{name:'Larvasidasi saja',v:q.l},{name:'Belum ada',v:q.n}];
+  var ai = [{name:'3M/4M+ saja',v:q.m},{name:'+ larvasidasi',v:q.b},{name:'Larvasidasi saja',v:q.l},{name:'Belum ada',v:q.n}];
   if (TV.act) ah.appendChild(table('act', {head:['Tindakan','Bangunan'], rows:ai.map(function(i){return [i.name, nf(i.v)];}), num:[1]}));
   else bars(ah, ai, 'bangunan', 112, {valW:38});
+}
+
+/**
+ * Pengelolaan sampah & kerja bakti (K3) — dua indikator yang HANYA ada di
+ * formulir Tangerang. Penyebutnya bukan seluruh baris pada filter, tapi hanya
+ * baris yang formulirnya memang menanyakan hal itu (nilai != -1); kalau tidak,
+ * angka Bekasi yang tidak mengumpulkan data ini akan menyeret persentasenya
+ * turun dan terbaca seolah warga tidak melakukan apa-apa.
+ */
+function renderBehavior(rows){
+  var bh = document.getElementById('behav'); clr(bh);
+
+  var items = [
+    { name:'Kelola sampah', i:I_SMP },
+    { name:'Ikut kerja bakti', i:I_K3 }
+  ].map(function(it){
+    var ya = 0, ada = 0;
+    rows.forEach(function(r){
+      if (r[it.i] === -1 || r[it.i] === undefined) return;
+      ada++; if (r[it.i] === 1) ya++;
+    });
+    return { name:it.name, ya:ya, ada:ada, pct: ada ? ya/ada*100 : 0 };
+  });
+
+  var takDikumpulkan = rows.length - Math.max(items[0].ada, items[1].ada);
+
+  if (TV.behav){
+    bh.appendChild(table('behav', {
+      head:['Indikator','Sudah','Dari','%'],
+      rows: items.map(function(i){ return [i.name, nf(i.ya), nf(i.ada), i.ada ? nf(i.pct,1) : '—']; }),
+      num:[1,2,3]
+    }));
+    return;
+  }
+
+  if (!items[0].ada && !items[1].ada){
+    bh.appendChild(E('div','empty','Formulir pada filter ini tidak mencatat data sampah/kerja bakti.'));
+    return;
+  }
+
+  var wrap = E('div','rates');
+  items.forEach(function(it){
+    var row = E('div','rate');
+    row.appendChild(E('div','rt-nm', it.name));
+    var trk = E('div','rt-trk'), fil = E('div','rt-fil');
+    fil.style.width = (it.ada ? it.pct : 0) + '%';
+    trk.appendChild(fil); row.appendChild(trk);
+    row.appendChild(E('div','rt-vl', it.ada ? pc(it.pct) : '—'));
+    row.appendChild(E('div','rt-ft', it.ada ? (nf(it.ya) + ' dari ' + nf(it.ada) + ' bangunan') : 'tidak dicatat'));
+    row.addEventListener('pointermove', function(e){
+      tip(it.name, it.ada
+        ? [{c:'#2a78d6', v:pc(it.pct), n:'dari yang dicatat'},{v:nf(it.ya), n:'sudah'},{v:nf(it.ada-it.ya), n:'belum'}]
+        : [{v:'—', n:'tidak dicatat pada filter ini'}], e.clientX, e.clientY);
+    });
+    row.addEventListener('pointerleave', untip);
+    wrap.appendChild(row);
+  });
+  bh.appendChild(wrap);
+
+  if (takDikumpulkan > 0){
+    bh.appendChild(E('div','rt-note', nf(takDikumpulkan) + ' bangunan dari formulir yang tidak menanyakan ini — tidak dihitung.'));
+  }
 }
 
 function renderDaily(rows){
@@ -1281,7 +1424,7 @@ function renderList(rows){
     lh.appendChild(table('follow', {
       head:['Tanggal','RW','RT','Nama pemilik','Alamat','Tindakan'],
       rows: pos.slice(0,500).map(function(r){
-        var a=[]; if(r[I_3M]===1)a.push('3M'); if(r[I_LV]===1)a.push('Larvasidasi');
+        var a=[]; if(r[I_3M]===1)a.push('3M/4M+'); if(r[I_LV]===1)a.push('Larvasidasi');
         return [r[I_DT]||r[I_DTASLI], RW[r[I_RW]], RT[r[I_RT]], r[I_NM], r[I_AL],
           a.length?a.join(' + '):'⚠ Belum ada'];
       }),
@@ -1293,10 +1436,12 @@ function renderList(rows){
     rows.forEach(function(r){ (byK[r[I_KD]] = byK[r[I_KD]] || []).push(r); });
     var kr = Object.keys(byK).map(function(k){
       var a = agg(byK[k]);
-      return [KADER[k], nf(a.n), nf(a.abj,1), nf(a.pos), nf(a.belum)];
+      // Satu kader hanya memegang satu RW, jadi RW-nya (yang sudah memuat nama
+      // wilayah) diambil dari baris pertama sebagai konteks.
+      return [KADER[k], RW[byK[k][0][I_RW]], nf(a.n), nf(a.abj,1), nf(a.pos), nf(a.belum)];
     });
     document.getElementById('listHint').textContent = nf(kr.length)+' kader';
-    lh.appendChild(table('kader', { head:['Kader','Diperiksa','ABJ (%)','Positif','Belum ditindak'], rows: kr, num:[1,2,3,4] }));
+    lh.appendChild(table('kader', { head:['Kader','RW','Diperiksa','ABJ (%)','Positif','Belum ditindak'], rows: kr, num:[2,3,4,5] }));
   }
 }
 
@@ -1307,7 +1452,7 @@ function renderList(rows){
  */
 var SEARCH_PAGE = 1;
 var SEARCH_PAGE_SIZE = 30;
-var SEARCH_NUM_COLS = [6,7,8];
+var SEARCH_NUM_COLS = [7,8,9];
 
 function renderSearchTab(host, rows){
   if (host.dataset.searchBuilt !== '1') {
@@ -1386,19 +1531,20 @@ function renderSearchResults(rows){
   var pageRows = sorted.slice(start, start + SEARCH_PAGE_SIZE);
 
   host.appendChild(table('search', {
-    head:['Nama Pemilik','Alamat','RW','RT','Bulan','Tanggal','Diperiksa','Positif','Negatif','Status','Kode Kontainer','3M','Larva','Foto','Kader','Catatan'],
+    head:['Nama Pemilik','Alamat','Wilayah','RW','RT','Bulan','Tanggal','Diperiksa','Positif','Negatif','Status','Jenis Kontainer','3M/4M+','Larva','Sampah','K3','Foto','Kader','Catatan'],
     rows: pageRows.map(function(r){
       var kodeLabel = r[I_CODE].map(function(c){ return CONT[c] || ('Kode '+c); }).join(', ');
       var foto = (r[I_FOTOST] === 'Ada foto' && r[I_FOTOLK]) ? { href: r[I_FOTOLK], text: 'Lihat foto' } : r[I_FOTOST];
       return [
-        r[I_NM], r[I_AL], RW[r[I_RW]], RT[r[I_RT]], BLN[r[I_BLN]] || '—', r[I_DT] || r[I_DTASLI],
+        r[I_NM], r[I_AL], WIL[r[I_WIL]] || '—', rwPlain(RW[r[I_RW]]), RT[r[I_RT]], BLN[r[I_BLN]] || '—', r[I_DT] || r[I_DTASLI],
         nf(r[I_CD]), nf(r[I_CP]), nf(r[I_CN]), r[I_NEG]===1 ? 'Bebas' : 'Positif',
         kodeLabel, r[I_3M]===1 ? 'Ya' : '—', r[I_LV]===1 ? 'Ya' : '—',
+        flagText_(r[I_SMP]), flagText_(r[I_K3]),
         foto, KADER[r[I_KD]], r[I_CATATAN]
       ];
     }),
     num: SEARCH_NUM_COLS,
-    ell:[1,10,15]
+    ell:[1,11,18]
   }));
 
   // Paginasi — di luar area scroll tabel supaya selalu terlihat.

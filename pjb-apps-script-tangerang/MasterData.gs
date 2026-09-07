@@ -10,7 +10,7 @@
  *   · satu tab memuat BEBERAPA blok (satu blok per kader), bukan satu blok.
  *
  * Keluarannya memakai susunan kolom yang SAMA dengan Master Data Bekasi
- * (26 kolom) supaya kedua master bisa ditumpuk jadi satu dashboard.
+ * (27 kolom) supaya kedua master bisa ditumpuk jadi satu dashboard.
  *
  * Semua pengenal diberi awalan MT_/mt agar aman kalau file ini suatu saat
  * ditempel ke project Apps Script yang sudah berisi script wilayah lain.
@@ -627,7 +627,13 @@ function mtContainerNames_(raw) {
     names.push(MT_CONTAINER_LABELS[c] || ('Kode ' + c));
   });
 
-  return extra ? names.join(', ') + ' (' + extra + ')' : names.join(', ');
+  var joined = names.join(', ');
+  // Keterangan bebas yang cuma mengulang nama labelnya (mis. kode 8 ditulis
+  // "8 ( ember)") tidak ditempel — kalau ditempel, "Ember/bak mandi (ember)"
+  // akan terhitung sebagai jenis yang berbeda dari "Ember/bak mandi".
+  if (extra && joined.toLowerCase().indexOf(extra.toLowerCase()) !== -1) extra = '';
+
+  return extra ? joined + ' (' + extra + ')' : joined;
 }
 
 /**
