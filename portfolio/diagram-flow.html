@@ -1,0 +1,81 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Alur</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1440px;height:700px;background:#fff;font-family:"DejaVu Sans",Arial,sans-serif;color:#0f172a;padding:24px 30px}
+h2{font-size:14px;font-weight:700;margin-bottom:3px}
+.sub{font-size:10.5px;color:#64748b;margin-bottom:12px}
+.row{display:flex;align-items:stretch;gap:0;margin-bottom:22px}
+.node{flex:1;border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;background:#f8fafc}
+.node .n{font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
+.node .t{font-size:12px;font-weight:700;margin-top:3px}
+.node .d{font-size:10px;color:#64748b;margin-top:3px;line-height:1.45}
+.node.ext{background:#fff7ed;border-color:#fed7aa}
+.node.srv{background:#eef2ff;border-color:#c7d2fe}
+.node.db{background:#ecfdf5;border-color:#a7f3d0}
+.node.ui{background:#f8fafc;border-color:#e2e8f0}
+.arr{width:46px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#cbd5e1;flex-shrink:0}
+.guard{border:1px dashed #fca5a5;background:#fef2f2;border-radius:9px;padding:9px 12px;margin-bottom:22px}
+.guard .t{font-size:11px;font-weight:700;color:#b91c1c}
+.guard .d{font-size:10px;color:#7f1d1d;margin-top:3px;line-height:1.5}
+.split{display:flex;gap:18px}
+.half{flex:1}
+.step{display:flex;gap:9px;align-items:flex-start;padding:5px 0}
+.num{width:17px;height:17px;border-radius:999px;background:#0f172a;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step .tx{font-size:10.5px;color:#334155;line-height:1.5}
+.step .tx b{color:#0f172a}
+.hr{border-top:1px solid #e2e8f0;margin:14px 0}
+</style></head><body>
+
+<h2>Alur 1 &mdash; Lead masuk otomatis dari Typeform</h2>
+<div class="sub">Menggantikan rantai lama Typeform &rarr; Google Sheets &rarr; IMPORTRANGE &rarr; baca sheet, yang jadi salah satu sumber beban rate limit.</div>
+<div class="row">
+  <div class="node ext"><div class="n">Eksternal</div><div class="t">Typeform</div><div class="d">Form inbound publik. Integrasi Google Sheets lama tetap jalan berdampingan.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node srv"><div class="n">Route Handler</div><div class="t">/api/webhooks/typeform</div><div class="d">Verifikasi HMAC-SHA256 atas raw body. Signature salah &rarr; 401, data tidak pernah masuk.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node srv"><div class="n">Normalisasi</div><div class="t">Pemetaan jawaban</div><div class="d">Cocokkan 8 pertanyaan ke kolom, baca hidden field UTM, rapikan nomor telepon.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node db"><div class="n">Postgres</div><div class="t">Tabel lead</div><div class="d">Inbound ID di-generate atomik. <b>response_id unik</b> &rarr; kiriman ulang tidak menggandakan data.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node ui"><div class="n">Aplikasi</div><div class="t">Lead Capturing</div><div class="d">Muncul dalam hitungan detik, lengkap dengan deteksi duplikat email/telepon.</div></div>
+</div>
+
+<h2>Alur 2 &mdash; Approval COR tanpa login</h2>
+<div class="sub">Approver (Head of B2B) sering menyetujui dari ponsel. Link bertoken menghapus friksi login tanpa mengorbankan kontrol.</div>
+<div class="row">
+  <div class="node ui"><div class="n">Consultant</div><div class="t">Request Approval</div><div class="d">Margin guard dievaluasi ulang di server &mdash; bukan dari angka yang tampil di layar.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node srv"><div class="n">Server Action</div><div class="t">Token + email</div><div class="d">UUID acak, masa berlaku 14 hari, dikirim via SMTP ke approver.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node ext"><div class="n">Approver</div><div class="t">Buka link</div><div class="d">Halaman GET hanya <b>menampilkan</b> ringkasan &mdash; tidak pernah mengubah status.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node srv"><div class="n">Server Action</div><div class="t">POST Approve / Reject</div><div class="d">Tiga gerbang: token tidak ditemukan &middot; sudah dipakai &middot; kedaluwarsa &mdash; masing-masing pesan berbeda.</div></div>
+  <div class="arr">&#10230;</div>
+  <div class="node db"><div class="n">Efek</div><div class="t">Status + snapshot</div><div class="d">Budget snapshot &amp; audit log ditulis <b>best-effort</b>: gagal pun tidak membatalkan approval.</div></div>
+</div>
+
+<div class="guard">
+  <div class="t">Prinsip yang dipegang di seluruh alur</div>
+  <div class="d">Semua perubahan status melewati Server Action yang memvalidasi ulang kondisinya di server. Di platform lama, sebagian aturan hanya dijaga di sisi browser &mdash; sehingga status bisa melompat kalau seseorang memanggil fungsi yang salah. Di v2 hal itu tidak mungkin: browser tidak punya kunci database, dan setiap transisi memeriksa state saat itu juga sebelum menulis.</div>
+</div>
+
+<div class="split">
+  <div class="half">
+    <h2>Alur 3 &mdash; Rekonsiliasi GDV</h2>
+    <div class="sub">Mencocokkan klaim consultant dengan realisasi dari Tableau.</div>
+    <div class="step"><div class="num">1</div><div class="tx">Operation upload <b>dua CSV</b> (Brand &amp; Not-Brand). Parser menangani BOM, UTF-16, dan delimiter tab otomatis.</div></div>
+    <div class="step"><div class="num">2</div><div class="tx">Isi tabel <b>diganti seluruhnya</b> per upload, satu baris log mencatat siapa &amp; kapan.</div></div>
+    <div class="step"><div class="num">3</div><div class="tx">Klaim GDV di Revenue Breakdown dicocokkan ke <b>Link Campaign</b>, fallback ke Child Short URL.</div></div>
+    <div class="step"><div class="num">4</div><div class="tx">Hasil: <b>Sinkron</b> &middot; <b>Klaim Melebihi</b> &middot; <b>Belum Sinkron</b> &mdash; dihitung live, tidak pernah disimpan.</div></div>
+  </div>
+  <div class="half">
+    <h2>Alur 4 &mdash; Dari Lead sampai Uang</h2>
+    <div class="sub">Rantai utama yang dijaga platform ini.</div>
+    <div class="step"><div class="num">1</div><div class="tx"><b>Lead</b> masuk &rarr; ditriase &rarr; <i>Move to Client</i> (satu arah, terkunci setelahnya).</div></div>
+    <div class="step"><div class="num">2</div><div class="tx"><b>Client</b> dilengkapi 6 syarat kelengkapan &rarr; baru bisa jadi <b>Project</b>.</div></div>
+    <div class="step"><div class="num">3</div><div class="tx"><b>Dokumen</b> (Deck, RAB, Quotation, COR, PKS, BAST) bergerak di pipeline linear per tipe.</div></div>
+    <div class="step"><div class="num">4</div><div class="tx"><b>COR</b> disetujui &rarr; budget snapshot &rarr; <b>Cost Monitoring</b> membandingkan realisasi vs budget.</div></div>
+    <div class="step"><div class="num">5</div><div class="tx">Semua Quotation <i>Done</i> &rarr; Project otomatis naik ke <b>Won</b> &mdash; maju saja, tidak pernah mundur.</div></div>
+  </div>
+</div>
+</body></html>

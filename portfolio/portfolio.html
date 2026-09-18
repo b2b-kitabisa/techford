@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Techford — Portofolio Platform</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+:root{
+  --ink:#101828; --ink2:#475467; --muted:#98A2B3; --line:#E4E7EC; --line2:#F2F4F7;
+  --accent:#3B3A8F; --accent-soft:#EEF0FB; --accent-line:#C7C8E8;
+  --pos:#067647; --pos-soft:#ECFDF3; --warn:#B54708; --warn-soft:#FFFAEB; --warn-line:#FEDF89;
+  --tint:#F9FAFB;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+body{font-family:"IBM Plex Sans",system-ui,sans-serif; color:var(--ink2); font-size:9.6pt; line-height:1.55; background:#fff}
+@page{size:A4; margin:0}
+.page{width:210mm; height:297mm; padding:18mm 17mm 14mm; position:relative; page-break-after:always; overflow:hidden; background:#fff}
+.page:last-child{page-break-after:auto}
+
+h1,h2,h3,.dsp{font-family:"Newsreader",Georgia,serif; color:var(--ink); font-weight:600; letter-spacing:-0.01em}
+.eyebrow{font-size:7.4pt; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+h2{font-size:21pt; line-height:1.14; margin:5px 0 8px}
+h3{font-size:12.4pt; line-height:1.25; margin-bottom:4px}
+p{margin-bottom:8px}
+strong,b{color:var(--ink); font-weight:600}
+.lead{font-size:11pt; line-height:1.5; color:var(--ink2)}
+.rule{height:1px; background:var(--line); margin:12px 0}
+.rule-accent{height:2.5px; width:52px; background:var(--accent); margin:0 0 14px}
+.small{font-size:8.2pt; line-height:1.5; color:var(--muted)}
+.mono{font-family:"IBM Plex Mono",monospace}
+.pgnum{position:absolute; left:17mm; right:17mm; bottom:9mm; display:flex; justify-content:space-between;
+  font-size:7.2pt; color:var(--muted); letter-spacing:.09em; text-transform:uppercase;
+  border-top:1px solid var(--line2); padding-top:5px}
+
+/* ── cover ── */
+.cover{display:flex; flex-direction:column; justify-content:space-between; padding:26mm 17mm 16mm}
+.cover .brandmark{display:flex; align-items:center; gap:9px}
+.cover .dotgrid{display:grid; grid-template-columns:repeat(3,5px); gap:3px}
+.cover .dotgrid i{width:5px;height:5px;border-radius:99px;background:var(--accent-line);display:block}
+.cover .dotgrid i.on{background:var(--accent)}
+.cover .bname{font-size:8.6pt; font-weight:600; letter-spacing:.2em; text-transform:uppercase; color:var(--ink)}
+.cover h1{font-size:52pt; line-height:.96; letter-spacing:-0.025em; margin-bottom:14px}
+.cover .tagline{font-size:13pt; line-height:1.38; color:var(--ink2); max-width:128mm; font-family:"Newsreader",serif; font-weight:500}
+.cover .kicker{font-size:8pt; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:16px}
+.cover-strip{display:grid; grid-template-columns:repeat(4,1fr); gap:0; border-top:1px solid var(--line); padding-top:12px}
+.cover-strip div{padding-right:10px; border-right:1px solid var(--line2)}
+.cover-strip div:last-child{border-right:0}
+.cover-strip .n{font-family:"IBM Plex Mono",monospace; font-size:17pt; font-weight:600; color:var(--ink); letter-spacing:-0.02em}
+.cover-strip .k{font-size:7.4pt; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:2px}
+.cover-meta{display:flex; justify-content:space-between; align-items:flex-end; font-size:8.2pt; color:var(--muted)}
+
+/* ── metric grid ── */
+.metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:12px 0}
+.metric{border:1px solid var(--line); border-radius:7px; padding:10px 11px}
+.metric .n{font-family:"IBM Plex Mono",monospace; font-size:15pt; font-weight:600; color:var(--ink); letter-spacing:-0.02em; line-height:1.1}
+.metric .n small{font-size:9pt; color:var(--muted); font-weight:400}
+.metric .k{font-size:7.6pt; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:3px}
+.metric .d{font-size:8pt; color:var(--ink2); margin-top:4px; line-height:1.42}
+
+/* ── callouts ── */
+.callout{border-left:2.5px solid var(--accent); background:var(--accent-soft); border-radius:0 7px 7px 0; padding:10px 13px; margin:11px 0}
+.callout.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+.callout.pos{border-left-color:var(--pos); background:var(--pos-soft)}
+.callout .t{font-size:8.6pt; font-weight:700; color:var(--ink); margin-bottom:3px}
+.callout p{font-size:8.8pt; margin:0; line-height:1.5}
+
+/* ── tables ── */
+table{width:100%; border-collapse:collapse; font-size:8.6pt; margin:9px 0}
+th{text-align:left; font-size:7.4pt; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600;
+   border-bottom:1px solid var(--line); padding:0 8px 5px 0}
+td{padding:6px 8px 6px 0; border-bottom:1px solid var(--line2); vertical-align:top; line-height:1.45}
+td:last-child,th:last-child{padding-right:0}
+td strong{display:block}
+.tnum{font-family:"IBM Plex Mono",monospace; color:var(--ink); white-space:nowrap}
+
+/* ── figures ── */
+figure{margin:10px 0 12px}
+figure img{width:100%; display:block; border:1px solid var(--line); border-radius:8px}
+figcaption{font-size:7.8pt; color:var(--muted); margin-top:6px; line-height:1.45; display:flex; gap:7px}
+figcaption b{color:var(--ink); font-weight:600; white-space:nowrap}
+
+/* ── module grid ── */
+.modgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px}
+.mod{border:1px solid var(--line); border-radius:7px; padding:9px 10px}
+.mod .h{display:flex; align-items:baseline; gap:6px; margin-bottom:3px}
+.mod .num{font-family:"IBM Plex Mono",monospace; font-size:7.4pt; color:var(--accent); font-weight:600}
+.mod .nm{font-size:9pt; font-weight:600; color:var(--ink); line-height:1.2}
+.mod .d{font-size:7.8pt; color:var(--ink2); line-height:1.42}
+.mod.dim{background:var(--tint); border-style:dashed}
+
+/* ── two column ── */
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+.cols.narrow{gap:13px}
+
+/* ── feature cards ── */
+.feat{border-top:1.5px solid var(--ink); padding-top:8px; margin-bottom:12px}
+.feat .t{font-size:9.6pt; font-weight:600; color:var(--ink); margin-bottom:3px; font-family:"IBM Plex Sans",sans-serif}
+.feat p{font-size:8.6pt; margin:0; line-height:1.5}
+.feat .tag{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:7pt; color:var(--accent);
+  background:var(--accent-soft); border-radius:3px; padding:1px 5px; margin-bottom:5px; letter-spacing:.02em}
+
+/* ── steps ── */
+.steps{counter-reset:s}
+.step{display:flex; gap:9px; padding:6px 0; border-bottom:1px solid var(--line2)}
+.step:last-child{border-bottom:0}
+.step .i{counter-increment:s; font-family:"IBM Plex Mono",monospace; font-size:8pt; font-weight:600; color:var(--accent); flex-shrink:0; width:15px}
+.step .i::before{content:counter(s,decimal-leading-zero)}
+.step .b{font-size:8.6pt; line-height:1.5}
+.step .b b{display:block; color:var(--ink); font-size:9pt; margin-bottom:1px}
+
+/* ── pill list ── */
+.pills{display:flex; flex-wrap:wrap; gap:5px; margin:8px 0}
+.pill{font-size:7.8pt; border:1px solid var(--line); border-radius:99px; padding:2px 9px; color:var(--ink2)}
+.pill b{color:var(--ink)}
+.stack-list{font-size:8.6pt}
+.stack-list div{display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--line2)}
+.stack-list div:last-child{border-bottom:0}
+.stack-list .k{color:var(--muted)}
+.stack-list .v{color:var(--ink); font-weight:500; text-align:right}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ COVER ══════════════ -->
+<section class="page cover">
+  <div>
+    <div class="brandmark">
+      <span class="dotgrid"><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i></span>
+      <span class="bname">Kitabisa&nbsp;B2B</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="kicker">Portofolio Produk &amp; Rekayasa Platform</div>
+    <h1>Techford</h1>
+    <p class="tagline">Sistem operasi internal yang menjalankan seluruh siklus kemitraan B2B Kitabisa — dari lead yang masuk, sampai rupiah yang dipertanggungjawabkan.</p>
+  </div>
+
+  <div>
+    <div class="cover-strip">
+      <div><div class="n">27</div><div class="k">Tabel data</div></div>
+      <div><div class="n">18</div><div class="k">Modul</div></div>
+      <div><div class="n">32</div><div class="k">Halaman aplikasi</div></div>
+      <div><div class="n">6.400</div><div class="k">Angka diuji banding</div></div>
+    </div>
+    <div class="rule"></div>
+    <div class="cover-meta">
+      <div>Tim B2B Kitabisa &middot; <span class="mono">b2b@kitabisa.com</span></div>
+      <div>September 2026</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 1. RINGKASAN ══════════════ -->
+<section class="page">
+  <div class="eyebrow">01 &mdash; Ringkasan Eksekutif</div>
+  <h2>Satu platform untuk rantai<br>lead &rarr; klien &rarr; proyek &rarr; uang</h2>
+  <div class="rule-accent"></div>
+
+  <p class="lead">Techford adalah platform internal tim B2B Kitabisa. Ia memegang satu rantai kerja yang sebelumnya tersebar di belasan spreadsheet: lead inbound ditriase, diubah jadi klien, klien melahirkan proyek, proyek menghasilkan dokumen komersial dan perhitungan biaya, lalu realisasi dananya direkonsiliasi kembali ke angka yang diklaim.</p>
+
+  <p>Yang membuatnya bukan sekadar CRM: <strong>di dalamnya ada mesin perhitungan uang.</strong> Dokumen COR (Cost Operational Report) menghitung berapa dana yang benar-benar bisa dipakai setelah platform fee, tech fee, fee lembaga penyalur, PPN, dan PPh — lalu memisahkan mana margin rencana dan mana profit aktual. Salah satu digit di sini artinya salah hitung uang nyata, dan angkanya dipakai untuk mengambil keputusan pencairan.</p>
+
+  <p>Dokumen ini merangkum dua hal: <strong>produk yang sudah berjalan</strong> (versi Google Apps Script, ±8 bulan di produksi, 187 kali deploy), dan <strong>rekayasa ulangnya</strong> ke stack modern setelah platform lama menabrak batas keras infrastrukturnya.</p>
+
+  <div class="metrics">
+    <div class="metric"><div class="n">±1.300</div><div class="k">Lead terkelola</div><div class="d">Masuk otomatis dari form publik, ditriase jadi Contacted / Other / Spam / Moved.</div></div>
+    <div class="metric"><div class="n">±180</div><div class="k">Klien aktif</div><div class="d">Dengan aturan kelengkapan data sebelum boleh dijadikan proyek.</div></div>
+    <div class="metric"><div class="n">4</div><div class="k">Peran pengguna</div><div class="d">Consultant, Operation, Head of B2B, Master Admin — hak akses berbeda per modul.</div></div>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Masalah yang diselesaikan</h3>
+      <p>Sebelum Techford, proses ini hidup di spreadsheet manual: nomor dokumen ditulis tangan, rumus COR disalin antar-file, status proyek hanya diketahui orang yang mengerjakannya, dan tidak ada jejak siapa mengubah apa. Techford memindahkan semuanya ke satu alur yang punya nomor urut otomatis, state machine, approval berjenjang, dan audit trail.</p>
+      <h3 style="margin-top:12px">Kenapa dibangun ulang</h3>
+      <p>Platform versi pertama memakai Google Sheets sebagai database. Pada 21 Agustus 2026 hampir semua halaman berhenti memuat data — bukan karena bug, melainkan batas rate limit di level infrastruktur Google. Itu titik yang memang sudah diperkirakan sejak awal, hanya datang lebih cepat.</p>
+    </div>
+    <div>
+      <h3>Status saat ini</h3>
+      <div class="stack-list" style="margin-top:6px">
+        <div><span class="k">Techford v1 (GAS + Sheets)</span><span class="v">Produksi &mdash; masih dipakai harian</span></div>
+        <div><span class="k">Techford v2 (Next.js + Supabase)</span><span class="v">Seluruh modul selesai dibangun</span></div>
+        <div><span class="k">Integrasi lead real-time</span><span class="v">Aktif &amp; terverifikasi</span></div>
+        <div><span class="k">Generator PDF COR / Quotation</span><span class="v">Aktif</span></div>
+        <div><span class="k">Migrasi data produksi</span><span class="v">Tahap berikutnya</span></div>
+      </div>
+      <div class="callout" style="margin-top:12px">
+        <div class="t">Prinsip yang dipegang saat rebuild</div>
+        <p>Yang dipindahkan bukan 39.000 baris kode lama, melainkan ±7.500 baris <em>aturan bisnis</em> yang sudah tervalidasi pemakaian nyata — ditulis ulang di atas fondasi tanpa batas-batas tadi, dan diuji ulang angkanya sebelum dipercaya.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Techford &mdash; Portofolio Platform</span><span>01</span></div>
+</section>
+
+<!-- ══════════════ 2. MASALAH ══════════════ -->
+<section class="page">
+  <div class="eyebrow">02 &mdash; Konteks &amp; Titik Balik</div>
+  <h2>Ketika spreadsheet berhenti<br>jadi database</h2>
+  <div class="rule-accent"></div>
+
+  <p class="lead">Techford v1 dibangun di atas Google Apps Script dengan Google Sheets sebagai penyimpanan. Pilihan itu tepat di awal: gratis, langsung terintegrasi dengan cara kerja tim, dan bisa dirilis cepat. Arsitekturnya bahkan sudah mengantisipasi kapan harus pindah — lapisan repository sengaja diisolasi supaya migrasi tidak menyentuh logika bisnis.</p>
+
+  <p>Yang tidak bisa direkayasa adalah batas platformnya. Google Sheets tidak punya index: setiap kali satu halaman meminta data, seluruh isi sheet dibaca lalu difilter di memori. Satu halaman Document Pipeline saja membuka sepuluh permintaan paralel, masing-masing memicu pembacaan penuh. Selama data masih kecil, ini tidak pernah terasa.</p>
+
+  <table>
+    <thead><tr><th style="width:38%">Batas platform lama</th><th style="width:20%">Angka</th><th>Dampak nyata</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Durasi eksekusi</strong></td><td class="tnum">6 menit</td><td>Impor data besar harus dipecah manual per potongan.</td></tr>
+      <tr><td><strong>Pembacaan data</strong></td><td class="tnum">Tanpa index</td><td>Setiap query membaca seluruh sheet — makin banyak baris, makin lambat <em>semua</em> halaman.</td></tr>
+      <tr><td><strong>Eksekusi paralel</strong></td><td class="tnum">Di-antrikan</td><td>8–10 permintaan per halaman sudah cukup untuk menyumbat antrean.</td></tr>
+      <tr><td><strong>Transport ke browser</strong></td><td class="tnum">Payload besar</td><td>Respons gagal sampai walau server sukses — halaman tampak "gagal memuat".</td></tr>
+      <tr><td><strong>Rate limit Sheets</strong></td><td class="tnum">Tidak publik</td><td>Galat transien yang tidak bisa diprediksi maupun dinaikkan kuotanya.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <div class="t">Insiden 21 Agustus 2026 — pemicu keputusan migrasi</div>
+    <p>Hampir semua halaman gagal memuat data. Log eksekusi server justru bersih: setiap pemanggilan sukses dengan durasi wajar, tetapi responsnya tidak pernah sampai ke browser. Sudah dibuktikan bukan bug kode, bukan browser, bukan jaringan, bukan deployment, bukan akun. Kesimpulannya rate limit di level infrastruktur — dan akan berulang seiring data bertambah.</p>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Yang dipertahankan</h3>
+      <p>Aset sesungguhnya bukan kodenya, melainkan aturan yang sudah teruji dipakai orang sungguhan selama delapan bulan:</p>
+      <div class="pills">
+        <span class="pill"><b>Rumus finansial COR &amp; Quotation</b></span>
+        <span class="pill"><b>State machine</b> per tipe dokumen</span>
+        <span class="pill"><b>Model hak akses</b> 4 peran</span>
+        <span class="pill"><b>Struktur data</b> ternormalisasi</span>
+        <span class="pill">±1.350 <b>assertion</b> sebagai spesifikasi</span>
+      </div>
+    </div>
+    <div>
+      <h3>Yang sengaja dibuang</h3>
+      <p>Seluruh lapisan presentasi lama, pola pemanggilan RPC, cache chunking, dan penguncian manual — semuanya tambalan untuk keterbatasan yang tidak lagi ada di stack baru. Mempertahankannya justru akan menyalin ulang masalahnya.</p>
+      <h3 style="margin-top:12px">Pelajaran yang dibawa</h3>
+      <p>Jangan pernah mengambil seluruh tabel untuk mengisi satu halaman. Filter dan pagination dilakukan di level basis data sejak hari pertama — bukan "nanti kalau sudah besar".</p>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Konteks &amp; Titik Balik</span><span>02</span></div>
+</section>
+
+<!-- ══════════════ 3. ARSITEKTUR ══════════════ -->
+<section class="page">
+  <div class="eyebrow">03 &mdash; Arsitektur</div>
+  <h2>Dua generasi, satu aturan bisnis</h2>
+  <div class="rule-accent"></div>
+
+  <p class="lead">Rebuild ini bukan penulisan ulang baris per baris. Lapisan yang ada semata-mata untuk menyiasati keterbatasan runtime lama dihapus; lapisan yang memuat pengetahuan bisnis dipindahkan dengan hati-hati dan diverifikasi ulang.</p>
+
+  <figure>
+    <img src="diagram-arch.png" alt="Perbandingan arsitektur Techford v1 dan v2">
+    <figcaption><b>Gambar 1</b><span>Perbandingan lapisan arsitektur. Kolom kiri menunjukkan di mana platform lama kolaps; kolom kanan menunjukkan padanannya di stack baru.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>Keputusan teknis utama</h3>
+      <div class="feat" style="margin-top:8px">
+        <span class="tag">server-only</span>
+        <div class="t">Semua akses data lewat server</div>
+        <p>Browser tidak pernah memegang kunci basis data. Seluruh pembacaan dan penulisan terjadi di Server Component atau Server Action, memakai service role. Row Level Security tetap diaktifkan tanpa policy — sehingga kalaupun kunci publik bocor, tidak ada satu baris pun yang bisa dibaca dari luar.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">satu render</span>
+        <div class="t">Satu halaman = satu render server</div>
+        <p>Pola lama membuka 8–10 permintaan paralel per halaman. Sekarang halaman dirender utuh di server dalam satu siklus, dengan filter dan pagination dikerjakan basis data.</p>
+      </div>
+    </div>
+    <div>
+      <h3>Tumpukan teknologi</h3>
+      <div class="stack-list" style="margin-top:8px">
+        <div><span class="k">Framework</span><span class="v">Next.js 16 &middot; App Router</span></div>
+        <div><span class="k">Bahasa</span><span class="v">TypeScript</span></div>
+        <div><span class="k">Antarmuka</span><span class="v">React 19 &middot; Tailwind CSS 4</span></div>
+        <div><span class="k">Basis data</span><span class="v">Supabase (PostgreSQL)</span></div>
+        <div><span class="k">Autentikasi</span><span class="v">Magic link, dibatasi domain kantor</span></div>
+        <div><span class="k">Berkas</span><span class="v">Supabase Storage &middot; signed URL</span></div>
+        <div><span class="k">Dokumen PDF</span><span class="v">React PDF (render di server)</span></div>
+        <div><span class="k">Surel</span><span class="v">SMTP (nodemailer)</span></div>
+        <div><span class="k">Hosting</span><span class="v">Vercel</span></div>
+      </div>
+      <div class="callout pos" style="margin-top:10px">
+        <div class="t">Autentikasi tanpa ketergantungan baru</div>
+        <p>Login memakai tautan sekali-pakai ke surel kantor, lalu dicocokkan ke data karyawan. Akun baru cukup ditambahkan lewat antarmuka — tidak ada langkah manual di basis data, dan tidak bergantung pada izin organisasi yang di luar kendali tim.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Arsitektur</span><span>03</span></div>
+</section>
+
+<!-- ══════════════ 4. PETA MODUL ══════════════ -->
+<section class="page">
+  <div class="eyebrow">04 &mdash; Cakupan Produk</div>
+  <h2>Delapan belas modul, satu alur kerja</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Setiap modul memegang satu tahap nyata dalam pekerjaan tim. Nomor mengikuti urutan alur, bukan urutan pembangunan.</p>
+
+  <div class="modgrid">
+    <div class="mod"><div class="h"><span class="num">01</span><span class="nm">Lead Capturing</span></div><div class="d">Menerima lead inbound otomatis, triase status, deteksi duplikat, konversi satu-arah jadi klien.</div></div>
+    <div class="mod"><div class="h"><span class="num">02</span><span class="nm">Client Monitoring</span></div><div class="d">Data klien dengan enam syarat kelengkapan, manajemen PIC, dan rekap nilai proyek.</div></div>
+    <div class="mod"><div class="h"><span class="num">03</span><span class="nm">Sales Pipeline</span></div><div class="d">Proyek dengan tahap Prospect → Negotiation → Won/Loss dan penguncian data setelah Won.</div></div>
+    <div class="mod"><div class="h"><span class="num">04</span><span class="nm">Revenue Breakdown</span></div><div class="d">Rincian klaim GDV dan service revenue per proyek, jadi dasar rekonsiliasi.</div></div>
+    <div class="mod"><div class="h"><span class="num">05</span><span class="nm">Document Pipeline</span></div><div class="d">Delapan tipe dokumen, masing-masing dengan alur status linear yang tidak bisa dilompati.</div></div>
+    <div class="mod"><div class="h"><span class="num">06</span><span class="nm">COR Calculator</span></div><div class="d">Mesin perhitungan biaya operasional: fee, pajak, margin, dan profit aktual.</div></div>
+    <div class="mod"><div class="h"><span class="num">07</span><span class="nm">Quotation Composer</span></div><div class="d">Penyusun penawaran dua entitas legal, penomoran otomatis, alur tanda tangan.</div></div>
+    <div class="mod"><div class="h"><span class="num">08</span><span class="nm">Approval Magic Link</span></div><div class="d">Persetujuan COR &amp; Quotation lewat tautan bertoken — tanpa perlu login.</div></div>
+    <div class="mod"><div class="h"><span class="num">09</span><span class="nm">Cost Monitoring</span></div><div class="d">Membandingkan realisasi pencairan terhadap snapshot anggaran saat COR disetujui.</div></div>
+    <div class="mod"><div class="h"><span class="num">10</span><span class="nm">GDV Controller</span></div><div class="d">Unggah data realisasi donasi dari Tableau, ganti-total per unggahan dengan log.</div></div>
+    <div class="mod"><div class="h"><span class="num">11</span><span class="nm">GDV Matching</span></div><div class="d">Rekonsiliasi klaim vs realisasi: Sinkron, Klaim Melebihi, atau Belum Sinkron.</div></div>
+    <div class="mod"><div class="h"><span class="num">12</span><span class="nm">Ads Sponsorship Progress</span></div><div class="d">Snapshot berkala per campaign, bersifat tambah-saja agar pergerakan dana terbaca.</div></div>
+    <div class="mod"><div class="h"><span class="num">13</span><span class="nm">Dashboard Sales</span></div><div class="d">Agregat pencapaian per consultant dan kondisi pipeline terhadap target.</div></div>
+    <div class="mod"><div class="h"><span class="num">14</span><span class="nm">Achievement Target</span></div><div class="d">Target GDV dan service revenue, di level departemen maupun per consultant.</div></div>
+    <div class="mod"><div class="h"><span class="num">15</span><span class="nm">Margin Guide</span></div><div class="d">Acuan resmi persentase margin per komponen yang dipakai saat mengisi COR.</div></div>
+    <div class="mod"><div class="h"><span class="num">16</span><span class="nm">Master Data</span></div><div class="d">Taksonomi terpusat: industri, tipe entitas, kantor pusat, sumber klien.</div></div>
+    <div class="mod"><div class="h"><span class="num">17</span><span class="nm">Employee &amp; Akses</span></div><div class="d">Pengelolaan karyawan, peran, dan status aktif — dasar seluruh hak akses.</div></div>
+    <div class="mod"><div class="h"><span class="num">18</span><span class="nm">Audit Log</span></div><div class="d">Jejak perubahan bernilai tinggi. Kemampuan yang belum pernah ada di versi lama.</div></div>
+  </div>
+
+  <div class="rule"></div>
+  <div class="cols">
+    <div>
+      <h3>Aturan akses per peran</h3>
+      <p class="small" style="margin-top:4px">Hak akses tidak seragam antar modul, dan perbedaannya disengaja. Pada sebagian besar modul, peran <strong>Operation</strong> hanya bisa melihat. Namun khusus di <strong>Cost Monitoring</strong>, justru <strong>Consultant</strong> yang dibatasi — karena pencairan dana adalah pekerjaan tim operasional, bukan penjualan. Modul pengaturan hanya untuk Master Admin.</p>
+    </div>
+    <div>
+      <h3>Penomoran dokumen</h3>
+      <p class="small" style="margin-top:4px">Setiap entitas punya nomor urut yang dihasilkan atomik di basis data, sehingga dua orang yang menekan tombol bersamaan tidak pernah mendapat nomor yang sama: <span class="mono">INB26-00001</span> untuk lead, <span class="mono">CL26-00001</span> klien, <span class="mono">PRJ26-00001</span> proyek, <span class="mono">DOC26-00001</span> dokumen, dan format gabungan bernomor romawi untuk Quotation.</p>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Cakupan Produk</span><span>04</span></div>
+</section>
+
+<!-- ══════════════ 5. LEAD CAPTURING ══════════════ -->
+<section class="page">
+  <div class="eyebrow">05 &mdash; Modul</div>
+  <h2>Lead Capturing</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Pintu masuk platform. Lead dari form publik mendarat langsung di sistem, lalu ditriase tim sebelum layak diangkat jadi klien.</p>
+
+  <figure>
+    <img src="screen-lead.png" alt="Halaman Lead Capturing">
+    <figcaption><b>Gambar 2</b><span>Kartu ringkasan berfungsi ganda sebagai filter: ditekan langsung menyaring tabel tanpa memuat ulang halaman, dan bisa aktif lebih dari satu sekaligus.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <div class="feat">
+        <span class="tag">real-time</span>
+        <div class="t">Masuk otomatis, tanpa perantara</div>
+        <p>Form publik mengirim langsung ke platform begitu disubmit. Rantai lama yang melewati spreadsheet perantara dihapus dari jalur ini — sekaligus menghilangkan salah satu sumber beban yang memicu insiden.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">kualitas data</span>
+        <div class="t">Deteksi duplikat bawaan</div>
+        <p>Lead yang berbagi surel atau nomor telepon dengan lead lain ditandai otomatis beserta jumlahnya. Dari ±1.300 lead, ratusan di antaranya terindikasi duplikat — pekerjaan yang sebelumnya tidak pernah terlihat.</p>
+      </div>
+    </div>
+    <div>
+      <div class="feat">
+        <span class="tag">satu arah</span>
+        <div class="t">Konversi yang tidak bisa dibatalkan</div>
+        <p>Memindahkan lead jadi klien adalah aksi khusus, bukan sekadar mengganti status. Setelah terjadi, lead terkunci permanen agar tidak ada dua sumber kebenaran untuk satu entitas yang sama.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">efisiensi</span>
+        <div class="t">Aksi massal</div>
+        <p>Ratusan lead tidak mungkin ditriase satu per satu. Baris bisa dicentang lalu diubah statusnya sekaligus, termasuk menandai seluruh duplikat dari dalam panel detail.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Lead Capturing</span><span>05</span></div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">05 &mdash; Modul &middot; lanjutan</div>
+  <h2>Panel detail yang<br>bisa dikerjakan cepat</h2>
+  <div class="rule-accent"></div>
+
+  <figure>
+    <img src="screen-lead-drawer.png" alt="Panel detail lead">
+    <figcaption><b>Gambar 3</b><span>Panel geser menampilkan konteks penuh satu lead tanpa meninggalkan tabel. Navigasi antar-lead bisa memakai tombol panah kiri-kanan di papan ketik.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>Rancangan interaksi</h3>
+      <p>Pekerjaan triase bersifat repetitif: buka, baca, putuskan, lanjut. Karena itu detail lead tidak dibuka sebagai halaman terpisah, melainkan panel geser yang mempertahankan posisi di tabel. Penomoran <span class="mono">5 / 1.338</span> memberi tahu posisi, dan panah papan ketik memindahkannya tanpa menyentuh tetikus.</p>
+      <p>Nomor telepon dan surel bisa disalin satu klik — detail kecil yang menghemat langkah paling sering diulang sepanjang hari.</p>
+    </div>
+    <div>
+      <h3>Penyelesaian duplikat</h3>
+      <p>Bagian <em>Potensi Duplikat</em> tidak berhenti pada peringatan. Ia menampilkan lead-lead kembarannya, dari mana kecocokannya berasal (surel atau telepon), lalu menyediakan satu tombol untuk memperbarui status semuanya sekaligus.</p>
+      <div class="callout">
+        <div class="t">Sumber trafik ikut terbawa</div>
+        <p>Parameter kampanye dari tautan form tersimpan bersama leadnya, sehingga pertanyaan "lead ini datang dari kanal mana" bisa dijawab data, bukan ingatan.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Lead Capturing</span><span>06</span></div>
+</section>
+
+<!-- ══════════════ 6. CLIENT MONITORING ══════════════ -->
+<section class="page">
+  <div class="eyebrow">06 &mdash; Modul</div>
+  <h2>Client Monitoring</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Klien tidak boleh setengah jadi. Modul ini menegakkan enam syarat kelengkapan sebelum sebuah klien layak dibawa ke tahap proyek.</p>
+
+  <figure>
+    <img src="screen-client.png" alt="Halaman Client Monitoring">
+    <figcaption><b>Gambar 4</b><span>Klien yang datanya belum lengkap ditandai garis kuning di tepi baris dan mendapat tombol aksi khusus <em>Lengkapi</em> — menggantikan tanda panah biasa.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <div class="feat">
+        <span class="tag">kelengkapan</span>
+        <div class="t">Enam syarat, terlihat jelas</div>
+        <p>Nama brand, nama entitas legal, kantor pusat, tipe entitas, sumber klien, dan minimal satu PIC. Status kelengkapan dihitung ulang setiap saat, bukan disimpan — sehingga tidak pernah basi.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">metrik</span>
+        <div class="t">Utang data yang terukur</div>
+        <p>Kartu <em>Incomplete Client</em> mengubah pekerjaan rapi-rapi data menjadi angka yang bisa dikejar: berapa klien belum lengkap, dan berapa persen dari total.</p>
+      </div>
+    </div>
+    <div>
+      <div class="feat">
+        <span class="tag">asal data</span>
+        <div class="t">Sumber klien yang terkunci</div>
+        <p>Klien yang lahir dari lead inbound tidak bisa diubah sumbernya secara manual. Ini menjaga laporan komposisi Inbound / Outbound / Referral tetap jujur.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">kontak</span>
+        <div class="t">PIC sebagai entitas sungguhan</div>
+        <p>Setiap klien bisa punya beberapa PIC dengan satu yang ditandai utama, lengkap dengan jabatan, tombol salin kontak, dan pintasan percakapan langsung.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Client Monitoring</span><span>07</span></div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">06 &mdash; Modul &middot; lanjutan</div>
+  <h2>Melengkapi data di tempat<br>data itu dibaca</h2>
+  <div class="rule-accent"></div>
+
+  <figure style="margin-bottom:8px">
+    <img src="screen-client-drawer.png" alt="Panel detail klien lengkap">
+    <figcaption><b>Gambar 5</b><span>Klien lengkap: enam penanda hijau di kepala panel, ringkasan nilai proyek, informasi klien, dan kartu PIC utama.</span></figcaption>
+  </figure>
+
+  <figure style="margin-top:0">
+    <img src="screen-client-edit.png" alt="Panel klien dalam mode lengkapi">
+    <figcaption><b>Gambar 6</b><span>Klien belum lengkap langsung terbuka dalam mode isi. Kolom yang masih kosong diberi latar berbeda dan teks penuntun, jadi tidak perlu menebak mana yang kurang.</span></figcaption>
+  </figure>
+
+  <div class="callout" style="margin-top:4px">
+    <div class="t">Keputusan rancangan: menyimpan yang belum lengkap tetap diperbolehkan</div>
+    <p>Memaksa semua kolom terisi di awal justru membuat orang menunda mencatat sama sekali. Karena itu klien cukup bermodal nama brand untuk mulai ada, lalu sistem yang mengingatkan sisanya — dan menahannya di gerbang sebelum jadi proyek. Pencatatan tetap terjadi, kualitas data tetap terjaga.</p>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Client Monitoring</span><span>08</span></div>
+</section>
+
+<!-- ══════════════ 7. DOCUMENT PIPELINE ══════════════ -->
+<section class="page">
+  <div class="eyebrow">07 &mdash; Modul</div>
+  <h2>Document Pipeline</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Delapan tipe dokumen dengan alur berbeda-beda, dijaga agar tidak ada status yang bisa dilompati — termasuk oleh orang yang tahu caranya.</p>
+
+  <figure>
+    <img src="screen-doc.png" alt="Halaman Document Pipeline">
+    <figcaption><b>Gambar 7</b><span>Seluruh dokumen lintas proyek dalam satu tampilan, masing-masing dengan status dan tahapannya sendiri.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>State machine yang ditegakkan server</h3>
+      <p>Setiap tipe dokumen punya urutan status linear. Sistem hanya menyediakan aksi "maju satu langkah" — tidak ada jalan untuk menetapkan status sembarang. Di platform lama sebagian aturan ini hanya dijaga di sisi browser; di versi baru setiap transisi diperiksa ulang di server tepat sebelum ditulis.</p>
+      <h3 style="margin-top:12px">Efek berantai yang otomatis</h3>
+      <p>Dokumen tertentu yang mencapai tahap akhir mendorong proyeknya naik tahap dengan sendirinya. Kenaikan ini <em>maju saja</em>: proyek yang sudah Won tidak akan pernah turun karena ada dokumen baru dibuat, dan proyek berstatus Loss tidak pernah ikut terdorong.</p>
+    </div>
+    <div>
+      <h3>Delapan tipe dokumen</h3>
+      <div class="pills" style="margin-top:6px">
+        <span class="pill"><b>DECK</b></span><span class="pill"><b>RAB</b></span>
+        <span class="pill"><b>PRODCOST</b></span><span class="pill"><b>QUOTATION</b></span>
+        <span class="pill"><b>COR</b></span><span class="pill"><b>PKS</b></span>
+        <span class="pill"><b>TRANSFER REQUEST</b></span><span class="pill"><b>BAST</b></span>
+      </div>
+      <div class="callout" style="margin-top:10px">
+        <div class="t">Aturan keunikan</div>
+        <p>Satu proyek hanya boleh punya satu dokumen untuk sebagian besar tipe — dijaga langsung oleh basis data lewat index unik parsial, bukan oleh pengecekan di kode yang bisa kalah balapan.</p>
+      </div>
+      <p class="small" style="margin-top:8px">Quotation dikecualikan karena satu proyek bisa memerlukan penawaran dari dua entitas legal berbeda; COR dikecualikan karena bisa berdiri tanpa proyek.</p>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Document Pipeline</span><span>09</span></div>
+</section>
+
+<!-- ══════════════ 8. COR ══════════════ -->
+<section class="page">
+  <div class="eyebrow">08 &mdash; Modul inti</div>
+  <h2>COR Calculator</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Bagian paling kritis dari seluruh platform: menerjemahkan dana yang masuk menjadi angka yang benar-benar bisa dibelanjakan, lalu memisahkan margin rencana dari profit aktual.</p>
+
+  <figure>
+    <img src="screen-cor.png" alt="Halaman COR Calculator">
+    <figcaption><b>Gambar 8</b><span>Dua metode perhitungan tersedia: <em>Gross Down</em> untuk dana yang sudah diterima, dan <em>Gross Up</em> untuk menghitung mundur berapa yang harus diminta ke klien.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>Apa yang dihitung</h3>
+      <p>Dana masuk dikurangi platform fee dan tech fee, lalu biaya pencairan per kelipatan nominal. Bila disalurkan lewat lembaga mitra, fee lembaga dipotong lebih dulu. Sisanya melewati lapisan pajak — PPN untuk vendor terdaftar, PPh sesuai kategori dan bentuk badan penerima — sebelum akhirnya dibagi menjadi margin dan anggaran yang tersedia.</p>
+      <p>Urutan langkahnya tidak boleh ditukar. Menukar satu tahap saja menghasilkan angka yang tampak masuk akal tetapi salah.</p>
+    </div>
+    <div>
+      <h3>Penjaga margin</h3>
+      <p>Sistem membandingkan margin yang direncanakan dengan margin yang sebenarnya tersisa. Bila realisasinya di bawah rencana, permintaan persetujuan wajib disertai alasan tertulis. Perbandingan ini dihitung ulang di server saat pengajuan — bukan dipercaya dari angka yang kebetulan tampil di layar.</p>
+    </div>
+  </div>
+
+  <div class="callout pos">
+    <div class="t">Uji banding: 6.400 angka, nol selisih</div>
+    <p>Rumus tidak cukup "kelihatan benar". Sebelum dipercaya, mesin perhitungan baru diuji berdampingan dengan rumus versi lama: <strong>200 skenario acak</strong> dijalankan di kedua implementasi, lalu <strong>32 keluaran angka per skenario</strong> dibandingkan satu per satu — total <strong>6.400 perbandingan, tanpa satu pun selisih</strong>. Termasuk di dalamnya kasus khusus yang pernah jadi bug nyata di produksi: skenario tanpa vendor, di mana seluruh sisa dana pernah salah dibaca sebagai profit.</p>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; COR Calculator</span><span>10</span></div>
+</section>
+
+<!-- ══════════════ 9. GDV & DASHBOARD ══════════════ -->
+<section class="page">
+  <div class="eyebrow">09 &mdash; Modul</div>
+  <h2>Rekonsiliasi GDV</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Klaim penjualan hanya berarti bila cocok dengan uang yang benar-benar masuk. Modul ini mempertemukan keduanya secara otomatis.</p>
+
+  <figure>
+    <img src="screen-gdv.png" alt="Halaman GDV Matching">
+    <figcaption><b>Gambar 9</b><span>Setiap klaim GDV dicocokkan dengan realisasi donasi, lalu dikelompokkan ke tiga status. Perhitungan dilakukan langsung saat halaman dibuka — hasilnya tidak pernah disimpan agar tidak mungkin basi.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>Cara pencocokannya</h3>
+      <p>Pencocokan utama memakai tautan kampanye. Bila tidak ketemu, sistem mencoba tautan turunan sebagai alias. Pencocokan langsung selalu menang atas alias — supaya penambahan tautan turunan di kemudian hari tidak pernah bisa membajak tautan yang sudah punya arti sendiri.</p>
+      <h3 style="margin-top:12px">Ketahanan unggahan data</h3>
+      <p>Berkas ekspor dari perkakas pelaporan tidak selalu rapi. Pengurai yang dipakai mengenali penanda berkas tersembunyi, pengodean karakter non-standar, dan pemisah kolom yang berbeda — lalu, bila tetap gagal, menyebutkan persis nama kolom yang ia temukan agar penyebabnya langsung terlihat.</p>
+    </div>
+    <div>
+      <h3>Tiga status hasil</h3>
+      <div class="stack-list" style="margin-top:6px">
+        <div><span class="k"><b style="color:var(--pos)">Sinkron</b></span><span class="v">Realisasi ada dan menutupi klaim</span></div>
+        <div><span class="k"><b style="color:var(--warn)">Klaim Melebihi</b></span><span class="v">Perlu pemeriksaan manual</span></div>
+        <div><span class="k"><b>Belum Sinkron</b></span><span class="v">Tautan tidak ditemukan sama sekali</span></div>
+      </div>
+      <div class="callout warn" style="margin-top:10px">
+        <div class="t">Batas yang diakui jujur</div>
+        <p>Kunci rekonsiliasi masih berupa teks yang diketik manusia, dengan normalisasi seadanya. Satu huruf salah ketik menghasilkan satu baris hantu sekaligus satu kampanye yang tampak belum diklaim. Perbaikan jangka panjangnya sudah dipetakan: jadikan kampanye entitas ber-ID dan pilih lewat pencarian, bukan ketik bebas.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; GDV Matching</span><span>11</span></div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">10 &mdash; Modul</div>
+  <h2>Dashboard Sales</h2>
+  <div class="rule-accent"></div>
+  <p class="lead">Lapisan paling atas: pencapaian terhadap target, kondisi pipeline, dan daftar hal yang menunggu keputusan.</p>
+
+  <figure>
+    <img src="screen-dashboard.png" alt="Halaman Dashboard Sales">
+    <figcaption><b>Gambar 10</b><span>Semua angka di sini adalah hasil agregasi langsung dari data operasional yang sama — bukan rekap yang disalin manual, sehingga tidak pernah berbeda dengan sumbernya.</span></figcaption>
+  </figure>
+
+  <div class="cols narrow">
+    <div>
+      <h3>Target sebagai pembanding</h3>
+      <p>Target dapat ditetapkan di level departemen maupun per consultant. Angka pencapaian dibaca dari realisasi proyek, sehingga persentasenya selalu mencerminkan keadaan terbaru tanpa proses rekap terpisah.</p>
+    </div>
+    <div>
+      <h3>Antrean keputusan</h3>
+      <p>Daftar dokumen yang menunggu aksi membuat pekerjaan yang tertahan terlihat lebih awal — COR menunggu persetujuan, Quotation yang direvisi, monitoring biaya yang belum ditutup, hingga klaim GDV yang melebihi realisasi.</p>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Modul &mdash; Dashboard</span><span>12</span></div>
+</section>
+
+<!-- ══════════════ 11. ALUR ══════════════ -->
+<section class="page">
+  <div class="eyebrow">11 &mdash; Alur Kunci</div>
+  <h2>Empat mekanisme yang<br>menopang keseluruhan</h2>
+  <div class="rule-accent"></div>
+
+  <figure>
+    <img src="diagram-flow.png" alt="Diagram alur kunci platform">
+    <figcaption><b>Gambar 11</b><span>Alur masuknya lead, persetujuan dokumen tanpa login, rekonsiliasi dana, serta rantai utama dari lead sampai pertanggungjawaban biaya.</span></figcaption>
+  </figure>
+
+  <div class="pgnum"><span>Alur Kunci</span><span>13</span></div>
+</section>
+
+<!-- ══════════════ 12. SOROTAN TEKNIS ══════════════ -->
+<section class="page">
+  <div class="eyebrow">12 &mdash; Sorotan Rekayasa</div>
+  <h2>Keputusan yang menentukan<br>kualitas hasilnya</h2>
+  <div class="rule-accent"></div>
+
+  <div class="cols narrow">
+    <div>
+      <div class="feat">
+        <span class="tag">verifikasi</span>
+        <div class="t">Menguji rumus, bukan mempercayainya</div>
+        <p>Mesin COR diuji berdampingan dengan implementasi lama pada 200 skenario acak dan 6.400 titik angka. Tanpa langkah ini, kesalahan perhitungan hanya akan ketahuan setelah uang berpindah.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">keamanan</span>
+        <div class="t">Pertahanan berlapis pada data</div>
+        <p>Kunci basis data tidak pernah sampai ke browser; RLS tetap dinyalakan tanpa policy sebagai jaring pengaman kedua. Webhook publik memverifikasi tanda tangan kriptografis sebelum menyentuh data, dan menolak diam-diam bila tidak cocok.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">idempoten</span>
+        <div class="t">Aman terhadap kiriman ulang</div>
+        <p>Pengirim data eksternal bisa mengulang kiriman yang sama. Setiap kiriman membawa identitas unik yang disimpan, sehingga percobaan kedua diakui tanpa menggandakan baris.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">berkas</span>
+        <div class="t">Dokumen yang tidak bocor lewat tautan</div>
+        <p>PDF COR dan Quotation dirender di server lalu disimpan di penyimpanan privat. Tidak ada tautan permanen; setiap pengunduhan memakai tautan bertanda tangan yang kedaluwarsa dalam hitungan menit.</p>
+      </div>
+    </div>
+    <div>
+      <div class="feat">
+        <span class="tag">tanpa login</span>
+        <div class="t">Persetujuan yang tidak menghalangi</div>
+        <p>Approver membuka tautan bertoken berlaku 14 hari. Halaman yang dibuka hanya menampilkan ringkasan; perubahan status baru terjadi setelah tombol ditekan — sehingga tautan yang tidak sengaja terbuka tidak pernah menyetujui apa pun.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">tahan gagal</span>
+        <div class="t">Efek samping tidak boleh menggagalkan transaksi utama</div>
+        <p>Penulisan audit log dan snapshot anggaran dijalankan secara best-effort. Bila salah satunya gagal, persetujuan tetap tercatat — kegagalan pencatatan tidak boleh berubah menjadi kegagalan bisnis.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">akuntabilitas</span>
+        <div class="t">Audit log yang sebelumnya tidak ada</div>
+        <p>Versi lama punya konstanta audit log yang tidak pernah dipakai satu baris kode pun. Di versi baru ia dibangun sungguhan dan dipasang di titik-titik bernilai tinggi: perubahan karyawan, pembuatan klien dan proyek, seluruh keputusan persetujuan, dan pencairan biaya.</p>
+      </div>
+      <div class="feat">
+        <span class="tag">ketahanan data</span>
+        <div class="t">Pengurai berkas yang menjelaskan dirinya</div>
+        <p>Saat unggahan gagal, pesan galat menyebutkan nama-nama kolom yang benar-benar terbaca dari berkas. Tiga kegagalan berturut-turut di lapangan terselesaikan dalam hitungan menit karena penyebabnya langsung terbaca, bukan ditebak.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Sorotan Rekayasa</span><span>14</span></div>
+</section>
+
+<!-- ══════════════ 13. PROSES ══════════════ -->
+<section class="page">
+  <div class="eyebrow">13 &mdash; Proses</div>
+  <h2>Dibangun dengan kendala<br>yang tidak biasa</h2>
+  <div class="rule-accent"></div>
+
+  <p class="lead">Rebuild ini dikerjakan tanpa lingkungan pengembangan lokal. Perangkat kerja terkunci kebijakan IT — tidak ada pemasangan perkakas, tidak ada terminal lokal. Seluruh pekerjaan berlangsung di lingkungan pengembangan berbasis peramban.</p>
+
+  <div class="steps">
+    <div class="step"><span class="i"></span><span class="b"><b>Membedah platform lama menjadi spesifikasi</b>Kode lama tidak dijadikan acuan langsung. Aturan bisnisnya diangkat lebih dulu menjadi dokumen handover berisi model data, state machine, rumus finansial, dan matriks hak akses — agar rebuild tidak menyalin ulang kekeliruan lama.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Merancang skema basis data lebih dulu</b>27 tabel disusun berurutan sesuai ketergantungan, lengkap dengan batasan nilai dan index unik. Aturan yang bisa dijaga basis data sengaja dititipkan ke basis data.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Membangun per modul, satu instruksi utuh sekali jalan</b>Setiap modul dikirim sebagai satu paket perubahan lengkap — berisi seluruh isi berkas, bukan potongan — sehingga hasilnya dapat diulang dan diperiksa.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Memverifikasi dari salinan kode yang sebenarnya</b>Salinan hanya-baca repositori ditarik berkala untuk memastikan kondisi kode nyata, bukan asumsi. Langkah ini menemukan satu formulir yang hilang diam-diam — regresi yang tidak dilaporkan siapa pun.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Menguji rumus sebelum mempercayainya</b>Mesin perhitungan finansial diuji banding terhadap implementasi lama sebelum modul yang memakainya dinyatakan selesai.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Iterasi antarmuka bersama pengguna aslinya</b>Tampilan tidak dirancang sekali jadi. Empat putaran perbaikan berjalan dari umpan balik langsung: kerapatan tampilan, posisi kendali, perilaku panel, sampai pencegahan klik ganda.</span></div>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Angka pembanding</h3>
+      <table style="margin-top:4px">
+        <thead><tr><th>Ukuran</th><th style="text-align:right">v1</th><th style="text-align:right">v2</th></tr></thead>
+        <tbody>
+          <tr><td>Berkas kode</td><td class="tnum" style="text-align:right">117</td><td class="tnum" style="text-align:right">90</td></tr>
+          <tr><td>Baris kode</td><td class="tnum" style="text-align:right">39.389</td><td class="tnum" style="text-align:right">6.678</td></tr>
+          <tr><td>Penyimpanan</td><td style="text-align:right">29 sheet</td><td style="text-align:right">27 tabel</td></tr>
+          <tr><td>Permintaan per halaman</td><td class="tnum" style="text-align:right">8&ndash;10</td><td class="tnum" style="text-align:right">1</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Penyusutan baris kode bukan karena fitur dikurangi, melainkan karena sebagian besar kode lama adalah tambalan terhadap keterbatasan runtime — bukan aturan bisnis.</p>
+    </div>
+    <div>
+      <h3>Biaya operasional</h3>
+      <p>Seluruh platform berjalan di paket gratis: hosting, basis data, penyimpanan berkas, dan pengiriman surel. Tidak ada komitmen biaya baru untuk membuktikan bahwa arsitekturnya bekerja.</p>
+      <div class="callout" style="margin-top:8px">
+        <div class="t">Keputusan yang ditunda dengan sengaja</div>
+        <p>Penyimpanan berkas sempat diarahkan ke Google Drive, namun terhalang izin organisasi di luar kendali tim. Alih-alih menunggu, penyimpanan dipisah menjadi satu lapisan tersendiri sehingga backend-nya bisa ditukar kapan saja tanpa membongkar modul lain.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pgnum"><span>Proses Pembangunan</span><span>15</span></div>
+</section>
+
+<!-- ══════════════ 14. PENUTUP ══════════════ -->
+<section class="page">
+  <div class="eyebrow">14 &mdash; Hasil &amp; Langkah Berikutnya</div>
+  <h2>Apa yang sudah berdiri,<br>dan apa yang belum</h2>
+  <div class="rule-accent"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Sudah selesai</h3>
+      <div class="stack-list" style="margin-top:6px">
+        <div><span class="k">Seluruh 18 modul</span><span class="v">Berfungsi</span></div>
+        <div><span class="k">Paritas rumus finansial</span><span class="v">Terverifikasi</span></div>
+        <div><span class="k">Lead masuk real-time</span><span class="v">Aktif</span></div>
+        <div><span class="k">Persetujuan tanpa login</span><span class="v">Aktif</span></div>
+        <div><span class="k">Generator PDF</span><span class="v">Aktif</span></div>
+        <div><span class="k">Audit log</span><span class="v">Aktif</span></div>
+        <div><span class="k">Deploy produksi</span><span class="v">Berjalan</span></div>
+      </div>
+    </div>
+    <div>
+      <h3>Belum selesai</h3>
+      <div class="stack-list" style="margin-top:6px">
+        <div><span class="k">Migrasi data produksi</span><span class="v">Belum dimulai</span></div>
+        <div><span class="k">Pengujian menyeluruh dgn data nyata</span><span class="v">Sebagian</span></div>
+        <div><span class="k">Unggah lampiran dokumen</span><span class="v">Belum</span></div>
+        <div><span class="k">Indikator muat di seluruh modul</span><span class="v">Sebagian</span></div>
+      </div>
+      <p class="small" style="margin-top:8px">Migrasi data sengaja dijadwalkan paling akhir: membangun fitur di atas data kosong jauh lebih cepat diiterasi, dan memindahkan data hanya bermakna setelah bentuk akhirnya stabil.</p>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3>Rencana berikutnya</h3>
+  <div class="steps" style="margin-top:4px">
+    <div class="step"><span class="i"></span><span class="b"><b>Migrasi data produksi</b>Memindahkan ±1.300 lead, ±180 klien, beserta seluruh proyek dan dokumen historisnya, dengan pemetaan yang bisa diulang dan diverifikasi.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Uji banding menyeluruh dengan data nyata</b>Menjalankan alur ujung-ke-ujung memakai data hasil migrasi, dan membandingkan angka-angkanya dengan platform lama sebelum peralihan.</span></div>
+    <div class="step"><span class="i"></span><span class="b"><b>Peralihan bertahap</b>Menjalankan kedua platform berdampingan sementara waktu, lalu memindahkan pemakaian harian setelah angka terbukti cocok.</span></div>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Pelajaran yang dibawa</h3>
+      <p class="small" style="margin-top:4px">Batas teknologi sebaiknya diperlakukan sebagai tanggal kedaluwarsa, bukan kejutan. Aturan bisnis yang benar-benar berharga adalah yang sudah melewati pemakaian nyata — dan karena itu wajib diuji ulang, bukan disalin dengan percaya. Aturan yang menyangkut uang harus dijaga di satu tempat saja: begitu rumusnya punya dua salinan, hanya soal waktu sebelum keduanya berbeda.</p>
+    </div>
+    <div>
+      <h3>Catatan dokumen</h3>
+      <p class="small" style="margin-top:4px">Seluruh tangkapan layar dalam dokumen ini dirender langsung dari komponen antarmuka Techford v2 menggunakan <strong>data contoh</strong>. Tidak ada nama, kontak, maupun nominal nyata dari lead, klien, atau mitra yang ditampilkan. Angka skala pemakaian (jumlah lead, klien, dan persentase) mencerminkan kondisi produksi platform versi pertama.</p>
+    </div>
+  </div>
+
+  <div style="position:absolute; left:17mm; right:17mm; bottom:20mm; border-top:1px solid var(--line); padding-top:10px; display:flex; justify-content:space-between; align-items:flex-end">
+    <div>
+      <div class="dsp" style="font-size:13pt">Techford</div>
+      <div class="small">Sales &amp; Operations Platform &mdash; Kitabisa B2B</div>
+    </div>
+    <div class="small" style="text-align:right">Tim B2B Kitabisa<br><span class="mono">b2b@kitabisa.com</span><br>September 2026</div>
+  </div>
+
+  <div class="pgnum"><span>Hasil &amp; Langkah Berikutnya</span><span>16</span></div>
+</section>
+
+</body>
+</html>

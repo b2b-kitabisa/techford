@@ -1,0 +1,66 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Arsitektur</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1440px;height:700px;background:#fff;font-family:"DejaVu Sans",Arial,sans-serif;color:#0f172a;padding:26px 30px;display:flex;gap:22px;align-items:stretch}
+.col{flex:1;display:flex;flex-direction:column}
+.col h2{font-size:15px;font-weight:700;margin-bottom:2px}
+.col .meta{font-size:11px;color:#64748b;margin-bottom:14px}
+.stack{flex:1;display:flex;flex-direction:column;gap:9px}
+.box{border-radius:9px;padding:11px 14px;border:1px solid #e2e8f0;background:#f8fafc}
+.box .t{font-size:12.5px;font-weight:700}
+.box .d{font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.45}
+.old .box{border-color:#fecaca;background:#fef2f2}
+.old .box.db{border-color:#f87171;background:#fee2e2}
+.new .box{border-color:#c7d2fe;background:#eef2ff}
+.new .box.db{border-color:#6ee7b7;background:#ecfdf5}
+.arrow{width:74px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.arrow .a{font-size:32px;color:#94a3b8}
+.arrow .lbl{font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:.06em;text-transform:uppercase;text-align:center;line-height:1.5}
+.tag{display:inline-block;border-radius:999px;padding:1px 8px;font-size:9px;font-weight:700;letter-spacing:.04em}
+.t-bad{background:#fee2e2;color:#b91c1c}
+.t-good{background:#dcfce7;color:#15803d}
+.foot{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:9px;font-size:10px;color:#64748b;line-height:1.55}
+.foot b{color:#0f172a}
+</style></head><body>
+<div class="col old">
+  <h2>Techford v1 &mdash; Google Apps Script</h2>
+  <div class="meta">117 file &middot; 39.389 baris kode &middot; produksi ±8 bulan &middot; deployment ke-187</div>
+  <div class="stack">
+    <div class="box"><div class="t">Presentation &mdash; 16 halaman HTML dalam iframe sandbox</div>
+      <div class="d">SPA shell + router buatan sendiri. Salinan rumus COR ikut hidup di sisi klien.</div></div>
+    <div class="box"><div class="t">Exposed &rarr; Controller &rarr; Service</div>
+      <div class="d">89 fungsi global dipanggil lewat <code>google.script.run</code>. Satu halaman = 8&ndash;10 RPC paralel.</div></div>
+    <div class="box"><div class="t">Repository + Infrastructure</div>
+      <div class="d">Cache chunking, LockService, Sequence manual &mdash; semuanya tambalan untuk batas runtime GAS.</div></div>
+    <div class="box db"><div class="t">Google Sheets sebagai database <span class="tag t-bad">Titik kolaps</span></div>
+      <div class="d">2 spreadsheet &middot; 29 sheet. Tanpa index: setiap query membaca <b>seluruh sheet</b>. Makin banyak baris, makin lambat semua halaman.</div></div>
+    <div class="box"><div class="t">Google Drive &middot; MailApp</div>
+      <div class="d">Folder per Client/Project, PDF hasil konversi HTML, notifikasi email.</div></div>
+  </div>
+  <div class="foot"><b>Batas keras yang tidak bisa dinaikkan:</b> eksekusi maks 6 menit &middot; concurrent execution di-queue &middot; payload besar gagal dikirim balik &middot; rate limit Sheets tidak terdokumentasi.</div>
+</div>
+
+<div class="arrow">
+  <div class="lbl">Rebuild<br>penuh</div>
+  <div class="a">&#10230;</div>
+  <div class="lbl">Aturan<br>bisnis<br>dipertahankan</div>
+</div>
+
+<div class="col new">
+  <h2>Techford v2 &mdash; Next.js + Supabase</h2>
+  <div class="meta">90 file &middot; 6.678 baris kode &middot; 32 halaman &middot; 27 tabel &middot; deploy di Vercel</div>
+  <div class="stack">
+    <div class="box"><div class="t">Next.js App Router &mdash; React Server Components</div>
+      <div class="d">Satu halaman = satu render di server. Tidak ada fan-out RPC, tidak ada salinan rumus di klien.</div></div>
+    <div class="box"><div class="t">Server Actions &mdash; seluruh aturan bisnis</div>
+      <div class="d">State machine, validasi, dan perhitungan uang dieksekusi <b>hanya</b> di server, tidak bisa dilangkahi dari browser.</div></div>
+    <div class="box"><div class="t">Library domain: cor-calc, document-flows, lead-stats, gdv-matching&hellip;</div>
+      <div class="d">Fungsi murni yang bisa diuji terpisah &mdash; mesin COR diuji banding 6.400 angka terhadap rumus lama.</div></div>
+    <div class="box db"><div class="t">Supabase Postgres <span class="tag t-good">Berindex</span></div>
+      <div class="d">27 tabel ternormalisasi, filter &amp; pagination di level SQL. Akses data hanya lewat service role di server; RLS aktif tanpa policy sebagai lapisan pertahanan.</div></div>
+    <div class="box"><div class="t">Supabase Storage &middot; SMTP &middot; Webhook Typeform</div>
+      <div class="d">PDF ber-signed URL, email approval magic-link, lead masuk real-time dengan verifikasi signature.</div></div>
+  </div>
+  <div class="foot"><b>Yang berpindah bukan 39.000 baris kode</b>, melainkan ±7.500 baris aturan bisnis yang sudah tervalidasi pemakaian nyata &mdash; ditulis ulang di atas fondasi yang tidak punya batas-batas tadi.</div>
+</div>
+</body></html>
