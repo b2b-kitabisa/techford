@@ -1,0 +1,864 @@
+<title>Jumantik Kader Cipondoh</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+/* Layout: prototipe telepon menempel di kiri, spesifikasi mengalir di kanan; menumpuk satu kolom di layar sempit */
+:root{
+  --bg:#f6f7fa; --surface:#ffffff; --sunk:#eef1f6;
+  --ink:#10151f; --ink-2:#4a5468; --muted:#79849a;
+  --line:#e2e7ef; --line-2:#eef1f6;
+  --accent:#2a78d6; --accent-soft:#e8f0fd;
+  --good:#0f8f3c; --good-soft:#e6f5ec;
+  --bad:#cc3a3a; --bad-soft:#fcebeb;
+  --warn:#a8650c; --warn-soft:#fbf1e2;
+  --font-display:'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-ui:'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1016; --surface:#161b23; --sunk:#1e252f;
+    --ink:#e9eef6; --ink-2:#a9b5c6; --muted:#7a8697;
+    --line:#262e3a; --line-2:#1e2630;
+    --accent:#5a9df0; --accent-soft:#16283e;
+    --good:#4cbf6a; --good-soft:#12291a;
+    --bad:#ef7272; --bad-soft:#321818;
+    --warn:#dca34f; --warn-soft:#2d2211;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1016; --surface:#161b23; --sunk:#1e252f;
+  --ink:#e9eef6; --ink-2:#a9b5c6; --muted:#7a8697;
+  --line:#262e3a; --line-2:#1e2630;
+  --accent:#5a9df0; --accent-soft:#16283e;
+  --good:#4cbf6a; --good-soft:#12291a;
+  --bad:#ef7272; --bad-soft:#321818;
+  --warn:#dca34f; --warn-soft:#2d2211;
+  color-scheme:dark;
+}
+
+body{ background:var(--bg); color:var(--ink); font-family:var(--font-ui); line-height:1.55; }
+.wrap{
+  max-width:1180px; margin:0 auto;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:28px 56px;
+}
+h1,h2,h3{ margin:0; text-wrap:balance; }
+p{ margin:0; }
+
+/* ---------- kepala halaman ---------- */
+.masthead{ border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:24px; }
+.eyebrow{ font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
+.masthead h1{ font-family:var(--font-display); font-size:clamp(28px,5vw,40px); font-weight:600; letter-spacing:-.015em; margin-top:8px; }
+.masthead .lede{ color:var(--ink-2); font-size:15px; max-width:62ch; margin-top:10px; }
+.facts{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.fact{ background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:12.5px; font-weight:600; color:var(--ink-2); }
+.fact b{ color:var(--ink); font-variant-numeric:tabular-nums; }
+
+/* ---------- kerangka 2 kolom ---------- */
+.cols{ display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:40px; align-items:start; }
+@media (max-width:860px){ .cols{ grid-template-columns:1fr; gap:32px; } }
+
+/* ---------- telepon ---------- */
+.stage{ position:sticky; top:16px; }
+@media (max-width:860px){ .stage{ position:static; } }
+.phone{
+  width:100%; max-width:340px; margin:0 auto;
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:26px; padding:9px; box-shadow:0 14px 40px rgba(16,21,31,.10);
+}
+.screen{ background:var(--sunk); border-radius:18px; overflow:hidden; height:614px; display:flex; flex-direction:column; position:relative; }
+.scr{ position:absolute; inset:0; display:flex; flex-direction:column; }
+.scr[hidden]{ display:none !important; }
+
+.appbar{ background:var(--accent); color:#fff; padding:11px 14px; display:flex; align-items:center; gap:10px; flex:none; }
+.appbar .back{ background:rgba(255,255,255,.18); border:0; color:#fff; width:26px; height:26px; border-radius:8px; font-size:14px; cursor:pointer; flex:none; }
+.appbar h4{ margin:0; font-size:14px; font-weight:800; letter-spacing:-.01em; }
+.appbar .sub{ font-size:11px; opacity:.85; font-weight:500; }
+.body{ flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
+.body::-webkit-scrollbar{ width:4px; }
+.body::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+.footbar{ flex:none; padding:10px 12px; background:var(--surface); border-top:1px solid var(--line); }
+
+.btn{ width:100%; border:0; border-radius:10px; padding:13px; font-family:var(--font-ui); font-size:15px; font-weight:800; cursor:pointer; background:var(--accent); color:#fff; }
+.btn.ghost{ background:var(--sunk); color:var(--ink); border:1px solid var(--line); }
+.btn:focus-visible, .pick:focus-visible, .seg button:focus-visible, .key:focus-visible, .chip:focus-visible, .step button:focus-visible, .navchip:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+.card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:12px; }
+.label{ font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.03em; text-transform:uppercase; }
+
+.search{ width:100%; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:10px; padding:11px 12px; font-family:var(--font-ui); font-size:14px; }
+.search::placeholder{ color:var(--muted); }
+
+.pick{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:11px 12px; cursor:pointer; font-family:var(--font-ui); }
+.pick:hover{ border-color:var(--accent); }
+.av{ width:30px; height:30px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-size:12px; font-weight:800; flex:none; }
+.pick .nm{ font-size:14px; font-weight:700; color:var(--ink); }
+.pick .rw{ font-size:11.5px; color:var(--muted); font-weight:600; }
+
+.dots{ display:flex; gap:12px; justify-content:center; padding:14px 0; }
+.dot{ width:13px; height:13px; border-radius:50%; border:2px solid var(--line); }
+.dot.on{ background:var(--accent); border-color:var(--accent); }
+.keys{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.key{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 0; font-size:20px; font-weight:700; font-family:var(--font-ui); color:var(--ink); cursor:pointer; }
+.key.flat{ background:transparent; border-color:transparent; font-size:14px; font-weight:700; color:var(--ink-2); }
+
+.prog{ height:8px; background:var(--sunk); border-radius:999px; overflow:hidden; margin-top:8px; }
+.prog i{ display:block; height:100%; background:var(--accent); border-radius:999px; }
+.bignum{ font-size:26px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+
+.seg{ display:flex; gap:5px; }
+.seg button{ flex:1; border:1px solid var(--line); background:var(--surface); color:var(--ink-2); border-radius:9px; padding:7px 4px; font-size:11.5px; font-weight:700; font-family:var(--font-ui); cursor:pointer; }
+.seg button[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.row{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 11px; cursor:pointer; font-family:var(--font-ui); }
+.row:hover{ border-color:var(--accent); }
+.row .main{ flex:1; min-width:0; }
+.row .nm{ font-size:13.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row .al{ font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tag{ font-size:10.5px; font-weight:800; padding:3px 7px; border-radius:999px; flex:none; }
+.tag.belum{ background:var(--sunk); color:var(--muted); }
+.tag.sudah{ background:var(--good-soft); color:var(--good); }
+.tag.jentik{ background:var(--bad-soft); color:var(--bad); }
+
+.step{ display:flex; align-items:center; gap:10px; }
+.step button{ width:42px; height:42px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:20px; font-weight:700; cursor:pointer; font-family:var(--font-ui); }
+.step .val{ flex:1; text-align:center; font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; }
+
+.two{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.big{ border:1.5px solid var(--line); background:var(--surface); border-radius:10px; padding:13px 8px; font-family:var(--font-ui); font-size:14px; font-weight:800; color:var(--ink-2); cursor:pointer; }
+.big[aria-pressed="true"].yes{ background:var(--bad-soft); border-color:var(--bad); color:var(--bad); }
+.big[aria-pressed="true"].no{ background:var(--good-soft); border-color:var(--good); color:var(--good); }
+
+.chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip{ border:1px solid var(--line); background:var(--surface); color:var(--ink-2); border-radius:999px; padding:6px 10px; font-size:11.5px; font-weight:700; font-family:var(--font-ui); cursor:pointer; }
+.chip[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.auto{ background:var(--accent-soft); border-radius:9px; padding:9px 11px; font-size:12px; color:var(--ink-2); font-weight:600; }
+.auto b{ color:var(--ink); }
+.switch{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--line-2); }
+.switch:last-child{ border-bottom:0; }
+.switch .t{ font-size:13px; font-weight:700; }
+.switch .h{ font-size:11px; color:var(--muted); font-weight:500; }
+.yn{ display:flex; gap:4px; flex:none; }
+.yn button{ border:1px solid var(--line); background:var(--surface); color:var(--ink-2); border-radius:8px; padding:6px 11px; font-size:12px; font-weight:800; font-family:var(--font-ui); cursor:pointer; }
+.yn button[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.photo{ border:1.5px dashed var(--line); border-radius:10px; padding:20px 12px; text-align:center; cursor:pointer; background:var(--surface); }
+.photo.has{ border-style:solid; border-color:var(--good); background:var(--good-soft); }
+.photo .ic{ font-size:22px; }
+.photo .t{ font-size:13px; font-weight:700; margin-top:4px; }
+.photo .h{ font-size:11px; color:var(--muted); }
+
+.done{ text-align:center; padding:26px 14px; }
+.done .ic{ width:58px; height:58px; margin:0 auto; border-radius:50%; background:var(--good-soft); color:var(--good); display:grid; place-items:center; font-size:28px; }
+.done h5{ margin:12px 0 4px; font-size:17px; font-weight:800; }
+.done p{ font-size:12.5px; color:var(--muted); }
+
+/* ---------- navigasi prototipe ---------- */
+.nav{ display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:14px; }
+.navchip{ border:1px solid var(--line); background:var(--surface); color:var(--ink-2); border-radius:999px; padding:5px 10px; font-size:11.5px; font-weight:700; font-family:var(--font-ui); cursor:pointer; }
+.navchip[aria-pressed="true"]{ background:var(--ink); border-color:var(--ink); color:var(--bg); }
+.hint{ text-align:center; font-size:12px; color:var(--muted); margin-top:10px; }
+
+/* ---------- spesifikasi ---------- */
+.sec{ margin-bottom:38px; }
+.sec > h2{ font-family:var(--font-display); font-size:23px; font-weight:600; letter-spacing:-.01em; }
+.sec > .sub{ color:var(--ink-2); font-size:14px; margin-top:6px; max-width:66ch; }
+.sec h3{ font-size:14px; font-weight:800; margin-top:20px; }
+
+.grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; margin-top:14px; }
+.item{ background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:13px; }
+.item h4{ margin:0 0 4px; font-size:13.5px; font-weight:800; }
+.item p{ font-size:12.5px; color:var(--ink-2); }
+.item .n{ font-size:11px; font-weight:800; color:var(--accent); letter-spacing:.05em; }
+
+.flow{ display:flex; flex-direction:column; gap:0; margin-top:14px; }
+.node{ background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:13px 15px; }
+.node.key{ border-color:var(--accent); border-width:1.5px; }
+.node h4{ margin:0; font-size:13.5px; font-weight:800; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.node .tagl{ font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:999px; }
+.node p{ font-size:12.5px; color:var(--ink-2); margin-top:5px; }
+.node ul{ margin:7px 0 0; padding-left:17px; font-size:12.5px; color:var(--ink-2); }
+.node li{ margin-bottom:3px; }
+.arrow{ display:flex; align-items:center; gap:9px; padding:7px 0 7px 15px; font-size:11.5px; color:var(--muted); font-weight:600; }
+.arrow::before{ content:"↓"; font-size:15px; color:var(--accent); font-weight:700; }
+
+.tbl-wrap{ overflow-x:auto; margin-top:14px; border:1px solid var(--line); border-radius:var(--r); }
+table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:480px; background:var(--surface); }
+th{ text-align:left; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--line); }
+td{ padding:9px 12px; border-bottom:1px solid var(--line-2); color:var(--ink-2); vertical-align:top; }
+tr:last-child td{ border-bottom:0; }
+td b{ color:var(--ink); }
+td code{ font-size:11.5px; background:var(--sunk); padding:1px 5px; border-radius:4px; color:var(--ink); }
+
+ol.q{ counter-reset:q; list-style:none; padding:0; margin:14px 0 0; display:flex; flex-direction:column; gap:9px; }
+ol.q li{ counter-increment:q; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--warn); border-radius:var(--r); padding:12px 14px; }
+ol.q li::before{ content:counter(q); font-size:11px; font-weight:800; color:var(--warn); background:var(--warn-soft); padding:2px 7px; border-radius:999px; margin-right:7px; }
+ol.q b{ font-size:13.5px; }
+ol.q p{ font-size:12.5px; color:var(--ink-2); margin-top:5px; }
+ol.q .usul{ font-size:12.5px; color:var(--ink-2); margin-top:6px; }
+ol.q .usul b{ color:var(--accent); font-size:12.5px; }
+
+.note{ background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:var(--r); padding:13px 15px; margin-top:14px; font-size:12.5px; color:var(--ink-2); }
+.note b{ color:var(--ink); }
+.foot{ border-top:1px solid var(--line); margin-top:36px; padding-top:18px; font-size:12px; color:var(--muted); }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Rancangan untuk dikoreksi · belum dibangun</div>
+    <h1>Aplikasi Input Kader Jumantik</h1>
+    <p class="lede">Web app di HP untuk kader PJB Kelurahan Cipondoh, menggantikan pengisian langsung di spreadsheet.
+    Prototipe di samping bisa diklik — silakan telusuri alurnya, lalu koreksi bagian yang belum pas.</p>
+    <div class="facts">
+      <span class="fact"><b>14</b> RW</span>
+      <span class="fact"><b>25</b> akun kader</span>
+      <span class="fact"><b>1.250</b> rumah patokan dari Agustus</span>
+      <span class="fact">Periode <b>Okt – Des 2026</b></span>
+    </div>
+  </header>
+
+  <div class="cols">
+
+    <!-- ============================ PROTOTIPE ============================ -->
+    <div class="stage">
+      <div class="phone">
+        <div class="screen">
+
+          <!-- 1. pilih nama -->
+          <section class="scr" id="s-login">
+            <div class="appbar">
+              <div>
+                <h4>Jumantik Cipondoh</h4>
+                <div class="sub">Periode Oktober 2026</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="label">Pilih nama Ibu</div>
+              <input class="search" id="kaderSearch" type="text" placeholder="Cari nama…" autocomplete="off">
+              <div id="kaderList" style="display:flex;flex-direction:column;gap:7px"></div>
+            </div>
+          </section>
+
+          <!-- 2. PIN -->
+          <section class="scr" id="s-pin" hidden>
+            <div class="appbar">
+              <button class="back" type="button" data-go="s-login" aria-label="Kembali">‹</button>
+              <div>
+                <h4 id="pinName">Yanti Yulianti</h4>
+                <div class="sub" id="pinRw">RW 01</div>
+              </div>
+            </div>
+            <div class="body" style="justify-content:center">
+              <div class="label" style="text-align:center">Masukkan PIN 4 angka</div>
+              <div class="dots" id="pinDots"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+              <div class="keys" id="pinKeys">
+                <button class="key" type="button">1</button><button class="key" type="button">2</button><button class="key" type="button">3</button>
+                <button class="key" type="button">4</button><button class="key" type="button">5</button><button class="key" type="button">6</button>
+                <button class="key" type="button">7</button><button class="key" type="button">8</button><button class="key" type="button">9</button>
+                <button class="key flat" type="button" data-act="lupa">Lupa</button>
+                <button class="key" type="button">0</button>
+                <button class="key flat" type="button" data-act="hapus">Hapus</button>
+              </div>
+              <p style="font-size:11.5px;color:var(--muted);text-align:center">HP ini akan diingat, jadi PIN hanya ditanya sekali.</p>
+            </div>
+          </section>
+
+          <!-- 3. beranda -->
+          <section class="scr" id="s-home" hidden>
+            <div class="appbar">
+              <div>
+                <h4 id="homeName">Ibu Yanti Yulianti</h4>
+                <div class="sub" id="homeRw">RW 01 · Oktober 2026</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="card">
+                <div class="label">Sudah diperiksa bulan ini</div>
+                <div style="display:flex;align-items:baseline;gap:6px">
+                  <span class="bignum" id="cntDone">18</span>
+                  <span style="font-size:13px;color:var(--muted);font-weight:700">dari 50 rumah</span>
+                </div>
+                <div class="prog"><i id="progBar" style="width:36%"></i></div>
+                <p style="font-size:11.5px;color:var(--muted);margin-top:7px">Batas setor laporan: 31 Oktober 2026 — sisa 9 hari.</p>
+              </div>
+
+              <div class="seg" id="segFilter">
+                <button type="button" data-f="all" aria-pressed="true">Semua</button>
+                <button type="button" data-f="belum">Belum <span id="nBelum">32</span></button>
+                <button type="button" data-f="sudah">Sudah <span id="nSudah">18</span></button>
+              </div>
+              <input class="search" id="rumahSearch" type="text" placeholder="Cari nama pemilik…" autocomplete="off">
+              <div id="rumahList" style="display:flex;flex-direction:column;gap:7px"></div>
+            </div>
+            <div class="footbar">
+              <button class="btn ghost" type="button" data-go="s-baru">+ Rumah baru (di luar daftar)</button>
+            </div>
+          </section>
+
+          <!-- 4. form isi -->
+          <section class="scr" id="s-form" hidden>
+            <div class="appbar">
+              <button class="back" type="button" data-go="s-home" aria-label="Kembali">‹</button>
+              <div>
+                <h4 id="formName">Hasbiallah</h4>
+                <div class="sub" id="formAddr">Cipondoh · RT 01</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="card">
+                <div class="label">Tanggal pemeriksaan</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+                  <span style="font-size:15px;font-weight:800">22 Oktober 2026</span>
+                  <button class="chip" type="button">Ubah</button>
+                </div>
+                <p style="font-size:11px;color:var(--muted);margin-top:5px">Terisi hari ini. Hanya bisa diubah ke tanggal dalam bulan Oktober.</p>
+              </div>
+
+              <div class="card">
+                <div class="label">Container yang diperiksa</div>
+                <div class="step" style="margin-top:8px">
+                  <button type="button" data-step="-1" aria-label="Kurangi">−</button>
+                  <span class="val" id="cDip">2</span>
+                  <button type="button" data-step="1" aria-label="Tambah">+</button>
+                </div>
+                <p style="font-size:11px;color:var(--muted);margin-top:6px">Bak mandi, ember, dispenser, pot — semua tempat yang bisa menampung air.</p>
+              </div>
+
+              <div class="card">
+                <div class="label">Ada jentiknya?</div>
+                <div class="two" style="margin-top:8px">
+                  <button class="big no" type="button" id="btnNo" aria-pressed="true">Tidak ada</button>
+                  <button class="big yes" type="button" id="btnYes" aria-pressed="false">Ada jentik</button>
+                </div>
+
+                <div id="jentikBox" hidden style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+                  <div>
+                    <div class="label">Berapa container ada jentiknya?</div>
+                    <div class="step" style="margin-top:7px">
+                      <button type="button" data-pos="-1" aria-label="Kurangi">−</button>
+                      <span class="val" id="cPos">1</span>
+                      <button type="button" data-pos="1" aria-label="Tambah">+</button>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="label">Jenis container yang ada jentiknya</div>
+                    <div class="chips" id="jenisChips" style="margin-top:7px"></div>
+                  </div>
+                </div>
+
+                <div class="auto" id="autoLine" style="margin-top:10px">
+                  Container bebas jentik: <b id="cNeg">2</b> — dihitung otomatis, Ibu tidak perlu mengisi.
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="label">Tindakan &amp; keterangan</div>
+                <div style="margin-top:4px">
+                  <div class="switch">
+                    <div><div class="t">4M+</div><div class="h">Menguras, menutup, mendaur ulang, memantau</div></div>
+                    <div class="yn" data-sw="m4"><button type="button" aria-pressed="true">Ya</button><button type="button" aria-pressed="false">Tidak</button></div>
+                  </div>
+                  <div class="switch">
+                    <div><div class="t">Larvasidasi</div><div class="h">Ditaburi bubuk abate</div></div>
+                    <div class="yn" data-sw="lv"><button type="button" aria-pressed="false">Ya</button><button type="button" aria-pressed="true">Tidak</button></div>
+                  </div>
+                  <div class="switch">
+                    <div><div class="t">Pengelolaan sampah</div><div class="h">Rumah sudah memilah / mengelola sampah</div></div>
+                    <div class="yn" data-sw="sp"><button type="button" aria-pressed="false">Ya</button><button type="button" aria-pressed="true">Tidak</button></div>
+                  </div>
+                  <div class="switch">
+                    <div><div class="t">Kerja bakti (K3)</div><div class="h">Penghuni ikut kerja bakti lingkungan</div></div>
+                    <div class="yn" data-sw="k3"><button type="button" aria-pressed="true">Ya</button><button type="button" aria-pressed="false">Tidak</button></div>
+                  </div>
+                </div>
+              </div>
+
+              <button class="photo" type="button" id="photoBox">
+                <div class="ic" id="photoIc">📷</div>
+                <div class="t" id="photoT">Ambil foto pemeriksaan</div>
+                <div class="h" id="photoH">Langsung dari kamera HP</div>
+              </button>
+            </div>
+            <div class="footbar">
+              <button class="btn" type="button" id="btnSave">Simpan</button>
+            </div>
+          </section>
+
+          <!-- 5. tersimpan -->
+          <section class="scr" id="s-done" hidden>
+            <div class="appbar">
+              <div><h4>Tersimpan</h4><div class="sub" id="doneRw">RW 01 · Oktober 2026</div></div>
+            </div>
+            <div class="body">
+              <div class="done">
+                <div class="ic">✓</div>
+                <h5 id="doneName">Hasbiallah tersimpan</h5>
+                <p>Data sudah masuk ke rekap kelurahan. Kalau ada yang keliru, rumah ini masih bisa dibuka dan diperbaiki.</p>
+              </div>
+              <div class="card">
+                <div class="label">Sisa rumah bulan ini</div>
+                <div style="display:flex;align-items:baseline;gap:6px">
+                  <span class="bignum" id="doneLeft">31</span>
+                  <span style="font-size:13px;color:var(--muted);font-weight:700">rumah belum diperiksa</span>
+                </div>
+              </div>
+              <button class="btn" type="button" id="btnNext">Lanjut ke rumah berikutnya</button>
+              <button class="btn ghost" type="button" data-go="s-home">Kembali ke daftar</button>
+            </div>
+          </section>
+
+          <!-- 6. rumah baru -->
+          <section class="scr" id="s-baru" hidden>
+            <div class="appbar">
+              <button class="back" type="button" data-go="s-home" aria-label="Kembali">‹</button>
+              <div><h4>Rumah baru</h4><div class="sub">RW 01 · di luar daftar Agustus</div></div>
+            </div>
+            <div class="body">
+              <div class="card">
+                <div class="label">Nama pemilik rumah</div>
+                <input class="search" style="margin-top:7px" type="text" placeholder="Contoh: Siti Aminah">
+              </div>
+              <div class="card">
+                <div class="label">Alamat (jalan / blok / nomor)</div>
+                <input class="search" style="margin-top:7px" type="text" placeholder="Contoh: Gg. Lori No. 28">
+              </div>
+              <div class="card">
+                <div class="label">RT</div>
+                <div class="chips" style="margin-top:7px">
+                  <button class="chip" type="button" aria-pressed="true">01</button>
+                  <button class="chip" type="button" aria-pressed="false">02</button>
+                  <button class="chip" type="button" aria-pressed="false">03</button>
+                  <button class="chip" type="button" aria-pressed="false">04</button>
+                  <button class="chip" type="button" aria-pressed="false">05</button>
+                  <button class="chip" type="button" aria-pressed="false">06</button>
+                </div>
+                <p style="font-size:11px;color:var(--muted);margin-top:7px">Dipilih, tidak diketik — supaya tidak ada RT yang ditulis <code style="font-size:11px">03/02</code>.</p>
+              </div>
+              <div class="note" style="margin-top:0">Rumah baru otomatis masuk daftar tetap, jadi bulan depan sudah muncul sendiri tanpa diketik ulang.</div>
+            </div>
+            <div class="footbar">
+              <button class="btn" type="button" data-go="s-form">Lanjut isi pemeriksaan</button>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Pindah layar prototipe">
+        <button class="navchip" type="button" data-go="s-login" aria-pressed="true">1 Pilih nama</button>
+        <button class="navchip" type="button" data-go="s-pin" aria-pressed="false">2 PIN</button>
+        <button class="navchip" type="button" data-go="s-home" aria-pressed="false">3 Daftar rumah</button>
+        <button class="navchip" type="button" data-go="s-form" aria-pressed="false">4 Isi data</button>
+        <button class="navchip" type="button" data-go="s-done" aria-pressed="false">5 Tersimpan</button>
+        <button class="navchip" type="button" data-go="s-baru" aria-pressed="false">6 Rumah baru</button>
+      </nav>
+      <p class="hint">Nama kader dan rumah di prototipe ini diambil dari data Agustus 2026 yang asli.</p>
+    </div>
+
+    <!-- ============================ SPESIFIKASI ============================ -->
+    <main>
+
+      <section class="sec">
+        <h2>Alurnya cuma tiga langkah</h2>
+        <p class="sub">Kader tidak pernah melihat tabel, kolom, atau rumus. Satu rumah = satu layar, selesai, lanjut.</p>
+        <div class="grid2">
+          <div class="item"><div class="n">LANGKAH 1</div><h4>Pilih nama sendiri</h4><p>Daftar 25 nama kader. Sekali pilih di HP sendiri, seterusnya langsung masuk — tidak perlu email, tidak perlu akun Google.</p></div>
+          <div class="item"><div class="n">LANGKAH 2</div><h4>Daftar rumah sudah terisi</h4><p>Rumah yang muncul persis rumah yang Ibu periksa bulan Agustus, lengkap dengan alamat dan RT-nya. Tinggal ketuk salah satu.</p></div>
+          <div class="item"><div class="n">LANGKAH 3</div><h4>Isi, foto, simpan</h4><p>Rata-rata 5 pertanyaan per rumah karena 88% rumah tidak ada jentik — pertanyaan jenis container baru muncul kalau ada jentik.</p></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Fitur</h2>
+
+        <h3>Supaya cepat dan tidak salah ketik</h3>
+        <div class="grid2">
+          <div class="item"><h4>Nama &amp; alamat sudah terisi</h4><p>Diambil dari data Agustus. Kader hanya membetulkan kalau memang berubah.</p></div>
+          <div class="item"><h4>Angka pakai tombol − dan +</h4><p>Tidak ada ketik angka di keyboard HP, jadi tidak ada salah ketik seperti 20 jadi 200.</p></div>
+          <div class="item"><h4>Jumlah (−) dihitung sendiri</h4><p>Container bebas jentik = diperiksa dikurangi yang ada jentik. Tidak pernah ditanyakan.</p></div>
+          <div class="item"><h4>Ya / Tidak, bukan 0 dan 1</h4><p>Angka 0/1 disimpan di belakang layar; kader cukup menekan Ya atau Tidak.</p></div>
+          <div class="item"><h4>Tanggal otomatis hari ini</h4><p>Bisa diubah, tapi hanya ke tanggal dalam bulan yang sedang berjalan.</p></div>
+          <div class="item"><h4>Foto langsung dari kamera</h4><p>Dikecilkan otomatis di HP sebelum dikirim, supaya tetap terkirim walau sinyal pas-pasan.</p></div>
+        </div>
+
+        <h3>Supaya kader tahu posisinya</h3>
+        <div class="grid2">
+          <div class="item"><h4>Penghitung progres</h4><p>“18 dari 50 rumah” beserta sisa hari sampai batas setor.</p></div>
+          <div class="item"><h4>Saringan “Belum”</h4><p>Satu ketukan untuk melihat rumah yang belum diperiksa saja.</p></div>
+          <div class="item"><h4>Penanda rumah berjentik</h4><p>Rumah yang ketemu jentik diberi tanda merah, jadi mudah ditindaklanjuti.</p></div>
+          <div class="item"><h4>Bisa diperbaiki</h4><p>Entri masih bisa dibuka dan dibetulkan selama periode bulan itu belum ditutup.</p></div>
+        </div>
+
+        <h3>Supaya data tidak hilang</h3>
+        <div class="grid2">
+          <div class="item"><h4>Draf tersimpan di HP</h4><p>Kalau aplikasi tertutup atau HP mati di tengah pengisian, isian terakhir masih ada.</p></div>
+          <div class="item"><h4>Antre kalau sinyal putus</h4><p>Simpanan ditahan di HP dan dikirim sendiri begitu sinyal kembali.</p></div>
+          <div class="item"><h4>Tidak jadi dobel</h4><p>Satu rumah satu bulan hanya punya satu baris, walau tombol Simpan tertekan dua kali.</p></div>
+          <div class="item"><h4>Riwayat perubahan</h4><p>Setiap perbaikan tercatat: siapa, kapan, dari nilai berapa jadi berapa.</p></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Mekanisme pencatatan</h2>
+        <p class="sub">Inti usulannya satu: berhenti membuat spreadsheet baru tiap bulan. Satu database dengan kolom periode menampung Oktober sampai Desember dan seterusnya; format laporan bulanan tetap bisa dihasilkan otomatis kalau dinas memintanya.</p>
+
+        <div class="flow">
+          <div class="node">
+            <h4>Kader membuka web app di HP</h4>
+            <p>Satu tautan Apps Script, disimpan di layar depan HP seperti aplikasi biasa. Tidak ada yang perlu dipasang dari Play Store.</p>
+          </div>
+          <div class="arrow">menekan Simpan</div>
+
+          <div class="node key">
+            <h4>Spreadsheet database <span class="tagl">Baru, satu untuk semua bulan</span></h4>
+            <ul>
+              <li><b>Kader</b> — 25 nama, RW yang dipegang, PIN, aktif/tidak</li>
+              <li><b>Rumah</b> — 1.250 rumah tetap hasil Agustus: ID rumah, RW, kader, nama, alamat, RT</li>
+              <li><b>Entri</b> — satu baris per rumah per bulan, ditambah terus ke bawah</li>
+              <li><b>Log</b> — riwayat setiap perubahan</li>
+            </ul>
+          </div>
+          <div class="arrow">foto dipisah</div>
+
+          <div class="node">
+            <h4>Folder Google Drive per RW dan bulan</h4>
+            <p>Foto disimpan sebagai berkas biasa, dan sheet hanya menyimpan tautannya. <b>Bukan</b> gambar yang ditempel di dalam sel: gambar dalam sel tidak bisa dibaca balik oleh script — itu persis yang dulu membuat proses rekap berhenti di tengah jalan.</p>
+          </div>
+          <div class="arrow">script menyusun ulang</div>
+
+          <div class="node key">
+            <h4>Tab <code>Master Data</code> — 27 kolom <span class="tagl">Format yang sudah ada</span></h4>
+            <p>Susunannya sama persis dengan master Bekasi dan Tangerang sekarang, jadi dashboard gabungan langsung membacanya tanpa diubah. Cukup tambah satu baris sumber di <code>DD_EXTRA_SOURCES</code>.</p>
+          </div>
+          <div class="arrow">kalau dibutuhkan</div>
+
+          <div class="node">
+            <h4>Ekspor format formulir resmi</h4>
+            <p>Tombol di menu admin menghasilkan tab per RW dengan tata letak formulir seperti sekarang, siap dicetak atau dikirim ke kelurahan. Dihasilkan dari database, bukan diisi tangan.</p>
+          </div>
+        </div>
+
+        <div class="note">
+          <b>Agustus tetap jadi patokan.</b> Daftar 1.250 rumah diambil sekali dari spreadsheet Agustus
+          (<code>1vmWrnQe…</code>) memakai kolom <code>ID</code> yang sudah Bapak/Ibu buat di sana.
+          Setelah itu daftar rumah hidup di database, dan tiap bulan berikutnya memakai daftar yang sama —
+          jadi perbandingan antar bulan selalu rumah yang sama, bukan rumah yang kebetulan sempat didatangi.
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Masalah data Agustus yang langsung hilang</h2>
+        <p class="sub">Angka di bawah ini dari hasil rekap Agustus kemarin. Semuanya masalah pengisian, dan semuanya dicegah di aplikasi, bukan dibersihkan belakangan.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Yang terjadi di Agustus</th><th>Jumlah</th><th>Dicegah dengan</th></tr></thead>
+            <tbody>
+              <tr><td><b>Kolom Jumlah (+) dikosongkan</b></td><td>42 baris</td><td>Tidak pernah ditanya. Kader menjawab “ada jentik / tidak ada”, angkanya disusun aplikasi.</td></tr>
+              <tr><td><b>Tanggal salah ketik</b> — <code>07-089-2026</code>, <code>30-082026</code>, tahun <code>2926</code></td><td>±60 baris</td><td>Tanggal dipilih dari kalender, default hari ini, dibatasi bulan berjalan.</td></tr>
+              <tr><td><b>Bulan di header blok salah</b> — tertulis Agustus 2016</td><td>1 blok (43 baris)</td><td>Periode ditetapkan sistem, tidak diketik kader.</td></tr>
+              <tr><td><b>RT ditulis <code>03/02</code>, <code>01</code>, <code>1</code> campur</b></td><td>136 baris</td><td>RT dipilih dari tombol, hanya angka RT yang ada di RW itu.</td></tr>
+              <tr><td><b>Ada jentik tapi jenis container kosong</b></td><td>5 baris</td><td>Tombol Simpan tidak aktif sebelum jenis container dipilih.</td></tr>
+              <tr><td><b>Kolom 0/1 diisi huruf</b> — <code>o</code></td><td>1 baris</td><td>Hanya ada tombol Ya dan Tidak.</td></tr>
+              <tr><td><b>Nama kader beda-beda penulisan</b> — <code>ELISA DAMAYANTI</code> vs <code>Elisa Damayanti</code></td><td>—</td><td>Nama diambil dari akun yang dipilih saat masuk.</td></tr>
+              <tr><td><b>RW ditulis <code>011, puri megah</code>, <code>..........012</code></b></td><td>—</td><td>RW melekat pada akun kader.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Yang perlu Bapak/Ibu koreksi dulu</h2>
+        <p class="sub">Delapan hal ini mengubah bentuk aplikasinya. Jawaban singkat saja sudah cukup untuk saya mulai membangun.</p>
+        <ol class="q">
+          <li><b>PIN dipakai atau tidak?</b>
+            <p>Tanpa PIN lebih cepat, tapi siapa pun yang punya tautannya bisa mengisi atas nama kader lain.</p>
+            <p class="usul"><b>Usul saya:</b> pakai PIN 4 angka, dan HP diingat supaya hanya ditanya sekali.</p></li>
+
+          <li><b>September bagaimana?</b>
+            <p>Bapak/Ibu menyebut Agustus jadi patokan untuk Oktober. Berarti September memang tidak ada pendataan, atau datanya ada di spreadsheet lain?</p>
+            <p class="usul"><b>Usul saya:</b> aplikasi mulai dari periode Oktober 2026; kalau September ada, saya masukkan juga sebagai riwayat.</p></li>
+
+          <li><b>Target 50 rumah per kader tetap?</b>
+            <p>Agustus: hampir semua RW 100 rumah (2 kader × 50). Kecuali RW 10 = 140, RW 12 = 50, RW 13 = 10, RW 14 = 50.</p>
+            <p class="usul"><b>Usul saya:</b> target disimpan per kader supaya bisa beda-beda, dan penghitung progres mengikutinya.</p></li>
+
+          <li><b>Kalau rumah tidak bisa diperiksa?</b>
+            <p>Pemilik tidak ada, pindah, atau menolak. Sekarang tidak ada cara mencatat ini — rumahnya hanya hilang dari laporan.</p>
+            <p class="usul"><b>Usul saya:</b> tambah status “Tidak bisa diperiksa” + alasan. Tidak dihitung sebagai bangunan diperiksa, tapi terlihat di laporan.</p></li>
+
+          <li><b>Foto wajib, dan berapa banyak?</b>
+            <p>Di Agustus hampir semua baris ada fotonya, jadi sepertinya memang wajib.</p>
+            <p class="usul"><b>Usul saya:</b> wajib 1 foto per rumah, boleh tambah sampai 3.</p></li>
+
+          <li><b>Sampai kapan entri boleh diubah?</b>
+            <p>Kalau selamanya bisa diubah, angka laporan bisa berubah setelah dilaporkan ke dinas.</p>
+            <p class="usul"><b>Usul saya:</b> bebas diubah sampai tanggal 5 bulan berikutnya, setelah itu terkunci dan hanya admin yang bisa membuka.</p></li>
+
+          <li><b>Elisa Damayanti memegang RW 10 dan RW 13 — benar?</b>
+            <p>Di data Agustus namanya muncul sebagai kader blok ketiga RW 10 sekaligus kader RW 13.</p>
+            <p class="usul"><b>Usul saya:</b> satu akun bisa punya lebih dari satu RW, dan ada pilihan RW di beranda.</p></li>
+
+          <li><b>Perlu halaman admin?</b>
+            <p>Untuk memantau RW mana yang tertinggal, menambah/menonaktifkan kader, mengunci periode, dan menarik ekspor.</p>
+            <p class="usul"><b>Usul saya:</b> perlu, satu halaman sederhana khusus akun Bapak/Ibu.</p></li>
+        </ol>
+      </section>
+
+      <section class="sec">
+        <h2>Catatan teknis singkat</h2>
+        <div class="grid2">
+          <div class="item"><h4>Dibangun dengan Apps Script</h4><p>Web app <code>doGet()</code> + HtmlService, sama seperti dashboard yang sudah jalan. Tidak ada biaya server dan tidak perlu hosting lain.</p></div>
+          <div class="item"><h4>Dibuka lewat tautan biasa</h4><p>Kader menyimpannya ke layar depan HP. Bekerja di Android maupun iPhone, lewat browser bawaan.</p></div>
+          <div class="item"><h4>Penulisan dikunci bergantian</h4><p><code>LockService</code> dipakai saat menulis supaya 25 kader yang menyimpan bersamaan tidak saling menimpa baris.</p></div>
+          <div class="item"><h4>Dashboard tidak perlu diubah</h4><p>Karena keluarannya tetap <code>Master Data</code> 27 kolom, dashboard gabungan Bekasi–Tangerang langsung ikut terbarui.</p></div>
+        </div>
+      </section>
+
+      <p class="foot">Rancangan — belum ada kode yang dibangun. Nama kader, nama pemilik rumah, dan jumlah di halaman ini diambil dari spreadsheet Agustus 2026 Kelurahan Cipondoh.</p>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var KADER = [
+    ['Yanti Yulianti','RW 01'], ['Perawati','RW 01'],
+    ['Sumartini','RW 02'], ['Yuli Setia','RW 02'],
+    ['Nafsul Muthmainah','RW 03'], ['Mulyanih','RW 03'],
+    ['Tri Hartati','RW 04'], ['Anita','RW 04'],
+    ['Bekti','RW 05'], ['Hanimah','RW 05'],
+    ['Tjioe Titin','RW 06'], ['Dewi Suntari','RW 06'],
+    ['Iis Usnah','RW 07'], ['Diah Lestari','RW 07'],
+    ['Tarini','RW 08'], ['Yuni','RW 08'],
+    ['Hartatik','RW 09'], ['Prilasari Nurul Utami','RW 09'],
+    ['Lia','RW 10'], ['Kartini','RW 10'], ['Elisa Damayanti','RW 10 & RW 13'],
+    ['Siti Halimah','RW 11'], ['Sondang F Gultom','RW 11'],
+    ['Winda Aryani','RW 12'], ['Wella Maharani','RW 14']
+  ];
+
+  var NAMA = ['Hasbiallah','Muhayar','Cecep','Ali Idrus','Wardah','Indah','Yovi','Misar','Sopiah',
+    'Ayub','Senah','Apip','Febriansyah','Khusnul','Supangat','Sutono','Samidi','Maswenih','Jamaludin',
+    'Ropiah','Apriyanto','Dwi Siswanto','Ardianov','Dodi','Bani Samiaji','Marsahid','Sella','Rikki',
+    'Rohanah','Abdul Rohman','Agung Permadi','Sugiatna','Asep Mubarok','Nasa','Cece Riadi','Santa',
+    'Handi','Apri','Mahwan','Rizal','Sadiah','Ahmad Nukman','Tomi','Surya Lesmana','Murtini',
+    'Hayati','Asih Sekar Arum','Baidiyah','Neti','Sukaesih'];
+
+  var JENIS = ['Ember / bak mandi','Tampungan dispenser','Tampungan air kulkas','Tatakan pot bunga',
+    'Vas tanaman air','Kolam ikan','Ban bekas','Talang air','Selokan','Lain-lain'];
+
+  // 50 rumah, 18 di antaranya sudah diperiksa — angka ini yang dipakai di beranda
+  var RUMAH = NAMA.map(function(n, i){
+    return { nm:n, al:'Cipondoh', rt:String((i % 6) + 1).padStart(2,'0'),
+             st: i < 16 ? 'sudah' : (i === 16 || i === 17 ? 'jentik' : 'belum') };
+  });
+
+  var $  = function(s){ return document.querySelector(s); };
+  var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  var state = { kader:KADER[0], pin:'', rumah:RUMAH[18], jentik:false, foto:false, cDip:2, cPos:1, jenis:[] };
+
+  // ---------------------------------------------------------------- layar
+  function show(id){
+    $$('.scr').forEach(function(s){ s.hidden = (s.id !== id); });
+    $$('#nav .navchip').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.go === id)); });
+    var body = document.querySelector('#' + id + ' .body');
+    if (body) body.scrollTop = 0;
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-go]');
+    if (b) show(b.dataset.go);
+  });
+
+  // ---------------------------------------------------------------- pilih kader
+  function drawKader(q){
+    var host = $('#kaderList'); host.textContent = '';
+    KADER.filter(function(k){ return !q || k[0].toLowerCase().indexOf(q) !== -1; })
+      .forEach(function(k){
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'pick';
+        var av = document.createElement('span'); av.className = 'av';
+        av.textContent = k[0].charAt(0).toUpperCase();
+        var box = document.createElement('span');
+        var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = k[0];
+        var rw = document.createElement('span'); rw.className = 'rw'; rw.textContent = k[1];
+        box.appendChild(nm); box.appendChild(document.createElement('br')); box.appendChild(rw);
+        b.appendChild(av); b.appendChild(box);
+        b.addEventListener('click', function(){
+          state.kader = k; state.pin = '';
+          $('#pinName').textContent = k[0];
+          $('#pinRw').textContent = k[1];
+          drawPin();
+          show('s-pin');
+        });
+        host.appendChild(b);
+      });
+    if (!host.children.length){
+      var p = document.createElement('p');
+      p.style.cssText = 'font-size:12.5px;color:var(--muted);text-align:center;padding:14px 0';
+      p.textContent = 'Nama tidak ditemukan.';
+      host.appendChild(p);
+    }
+  }
+  $('#kaderSearch').addEventListener('input', function(){ drawKader(this.value.trim().toLowerCase()); });
+
+  // ---------------------------------------------------------------- PIN
+  function drawPin(){
+    $$('#pinDots .dot').forEach(function(d, i){ d.classList.toggle('on', i < state.pin.length); });
+  }
+  $('#pinKeys').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'hapus') state.pin = state.pin.slice(0, -1);
+    else if (act === 'lupa') return;
+    else if (state.pin.length < 4) state.pin += b.textContent;
+    drawPin();
+    if (state.pin.length === 4) setTimeout(enterHome, 220);
+  });
+
+  function enterHome(){
+    $('#homeName').textContent = 'Ibu ' + state.kader[0];
+    $('#homeRw').textContent = state.kader[1] + ' · Oktober 2026';
+    $('#doneRw').textContent = state.kader[1] + ' · Oktober 2026';
+    show('s-home');
+  }
+
+  // ---------------------------------------------------------------- daftar rumah
+  var filter = 'all';
+  function counts(){
+    var sudah = RUMAH.filter(function(r){ return r.st !== 'belum'; }).length;
+    return { sudah:sudah, belum:RUMAH.length - sudah };
+  }
+  function drawRumah(){
+    var q = $('#rumahSearch').value.trim().toLowerCase();
+    var host = $('#rumahList'); host.textContent = '';
+    RUMAH.filter(function(r){
+      if (filter === 'belum' && r.st !== 'belum') return false;
+      if (filter === 'sudah' && r.st === 'belum') return false;
+      return !q || r.nm.toLowerCase().indexOf(q) !== -1;
+    }).forEach(function(r){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'row';
+      var main = document.createElement('span'); main.className = 'main';
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.nm;
+      var al = document.createElement('span'); al.className = 'al';
+      al.textContent = r.al + ' · RT ' + r.rt;
+      main.appendChild(nm); main.appendChild(document.createElement('br')); main.appendChild(al);
+      var t = document.createElement('span');
+      t.className = 'tag ' + r.st;
+      t.textContent = r.st === 'belum' ? 'Belum' : (r.st === 'jentik' ? '⚠ Ada jentik' : '✓ Sudah');
+      b.appendChild(main); b.appendChild(t);
+      b.addEventListener('click', function(){ openForm(r); });
+      host.appendChild(b);
+    });
+    var c = counts();
+    $('#cntDone').textContent = c.sudah;
+    $('#nSudah').textContent = c.sudah;
+    $('#nBelum').textContent = c.belum;
+    $('#progBar').style.width = Math.round(c.sudah / RUMAH.length * 100) + '%';
+    $('#doneLeft').textContent = c.belum;
+  }
+  $('#rumahSearch').addEventListener('input', drawRumah);
+  $('#segFilter').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    filter = b.dataset.f;
+    $$('#segFilter button').forEach(function(x){ x.setAttribute('aria-pressed', String(x === b)); });
+    drawRumah();
+  });
+
+  // ---------------------------------------------------------------- formulir
+  function openForm(r){
+    state.rumah = r; state.jentik = false; state.foto = false;
+    state.cDip = 2; state.cPos = 1; state.jenis = [];
+    $('#formName').textContent = r.nm;
+    $('#formAddr').textContent = r.al + ' · RT ' + r.rt;
+    setJentik(false);
+    syncNums();
+    setFoto(false);
+    show('s-form');
+  }
+
+  function setJentik(on){
+    state.jentik = on;
+    $('#btnYes').setAttribute('aria-pressed', String(on));
+    $('#btnNo').setAttribute('aria-pressed', String(!on));
+    $('#jentikBox').hidden = !on;
+    syncNums();
+  }
+  $('#btnYes').addEventListener('click', function(){ setJentik(true); });
+  $('#btnNo').addEventListener('click', function(){ setJentik(false); });
+
+  function syncNums(){
+    if (state.cDip < 1) state.cDip = 1;
+    if (state.cPos < 1) state.cPos = 1;
+    if (state.cPos > state.cDip) state.cPos = state.cDip;
+    var pos = state.jentik ? state.cPos : 0;
+    $('#cDip').textContent = state.cDip;
+    $('#cPos').textContent = state.cPos;
+    $('#cNeg').textContent = state.cDip - pos;
+  }
+  $$('[data-step]').forEach(function(b){
+    b.addEventListener('click', function(){ state.cDip += Number(b.dataset.step); syncNums(); });
+  });
+  $$('[data-pos]').forEach(function(b){
+    b.addEventListener('click', function(){ state.cPos += Number(b.dataset.pos); syncNums(); });
+  });
+
+  var chipHost = $('#jenisChips');
+  JENIS.forEach(function(j){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = j;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function(){
+      var on = b.getAttribute('aria-pressed') === 'true';
+      b.setAttribute('aria-pressed', String(!on));
+      if (on) state.jenis = state.jenis.filter(function(x){ return x !== j; });
+      else state.jenis.push(j);
+    });
+    chipHost.appendChild(b);
+  });
+
+  $$('.yn').forEach(function(g){
+    g.addEventListener('click', function(e){
+      var b = e.target.closest('button'); if (!b) return;
+      Array.prototype.forEach.call(g.children, function(x){
+        x.setAttribute('aria-pressed', String(x === b));
+      });
+    });
+  });
+
+  function setFoto(on){
+    state.foto = on;
+    var box = $('#photoBox');
+    box.classList.toggle('has', on);
+    $('#photoIc').textContent = on ? '✓' : '📷';
+    $('#photoT').textContent = on ? 'Foto siap dikirim' : 'Ambil foto pemeriksaan';
+    $('#photoH').textContent = on ? 'IMG_2026-10-22.jpg · 184 KB setelah dikecilkan' : 'Langsung dari kamera HP';
+  }
+  $('#photoBox').addEventListener('click', function(){ setFoto(!state.foto); });
+
+  $('#btnSave').addEventListener('click', function(){
+    state.rumah.st = state.jentik ? 'jentik' : 'sudah';
+    $('#doneName').textContent = state.rumah.nm + ' tersimpan';
+    drawRumah();
+    show('s-done');
+  });
+
+  $('#btnNext').addEventListener('click', function(){
+    var next = RUMAH.filter(function(r){ return r.st === 'belum'; })[0];
+    if (next) openForm(next); else show('s-home');
+  });
+
+  drawKader('');
+  drawPin();
+  drawRumah();
+})();
+</script>
