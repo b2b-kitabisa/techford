@@ -65,28 +65,64 @@ Menu **🦟 PJB Cipondoh** akan muncul:
 Saat pertama dijalankan Google meminta izin: **Advanced › Go to project (unsafe)
 › Allow**. Normal untuk script buatan sendiri.
 
-### Langkah 4 — Dua deployment
+### Langkah 4 — Deploy (CUKUP SATU deployment)
 
-Halaman kader harus terbuka tanpa akun Google (kader memakai nama + PIN),
-sedangkan halaman admin harus tahu siapa yang membuka. Karena itu dibuat
-**dua deployment** dari project yang sama:
+Deploy → **New deployment** → ikon ⚙ di kiri atas → **Web app** → isi:
 
-| | Deployment **Kader** | Deployment **Admin** |
-| --- | --- | --- |
-| Execute as | Me (`b2b@kitabisa.com`) | Me (`b2b@kitabisa.com`) |
-| Who has access | **Anyone** | **Anyone within Kitabisa** |
-| Tautan dibagikan | apa adanya | ditambah `?page=admin` |
+| Isian | Nilai |
+| --- | --- |
+| Description | `Jumantik Cipondoh` |
+| Execute as | **Me** (`b2b@kitabisa.com`) |
+| Who has access | **Anyone** |
 
-Deploy → New deployment → ⚙ → Web app → isi sesuai tabel → Deploy. Ulangi
-untuk yang kedua.
+→ **Deploy** → **Authorize access** → pilih akun → Advanced → Go to project (unsafe) → Allow.
 
-Dengan cara ini pembatasan admin dikerjakan Google, bukan hanya oleh kode —
-dan kode tetap memeriksa domainnya lagi sebagai lapis kedua.
+Salin **Web app URL** yang muncul. Itu saja yang dibutuhkan:
+
+- **Kader** → tautan apa adanya
+- **Admin** → tautan yang sama **ditambah** `?page=admin` di belakangnya
+
+Contoh:
+
+```
+https://script.google.com/macros/s/AKfycb.../exec              ← kader
+https://script.google.com/macros/s/AKfycb.../exec?page=admin   ← admin
+```
+
+> **Kenapa "Anyone", bukan "Anyone within Kitabisa"?**
+> Kader tidak punya akun Google kerja, jadi halaman kader harus bisa dibuka siapa
+> saja yang punya tautannya. Itu tetap aman untuk halaman admin: karena pemilik
+> script dan para admin sama-sama di domain `kitabisa.com`, `Session.getActiveUser()`
+> tetap mengembalikan email pengunjung yang sedang masuk dengan akun kitabisa.com.
+> Pengunjung anonim atau dari luar domain mengembalikan string kosong, lalu ditolak
+> oleh `pjbAdminBoleh_()`. Jadi `?page=admin` hanya terbuka untuk akun kitabisa.com
+> yang sedang masuk di peramban itu.
+
+**Kalau halaman admin menolak padahal sudah pakai akun kitabisa.com:** peramban itu
+kemungkinan sedang aktif di profil/akun lain. Halaman penolakannya menyebut akun mana
+yang sedang terbaca — buka tautannya di jendela yang sudah masuk akun kerja.
+
+#### Setiap kali kode diperbarui
+
+**Deploy → Manage deployments → pilih deployment yang ada → ikon ✏️ pensil →
+Version: New version → Deploy.** Tautannya tetap sama, jadi kader tidak perlu
+diberi tautan baru.
+
+Jangan memakai "New deployment" untuk pembaruan — itu membuat deployment baru
+dengan tautan baru.
+
+#### Kalau sudah terlanjur punya dua deployment
+
+Di **Manage deployments**, satu deployment yang terarsip bisa dibiarkan saja —
+tidak mengganggu. Yang dipakai cukup yang **Active**. Kalau ingin merapikan,
+arsipkan yang tidak terpakai lewat ikon ⋮ → **Archive**. Deployment yang terarsip
+tautannya berhenti bekerja, jadi pastikan yang diarsipkan bukan yang sedang
+dibagikan ke kader.
 
 ### Langkah 5 — Bagikan ke kader
 
-Kirim tautan deployment Kader lewat WhatsApp. Di HP: buka tautannya →
-menu browser → **Tambahkan ke layar utama**. Setelah itu terlihat dan terbuka
+Kirim Web app URL (tanpa `?page=admin`) lewat WhatsApp. Di HP: buka tautannya →
+menu peramban → **Tambahkan ke layar utama**. Setelah itu terlihat dan terbuka
 seperti aplikasi biasa.
 
 ### Langkah 6 — Sambungkan ke dashboard
@@ -117,7 +153,8 @@ memperlihatkan PIN penuh.
 > sebagai pencegah salah akun, bukan kunci. Siapa pun yang punya tautannya bisa
 > melihat PIN kader mana pun. Penyeimbangnya: setiap pemunculan PIN penuh dicatat
 > di sheet `Log` dan jumlahnya terlihat di kolom **PIN dilihat** halaman admin;
-> dan kewenangan mengubah data ada di halaman admin yang memakai login Google.
+> dan kewenangan mengubah data ada di halaman admin, yang mengenali pengunjung
+> lewat akun Google-nya dan hanya menerima domain `kitabisa.com`.
 
 ### Urutan isian per rumah
 
