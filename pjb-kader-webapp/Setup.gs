@@ -15,6 +15,8 @@ function onOpen() {
     .addItem('Pasang pemicu terjadwal', 'pjbPasangPemicu')
     .addSeparator()
     .addItem('Tampilkan tautan web app', 'pjbTampilkanTautan')
+    .addSeparator()
+    .addItem('⚠ Hapus data percobaan', 'pjbHapusDataPercobaan')
     .addToUi();
 }
 

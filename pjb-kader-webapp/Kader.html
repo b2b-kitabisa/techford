@@ -153,6 +153,17 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
 .shot .m{ flex:1; min-width:0; }
 .shot .fn{ font-size:12.5px; font-weight:800; word-break:break-all; }
 .shot .mm{ font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; }
+.shot .ok{ font-size:12px; color:var(--good); font-weight:800; margin-top:5px; }
+.fotobusy{ border:1.5px solid var(--accent); background:var(--accent-soft); border-radius:12px;
+  padding:20px 14px; text-align:center; margin-top:10px; }
+.fotobusy .t{ font-size:14px; font-weight:800; color:var(--accent-dark); margin-top:10px; }
+.fotobusy .h{ font-size:12px; color:var(--ink-2); margin-top:3px; }
+.fotobusy .bar{ height:5px; background:#fff; border-radius:999px; overflow:hidden; margin-top:12px; }
+.fotobusy .bar i{ display:block; height:100%; width:40%; background:var(--accent); border-radius:999px;
+  animation:geser 1.1s ease-in-out infinite; }
+@keyframes geser{ 0%{ margin-left:-40%; } 100%{ margin-left:100%; } }
+@media (prefers-reduced-motion:reduce){ .fotobusy .bar i{ animation:none; width:100%; } }
+.sibuk{ pointer-events:none; opacity:.55; }
 
 .note{ border-radius:12px; padding:12px 14px; font-size:13.5px; font-weight:600; }
 .note.err{ background:var(--bad-soft); color:var(--bad); }
@@ -727,6 +738,8 @@ function bukaForm(r){
   $('ketTanggal').textContent = 'Hanya bisa diisi tanggal dalam bulan ' + DATA.label + '.';
   $('inpLain').value = form.lain || '';
 
+  fotoSibuk = false;
+  $('formBody').classList.remove('sibuk');
   gambarEditBar();
   gambarAlasan();
   gambarJenis();
@@ -925,8 +938,42 @@ function gambarTindakan(){
 }
 
 /* ---------- foto ---------- */
-function gambarFoto(){
+/**
+ * Selama foto diproses, seluruh formulir dikunci dan tombol kamera/galeri
+ * diganti indikator berjalan. Tanpa penanda itu kader tidak tahu aplikasinya
+ * sedang bekerja, lalu menekan tombol berkali-kali atau menutup halaman di
+ * tengah pengiriman.
+ */
+var fotoSibuk = false;
+
+function setFotoSibuk(on, teks){
+  fotoSibuk = on;
+  $('formBody').classList.toggle('sibuk', on);
+  gambarFoto(teks);
+  var b = $('btnSimpan');
+  if (on){
+    b.disabled = true;
+    b.className = 'btn';
+    b.textContent = 'Menunggu foto selesai…';
+  } else {
+    b.disabled = false;
+    hitung();
+  }
+}
+
+function gambarFoto(teksSibuk){
   var host = $('fotoSlot'); clr(host);
+
+  if (fotoSibuk){
+    var busy = el('div','fotobusy');
+    busy.appendChild(el('div','t', teksSibuk || 'Memproses foto…'));
+    busy.appendChild(el('div','h','Mohon tunggu sebentar, jangan tutup halaman ini.'));
+    var bar = el('div','bar'); bar.appendChild(document.createElement('i'));
+    busy.appendChild(bar);
+    host.appendChild(busy);
+    return;
+  }
+
   if (form.foto){
     var s = el('div','shot');
     var img = document.createElement('img');
@@ -937,6 +984,7 @@ function gambarFoto(){
     var m = el('div','m');
     m.appendChild(el('div','fn', form.foto.nama || 'foto.jpg'));
     m.appendChild(el('div','mm', (form.foto.ukuranTeks || '') + (form.foto.waktu ? ' · diambil ' + form.foto.waktu : '')));
+    m.appendChild(el('div','ok','✓ Foto sudah tersimpan'));
     var g = el('button','btn ghost','Ganti foto'); g.type='button';
     g.style.marginTop='8px'; g.style.padding='10px';
     g.addEventListener('click', function(){ form.foto=null; gambarFoto(); hitung(); });
@@ -984,20 +1032,20 @@ function pilihFoto(file, input){
     if (input) input.value = '';
     return;
   }
+  if (fotoSibuk) return;   // sudah ada foto yang sedang diproses
 
-  pesan($('formPesan'),'inf','Menyiapkan foto…');
+  pesan($('formPesan'),'','');
+  setFotoSibuk(true, 'Menyiapkan foto…');
 
   var selesai = false;
   var jaga = setTimeout(function(){
-    if (!selesai) pesan($('formPesan'),'wr',
-      'Foto masih diproses… Kalau lebih dari semenit tidak berubah, tutup halaman ini ' +
-      'lalu coba lagi dengan foto yang lebih kecil.');
-  }, 30000);
+    if (!selesai) gambarFoto('Masih mengirim… sinyal sedang lambat');
+  }, 20000);
 
   Promise.resolve()
     .then(function(){ return olahFoto(file); })
     .then(function(f){
-      pesan($('formPesan'),'inf','Mengirim foto…');
+      gambarFoto('Mengirim foto ke server…');
       return srv('apiUnggahFoto', [{
         kaderId: SESI.id, pin: SESI.pin, idRumah: rumahAktif.id, periode: DATA.periode,
         sidik: f.sidik, nama: f.nama, ukuran: f.ukuran, waktuExif: f.waktu, dataUrl: f.dataUrl
@@ -1009,10 +1057,11 @@ function pilihFoto(file, input){
               (o.res && o.res.pesan) || 'Foto tidak bisa disimpan.');
         return;
       }
-      pesan($('formPesan'),'ok','Foto tersimpan.');
       form.foto = { url:o.res.url, nama:o.res.nama, waktu:o.res.waktu, sidik:o.res.sidik,
                     pratinjau:o.f.pratinjau, ukuranTeks:o.f.ukuranTeks };
-      gambarFoto(); hitung(); simpanDraf();
+      pesan($('formPesan'),'ok','Foto berhasil tersimpan.');
+      toast('✓ Foto tersimpan');
+      simpanDraf();
     })
     .catch(function(err){
       pesan($('formPesan'),'err','Foto gagal dikirim — ' + teksError(err) +
@@ -1020,6 +1069,7 @@ function pilihFoto(file, input){
     })
     .then(function(){
       selesai = true; clearTimeout(jaga);
+      setFotoSibuk(false);           // membuka kunci formulir & menggambar ulang
       if (input) input.value = '';   // supaya berkas yang sama bisa dipilih lagi
     });
 }

@@ -18,6 +18,7 @@ di claude.ai sebagai artefak.
 | `Api.gs` | Semua fungsi yang dipanggil dari HP dan halaman admin |
 | `Foto.gs` | Unggah foto ke Drive + penjagaan foto ganda |
 | `MasterData.gs` | Menyusun tab `Master Data` untuk dashboard |
+| `Bersihkan.gs` | Menghapus data percobaan sebelum diserahkan ke kader |
 | `Code.gs` | `doGet()` — memilih halaman kader atau admin |
 | `Kader.html` | Tampilan kader |
 | `Admin.html` | Tampilan admin |
@@ -39,8 +40,8 @@ hanya dibaca satu kali saat impor.
 Di spreadsheet itu: **Ekstensi › Apps Script**. Hapus isi `Code.gs` bawaan,
 lalu buat berkas berikut dan tempel isinya **utuh**:
 
-- 7 berkas **Script** (`+` → Script): `Config`, `Db`, `Setup`, `Api`, `Foto`,
-  `MasterData`, `Code` — tanpa menulis `.gs`, Apps Script menambahkannya sendiri.
+- 8 berkas **Script** (`+` → Script): `Config`, `Db`, `Setup`, `Api`, `Foto`,
+  `MasterData`, `Bersihkan`, `Code` — tanpa menulis `.gs`, Apps Script menambahkannya sendiri.
 - 2 berkas **HTML** (`+` → HTML): `Kader`, `Admin` — tanpa menulis `.html`.
 
 > Tempel satu berkas secara utuh. Satu berkas yang terpotong membuat **seluruh**
@@ -191,6 +192,12 @@ akan menampilkan apa saja yang belum lengkap lalu membawa layar ke bagian itu.
 Tombol yang mati tidak memberi reaksi apa pun saat disentuh di HP, dan itu mudah
 disalahpahami sebagai aplikasi rusak.
 
+Selama foto diproses, **seluruh formulir dikunci** dan tombol kamera/galeri
+diganti indikator berjalan ("Menyiapkan foto…" lalu "Mengirim foto ke server…"),
+sementara tombol Simpan berubah jadi "Menunggu foto selesai…". Begitu berhasil,
+muncul penegasan di dua tempat: tanda hijau **✓ Foto sudah tersimpan** pada
+kartu fotonya, dan pesan "Foto berhasil tersimpan." di atas formulir.
+
 Jalur foto punya jalan mundur di tiap tahap: HP yang tidak punya
 `File.arrayBuffer` memakai `FileReader`, dan foto bertipe gambar yang tidak bisa
 digambar peramban (mis. HEIC dari iPhone di sebagian Android) dikirim apa adanya
@@ -255,6 +262,52 @@ menghapus EXIF.
 
 ---
 
+## Menghapus data percobaan sebelum diserahkan ke kader
+
+Menu **🦟 PJB Cipondoh → ⚠ Hapus data percobaan**. Ditanya dulu periodenya,
+lalu ditampilkan angka apa saja yang akan dihapus sebelum meminta konfirmasi.
+
+Menghapus baris langsung di spreadsheet **tidak cukup**, karena ada tiga jejak
+yang tidak terlihat dari sana:
+
+1. **Cache 6 jam.** Hasil baca disimpan di `CacheService` dengan kunci bernomor
+   versi, dan nomor itu hanya naik kalau datanya diubah lewat aplikasi.
+   Menghapus baris manual tidak menaikkannya, jadi aplikasi masih menampilkan
+   data lama sampai 6 jam.
+2. **ID folder Drive.** ID folder foto per RW per periode disimpan di
+   `ScriptProperties` supaya unggahan tidak lambat. Kalau foldernya dibuang
+   lewat Drive, ID-nya masih tersimpan dan foto berikutnya masuk ke folder yang
+   ada di Sampah — hilang diam-diam.
+3. **Rumah baru.** Rumah yang ditambahkan saat mencoba akan ikut muncul di
+   daftar kader bulan-bulan berikutnya.
+
+Yang dikerjakan menu itu, berurutan:
+
+| # | Tindakan |
+| --- | --- |
+| 1 | Kosongkan sheet `Entri <periode>` (header tetap) |
+| 2 | Hapus baris `FotoIndex` pada periode itu |
+| 3 | Pindahkan folder foto periode itu ke **Sampah** Drive (bukan hapus permanen — masih bisa dibatalkan 30 hari) |
+| 4 | Lupakan ID folder di `ScriptProperties` |
+| 5 | Hapus rumah yang ditambahkan saat mencoba — dikenali dari kolom `ID Asal` yang kosong, karena rumah hasil impor Agustus selalu membawa ID asalnya |
+| 6 | Acak ulang PIN semua kader dan nolkan hitungan `PIN dilihat` |
+| 7 | Naikkan nomor versi cache, lalu bangun ulang `Master Data` |
+
+**Yang TIDAK dihapus:** daftar rumah hasil impor Agustus, data kader, riwayat
+periode lain, dan sheet `Log` — isinya kecil dan justru jadi bukti bahwa
+pembersihan sudah dijalankan.
+
+Setelah selesai muncul ringkasan beserta **daftar PIN baru semua kader** —
+simpan atau cetak untuk koordinator.
+
+> **Saat mencoba, pakai jendela penyamaran (incognito) di HP penguji.** Sesi,
+> draf, dan antrean kiriman disimpan di `localStorage`. Kalau ada entri yang
+> belum terkirim, entri itu ditahan di HP dan dikirim otomatis begitu sinyal
+> kembali — bisa berhari-hari kemudian, setelah semuanya dibersihkan. Jendela
+> penyamaran membuang semuanya begitu tab ditutup.
+
+---
+
 ## Supaya tidak kena timeout Apps Script
 
 Beban nyata kecil: 25 kader × 50 rumah = 1.250 simpanan sebulan. Walau menumpuk
@@ -306,10 +359,10 @@ dibaca balik oleh script.
 
 Semuanya dijalankan di luar Google, memakai stub Apps Script:
 
-- **86 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
+- **122 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
   validasi simpan, idempotensi, penolakan foto ganda, batas domain admin, dan
   susunan `Master Data`.
-- **53 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
+- **67 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
   di browser sungguhan sementara `google.script.run` diarahkan ke fungsi `.gs`
   asli, termasuk unggah dua berkas JPEG nyata untuk menguji penolakan foto kembar.
 
