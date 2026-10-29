@@ -119,6 +119,8 @@ a{ color:var(--accent-dark); }
     <div class="head">
       <h2>Progres pengisian</h2>
       <span class="sp"></span>
+      <input class="sel" id="cariKader" type="search" placeholder="Cari nama kader atau RW…"
+             autocomplete="off" style="min-width:220px">
       <label class="muted" for="selPeriode">Bulan</label>
       <select class="sel" id="selPeriode"></select>
     </div>
@@ -269,6 +271,7 @@ srv('apiAdminBootstrap').then(function(res){
 
 /* ---------------------------------------------------------- progres */
 $('selPeriode').addEventListener('change', function(){ muatProgres(this.value); });
+$('cariKader').addEventListener('input', gambarProgres);
 
 function muatProgres(periode){
   var body = $('progBody'); clr(body);
@@ -297,8 +300,25 @@ function muatProgres(periode){
       tiles.appendChild(c);
     });
 
-    clr(body);
-    if (!res.baris.length){ body.appendChild(barisPesan(9,'Belum ada kader. Jalankan impor Agustus dulu.')); return; }
+    gambarProgres();
+  }, function(){ clr(body); body.appendChild(barisPesan(9,'Gagal memuat. Coba muat ulang halaman.')); });
+}
+
+/* Penyaringan dilakukan di sisi halaman, bukan dengan memanggil server lagi —
+   mengetik di kotak cari tidak menambah satu pun panggilan Apps Script. */
+function gambarProgres(){
+  var body = $('progBody'); clr(body);
+  if (!PROG) return;
+  var q = $('cariKader').value.trim().toLowerCase();
+  var baris = PROG.baris.filter(function(k){
+    return !q || String(k.nama).toLowerCase().indexOf(q) !== -1
+              || String(k.rw).toLowerCase().indexOf(q) !== -1;
+  });
+
+  if (!PROG.baris.length){ body.appendChild(barisPesan(9,'Belum ada kader. Jalankan impor Agustus dulu.')); return; }
+  if (!baris.length){ body.appendChild(barisPesan(9,'Tidak ada kader yang cocok dengan "' + q + '".')); return; }
+
+  (function(res){
     res.baris.forEach(function(k){
       var tr = document.createElement('tr');
       tr.className = 'klik';
@@ -330,7 +350,7 @@ function muatProgres(periode){
       tr.addEventListener('click', function(){ bukaDetail(k, res.periode); });
       body.appendChild(tr);
     });
-  }, function(){ clr(body); body.appendChild(barisPesan(9,'Gagal memuat. Coba muat ulang halaman.')); });
+  })({ baris: baris, periode: PROG.periode });
 }
 
 function barisPesan(kolom, teks){

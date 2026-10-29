@@ -60,10 +60,24 @@ Menu **🦟 PJB Cipondoh** akan muncul:
 2. **Impor rumah & riwayat Agustus** — membaca `Master Data` spreadsheet Agustus
    (`1vmWrnQe…`), lalu mengisi 25 akun kader, 1.250 rumah, dan riwayat Agustus.
    PIN awal diacak dan langsung terlihat di sheet `Kader`.
-3. **Pasang pemicu terjadwal** — `Master Data` dibangun ulang tiap 15 menit.
+3. **Samakan target kader (50 rumah)** — hanya perlu dijalankan kalau database
+   sudah pernah dibangun sebelumnya dengan target per RW.
+4. **Pasang pemicu terjadwal** — `Master Data` dibangun ulang tiap 15 menit.
+
+> **Target 50 rumah per KADER, bukan per RW.** Kader yang memegang dua RW tetap
+> memeriksa 50 rumah, hanya tersebar di dua RW (mis. 40 di satu RW, 10 di RW lain),
+> sehingga total kelurahan tetap 25 × 50 = **1.250 rumah**.
 
 Saat pertama dijalankan Google meminta izin: **Advanced › Go to project (unsafe)
 › Allow**. Normal untuk script buatan sendiri.
+
+> **Izin Drive wajib disetujui sebelum foto bisa tersimpan.** Foto disimpan ke
+> Google Drive, jadi manifest memuat scope `auth/drive`. Kalau script pernah
+> diizinkan **sebelum** scope itu ada, izinnya belum lengkap dan unggah foto akan
+> gagal. Cara memastikannya: di editor Apps Script, pilih fungsi
+> `pjbSamakanTarget` pada dropdown di atas → **Run** → setujui permintaan izin
+> yang muncul. Setelah berhasil, folder **Foto PJB Cipondoh** akan muncul di Drive
+> begitu ada foto pertama yang diunggah.
 
 ### Langkah 4 — Deploy (CUKUP SATU deployment)
 
@@ -171,6 +185,19 @@ memperlihatkan PIN penuh.
    terunggah, foto dan nama berkasnya tampil supaya kader bisa memastikan
    tidak salah ambil.
 
+Tombol **Simpan** tidak pernah dimatikan selama periodenya terbuka. Kalau masih
+ada yang kurang, tombolnya berwarna kuning dan menyebutkan jumlahnya; menekannya
+akan menampilkan apa saja yang belum lengkap lalu membawa layar ke bagian itu.
+Tombol yang mati tidak memberi reaksi apa pun saat disentuh di HP, dan itu mudah
+disalahpahami sebagai aplikasi rusak.
+
+Jalur foto punya jalan mundur di tiap tahap: HP yang tidak punya
+`File.arrayBuffer` memakai `FileReader`, dan foto bertipe gambar yang tidak bisa
+digambar peramban (mis. HEIC dari iPhone di sebagian Android) dikirim apa adanya
+selama ukurannya di bawah 6 MB. Berkas yang jelas bukan gambar ditolak dengan
+pesan yang jelas. Apa pun yang gagal, kader selalu mendapat pesan — tidak pernah
+berhenti diam.
+
 Entri yang sudah tersimpan terkunci; harus menekan **✎ Ubah** dulu sebelum bisa
 diperbaiki.
 
@@ -216,7 +243,7 @@ menghapus EXIF.
 
 ### Halaman admin
 
-- **Progres** — ringkasan per periode dan tabel per kader (terisi, ada jentik,
+- **Progres** — kotak cari (nama kader atau RW), ringkasan per periode, dan tabel per kader (terisi, ada jentik,
   tidak bisa diperiksa, terakhir mengisi). Setiap baris bisa diklik atau ditekan
   tombol **Detail ›**.
 - **Detail kader** — seluruh rumah kader itu beserta isian lengkapnya, dengan

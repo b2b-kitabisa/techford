@@ -9,6 +9,7 @@ function onOpen() {
     .createMenu('🦟 PJB Cipondoh')
     .addItem('1. Siapkan database', 'pjbSiapkanDatabase')
     .addItem('2. Impor rumah & riwayat Agustus', 'pjbImporAgustus')
+    .addItem('3. Samakan target kader (50 rumah)', 'pjbSamakanTarget')
     .addSeparator()
     .addItem('Bangun Master Data (untuk dashboard)', 'pjbBangunMasterData')
     .addItem('Pasang pemicu terjadwal', 'pjbPasangPemicu')
@@ -103,11 +104,13 @@ function pjbImporAgustus() {
   }
 
   // --- tulis Kader (PIN diacak, kader bisa menggantinya sendiri) ---
+  // Target 50 rumah per KADER, bukan per RW. Kader yang memegang dua RW tetap
+  // memeriksa 50 rumah, hanya tersebar di dua RW (mis. 40 di satu RW, 10 di RW
+  // lain) — jadi total target kelurahan tetap 25 kader x 50 = 1.250 rumah.
   var kaderRows = Object.keys(kaderMap).map(function (k) {
     var o = kaderMap[k];
     var rwList = Object.keys(o.rw).sort().join(', ');
-    var target = Object.keys(o.rw).length * PJB_TARGET_BAWAAN;
-    return [o.id, o.nama, rwList, pjbPinAcak_(), target, 'ya', '', 0, ''];
+    return [o.id, o.nama, rwList, pjbPinAcak_(), PJB_TARGET_BAWAAN, 'ya', '', 0, ''];
   });
   pjbTulisSheet_(SH_KADER, PJB_HEAD_KADER, kaderRows);
   pjbTulisSheet_(SH_RUMAH, PJB_HEAD_RUMAH, rumah);
@@ -134,6 +137,26 @@ function pjbTulisSheet_(name, headers, rows) {
 
 function pjbPinAcak_() {
   return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+/**
+ * Menyamakan target seluruh kader menjadi 50 rumah.
+ *
+ * Dipakai sekali untuk database yang terlanjur dibangun dengan target per RW,
+ * sehingga kader yang memegang dua RW tercatat 100 — padahal jatah
+ * pemeriksaannya tetap 50 rumah.
+ */
+function pjbSamakanTarget() {
+  var ubah = [];
+  dbKader_().forEach(function (k) {
+    if (pjbAngka_(k['Target']) === PJB_TARGET_BAWAAN) return;
+    ubah.push(k['Nama'] + ': ' + pjbAngka_(k['Target']) + ' -> ' + PJB_TARGET_BAWAAN);
+    pjbSimpanKader_(k, { 'Target': PJB_TARGET_BAWAAN });
+  });
+
+  SpreadsheetApp.getUi().alert(ubah.length
+    ? 'Target disamakan jadi ' + PJB_TARGET_BAWAAN + ' rumah per kader.\n\n' + ubah.join('\n')
+    : 'Semua kader sudah bertarget ' + PJB_TARGET_BAWAAN + ' rumah. Tidak ada yang diubah.');
 }
 
 function pjbPasangPemicu() {

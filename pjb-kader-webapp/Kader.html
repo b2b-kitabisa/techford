@@ -958,50 +958,140 @@ function gambarFoto(){
 $('inpKamera').addEventListener('change', function(e){ pilihFoto(e.target.files[0], this); });
 $('inpGaleri').addEventListener('change', function(e){ pilihFoto(e.target.files[0], this); });
 
+function teksError(err){
+  if (!err) return 'penyebab tidak diketahui';
+  if (typeof err === 'string') return err;
+  return err.message || String(err);
+}
+
+/**
+ * Seluruh jalur foto dibungkus supaya TIDAK PERNAH berakhir diam.
+ *
+ * Sebelumnya, satu tahap yang gagal — HP lama tanpa File.arrayBuffer, berkas
+ * yang tidak bisa digambar peramban, atau unggahan yang menggantung — membuat
+ * layar berhenti di "Menyiapkan foto…" tanpa kabar apa pun, dan tombol Simpan
+ * ikut diam karena fotonya memang belum ada.
+ */
 function pilihFoto(file, input){
   if (!file) return;
+
+  // Sebagian pemilih berkas di Android tidak mengisi file.type, jadi yang
+  // ditolak hanya berkas yang JELAS bukan gambar. Berkas bertipe gambar yang
+  // tidak bisa digambar peramban (mis. HEIC dari iPhone) tetap diteruskan dan
+  // ditangani jalan mundur di olahFoto().
+  if (file.type && file.type.indexOf('image/') !== 0){
+    pesan($('formPesan'),'err','Berkas yang dipilih bukan foto. Pilih gambar hasil kamera.');
+    if (input) input.value = '';
+    return;
+  }
+
   pesan($('formPesan'),'inf','Menyiapkan foto…');
-  olahFoto(file).then(function(f){
-    return srv('apiUnggahFoto', [{
-      kaderId: SESI.id, pin: SESI.pin, idRumah: rumahAktif.id, periode: DATA.periode,
-      sidik: f.sidik, nama: f.nama, ukuran: f.ukuran, waktuExif: f.waktu, dataUrl: f.dataUrl
-    }]);
-  }).then(function(res){
-    if (!res.ok){
-      pesan($('formPesan'), res.duplikat ? 'err' : 'wr', res.pesan);
-      return;
-    }
-    pesan($('formPesan'),'ok','Foto tersimpan.');
-    form.foto = { url:res.url, nama:res.nama, waktu:res.waktu, sidik:res.sidik,
-                  pratinjau: window._pratinjau, ukuranTeks: window._ukuranTeks };
-    gambarFoto(); hitung(); simpanDraf();
-  }, function(err){
-    pesan($('formPesan'),'err','Gagal mengunggah foto. Periksa sinyal lalu coba lagi.');
-  }).then(function(){ if (input) input.value = ''; });
+
+  var selesai = false;
+  var jaga = setTimeout(function(){
+    if (!selesai) pesan($('formPesan'),'wr',
+      'Foto masih diproses… Kalau lebih dari semenit tidak berubah, tutup halaman ini ' +
+      'lalu coba lagi dengan foto yang lebih kecil.');
+  }, 30000);
+
+  Promise.resolve()
+    .then(function(){ return olahFoto(file); })
+    .then(function(f){
+      pesan($('formPesan'),'inf','Mengirim foto…');
+      return srv('apiUnggahFoto', [{
+        kaderId: SESI.id, pin: SESI.pin, idRumah: rumahAktif.id, periode: DATA.periode,
+        sidik: f.sidik, nama: f.nama, ukuran: f.ukuran, waktuExif: f.waktu, dataUrl: f.dataUrl
+      }]).then(function(res){ return { res: res, f: f }; });
+    })
+    .then(function(o){
+      if (!o.res || !o.res.ok){
+        pesan($('formPesan'), (o.res && o.res.duplikat) ? 'err' : 'wr',
+              (o.res && o.res.pesan) || 'Foto tidak bisa disimpan.');
+        return;
+      }
+      pesan($('formPesan'),'ok','Foto tersimpan.');
+      form.foto = { url:o.res.url, nama:o.res.nama, waktu:o.res.waktu, sidik:o.res.sidik,
+                    pratinjau:o.f.pratinjau, ukuranTeks:o.f.ukuranTeks };
+      gambarFoto(); hitung(); simpanDraf();
+    })
+    .catch(function(err){
+      pesan($('formPesan'),'err','Foto gagal dikirim — ' + teksError(err) +
+            '. Periksa sinyal lalu coba lagi.');
+    })
+    .then(function(){
+      selesai = true; clearTimeout(jaga);
+      if (input) input.value = '';   // supaya berkas yang sama bisa dipilih lagi
+    });
 }
 
 /**
  * Foto dikecilkan di HP sebelum dikirim supaya tetap terkirim walau sinyal
  * pas-pasan, tapi sidik jarinya dihitung dari BYTES ASLI — jadi foto yang
  * sama tetap ketahuan walau namanya diganti.
+ *
+ * Tiap tahap punya jalan mundur: HP yang tidak punya File.arrayBuffer memakai
+ * FileReader, dan berkas yang tidak bisa digambar peramban (mis. sebagian HEIC
+ * di Android) dikirim apa adanya selama ukurannya masih wajar.
  */
+var FOTO_MAKS_ASLI = 6 * 1024 * 1024;
+
 function olahFoto(file){
-  return file.arrayBuffer().then(function(buf){
+  return bacaBytes(file).then(function(buf){
     return hitungSidik(buf).then(function(sidik){
-      var waktu = bacaExifWaktu(buf);
+      var waktu = buf ? bacaExifWaktu(buf) : '';
       return kecilkan(file).then(function(kecil){
-        window._pratinjau = kecil.dataUrl;
-        window._ukuranTeks = Math.round(kecil.bytes/1024) + ' KB setelah dikecilkan';
-        return { sidik:sidik, nama:file.name || 'foto.jpg', ukuran:file.size,
-                 waktu:waktu, dataUrl:kecil.dataUrl };
+        return { sidik:sidik, nama:file.name || 'foto.jpg', ukuran:file.size, waktu:waktu,
+                 dataUrl:kecil.dataUrl, pratinjau:kecil.dataUrl,
+                 ukuranTeks: Math.round(kecil.bytes/1024) + ' KB setelah dikecilkan' };
+      }, function(){
+        if (file.size > FOTO_MAKS_ASLI){
+          throw new Error('foto terlalu besar (' + Math.round(file.size/1048576) +
+                          ' MB) dan tidak bisa dikecilkan di HP ini');
+        }
+        return bacaDataUrl(file).then(function(dataUrl){
+          return { sidik:sidik, nama:file.name || 'foto.jpg', ukuran:file.size, waktu:waktu,
+                   dataUrl:dataUrl, pratinjau:dataUrl,
+                   ukuranTeks: Math.round(file.size/1024) + ' KB (dikirim apa adanya)' };
+        });
       });
     });
   });
 }
 
+/** Bytes asli berkas; null kalau HP ini tidak bisa membacanya (sidik lalu
+ *  dihitung server dari gambar yang diterima). */
+function bacaBytes(file){
+  try {
+    if (file.arrayBuffer) return file.arrayBuffer().catch(function(){ return null; });
+  } catch (e) { /* lanjut ke FileReader */ }
+  return new Promise(function(resolve){
+    try {
+      var fr = new FileReader();
+      fr.onload = function(){ resolve(fr.result); };
+      fr.onerror = function(){ resolve(null); };
+      fr.readAsArrayBuffer(file);
+    } catch (e) { resolve(null); }
+  });
+}
+
+function bacaDataUrl(file){
+  return new Promise(function(resolve, reject){
+    try {
+      var fr = new FileReader();
+      fr.onload = function(){ resolve(fr.result); };
+      fr.onerror = function(){ reject(new Error('berkas tidak bisa dibaca')); };
+      fr.readAsDataURL(file);
+    } catch (e) { reject(e); }
+  });
+}
+
 function hitungSidik(buf){
+  // Tanpa bytes asli atau tanpa dukungan crypto, sidik dikosongkan — server
+  // tetap menghitung sidiknya sendiri dari gambar yang diterima, jadi
+  // penjagaan foto kembar tidak hilang.
+  if (!buf) return Promise.resolve('');
   if (!(window.crypto && crypto.subtle && crypto.subtle.digest)){
-    return Promise.resolve('');   // server tetap menghitung sidiknya sendiri
+    return Promise.resolve('');
   }
   return crypto.subtle.digest('SHA-256', buf).then(function(h){
     var b = new Uint8Array(h), s = '';
@@ -1055,51 +1145,90 @@ function cariTag(v, tiff, ifd, tag, le, teks){
 
 function kecilkan(file){
   return new Promise(function(resolve, reject){
-    var url = URL.createObjectURL(file);
+    var url = null, tuntas = false;
+    function bereskan(){ try { if (url) URL.revokeObjectURL(url); } catch (e) {} }
+    // Sebagian HP tidak pernah memanggil onload maupun onerror untuk format
+    // yang tidak dikenalnya; tanpa batas waktu, layar akan menggantung.
+    var batas = setTimeout(function(){
+      if (tuntas) return;
+      tuntas = true; bereskan();
+      reject(new Error('gambar tidak bisa dibaca peramban'));
+    }, 20000);
+
+    try { url = URL.createObjectURL(file); }
+    catch (e) { clearTimeout(batas); reject(e); return; }
+
     var img = new Image();
     img.onload = function(){
-      var maks = 1280;
-      var w = img.width, h = img.height;
-      if (w > maks || h > maks){
-        if (w >= h){ h = Math.round(h * maks / w); w = maks; }
-        else { w = Math.round(w * maks / h); h = maks; }
+      if (tuntas) return;
+      tuntas = true; clearTimeout(batas);
+      try {
+        var maks = 1280;
+        var w = img.width || 0, h = img.height || 0;
+        if (!w || !h) throw new Error('ukuran gambar tidak terbaca');
+        if (w > maks || h > maks){
+          if (w >= h){ h = Math.round(h * maks / w); w = maks; }
+          else { w = Math.round(w * maks / h); h = maks; }
+        }
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        var dataUrl = cv.toDataURL('image/jpeg', 0.75);
+        bereskan();
+        resolve({ dataUrl: dataUrl, bytes: Math.round(dataUrl.length * 0.75) });
+      } catch (e) {
+        bereskan();
+        reject(e);
       }
-      var cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(img, 0, 0, w, h);
-      var dataUrl = cv.toDataURL('image/jpeg', 0.75);
-      URL.revokeObjectURL(url);
-      resolve({ dataUrl: dataUrl, bytes: Math.round(dataUrl.length * 0.75) });
     };
-    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Foto tidak terbaca')); };
+    img.onerror = function(){
+      if (tuntas) return;
+      tuntas = true; clearTimeout(batas); bereskan();
+      reject(new Error('gambar tidak bisa dibaca peramban'));
+    };
     img.src = url;
   });
 }
 
 /* ---------- hitung & validasi ---------- */
+/**
+ * Tombol Simpan sengaja TIDAK pernah dibuat disabled selama periodenya terbuka.
+ * Tombol mati di HP tidak memberi reaksi apa pun saat disentuh, sehingga kader
+ * mengira aplikasinya rusak. Sekarang tombolnya selalu bisa ditekan, dan kalau
+ * ada yang belum lengkap, aplikasi menyebutkan apa yang kurang lalu membawa
+ * layar ke bagian itu.
+ */
+var KURANG = [];
 function hitung(){
   var pos = form.positif.length;
   $('vNeg').textContent = Math.max(0, form.jenis.length - pos);
 
   var b = $('btnSimpan');
-  if (DATA.terkunci){ b.disabled = true; b.textContent = 'Periode terkunci'; return; }
-
-  if (!form.bisa){
-    b.disabled = !form.alasan;
-    b.textContent = form.alasan ? 'Simpan — tidak bisa diperiksa' : 'Pilih dulu alasannya';
-    simpanDraf();
-    return;
-  }
+  if (DATA.terkunci){ b.disabled = true; b.className = 'btn'; b.textContent = 'Periode terkunci'; return; }
 
   var kurang = [];
-  if (form.jenis.length !== form.jml) kurang.push('pilih ' + form.jml + ' container');
-  var lainNama = (BOOT.container||[])[BOOT.idxLain];
-  if (form.jenis.indexOf(lainNama) !== -1 && !$('inpLain').value.trim()) kurang.push('sebutkan lain-lain');
-  if ($('selAdaJentik').getAttribute('aria-pressed') === 'true' && !pos) kurang.push('tandai yang berjentik');
-  if (!form.foto) kurang.push('ambil foto');
+  if (!form.bisa){
+    if (!form.alasan) kurang.push({ t:'pilih alasan rumah tidak bisa diperiksa', id:'cBisa' });
+  } else {
+    if (form.jenis.length !== form.jml){
+      kurang.push({ t:'pilih ' + form.jml + ' container', id:'cJenis' });
+    }
+    var lainNama = (BOOT.container||[])[BOOT.idxLain];
+    if (form.jenis.indexOf(lainNama) !== -1 && !$('inpLain').value.trim()){
+      kurang.push({ t:'sebutkan container lain-lain', id:'cJenis' });
+    }
+    if ($('selAdaJentik').getAttribute('aria-pressed') === 'true' && !pos){
+      kurang.push({ t:'tandai container yang ada jentiknya', id:'cJentik' });
+    }
+    if (!form.foto) kurang.push({ t:'ambil atau pilih foto', id:'cFoto' });
+  }
 
-  b.disabled = kurang.length > 0;
-  b.textContent = kurang.length ? 'Kurang: ' + kurang.join(', ') : 'Simpan';
+  KURANG = kurang;
+  b.disabled = false;
+  b.className = kurang.length ? 'btn warnbtn' : 'btn';
+  b.textContent = kurang.length
+    ? 'Simpan — ' + kurang.length + ' isian belum lengkap'
+    : (form.bisa ? 'Simpan' : 'Simpan — tidak bisa diperiksa');
   simpanDraf();
 }
 $('inpLain').addEventListener('input', function(){ form.lain = this.value; hitung(); });
@@ -1113,6 +1242,14 @@ function simpanDraf(){
 /* ---------- simpan ---------- */
 $('formBack').addEventListener('click', function(){ layar('scrHome'); });
 $('btnSimpan').addEventListener('click', function(){
+  if (KURANG.length){
+    pesan($('formPesan'),'wr','Belum bisa disimpan. Lengkapi dulu: ' +
+          KURANG.map(function(k){ return k.t; }).join(', ') + '.');
+    var tuju = document.getElementById(KURANG[0].id);
+    if (tuju && tuju.scrollIntoView) tuju.scrollIntoView({ block:'center' });
+    return;
+  }
+
   var payload = {
     kaderId: SESI.id, pin: SESI.pin, periode: DATA.periode, idRumah: rumahAktif.id,
     tanggal: $('inpTanggal').value,
