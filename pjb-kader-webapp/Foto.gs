@@ -26,7 +26,8 @@ function apiUnggahFoto(payload) {
     if (!auth.ok) return auth;
     var k = auth.kader;
 
-    var periode = String(payload.periode || '');
+    var periode = pjbPeriodeTeks_(payload.periode);
+    if (!periode) return { ok: false, pesan: 'Periode tidak dikenali. Muat ulang halaman lalu coba lagi.' };
     if (pjbPeriodeTerkunci_(periode)) {
       return { ok: false, pesan: 'Periode ' + pjbLabelPeriode_(periode) + ' sudah terkunci.' };
     }

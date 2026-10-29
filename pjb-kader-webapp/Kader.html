@@ -236,6 +236,7 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
         <button class="key" type="button" data-n="0">0</button>
         <button class="key flat" type="button" data-act="hapus">Hapus</button>
       </div>
+      <button class="btn" type="button" id="btnMasuk" style="margin-top:16px" disabled>Masuk</button>
       <p class="hintxt" style="text-align:center">HP ini akan diingat, jadi PIN hanya ditanya sekali.</p>
     </div>
   </section>
@@ -355,27 +356,6 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
       </div>
     </div>
     <div class="foot"><button class="btn" type="button" id="btnSimpan">Simpan</button></div>
-  </section>
-
-  <!-- ====================== tersimpan ====================== -->
-  <section class="scr" id="scrDone">
-    <div class="bar"><div class="t"><h1>Tersimpan</h1><div class="sub" id="doneSub">—</div></div></div>
-    <div class="body">
-      <div class="ok-done">
-        <div class="ic">✓</div>
-        <h2 style="font-size:19px;margin:14px 0 6px" id="doneNama">—</h2>
-        <p style="font-size:13.5px;color:var(--muted);margin:0" id="doneKet">—</p>
-      </div>
-      <div class="card">
-        <div class="label">Sisa rumah bulan ini</div>
-        <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
-          <span class="big" id="doneSisa">0</span>
-          <span style="font-size:15px;color:var(--muted);font-weight:700">rumah belum diperiksa</span>
-        </div>
-      </div>
-      <button class="btn" type="button" id="btnLanjut">Lanjut ke rumah berikutnya</button>
-      <button class="btn ghost" type="button" id="btnKeDaftar">Kembali ke daftar</button>
-    </div>
   </section>
 
   <!-- ====================== rumah baru ====================== -->
@@ -559,6 +539,10 @@ function bukaPin(k){
 function gambarDots(){
   var d = $('pinDots').children;
   for (var i=0;i<d.length;i++) d[i].classList.toggle('on', i < pinIsi.length);
+  // Tombol Masuk ditekan sendiri oleh kader. Sebelumnya aplikasi langsung
+  // masuk begitu angka keempat ditekan, sehingga satu salah ketik langsung
+  // berujung pesan "PIN belum cocok" tanpa sempat diperbaiki.
+  $('btnMasuk').disabled = pinIsi.length !== 4;
 }
 $('pinBack').addEventListener('click', function(){ layar('scrLogin'); });
 $('pinKeys').addEventListener('click', function(e){
@@ -573,11 +557,15 @@ $('pinKeys').addEventListener('click', function(e){
     return;
   }
   if (pinIsi.length < 4){ pinIsi += b.dataset.n; gambarDots(); }
+});
+$('btnMasuk').addEventListener('click', function(){
   if (pinIsi.length === 4) cobaMasuk();
 });
 function cobaMasuk(){
-  var m = $('pinMsg');
+  var m = $('pinMsg'), b = $('btnMasuk');
+  b.disabled = true; b.textContent = 'Memeriksa…';
   srv('apiMasuk', [pinKader.id, pinIsi]).then(function(res){
+    b.disabled = false; b.textContent = 'Masuk';
     if (!res.ok){
       m.hidden=false; m.className='pinmsg err'; m.textContent=res.pesan;
       pinIsi=''; gambarDots(); return;
@@ -586,6 +574,7 @@ function cobaMasuk(){
     simpanLokal('sesi', SESI);
     masukBeranda();
   }, function(err){
+    b.disabled = false; b.textContent = 'Masuk';
     m.hidden=false; m.className='pinmsg err'; m.textContent='Gagal menghubungi server. Coba lagi.';
   });
 }
@@ -638,11 +627,9 @@ function gambarBeranda(){
   $('progBar').style.width = Math.min(100, Math.round(t.terisi / Math.max(1,target) * 100)) + '%';
   $('nSudah').textContent = t.terisi;
   $('nBelum').textContent = Math.max(0, DATA.rumah.length - t.terisi);
-  $('doneSisa').textContent = Math.max(0, DATA.rumah.length - t.terisi);
   $('homeKet').textContent = DATA.terkunci
     ? 'Periode ini sudah ditutup.'
     : 'Bisa diperbaiki sampai ' + DATA.batas + '.';
-  $('doneSub').textContent = DATA.kader.rw + ' · ' + DATA.label;
   $('btnRumahBaru').disabled = DATA.terkunci;
   tampilAntrean();
   gambarDaftar();
@@ -1325,9 +1312,9 @@ $('btnSimpan').addEventListener('click', function(){
     rumahAktif.entri = res.entri;
     DATA.ringkas.terisi = DATA.rumah.filter(function(r){ return r.entri; }).length;
     gambarBeranda();
-    $('doneNama').textContent = rumahAktif.nama + ' tersimpan';
-    $('doneKet').textContent = 'Bisa diperbaiki sampai ' + DATA.batas + '.';
-    layar('scrDone');
+    // Langsung kembali ke daftar rumah: kader tinggal mengetuk rumah berikutnya.
+    layar('scrHome');
+    toast('✓ ' + rumahAktif.nama + ' tersimpan');
   }, function(){
     /* Gagal terkirim: masuk antrean di HP supaya isian kader tidak hilang. */
     keAntrean(payload);
@@ -1339,16 +1326,9 @@ $('btnSimpan').addEventListener('click', function(){
       fotoUrl: payload.fotoUrl, fotoNama: payload.fotoNama, antre: true
     };
     gambarBeranda();
-    $('doneNama').textContent = rumahAktif.nama + ' tersimpan di HP';
-    $('doneKet').textContent = 'Belum terkirim karena sinyal. Akan dikirim otomatis nanti.';
-    layar('scrDone');
+    layar('scrHome');
+    toast(rumahAktif.nama + ' tersimpan di HP, menunggu sinyal', 3600);
   });
-});
-
-$('btnKeDaftar').addEventListener('click', function(){ layar('scrHome'); });
-$('btnLanjut').addEventListener('click', function(){
-  var next = DATA.rumah.filter(function(r){ return !r.entri; })[0];
-  if (next) bukaForm(next); else { toast('Semua rumah sudah diperiksa.'); layar('scrHome'); }
 });
 
 /* ============================================================ rumah baru */

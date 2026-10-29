@@ -32,8 +32,11 @@ function pjbBangunMasterData() {
   dbRumah_().forEach(function (r) { rumahMap[String(r['ID Rumah'])] = r; });
 
   var baris = [];
+  var sudah = {};
   dbPeriode_().forEach(function (p) {
-    var periode = String(p['Periode']);
+    var periode = pjbPeriodeTeks_(p['Periode']);
+    if (!periode || sudah[periode]) return;   // baris kembar dari bug lama
+    sudah[periode] = true;
     var s = periode.split('-');
     var bulan = (PJB_BULAN[parseInt(s[1], 10) - 1] || '').toUpperCase();
     var tahun = parseInt(s[0], 10);

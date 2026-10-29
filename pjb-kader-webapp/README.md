@@ -158,8 +158,11 @@ var DD_EXTRA_SOURCES = [
 
 ### Masuk
 
-Kader memilih namanya dari daftar lalu memasukkan PIN 4 angka. HP diingat lewat
-penyimpanan lokal, jadi PIN hanya ditanya sekali.
+Kader memilih namanya dari daftar lalu memasukkan PIN 4 angka dan menekan
+**Masuk**. Tombol itu baru hidup setelah empat angka terisi; tidak ada lagi
+masuk otomatis begitu angka terakhir ditekan, yang dulu terasa seperti halaman
+"menjeda sendiri". HP diingat lewat penyimpanan lokal, jadi PIN hanya ditanya
+sekali.
 
 Tombol **Lupa** bertingkat: sekali tekan memberi dua angka terakhir, tekan lagi
 memperlihatkan PIN penuh.
@@ -255,8 +258,8 @@ menghapus EXIF.
   tombol **Detail ›**.
 - **Detail kader** — seluruh rumah kader itu beserta isian lengkapnya, dengan
   pilihan bulan sendiri. Koreksi data dilakukan langsung di spreadsheet.
-- **Kader & PIN** — PIN terlihat (termasuk kalau kader menggantinya sendiri),
-  atur ulang PIN, aktif/nonaktif.
+- **Kader & PIN** — kotak cari (nama kader atau RW), PIN terlihat (termasuk
+  kalau kader menggantinya sendiri), atur ulang PIN, aktif/nonaktif.
 - **Foto bermasalah** — entri tanpa foto, foto tanpa EXIF, foto di luar periode.
 - **Periode** — kunci/buka kunci, buka periode berikutnya, bangun ulang `Master Data`.
 
@@ -359,12 +362,40 @@ dibaca balik oleh script.
 
 Semuanya dijalankan di luar Google, memakai stub Apps Script:
 
-- **122 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
+- **146 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
   validasi simpan, idempotensi, penolakan foto ganda, batas domain admin, dan
   susunan `Master Data`.
-- **67 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
+- **75 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
   di browser sungguhan sementara `google.script.run` diarahkan ke fungsi `.gs`
   asli, termasuk unggah dua berkas JPEG nyata untuk menguji penolakan foto kembar.
+
+## Periode yang berubah jadi tanggal
+
+Google Sheets diam-diam mengubah teks yang **terlihat seperti** tanggal menjadi
+tanggal sungguhan. `2026-11` jadi `1 November 2026`, dan begitu dibaca kembali
+ia berubah menjadi `2026-10-31T17:00:00.000Z` — WIB +7 melemparkannya ke bulan
+sebelumnya. Akibatnya entri kader tersimpan di sheet bernama
+`Entri 2026-10-31T17:00:00.000Z`, sheet `Periode` terisi baris kembar, dan di
+halaman admin data itu seolah hilang.
+
+Penjagaannya dua lapis, sengaja tidak satu:
+
+1. **Pencegahan** — kolom yang rawan (Periode, Label, PIN, RT, ID Asal, Tanggal,
+   sidik foto) diberi format teks `@` sejak sheetnya dibuat, jadi Sheets tidak
+   lagi menafsirkannya.
+2. **Penyembuhan** — `pjbPeriodeTeks_()` mengembalikan bentuk apa pun (Date,
+   ISO yang tergeser zona waktu, `November 2026`) ke `yyyy-MM` memakai zona
+   `Asia/Jakarta`. Jadi walau suatu sel terlanjur berubah lagi, sistem tetap
+   membacanya benar.
+
+Untuk data yang **sudah terlanjur rusak**, jalankan menu
+**🦟 PJB Cipondoh → Perbaiki periode & sheet entri**. Fungsi itu memasang
+format teks, merapikan sheet `Periode` (baris kembar dibuang), memindahkan baris
+dari sheet `Entri <tanggal>` ke `Entri yyyy-MM` yang benar sambil membetulkan
+kolom ID Entri dan Periode, membuang sheet sisanya, menormalkan `FotoIndex`,
+lalu membangun ulang `Master Data`. Aman dijalankan berulang kali.
+
+---
 
 ## Yang belum dikerjakan
 

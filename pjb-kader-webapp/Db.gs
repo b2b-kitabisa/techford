@@ -12,11 +12,37 @@
 
 function dbSS_() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
+/**
+ * Kolom yang isinya HARUS tetap teks, beserta nomor kolomnya (1 = A).
+ *
+ * Tanpa format teks, Google Sheets menafsirkan sendiri isinya: "2026-11" jadi
+ * tanggal November 2026, PIN "0123" jadi angka 123, dan RT "01" jadi 1. Semua
+ * itu membuat nilainya tidak sama lagi saat dibaca balik.
+ */
+function pjbKolomTeks_(name) {
+  if (name === SH_PERIODE) return [1, 2];           // Periode, Label
+  if (name === SH_KADER)   return [4];              // PIN
+  if (name === SH_RUMAH)   return [6, 9];           // RT, ID Asal
+  if (name === SH_FOTO)    return [1, 2, 5];        // Sidik, Sidik Kirim, Periode
+  if (name.indexOf(SH_ENTRI_PREFIX) === 0) return [2, 5];   // Periode, Tanggal
+  return [];
+}
+
+function pjbPasangFormatTeks_(sh) {
+  var kolom = pjbKolomTeks_(sh.getName());
+  for (var i = 0; i < kolom.length; i++) {
+    sh.getRange(1, kolom[i], sh.getMaxRows(), 1).setNumberFormat('@');
+  }
+}
+
 function dbSheet_(name, headers) {
   var ss = dbSS_();
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
+    // Format teks dipasang SEBELUM header ditulis, supaya isian periode pada
+    // baris-baris berikutnya tidak pernah sempat ditafsirkan sebagai tanggal.
+    pjbPasangFormatTeks_(sh);
     if (headers) {
       sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
       sh.setFrozenRows(1);
@@ -25,7 +51,7 @@ function dbSheet_(name, headers) {
   return sh;
 }
 
-function dbEntriSheetName_(periode) { return SH_ENTRI_PREFIX + periode; }
+function dbEntriSheetName_(periode) { return SH_ENTRI_PREFIX + pjbPeriodeTeks_(periode); }
 
 function dbEntriSheet_(periode) { return dbSheet_(dbEntriSheetName_(periode), PJB_HEAD_ENTRI); }
 
@@ -96,6 +122,7 @@ function dbRumah_()   { return dbBaca_(SH_RUMAH, 'rumah', PJB_HEAD_RUMAH); }
 function dbPeriode_() { return dbBaca_(SH_PERIODE, 'periode', PJB_HEAD_PERIODE); }
 
 function dbEntri_(periode) {
+  periode = pjbPeriodeTeks_(periode);
   return dbBaca_(dbEntriSheetName_(periode), 'entri_' + periode, PJB_HEAD_ENTRI);
 }
 
@@ -172,6 +199,36 @@ function dbLog_(aktor, aksi, detail) {
 
 // ---------------------------------------------------------------- periode
 
+/**
+ * Normalkan nilai periode menjadi "2026-11", apa pun bentuk aslinya.
+ *
+ * WAJIB dipakai setiap kali periode dibaca dari sheet atau diterima dari
+ * halaman web. Google Sheets MENGUBAH teks "2026-11" menjadi nilai TANGGAL
+ * begitu ditulis ke sel biasa; sejak itu sel tersebut terbaca sebagai objek
+ * Date, dan saat dikirim ke browser ia berubah lagi jadi "2026-10-31T17:00:00Z"
+ * karena pergeseran zona waktu WIB — yaitu bulan yang SALAH.
+ *
+ * Karena itu bentuk apa pun dikembalikan lewat tanggal, supaya pergeseran zona
+ * waktunya ikut dibetulkan, bukan sekadar dipotong tujuh huruf pertamanya.
+ */
+function pjbPeriodeTeks_(v) {
+  if (v === null || v === undefined) return '';
+
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, PJB_TZ, 'yyyy-MM');
+  }
+
+  var s = String(v).trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return Utilities.formatDate(d, PJB_TZ, 'yyyy-MM');
+
+  var m = s.match(/^(\d{4})-(\d{2})/);
+  return m ? m[1] + '-' + m[2] : s;
+}
+
 /** "2026-11" -> "November 2026" */
 function pjbLabelPeriode_(p) {
   var s = String(p).split('-');
@@ -201,9 +258,10 @@ function pjbGeserPeriode_(p, n) {
  * supaya admin bisa membuka kembali periode lama bila perlu.
  */
 function pjbPeriodeTerkunci_(periode) {
+  periode = pjbPeriodeTeks_(periode);
   var rows = dbPeriode_();
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i]['Periode']) === String(periode)) {
+    if (pjbPeriodeTeks_(rows[i]['Periode']) === periode) {
       var st = String(rows[i]['Status'] || '').toLowerCase();
       if (st === 'buka') return false;
       if (st === 'kunci') return true;
@@ -222,22 +280,28 @@ function pjbBatasUbah_(periode) {
 /** Daftar periode untuk dropdown: dari yang ada di sheet, terbaru di atas. */
 function pjbDaftarPeriode_() {
   var rows = dbPeriode_();
-  var out = rows.map(function (r) {
-    var p = String(r['Periode']);
-    return {
+  var unik = {};
+  var out = [];
+  rows.forEach(function (r) {
+    var p = pjbPeriodeTeks_(r['Periode']);
+    if (!p || unik[p]) return;    // baris kembar dari bug lama tidak ditampilkan dua kali
+    unik[p] = true;
+    out.push({
       periode: p,
       label: pjbLabelPeriode_(p),
       terkunci: pjbPeriodeTerkunci_(p),
       batas: pjbBatasUbah_(p)
-    };
+    });
   });
   out.sort(function (a, b) { return a.periode < b.periode ? 1 : -1; });
   return out;
 }
 
 function pjbPastikanPeriode_(periode) {
+  periode = pjbPeriodeTeks_(periode);
+  if (!periode) return;
   var rows = dbPeriode_();
-  for (var i = 0; i < rows.length; i++) if (String(rows[i]['Periode']) === periode) return;
+  for (var i = 0; i < rows.length; i++) if (pjbPeriodeTeks_(rows[i]['Periode']) === periode) return;
   dbTambahBaris_(SH_PERIODE, PJB_HEAD_PERIODE, 'periode',
     [periode, pjbLabelPeriode_(periode), 'otomatis', '']);
   dbEntriSheet_(periode);

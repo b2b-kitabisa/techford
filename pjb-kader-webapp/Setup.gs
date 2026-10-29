@@ -16,6 +16,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Tampilkan tautan web app', 'pjbTampilkanTautan')
     .addSeparator()
+    .addItem('Perbaiki periode & sheet entri', 'pjbPerbaikiPeriode')
     .addItem('⚠ Hapus data percobaan', 'pjbHapusDataPercobaan')
     .addToUi();
 }

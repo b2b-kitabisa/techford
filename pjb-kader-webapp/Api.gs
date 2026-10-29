@@ -98,7 +98,9 @@ function apiBeranda(kaderId, pin, periode) {
   if (!auth.ok) return auth;
   var k = auth.kader;
 
-  periode = periode || pjbPeriodeDefault_();
+  // Periode dari halaman web selalu dinormalkan dulu: halaman yang belum
+  // dimuat ulang bisa mengirim bentuk lama seperti "2026-10-31T17:00:00.000Z".
+  periode = pjbPeriodeTeks_(periode) || pjbPeriodeDefault_();
   pjbPastikanPeriode_(periode);
 
   var rwSet = {};
@@ -198,7 +200,8 @@ function apiSimpanEntri(payload) {
     if (!auth.ok) return auth;
     var k = auth.kader;
 
-    var periode = String(payload.periode || '');
+    var periode = pjbPeriodeTeks_(payload.periode);
+    if (!periode) return { ok: false, pesan: 'Periode tidak dikenali. Muat ulang halaman lalu coba lagi.' };
     if (pjbPeriodeTerkunci_(periode)) {
       return { ok: false, pesan: 'Periode ' + pjbLabelPeriode_(periode) + ' sudah terkunci.' };
     }
@@ -257,7 +260,7 @@ function pjbCariEntri_(periode, idEntri) {
 function pjbValidasi_(p, periode) {
   var tgl = pjbTeks_(p.tanggal);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl)) return 'Tanggal belum diisi.';
-  if (tgl.slice(0, 7) !== periode) {
+  if (tgl.slice(0, 7) !== pjbPeriodeTeks_(periode)) {
     return 'Tanggal harus berada di bulan ' + pjbLabelPeriode_(periode) + '.';
   }
 
@@ -338,6 +341,7 @@ function apiAdminBootstrap() {
 
 function apiAdminProgres(periode) {
   if (!pjbAdminBoleh_()) return pjbTolakAdmin_();
+  periode = pjbPeriodeTeks_(periode) || pjbPeriodeDefault_();
   pjbPastikanPeriode_(periode);
 
   var entri = dbEntri_(periode);
@@ -385,6 +389,7 @@ function apiAdminDetailKader(kaderId, periode) {
   if (!pjbAdminBoleh_()) return pjbTolakAdmin_();
   var k = dbKaderById_(kaderId);
   if (!k) return { ok: false, pesan: 'Kader tidak ditemukan.' };
+  periode = pjbPeriodeTeks_(periode) || pjbPeriodeDefault_();
   pjbPastikanPeriode_(periode);
 
   var entriMap = {};
@@ -448,6 +453,7 @@ function apiAdminAktif(kaderId, aktif) {
 
 function apiAdminFotoMasalah(periode) {
   if (!pjbAdminBoleh_()) return pjbTolakAdmin_();
+  periode = pjbPeriodeTeks_(periode) || pjbPeriodeDefault_();
 
   var rumahMap = {};
   dbRumah_().forEach(function (r) { rumahMap[String(r['ID Rumah'])] = r; });
@@ -484,9 +490,10 @@ function apiAdminPeriode() {
 
 function apiAdminSetPeriode(periode, status) {
   if (!pjbAdminBoleh_()) return pjbTolakAdmin_();
+  periode = pjbPeriodeTeks_(periode);
   var rows = dbPeriode_();
   var ada = null;
-  for (var i = 0; i < rows.length; i++) if (String(rows[i]['Periode']) === periode) ada = rows[i];
+  for (var i = 0; i < rows.length; i++) if (pjbPeriodeTeks_(rows[i]['Periode']) === periode) ada = rows[i];
   if (!ada) return { ok: false, pesan: 'Periode tidak ditemukan.' };
 
   dbUpsert_(SH_PERIODE, PJB_HEAD_PERIODE, 'periode', periode,
@@ -497,6 +504,8 @@ function apiAdminSetPeriode(periode, status) {
 
 function apiAdminBukaPeriodeBaru(periode) {
   if (!pjbAdminBoleh_()) return pjbTolakAdmin_();
+  periode = pjbPeriodeTeks_(periode);
+  if (!/^\d{4}-\d{2}$/.test(periode)) return { ok: false, pesan: 'Periode tidak dikenali.' };
   pjbPastikanPeriode_(periode);
   dbLog_(pjbEmailAdmin_(), 'buka periode', periode);
   return { ok: true };
