@@ -154,6 +154,10 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
 .shot .fn{ font-size:12.5px; font-weight:800; word-break:break-all; }
 .shot .mm{ font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; }
 .shot .ok{ font-size:12px; color:var(--good); font-weight:800; margin-top:5px; }
+.shot .aksi{ display:flex; gap:8px; margin-top:8px; }
+.shot .aksi > *{ flex:1; width:auto; margin-top:0; padding:11px 6px; font-size:13.5px; line-height:1;
+  white-space:nowrap; text-align:center; text-decoration:none;
+  display:flex; align-items:center; justify-content:center; }
 .fotobusy{ border:1.5px solid var(--accent); background:var(--accent-soft); border-radius:12px;
   padding:20px 14px; text-align:center; margin-top:10px; }
 .fotobusy .t{ font-size:14px; font-weight:800; color:var(--accent-dark); margin-top:10px; }
@@ -972,10 +976,24 @@ function gambarFoto(teksSibuk){
     m.appendChild(el('div','fn', form.foto.nama || 'foto.jpg'));
     m.appendChild(el('div','mm', (form.foto.ukuranTeks || '') + (form.foto.waktu ? ' · diambil ' + form.foto.waktu : '')));
     m.appendChild(el('div','ok','✓ Foto sudah tersimpan'));
+
+    var aksi = el('div','aksi');
+    /* Sengaja tautan, bukan tombol: kunciForm() mematikan semua <button> di
+       kartu foto, sedangkan melihat foto harus tetap bisa pada entri yang
+       sudah tersimpan maupun pada bulan yang sudah terkunci. */
+    if (form.foto.url){
+      var l = document.createElement('a');
+      l.className = 'btn ghost';
+      l.textContent = '🔍 Lihat foto';
+      l.href = form.foto.url;
+      l.target = '_blank';
+      l.rel = 'noopener';
+      aksi.appendChild(l);
+    }
     var g = el('button','btn ghost','Ganti foto'); g.type='button';
-    g.style.marginTop='8px'; g.style.padding='10px';
     g.addEventListener('click', function(){ form.foto=null; gambarFoto(); hitung(); });
-    m.appendChild(g);
+    aksi.appendChild(g);
+    m.appendChild(aksi);
     s.appendChild(m);
     host.appendChild(s);
     return;

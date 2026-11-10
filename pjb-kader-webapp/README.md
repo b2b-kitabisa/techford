@@ -189,6 +189,13 @@ memperlihatkan PIN penuh.
    terunggah, foto dan nama berkasnya tampil supaya kader bisa memastikan
    tidak salah ambil.
 
+Pada rumah yang **sudah diisi**, kartu fotonya punya tombol **🔍 Lihat foto**
+yang membuka berkas aslinya di Drive pada tab baru — ukuran penuh, bukan
+gambar kecil. Tombol itu sengaja dibuat berupa tautan, bukan tombol biasa,
+supaya tetap bisa ditekan walau formulirnya masih terkunci (belum ditekan
+**Ubah**) atau bulannya sudah dikunci. Tombol **Ganti foto** di sebelahnya tetap
+mengikuti aturan kunci seperti isian lain.
+
 Tombol **Simpan** tidak pernah dimatikan selama periodenya terbuka. Kalau masih
 ada yang kurang, tombolnya berwarna kuning dan menyebutkan jumlahnya; menekannya
 akan menampilkan apa saja yang belum lengkap lalu membawa layar ke bagian itu.
@@ -365,7 +372,7 @@ Semuanya dijalankan di luar Google, memakai stub Apps Script:
 - **146 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
   validasi simpan, idempotensi, penolakan foto ganda, batas domain admin, dan
   susunan `Master Data`.
-- **75 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
+- **79 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
   di browser sungguhan sementara `google.script.run` diarahkan ke fungsi `.gs`
   asli, termasuk unggah dua berkas JPEG nyata untuk menguji penolakan foto kembar.
 
