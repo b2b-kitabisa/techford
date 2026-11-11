@@ -198,7 +198,10 @@ juga bisa ditekan untuk membuka fotonya sendiri.
 
 Tautan **Lihat foto** sengaja dibuat berupa tautan, bukan tombol biasa, supaya
 tetap bisa ditekan walau formulirnya masih terkunci (belum ditekan **Ubah**) atau
-bulannya sudah dikunci. Tombol **Ganti foto** di sebelahnya tetap mengikuti
+bulannya sudah dikunci. Lapisan peredup pada kartu yang terkunci diberi
+`pointer-events:none` — tugasnya memang hanya meredupkan, sedangkan penguncian
+isiannya dikerjakan atribut `disabled`. Tanpa itu lapisannya ikut menelan klik
+ke tautan foto, yang terlihat hidup tapi tidak bereaksi saat ditekan. Tombol **Ganti foto** di sebelahnya tetap mengikuti
 aturan kunci seperti isian lain.
 
 ### Dari mana gambar kecilnya datang
@@ -405,7 +408,7 @@ Semuanya dijalankan di luar Google, memakai stub Apps Script:
 - **165 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
   validasi simpan, idempotensi, penolakan foto ganda, batas domain admin, dan
   susunan `Master Data`.
-- **86 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
+- **93 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
   di browser sungguhan sementara `google.script.run` diarahkan ke fungsi `.gs`
   asli, termasuk unggah dua berkas JPEG nyata untuk menguji penolakan foto kembar.
 

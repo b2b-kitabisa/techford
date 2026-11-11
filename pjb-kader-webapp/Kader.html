@@ -186,7 +186,12 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
 .note.inf{ background:var(--accent-soft); color:var(--accent-dark); }
 
 .ro{ position:relative; }
-.ro.locked::after{ content:""; position:absolute; inset:0; background:rgba(243,245,249,.55); border-radius:var(--r); }
+/* Lapisan ini hanya meredupkan kartu yang terkunci — penguncian isiannya
+   dikerjakan kunciForm() lewat atribut disabled. Tanpa pointer-events:none
+   lapisannya ikut menelan klik ke tautan "Lihat foto" dan gambar pembanding,
+   yang justru HARUS tetap bisa ditekan tanpa menekan Ubah dulu. */
+.ro.locked::after{ content:""; position:absolute; inset:0; background:rgba(243,245,249,.55);
+  border-radius:var(--r); pointer-events:none; }
 .editbar{ display:flex; align-items:center; gap:10px; background:var(--warn-soft); border:1px solid var(--warn);
   border-radius:12px; padding:11px 13px; }
 .editbar .t{ flex:1; font-size:13px; font-weight:700; color:var(--warn); }
