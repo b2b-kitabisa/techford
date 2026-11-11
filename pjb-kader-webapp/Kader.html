@@ -154,6 +154,16 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
 .shot .fn{ font-size:12.5px; font-weight:800; word-break:break-all; }
 .shot .mm{ font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; }
 .shot .ok{ font-size:12px; color:var(--good); font-weight:800; margin-top:5px; }
+.banding{ display:grid; gap:8px; margin-top:10px; }
+.banding.dua{ grid-template-columns:1fr 1fr; }
+.banding a{ display:block; text-decoration:none; color:inherit; }
+.banding .kotak{ border:1.5px solid var(--line); border-radius:12px; overflow:hidden; background:var(--sunk); }
+.banding .kotak.kini{ border-color:var(--good); }
+.banding img{ display:block; width:100%; height:120px; object-fit:cover; background:var(--sunk); }
+.banding .cap{ font-size:12px; font-weight:800; padding:7px 8px; background:var(--surface); }
+.banding .cap .k{ display:block; font-size:11px; font-weight:700; color:var(--muted); margin-top:1px; }
+.banding .kosong{ height:120px; display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:var(--muted); font-weight:700; text-align:center; padding:0 10px; }
 .shot .aksi{ display:flex; gap:8px; margin-top:8px; }
 .shot .aksi > *{ flex:1; width:auto; margin-top:0; padding:11px 6px; font-size:13.5px; line-height:1;
   white-space:nowrap; text-align:center; text-decoration:none;
@@ -410,6 +420,7 @@ select.inp{ appearance:none; background-image:url("data:image/svg+xml;utf8,<svg 
 /* ============================================================ keadaan */
 var BOOT = null, SESI = null, DATA = null;
 var filter = 'all', rumahAktif = null, entriAktif = null, bolehUbah = true;
+var fotoLalu = null, pratinjauUntuk = '';
 var form = { bisa:true, alasan:'', jml:2, jenis:[], positif:[], lain:'',
              m4:1, lv:0, sampah:0, k3:0, foto:null };
 
@@ -730,6 +741,8 @@ function bukaForm(r){
   $('inpLain').value = form.lain || '';
 
   fotoSibuk = false;
+  fotoLalu = null;
+  pratinjauUntuk = '';
   $('formBody').classList.remove('sibuk');
   gambarEditBar();
   gambarAlasan();
@@ -742,6 +755,35 @@ function bukaForm(r){
   kunciForm();
   hitung();
   layar('scrForm');
+  muatPratinjau();
+}
+
+/**
+ * Gambar kecil foto diambil belakangan, setelah formulir tampil. Kader tidak
+ * perlu menunggu jaringan hanya untuk membuka rumah; kalau pratinjaunya gagal
+ * datang, yang hilang cuma gambarnya — isian dan tombol Lihat foto tetap utuh.
+ */
+function muatPratinjau(){
+  if (!entriAktif || !entriAktif.fotoUrl) return;
+  var untuk = rumahAktif.id + '|' + DATA.periode;
+  pratinjauUntuk = untuk;
+
+  srv('apiPratinjauFoto', [{
+    kaderId: SESI.id, pin: SESI.pin, idRumah: rumahAktif.id, periode: DATA.periode
+  }]).then(function(res){
+    // Kader bisa sudah pindah ke rumah lain sebelum jawabannya sampai.
+    if (pratinjauUntuk !== untuk || !res || !res.ok) return;
+    if (res.ini && res.ini.gambar && form.foto && !form.foto.pratinjau){
+      form.foto.pratinjau = res.ini.gambar;
+    }
+    fotoLalu = res.lalu || null;
+    gambarFoto();
+    // Menggambar ulang kartu foto membuat tombol "Ganti foto" yang baru, dan
+    // tombol baru itu lahir dalam keadaan hidup. Tanpa baris ini, entri lama
+    // yang belum ditekan Ubah jadi bisa diganti fotonya begitu pratinjaunya
+    // datang — kuncinya seolah terbuka sendiri.
+    kunciForm();
+  }).catch(function(){ /* sinyal putus — biarkan tanpa gambar */ });
 }
 
 function tanggalBawaan(){
@@ -952,6 +994,51 @@ function setFotoSibuk(on, teks){
   }
 }
 
+var PLACEHOLDER_FOTO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76">' +
+  '<rect width="76" height="76" fill="%23eef1f6"/>' +
+  '<text x="38" y="44" font-size="26" text-anchor="middle">📷</text></svg>');
+
+function kotakKosong(){
+  return el('div','kosong','Gambar kecilnya belum siap. Tekan untuk membuka fotonya.');
+}
+
+/** Dua gambar bersebelahan: bulan ini dan periode tercatat sebelumnya. */
+function gambarBanding(){
+  var g = el('div','banding dua');
+  g.appendChild(selBanding('Bulan ini', DATA.label, form.foto.pratinjau,
+                           form.foto.url, true));
+  g.appendChild(selBanding('Sebelumnya', fotoLalu.label, fotoLalu.gambar,
+                           fotoLalu.url, false));
+  return g;
+}
+
+function selBanding(judul, ket, gambar, url, kini){
+  var kotak = el('div','kotak' + (kini ? ' kini' : ''));
+  if (gambar){
+    var im = document.createElement('img');
+    im.alt = '';
+    // Gambar yang gagal dimuat meninggalkan ikon rusak dan tulisan alt yang
+    // membingungkan; lebih baik diganti keterangan yang bisa ditindaklanjuti.
+    im.onerror = function(){
+      if (im.parentNode) im.parentNode.replaceChild(kotakKosong(), im);
+    };
+    im.src = gambar;
+    kotak.appendChild(im);
+  } else {
+    kotak.appendChild(kotakKosong());
+  }
+  var cap = el('div','cap', judul);
+  cap.appendChild(el('span','k', ket));
+  kotak.appendChild(cap);
+
+  if (!url) return kotak;
+  var a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  a.appendChild(kotak);
+  return a;
+}
+
 function gambarFoto(teksSibuk){
   var host = $('fotoSlot'); clr(host);
 
@@ -966,12 +1053,18 @@ function gambarFoto(teksSibuk){
   }
 
   if (form.foto){
+    /* Kalau ada foto bulan sebelumnya, keduanya disandingkan besar-besar:
+       pertanyaan kader memang "ini foto yang mana, sama tidak dengan yang
+       dulu", dan itu tidak terjawab oleh gambar sebesar perangko. */
+    if (fotoLalu) host.appendChild(gambarBanding());
+
     var s = el('div','shot');
-    var img = document.createElement('img');
-    img.alt = 'Foto pemeriksaan';
-    img.src = form.foto.pratinjau || 'data:image/svg+xml;utf8,' +
-      encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76"><rect width="76" height="76" fill="%23eef1f6"/><text x="38" y="44" font-size="26" text-anchor="middle">📷</text></svg>');
-    s.appendChild(img);
+    if (!fotoLalu){
+      var img = document.createElement('img');
+      img.alt = 'Foto pemeriksaan';
+      img.src = form.foto.pratinjau || PLACEHOLDER_FOTO;
+      s.appendChild(img);
+    }
     var m = el('div','m');
     m.appendChild(el('div','fn', form.foto.nama || 'foto.jpg'));
     m.appendChild(el('div','mm', (form.foto.ukuranTeks || '') + (form.foto.waktu ? ' · diambil ' + form.foto.waktu : '')));

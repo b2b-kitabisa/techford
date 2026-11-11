@@ -189,12 +189,45 @@ memperlihatkan PIN penuh.
    terunggah, foto dan nama berkasnya tampil supaya kader bisa memastikan
    tidak salah ambil.
 
-Pada rumah yang **sudah diisi**, kartu fotonya punya tombol **🔍 Lihat foto**
-yang membuka berkas aslinya di Drive pada tab baru — ukuran penuh, bukan
-gambar kecil. Tombol itu sengaja dibuat berupa tautan, bukan tombol biasa,
-supaya tetap bisa ditekan walau formulirnya masih terkunci (belum ditekan
-**Ubah**) atau bulannya sudah dikunci. Tombol **Ganti foto** di sebelahnya tetap
-mengikuti aturan kunci seperti isian lain.
+Pada rumah yang **sudah diisi**, kartu fotonya menampilkan **dua gambar kecil
+bersebelahan — "Bulan ini" dan periode tercatat sebelumnya** — supaya kader bisa
+memastikan dalam sekali lihat: ini foto rumah yang benar, dan bukan foto yang
+sama dengan bulan lalu. Di bawahnya ada tombol **🔍 Lihat foto** yang membuka
+berkas aslinya di Drive pada tab baru untuk ukuran penuh; tiap gambar kecilnya
+juga bisa ditekan untuk membuka fotonya sendiri.
+
+Tautan **Lihat foto** sengaja dibuat berupa tautan, bukan tombol biasa, supaya
+tetap bisa ditekan walau formulirnya masih terkunci (belum ditekan **Ubah**) atau
+bulannya sudah dikunci. Tombol **Ganti foto** di sebelahnya tetap mengikuti
+aturan kunci seperti isian lain.
+
+### Dari mana gambar kecilnya datang
+
+Foto di Drive dibagikan terbatas ke domain `kitabisa.com`, sedangkan HP kader
+memakai akun pribadi — jadi berkasnya **tidak bisa** dipasang langsung sebagai
+`<img>` di halaman; yang muncul akan kotak kosong. Yang mengambilkan gambarnya
+adalah script (`apiPratinjauFoto`), yang berjalan sebagai pemilik spreadsheet.
+
+Yang dikirim adalah **thumbnail bawaan Drive** (±220 piksel, belasan KB), bukan
+foto penuhnya yang 150–350 KB. Tiga penjagaan supaya ini tidak membebani:
+
+- diambil **setelah** formulir tampil, jadi kader tidak pernah menunggu jaringan
+  hanya untuk membuka rumah;
+- hasilnya **disimpan di cache 6 jam** per berkas — membuka rumah yang sama
+  untuk kedua kalinya tidak menanyai Drive lagi;
+- hanya dipanggil untuk rumah yang **sudah ada fotonya**.
+
+"Bulan sebelumnya" berarti **periode yang tercatat** sebelum periode ini, bukan
+bulan kalender. September dan Oktober belum dimasukkan, jadi pembanding November
+yang benar adalah Agustus — bukan Oktober yang memang kosong.
+
+Kalau thumbnail-nya belum jadi (berkas baru diunggah beberapa detik lalu) atau
+tautannya bukan berkas Drive (sebagian data impor lama), kotaknya berisi
+keterangan **"Gambar kecilnya belum siap. Tekan untuk membuka fotonya."** —
+tetap bisa ditekan, tidak pernah ikon gambar rusak.
+
+> **Batasnya:** thumbnail ±220 piksel cukup untuk mengenali rumah, **tidak cukup**
+> untuk memeriksa jentiknya. Untuk itu pakai **Lihat foto**.
 
 Tombol **Simpan** tidak pernah dimatikan selama periodenya terbuka. Kalau masih
 ada yang kurang, tombolnya berwarna kuning dan menyebutkan jumlahnya; menekannya
@@ -369,10 +402,10 @@ dibaca balik oleh script.
 
 Semuanya dijalankan di luar Google, memakai stub Apps Script:
 
-- **146 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
+- **165 uji logika server** — aturan periode, impor Agustus, PIN dan tombol Lupa,
   validasi simpan, idempotensi, penolakan foto ganda, batas domain admin, dan
   susunan `Master Data`.
-- **79 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
+- **86 uji ujung-ke-ujung di Chromium** — `Kader.html` dan `Admin.html` dijalankan
   di browser sungguhan sementara `google.script.run` diarahkan ke fungsi `.gs`
   asli, termasuk unggah dua berkas JPEG nyata untuk menguji penolakan foto kembar.
 

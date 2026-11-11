@@ -160,3 +160,112 @@ function pjbFolderAnak_(induk, nama) {
   var it = induk.getFoldersByName(nama);
   return it.hasNext() ? it.next() : induk.createFolder(nama);
 }
+
+/* ================================================================ pratinjau
+ *
+ * Foto disimpan dengan akses terbatas domain kitabisa.com, sedangkan HP kader
+ * memakai akun pribadi — jadi berkasnya TIDAK BISA dipasang langsung sebagai
+ * <img> di halaman. Yang mengambilkan gambarnya adalah script ini, yang jalan
+ * sebagai pemilik spreadsheet.
+ *
+ * Yang dikirim adalah THUMBNAIL bawaan Drive (±220 piksel, belasan KB), bukan
+ * foto penuhnya yang 150–350 KB. Tujuannya memang cuma "ini rumah yang mana,
+ * sama tidak dengan bulan lalu" — untuk memeriksa jentik tetap pakai tombol
+ * Lihat foto yang membuka berkas aslinya.
+ */
+
+function apiPratinjauFoto(payload) {
+  try {
+    var auth = pjbPeriksaKader_(payload.kaderId, payload.pin);
+    if (!auth.ok) return auth;
+
+    var periode = pjbPeriodeTeks_(payload.periode);
+    if (!periode) return { ok: false, pesan: 'Periode tidak dikenali.' };
+
+    var rumah = dbRumahById_(payload.idRumah);
+    if (!rumah) return { ok: false, pesan: 'Rumah tidak ditemukan.' };
+
+    var ini = pjbPratinjauEntri_(payload.idRumah, periode);
+
+    // "Bulan lalu" = periode TERCATAT sebelumnya, bukan bulan kalender.
+    // September dan Oktober belum dimasukkan, jadi pembanding November yang
+    // benar adalah Agustus — bukan Oktober yang memang tidak ada datanya.
+    var lalu = null;
+    var sebelum = pjbPeriodeSebelum_(periode);
+    if (sebelum) {
+      var p = pjbPratinjauEntri_(payload.idRumah, sebelum);
+      // Cukup ada TAUTAN fotonya. Sebagian data lama tersimpan dengan tautan
+      // yang bukan berkas Drive, jadi gambar kecilnya tidak bisa dibuat —
+      // tapi kader tetap berhak membuka fotonya untuk membandingkan.
+      if (p && (p.gambar || p.url)) {
+        lalu = { periode: sebelum, label: pjbLabelPeriode_(sebelum),
+                 gambar: p.gambar, url: p.url };
+      }
+    }
+
+    return { ok: true, ini: ini, lalu: lalu };
+  } catch (err) {
+    return { ok: false, pesan: 'Pratinjau gagal dimuat: ' + (err && err.message ? err.message : err) };
+  }
+}
+
+function pjbPratinjauEntri_(idRumah, periode) {
+  var e = pjbCariEntri_(periode, idRumah + '|' + periode);
+  if (!e) return null;
+  var url = pjbTeks_(e['Foto URL']);
+  if (!url) return null;
+  return { periode: periode, url: url, gambar: pjbThumbnailDrive_(url) };
+}
+
+/** Periode tercatat tepat sebelum periode ini; null kalau ini yang paling awal. */
+function pjbPeriodeSebelum_(periode) {
+  var semua = pjbDaftarPeriode_();           // terbaru di atas
+  for (var i = 0; i < semua.length; i++) {
+    if (semua[i].periode === periode) {
+      return i + 1 < semua.length ? semua[i + 1].periode : null;
+    }
+  }
+  return null;
+}
+
+function pjbIdDrive_(url) {
+  var m = String(url || '').match(/\/d\/([A-Za-z0-9_-]+)/) ||
+          String(url || '').match(/[?&]id=([A-Za-z0-9_-]+)/);
+  return m ? m[1] : '';
+}
+
+/**
+ * Thumbnail dikembalikan sebagai data URL supaya halaman tidak perlu izin
+ * apa pun ke Drive. Hasilnya disimpan di cache: foto tidak pernah berubah,
+ * jadi membuka rumah yang sama untuk kedua kalinya tidak memanggil Drive lagi.
+ */
+function pjbThumbnailDrive_(url) {
+  var id = pjbIdDrive_(url);
+  if (!id) return '';
+
+  var cache = CacheService.getScriptCache();
+  var kunci = 'thumb_' + id;
+  var simpan = cache.get(kunci);
+  if (simpan) return simpan === '-' ? '' : simpan;
+
+  var hasil = '';
+  try {
+    var blob = DriveApp.getFileById(id).getThumbnail();
+    if (blob) {
+      hasil = 'data:' + (blob.getContentType() || 'image/jpeg') + ';base64,' +
+              Utilities.base64Encode(blob.getBytes());
+    }
+  } catch (e) {
+    // Berkas terhapus atau thumbnail belum jadi — halaman memakai jalan
+    // mundurnya sendiri, tidak perlu menggagalkan apa pun.
+  }
+
+  // Batas satu nilai cache 100 KB; thumbnail jauh di bawah itu, tapi penjagaan
+  // ini menjaga supaya ukuran yang tak terduga tidak membuat put() melempar.
+  try {
+    if (!hasil) cache.put(kunci, '-', 600);               // 10 menit: thumbnail mungkin belum jadi
+    else if (hasil.length < 90000) cache.put(kunci, hasil, 21600);
+  } catch (e) { /* cache penuh — bukan alasan menggagalkan pratinjau */ }
+
+  return hasil;
+}
